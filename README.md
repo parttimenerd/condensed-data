@@ -1,6 +1,8 @@
 Condensed Data
 ==============
 
+[![ci](https://github.com/parttimenerd/condensed-data/actions/workflows/ci.yml/badge.svg)](https://github.com/parttimenerd/condensed-data/actions/workflows/ci.yml)
+
 A base library for reading and writing condensed event data
 to disk. Focusing on a simple, yet space saving, format.
 
