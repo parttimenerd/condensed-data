@@ -28,6 +28,7 @@ public class TypeCollection {
     static {
         specifiedTypes[0] = IntType.SPECIFIED_TYPE;
         specifiedTypes[1] = VarIntType.SPECIFIED_TYPE;
+        specifiedTypes[2] = FloatType.SPECIFIED_TYPE;
     }
 
     private final List<@Nullable CondensedType<?>> types;

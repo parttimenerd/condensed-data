@@ -4,10 +4,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 
 import me.bechberger.condensed.CondensedOutputStream.OverflowMode;
-import me.bechberger.condensed.types.CondensedType;
-import me.bechberger.condensed.types.IntType;
-import me.bechberger.condensed.types.TypeCollection;
-import me.bechberger.condensed.types.VarIntType;
+import me.bechberger.condensed.types.*;
 import net.jqwik.api.ForAll;
 import net.jqwik.api.Property;
 import net.jqwik.api.constraints.IntRange;
@@ -87,6 +84,28 @@ public class TypeSpecificationTest {
             assertEquals(
                     new VarIntType(TypeCollection.FIRST_CUSTOM_TYPE_ID, name, description, signed),
                     result);
+            var msg = in.readNextInstance();
+            assertNotNull(msg);
+            assertEquals(value, msg.value());
+        }
+    }
+
+    @Property
+    @SuppressWarnings("rawtypes")
+public void testFloatTypeRoundTrip(@ForAll String name, @ForAll String description, @ForAll float value) {
+        try (var in =
+                     new CondensedInputStream(
+                             CondensedOutputStream.use(
+                                     out ->
+                                     {
+                                         var type = out.writeAndStoreType(
+                                                 id -> new FloatType(id, name, description));
+                                            out.writeMessage(type, value);
+                                     },
+                                     true))) {
+            FloatType result = (FloatType) (CondensedType) in.readNextTypeMessageAndProcess();
+            assertEquals(
+                    new FloatType(TypeCollection.FIRST_CUSTOM_TYPE_ID, name, description), result);
             var msg = in.readNextInstance();
             assertNotNull(msg);
             assertEquals(value, msg.value());

@@ -52,8 +52,8 @@ The following data is organized in messages:
       - second lowest bit: when to large: 0 to throw error, 1 to saturate
   - Varint-based type (maps to `long` in Java)
     - uint8: signedness (0: unsigned, 1: signed)
-  - Floating point type (maps to `double` in Java)
-    - uint8: width (4: float, 8: double)
+  - Floating point type (maps to `float` in Java)
+    - we don't need double precision for now,v maybe add it later
   - String
     - String: Encoding (e.g. `UTF-8`)
   - Struct-based type

@@ -53,4 +53,13 @@ public abstract class CondensedType<T> {
     public int hashCode() {
         return Objects.hash(id, name, description);
     }
+
+    @Override
+    public String toString() {
+        return getClass().getSimpleName() + "{" +
+                "id=" + id +
+                ", name='" + name + '\'' +
+                ", description='" + description + '\'' +
+                '}';
+    }
 }
