@@ -29,7 +29,7 @@ public abstract class CondensedType<T> {
     }
 
     /** Abstract type */
-    public abstract SpecifiedType<?> getSpecifiedType();
+    public abstract SpecifiedType<? extends CondensedType<T>> getSpecifiedType();
 
     /** Write the type specification to the stream (excluding the header) */
     public abstract void writeTo(CondensedOutputStream out, T value);

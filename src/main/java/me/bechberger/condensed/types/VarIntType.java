@@ -32,7 +32,7 @@ public class VarIntType extends CondensedType<Long> {
     }
 
     @Override
-    public SpecifiedType<?> getSpecifiedType() {
+    public SpecifiedType<VarIntType> getSpecifiedType() {
         return SPECIFIED_TYPE;
     }
 

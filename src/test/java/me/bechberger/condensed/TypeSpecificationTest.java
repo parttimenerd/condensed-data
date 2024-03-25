@@ -1,15 +1,16 @@
 package me.bechberger.condensed;
 
-import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.*;
 
+import java.nio.charset.Charset;
+import java.util.List;
+import java.util.concurrent.atomic.AtomicReference;
 import me.bechberger.condensed.CondensedOutputStream.OverflowMode;
 import me.bechberger.condensed.types.*;
 import net.jqwik.api.*;
 import net.jqwik.api.constraints.IntRange;
+import net.jqwik.api.constraints.Size;
 import org.junit.jupiter.api.Test;
-
-import java.nio.charset.Charset;
 
 /** Testing that type specifications can be written and read back */
 public class TypeSpecificationTest {
@@ -115,30 +116,105 @@ public class TypeSpecificationTest {
     }
 
     @Provide
-   public Arbitrary<String> encodings() {
+    public Arbitrary<String> encodings() {
         return Arbitraries.of(Charset.defaultCharset().toString(), "UTF-8", "UTF-16", "UTF-32");
     }
 
     @Property
     @SuppressWarnings("rawtypes")
-public void testStringRoundTrip(@ForAll String name, @ForAll String description, @ForAll("encodings") String encoding, @ForAll String value) {
-    try (var in =
-            new CondensedInputStream(
-                    CondensedOutputStream.use(
-                            out -> {
-                                var type =
-                                        out.writeAndStoreType(
-                                                id -> new StringType(id, name, description, encoding));
-                                out.writeMessage(type, value);
-                            },
-                            true))) {
-        StringType result = (StringType) (CondensedType) in.readNextTypeMessageAndProcess();
-        assertEquals(
-                new StringType(TypeCollection.FIRST_CUSTOM_TYPE_ID, name, description, encoding),
-                result);
-        var msg = in.readNextInstance();
-        assertNotNull(msg);
-        assertEquals(value, msg.value());
+    public void testStringRoundTrip(
+            @ForAll String name,
+            @ForAll String description,
+            @ForAll("encodings") String encoding,
+            @ForAll String value) {
+        byte[] outBytes =
+                CondensedOutputStream.use(
+                        out -> {
+                            var type =
+                                    out.writeAndStoreType(
+                                            id -> new StringType(id, name, description, encoding));
+                            out.writeMessage(type, value);
+                        },
+                        true);
+        try (var in = new CondensedInputStream(outBytes)) {
+            StringType result = (StringType) (CondensedType) in.readNextTypeMessageAndProcess();
+            assertEquals(
+                    new StringType(
+                            TypeCollection.FIRST_CUSTOM_TYPE_ID, name, description, encoding),
+                    result);
+            var msg = in.readNextInstance();
+            assertNotNull(msg);
+            assertEquals(value, msg.value());
+        }
     }
+
+    @Property
+    @SuppressWarnings("rawtypes")
+    public void testIntArrayRoundTrip(
+            @ForAll String name,
+            @ForAll String description,
+            @ForAll boolean useDefaultIntType,
+            @ForAll @Size(max = 200) List<Integer> value) {
+        AtomicReference<ArrayType<?>> typeRef = new AtomicReference<>();
+        byte[] outBytes =
+                CondensedOutputStream.use(
+                        out -> {
+                            var innerType =
+                                    useDefaultIntType
+                                            ? TypeCollection.getDefaultTypeInstance(
+                                                    IntType.SPECIFIED_TYPE)
+                                            : out.writeAndStoreType(
+                                                    id ->
+                                                            new IntType(
+                                                                    id,
+                                                                    4,
+                                                                    true,
+                                                                    OverflowMode.ERROR));
+                            var type =
+                                    out.writeAndStoreType(
+                                            id ->
+                                                    new ArrayType<>(
+                                                            id, name, description, innerType));
+                            typeRef.set(type);
+                            out.writeMessage(type, value.stream().map(Long::valueOf).toList());
+                        },
+                        true);
+        try (var in = new CondensedInputStream(outBytes)) {
+            if (!useDefaultIntType) {
+                assertInstanceOf(IntType.class, in.readNextTypeMessageAndProcess());
+            }
+            ArrayType result = (ArrayType) in.readNextTypeMessageAndProcess();
+            assertEquals(typeRef.get(), result);
+            var msg = in.readNextInstance();
+            assertNotNull(msg);
+            assertEquals(value.stream().map(i -> (long) i).toList(), msg.value());
+        }
+    }
+
+    @Test
+    public void testNestedIntArray() {
+        AtomicReference<ArrayType<List<Long>>> typeRef = new AtomicReference<>();
+        List<List<Long>> value = List.of(List.of(1L, 2L), List.of(3L, 4L), List.of(), List.of(-5L));
+        var outBytes =
+                CondensedOutputStream.use(
+                        out -> {
+                            var innerInnerType =
+                                    TypeCollection.getDefaultTypeInstance(IntType.SPECIFIED_TYPE);
+                            var innerType =
+                                    out.writeAndStoreType(
+                                            id -> new ArrayType<>(id, innerInnerType));
+                            var type = out.writeAndStoreType(id -> new ArrayType<>(id, innerType));
+                            typeRef.set(type);
+                            out.writeMessage(type, value);
+                        },
+                        true);
+        try (var in = new CondensedInputStream(outBytes)) {
+            assertInstanceOf(ArrayType.class, in.readNextTypeMessageAndProcess());
+            var actualType = in.<ArrayType<List<Long>>>readNextTypeMessageAndProcess();
+            assertEquals(typeRef.get(), actualType);
+            var msg = in.readNextInstance();
+            assertNotNull(msg);
+            assertEquals(value, msg.value());
+        }
     }
 }

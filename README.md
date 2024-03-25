@@ -33,8 +33,8 @@ The following data is organized in messages:
     - 1: Varint-based type
     - 2: Floating point type
     - 3: String-based type
-    - 4: Struct-based type
-    - 5: Array-based type
+    - 4: Array-based type
+    - 5: Struct-based type
     - 6 - 15: reserved for future use
     - 16+: user defined type
 - Content
@@ -56,6 +56,8 @@ The following data is organized in messages:
     - we don't need double precision for now,v maybe add it later
   - String
     - String: Encoding (e.g. `UTF-8`)
+  - Array-based type
+    - Unsigned varint: Element type ID
   - Struct-based type
     - Unsigned varint: Number of fields
     - For each field:
@@ -69,12 +71,6 @@ The following data is organized in messages:
         - string-based type: UTF-8 string
         - other non-user defined types are not allowed
     - The fields are stored in the order they are defined
-  - Array-based type
-    - Unsigned varint: Element type ID
-    - uint8: type of embedding
-      - 0: directly embedded ("by value")
-      - 1: absolute reference
-      - 2: relative reference
 
 The primitive types (not array or struct) are trivially parsed according to their specification.
 

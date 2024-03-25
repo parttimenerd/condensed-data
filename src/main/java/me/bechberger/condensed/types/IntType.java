@@ -42,7 +42,7 @@ public class IntType extends CondensedType<Long> {
     }
 
     @Override
-    public SpecifiedType<?> getSpecifiedType() {
+    public SpecifiedType<IntType> getSpecifiedType() {
         return SPECIFIED_TYPE;
     }
 

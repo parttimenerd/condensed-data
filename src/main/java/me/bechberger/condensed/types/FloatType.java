@@ -15,7 +15,7 @@ public class FloatType extends CondensedType<Float> {
     }
 
     @Override
-    public SpecifiedType<?> getSpecifiedType() {
+    public SpecifiedType<FloatType> getSpecifiedType() {
         return SPECIFIED_TYPE;
     }
 

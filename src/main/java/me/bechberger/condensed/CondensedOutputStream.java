@@ -4,7 +4,6 @@ import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.OutputStream;
 import java.io.UnsupportedEncodingException;
-import java.util.Arrays;
 import java.util.function.Consumer;
 import java.util.function.Function;
 import me.bechberger.condensed.Message.StartMessage;

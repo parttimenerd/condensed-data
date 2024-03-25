@@ -1,6 +1,7 @@
 package me.bechberger.condensed.types;
 
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
 import java.util.function.Function;
 import org.jetbrains.annotations.Nullable;
@@ -24,12 +25,21 @@ public class TypeCollection {
     public static final int FIRST_CUSTOM_TYPE_ID = MAX_SPECIFIED_TYPES + 1;
     private static final SpecifiedType<?>[] specifiedTypes =
             new SpecifiedType<?>[MAX_SPECIFIED_TYPES + 1];
+    private static final CondensedType<?>[] defaultTypes =
+            new CondensedType<?>[MAX_SPECIFIED_TYPES + 1];
 
     static {
         specifiedTypes[0] = IntType.SPECIFIED_TYPE;
         specifiedTypes[1] = VarIntType.SPECIFIED_TYPE;
         specifiedTypes[2] = FloatType.SPECIFIED_TYPE;
-specifiedTypes[3] = StringType.SPECIFIED_TYPE;
+        specifiedTypes[3] = StringType.SPECIFIED_TYPE;
+        specifiedTypes[4] = ArrayType.SPECIFIED_TYPE;
+
+        for (int i = 0; i < specifiedTypes.length; i++) {
+            if (specifiedTypes[i] != null && specifiedTypes[i].isPrimitive()) {
+                defaultTypes[i] = specifiedTypes[i].getDefaultType(i);
+            }
+        }
     }
 
     private final List<@Nullable CondensedType<?>> types;
@@ -40,13 +50,7 @@ specifiedTypes[3] = StringType.SPECIFIED_TYPE;
     }
 
     private void initDefaultTypes() {
-        for (int i = 0; i < specifiedTypes.length; i++) {
-            if (specifiedTypes[i] != null) {
-                types.add(specifiedTypes[i].getDefaultType(i));
-            } else {
-                types.add(null);
-            }
-        }
+        types.addAll(Arrays.asList(defaultTypes));
     }
 
     /**
@@ -108,5 +112,16 @@ specifiedTypes[3] = StringType.SPECIFIED_TYPE;
             throw new NoSuchTypeException(id);
         }
         return types.get(id);
+    }
+
+    @SuppressWarnings("unchecked")
+    public static <T> CondensedType<T> getDefaultTypeInstance(
+            SpecifiedType<? extends CondensedType<T>> specifiedType) {
+        if (!specifiedType.isPrimitive()
+                || specifiedType.id() >= defaultTypes.length
+                || defaultTypes[specifiedType.id()] == null) {
+            throw new SpecifiedType.NoSuchDefaultTypeException();
+        }
+        return (CondensedType<T>) defaultTypes[specifiedType.id()];
     }
 }

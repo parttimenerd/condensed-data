@@ -7,7 +7,6 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.io.UnsupportedEncodingException;
 import java.time.Instant;
-import java.util.Arrays;
 import java.util.concurrent.TimeUnit;
 import me.bechberger.condensed.Message.CondensedTypeMessage;
 import me.bechberger.condensed.Message.Instance;

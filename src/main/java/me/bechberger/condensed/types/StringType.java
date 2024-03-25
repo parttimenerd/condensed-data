@@ -13,8 +13,12 @@ public class StringType extends CondensedType<String> {
     }
 
     public StringType(int id, String encoding) {
-        this(id, encoding.equals(DEFAULT_ENCODING) ? "string" : encoding.toLowerCase() + "-string",
-                "A string of characters" + (encoding.equals(DEFAULT_ENCODING) ? "" : " encoded in " + encoding), encoding);
+        this(
+                id,
+                encoding.equals(DEFAULT_ENCODING) ? "string" : encoding.toLowerCase() + "-string",
+                "A string of characters"
+                        + (encoding.equals(DEFAULT_ENCODING) ? "" : " encoded in " + encoding),
+                encoding);
     }
 
     public StringType(int id) {
@@ -22,7 +26,7 @@ public class StringType extends CondensedType<String> {
     }
 
     @Override
-    public SpecifiedType<?> getSpecifiedType() {
+    public SpecifiedType<StringType> getSpecifiedType() {
         return SPECIFIED_TYPE;
     }
 
@@ -36,45 +40,52 @@ public class StringType extends CondensedType<String> {
         return in.readString(encoding);
     }
 
-@Override
-public boolean equals(Object obj) {
-    return super.equals(obj) && encoding.equals(((StringType) obj).encoding);
-}
+    @Override
+    public boolean equals(Object obj) {
+        return super.equals(obj) && encoding.equals(((StringType) obj).encoding);
+    }
 
-    public static final SpecifiedType<StringType> SPECIFIED_TYPE = new SpecifiedType<>() {
-        @Override
-        public int id() {
-            return 3;
-        }
+    public static final SpecifiedType<StringType> SPECIFIED_TYPE =
+            new SpecifiedType<>() {
+                @Override
+                public int id() {
+                    return 3;
+                }
 
-        @Override
-        public String name() {
-            return "string";
-        }
+                @Override
+                public String name() {
+                    return "string";
+                }
 
-        @Override
-        public void writeInnerTypeSpecification(CondensedOutputStream out, StringType typeInstance) {
-            out.writeString(typeInstance.encoding);
-        }
+                @Override
+                public void writeInnerTypeSpecification(
+                        CondensedOutputStream out, StringType typeInstance) {
+                    out.writeString(typeInstance.encoding);
+                }
 
-        @Override
-        public StringType readInnerTypeSpecification(CondensedInputStream in, String name, String description) {
-            return in.getTypeCollection().addType(id -> new StringType(id, name, description, in.readString(null)));
-        }
+                @Override
+                public StringType readInnerTypeSpecification(
+                        CondensedInputStream in, String name, String description) {
+                    return in.getTypeCollection()
+                            .addType(
+                                    id ->
+                                            new StringType(
+                                                    id, name, description, in.readString(null)));
+                }
 
-        @Override
-        public StringType getDefaultType(int id) {
-            return new StringType(id);
-        }
+                @Override
+                public StringType getDefaultType(int id) {
+                    return new StringType(id);
+                }
 
-        @Override
-        public boolean equals(Object obj) {
-            return obj instanceof StringType;
-        }
+                @Override
+                public boolean equals(Object obj) {
+                    return obj instanceof StringType;
+                }
 
-        @Override
-        public boolean isPrimitive() {
-            return true;
-        }
-    };
+                @Override
+                public boolean isPrimitive() {
+                    return true;
+                }
+            };
 }
