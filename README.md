@@ -94,7 +94,11 @@ JDK 17+
 
 Development
 -----------
-Every commit is formatted via `mvn spotless:apply` in a pre-commit hook to ensure consistent formatting.
+Every commit is formatted via `mvn spotless:apply` in a pre-commit hook to ensure consistent formatting, install it via:
+```shell
+mvn install
+```
+This pre-commit hook also runs the tests via `mvn test`.
 
 License
 -------

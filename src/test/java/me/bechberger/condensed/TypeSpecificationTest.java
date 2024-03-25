@@ -1,6 +1,7 @@
 package me.bechberger.condensed;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
 
 import me.bechberger.condensed.CondensedOutputStream.OverflowMode;
 import me.bechberger.condensed.types.CondensedType;
@@ -27,7 +28,7 @@ public class TypeSpecificationTest {
                                 out ->
                                         out.writeAndStoreType(
                                                 id -> new IntType(id, width, signed, overflowMode)),
-                                false))) {
+                                true))) {
             IntType result = (IntType) (CondensedType) in.readNextTypeMessageAndProcess();
             assertEquals(
                     new IntType(TypeCollection.FIRST_CUSTOM_TYPE_ID, width, signed, overflowMode),
@@ -43,36 +44,52 @@ public class TypeSpecificationTest {
         byte[] data =
                 CondensedOutputStream.use(
                         out -> {
-                            out.writeAndStoreType(i -> intType);
-                            out.writeMessage(intType, -1L);
+                            out.writeAndStoreType(
+                                    i -> {
+                                        assertEquals(i, intType.getId());
+                                        return intType;
+                                    });
+                            intType.writeTo(out, -1L);
                             out.writeMessage(intType, -1000L);
                         },
-                        false);
+                        true);
         try (var in = new CondensedInputStream(data)) {
             IntType result = (IntType) (CondensedType) in.readNextTypeMessageAndProcess();
             assertEquals(intType, result);
             assertEquals(-1, intType.readFrom(in));
-            assertEquals(-1000, intType.readFrom(in));
+            var inst = in.readNextInstance();
+            assertNotNull(inst);
+            assertEquals(-1000L, inst.value());
         }
     }
 
     @Property
     @SuppressWarnings("rawtypes")
     public void testVarIntTypeRoundTrip(
-            @ForAll String name, @ForAll String description, @ForAll boolean signed) {
+            @ForAll String name,
+            @ForAll String description,
+            @ForAll boolean signed,
+            @ForAll long value) {
         try (var in =
                 new CondensedInputStream(
                         CondensedOutputStream.use(
-                                out ->
-                                        out.writeAndStoreType(
-                                                id ->
-                                                        new VarIntType(
-                                                                id, name, description, signed)),
-                                false))) {
+                                out -> {
+                                    var type =
+                                            out.writeAndStoreType(
+                                                    id ->
+                                                            new VarIntType(
+                                                                    id, name, description, signed));
+                                    out.writeMessage(type, value);
+                                },
+                                true))) {
             VarIntType result = (VarIntType) (CondensedType) in.readNextTypeMessageAndProcess();
+
             assertEquals(
                     new VarIntType(TypeCollection.FIRST_CUSTOM_TYPE_ID, name, description, signed),
                     result);
+            var msg = in.readNextInstance();
+            assertNotNull(msg);
+            assertEquals(value, msg.value());
         }
     }
 }

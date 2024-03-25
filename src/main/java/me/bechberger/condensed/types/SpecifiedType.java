@@ -50,6 +50,6 @@ public interface SpecifiedType<T extends CondensedType<?>> {
      */
     T getDefaultType(int id);
 
-    /** Whether this type is a primitive type */
+    /** Whether this type is a primitive type that doesn't have nested types */
     boolean isPrimitive();
 }

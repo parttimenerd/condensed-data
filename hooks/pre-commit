@@ -1,2 +1,4 @@
-#!/usr/bin/sh
+#!/bin/sh
+set -e
 mvn spotless:apply
+mvn test

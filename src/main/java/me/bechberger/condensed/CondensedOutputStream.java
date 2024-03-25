@@ -229,11 +229,7 @@ public class CondensedOutputStream extends OutputStream {
         }
     }
 
-    /**
-     * Writes a float to the stream
-     *
-     * @param value
-     */
+    /** Writes a float to the stream */
     public void writeFloat(float value) {
         writeSignedLong(Float.floatToRawIntBits(value), 4, OverflowMode.ERROR);
     }

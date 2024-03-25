@@ -2,9 +2,13 @@ package me.bechberger.condensed;
 
 import me.bechberger.condensed.types.CondensedType;
 
+/** Messages on the {@link CondensedOutputStream} and {@link CondensedInputStream} */
 public sealed interface Message {
+
+    /** Defines a type */
     record CondensedTypeMessage(CondensedType<?> type) implements Message {}
 
+    /** Starts the stream */
     record StartMessage(int version, String generatorName, String generatorVersion)
             implements Message {
         /** Used mainly for testing purposes */
@@ -15,5 +19,6 @@ public sealed interface Message {
         }
     }
 
+    /** Regular message */
     record Instance<T>(CondensedType<T> type, T value) implements Message {}
 }

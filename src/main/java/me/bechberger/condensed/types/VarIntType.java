@@ -66,7 +66,7 @@ public class VarIntType extends CondensedType<Long> {
     }
 
     public static final SpecifiedType<VarIntType> SPECIFIED_TYPE =
-            new SpecifiedType<VarIntType>() {
+            new SpecifiedType<>() {
 
                 @Override
                 public int id() {

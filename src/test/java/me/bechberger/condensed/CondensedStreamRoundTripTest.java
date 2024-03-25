@@ -1,11 +1,15 @@
 package me.bechberger.condensed;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.junit.jupiter.api.Assertions.*;
 
+import java.io.ByteArrayOutputStream;
+import java.io.IOException;
 import java.util.function.BiPredicate;
 import java.util.function.Consumer;
 import java.util.function.Function;
 import me.bechberger.condensed.CondensedOutputStream.OverflowMode;
+import me.bechberger.condensed.Message.StartMessage;
 import net.jqwik.api.Example;
 import net.jqwik.api.ForAll;
 import net.jqwik.api.Property;
@@ -191,8 +195,7 @@ public class CondensedStreamRoundTripTest {
 
     @Property
     public void testFloatRoundTrip(@ForAll @FloatRange float value) {
-        assertRoundTrip(
-                value, out -> out.writeFloat((float) value), CondensedInputStream::readFloat);
+        assertRoundTrip(value, out -> out.writeFloat(value), CondensedInputStream::readFloat);
     }
 
     @Property
@@ -201,7 +204,7 @@ public class CondensedStreamRoundTripTest {
     }
 
     @Property
-    public void testFlagsRoundTrip(@ForAll @Size(min = 0, max = 8) boolean[] flags) {
+    public void testFlagsRoundTrip(@ForAll @Size(max = 8) boolean[] flags) {
         assertRoundTrip(
                 flags,
                 out -> out.writeFlags(flags),
@@ -217,8 +220,7 @@ public class CondensedStreamRoundTripTest {
     }
 
     @Property
-    public void testReadFlagsProducesEightElementArray(
-            @ForAll @IntRange(min = 0, max = 1 << 7) int value) {
+    public void testReadFlagsProducesEightElementArray(@ForAll @IntRange(max = 1 << 7) int value) {
         try (var in = new CondensedInputStream(new byte[] {(byte) value})) {
             boolean[] flags = in.readFlags();
             assertThat(flags).hasSize(8);
@@ -232,6 +234,31 @@ public class CondensedStreamRoundTripTest {
         }
         try (var in = new CondensedInputStream(new byte[] {})) {
             assertThat(in.readUnsignedVarintOrEnd()).isEqualTo(-1);
+        }
+    }
+
+    @Property
+    public void testStartMessage(
+            @ForAll @StringLength(max = 10) String name, @ForAll String version)
+            throws IOException {
+        var bos = new ByteArrayOutputStream();
+        new CondensedOutputStream(bos, new StartMessage(name, version)).close();
+        try (var in = new CondensedInputStream(bos.toByteArray())) {
+            assertNull(in.readNextInstance());
+            assertTrue(in.getUniverse().hasStartMessage());
+            var startMessage = in.getUniverse().getStartMessage();
+            assertNotNull(startMessage);
+            assertEquals(name, startMessage.generatorName());
+            assertEquals(version, startMessage.generatorVersion());
+        }
+    }
+
+    @Test
+    public void testReadNullAfterClose() {
+        try (var in = new CondensedInputStream(CondensedOutputStream.use(out -> {}, true))) {
+            assertNull(in.readNextInstance());
+            assertNull(in.readNextTypeMessageAndProcess());
+            assertNull(in.readNextMessageAndProcess());
         }
     }
 }

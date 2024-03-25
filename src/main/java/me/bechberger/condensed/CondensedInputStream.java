@@ -88,8 +88,9 @@ public class CondensedInputStream extends InputStream {
     }
 
     @SuppressWarnings("unchecked")
-    <T> CondensedType<T> readNextTypeMessageAndProcess() {
-        return (CondensedType<T>) ((CondensedTypeMessage) readNextMessageAndProcess()).type();
+    <T> @Nullable CondensedType<T> readNextTypeMessageAndProcess() {
+        var msg = readNextMessageAndProcess();
+        return msg == null ? null : (CondensedType<T>) ((CondensedTypeMessage) msg).type();
     }
 
     private CondensedTypeMessage readAndProcessSpecifiedTypeMessage(int typeId) {
