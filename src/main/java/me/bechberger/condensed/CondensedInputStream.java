@@ -5,7 +5,9 @@ import static me.bechberger.condensed.Constants.START_STRING;
 import java.io.ByteArrayInputStream;
 import java.io.IOException;
 import java.io.InputStream;
+import java.io.UnsupportedEncodingException;
 import java.time.Instant;
+import java.util.Arrays;
 import java.util.concurrent.TimeUnit;
 import me.bechberger.condensed.Message.CondensedTypeMessage;
 import me.bechberger.condensed.Message.Instance;
@@ -167,7 +169,18 @@ public class CondensedInputStream extends InputStream {
         return (unsigned >>> 1) ^ -(unsigned & 1);
     }
 
+    /** Read UFT-8 encoded string */
     public String readString() {
+        return readString(null);
+    }
+
+    /**
+     * Reads a string from the stream.
+     *
+     * @param encoding the encoding of the string or null for UTF-8
+     * @return the decoded string
+     */
+    public String readString(@Nullable String encoding) {
         int length = (int) readUnsignedVarint();
         if (length == 0) {
             return "";
@@ -184,7 +197,11 @@ public class CondensedInputStream extends InputStream {
         } catch (IOException e) {
             throw new RIOException(e);
         }
-        return new String(data);
+        try {
+            return new String(data, encoding != null ? encoding : "UTF-8");
+        } catch (UnsupportedEncodingException e) {
+            throw new RIOException(e);
+        }
     }
 
     /**

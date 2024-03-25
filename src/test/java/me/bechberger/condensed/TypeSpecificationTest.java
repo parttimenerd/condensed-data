@@ -5,10 +5,11 @@ import static org.junit.jupiter.api.Assertions.assertNotNull;
 
 import me.bechberger.condensed.CondensedOutputStream.OverflowMode;
 import me.bechberger.condensed.types.*;
-import net.jqwik.api.ForAll;
-import net.jqwik.api.Property;
+import net.jqwik.api.*;
 import net.jqwik.api.constraints.IntRange;
 import org.junit.jupiter.api.Test;
+
+import java.nio.charset.Charset;
 
 /** Testing that type specifications can be written and read back */
 public class TypeSpecificationTest {
@@ -92,17 +93,18 @@ public class TypeSpecificationTest {
 
     @Property
     @SuppressWarnings("rawtypes")
-public void testFloatTypeRoundTrip(@ForAll String name, @ForAll String description, @ForAll float value) {
+    public void testFloatTypeRoundTrip(
+            @ForAll String name, @ForAll String description, @ForAll float value) {
         try (var in =
-                     new CondensedInputStream(
-                             CondensedOutputStream.use(
-                                     out ->
-                                     {
-                                         var type = out.writeAndStoreType(
-                                                 id -> new FloatType(id, name, description));
-                                            out.writeMessage(type, value);
-                                     },
-                                     true))) {
+                new CondensedInputStream(
+                        CondensedOutputStream.use(
+                                out -> {
+                                    var type =
+                                            out.writeAndStoreType(
+                                                    id -> new FloatType(id, name, description));
+                                    out.writeMessage(type, value);
+                                },
+                                true))) {
             FloatType result = (FloatType) (CondensedType) in.readNextTypeMessageAndProcess();
             assertEquals(
                     new FloatType(TypeCollection.FIRST_CUSTOM_TYPE_ID, name, description), result);
@@ -110,5 +112,33 @@ public void testFloatTypeRoundTrip(@ForAll String name, @ForAll String descripti
             assertNotNull(msg);
             assertEquals(value, msg.value());
         }
+    }
+
+    @Provide
+   public Arbitrary<String> encodings() {
+        return Arbitraries.of(Charset.defaultCharset().toString(), "UTF-8", "UTF-16", "UTF-32");
+    }
+
+    @Property
+    @SuppressWarnings("rawtypes")
+public void testStringRoundTrip(@ForAll String name, @ForAll String description, @ForAll("encodings") String encoding, @ForAll String value) {
+    try (var in =
+            new CondensedInputStream(
+                    CondensedOutputStream.use(
+                            out -> {
+                                var type =
+                                        out.writeAndStoreType(
+                                                id -> new StringType(id, name, description, encoding));
+                                out.writeMessage(type, value);
+                            },
+                            true))) {
+        StringType result = (StringType) (CondensedType) in.readNextTypeMessageAndProcess();
+        assertEquals(
+                new StringType(TypeCollection.FIRST_CUSTOM_TYPE_ID, name, description, encoding),
+                result);
+        var msg = in.readNextInstance();
+        assertNotNull(msg);
+        assertEquals(value, msg.value());
+    }
     }
 }

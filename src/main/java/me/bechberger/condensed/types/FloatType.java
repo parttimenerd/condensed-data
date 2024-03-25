@@ -6,7 +6,7 @@ import me.bechberger.condensed.CondensedOutputStream;
 /** A floating point type */
 public class FloatType extends CondensedType<Float> {
 
-public FloatType(int id, String name, String description) {
+    public FloatType(int id, String name, String description) {
         super(id, name, description);
     }
 
@@ -43,13 +43,13 @@ public FloatType(int id, String name, String description) {
 
                 @Override
                 public void writeInnerTypeSpecification(
-                        CondensedOutputStream out, FloatType typeInstance) {
-                }
+                        CondensedOutputStream out, FloatType typeInstance) {}
 
                 @Override
                 public FloatType readInnerTypeSpecification(
                         CondensedInputStream in, String name, String description) {
-                    return in.getTypeCollection().addType(id -> new FloatType(id, name, description));
+                    return in.getTypeCollection()
+                            .addType(id -> new FloatType(id, name, description));
                 }
 
                 @Override

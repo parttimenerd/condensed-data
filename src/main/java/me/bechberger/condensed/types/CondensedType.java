@@ -56,10 +56,16 @@ public abstract class CondensedType<T> {
 
     @Override
     public String toString() {
-        return getClass().getSimpleName() + "{" +
-                "id=" + id +
-                ", name='" + name + '\'' +
-                ", description='" + description + '\'' +
-                '}';
+        return getClass().getSimpleName()
+                + "{"
+                + "id="
+                + id
+                + ", name='"
+                + name
+                + '\''
+                + ", description='"
+                + description
+                + '\''
+                + '}';
     }
 }
