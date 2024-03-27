@@ -164,10 +164,10 @@ public class TypeSpecificationTest {
             @ForAll boolean useDefaultIntType,
             @ForAll @Size(max = 200) List<Integer> value,
             @ForAll EmbeddingType embeddingType) {
-        AtomicReference<ArrayType<?>> typeRef = new AtomicReference<>();
+        AtomicReference<ArrayType<?, ?>> typeRef = new AtomicReference<>();
         Consumer<CondensedOutputStream> outWriter =
                 out -> {
-                    CondensedType<Long> innerType;
+                    CondensedType<Long, Long> innerType;
                     if (useDefaultIntType) {
                         innerType = TypeCollection.getDefaultTypeInstance(IntType.SPECIFIED_TYPE);
                     } else {
@@ -202,7 +202,7 @@ public class TypeSpecificationTest {
 
     @Property
     public void testNestedIntArray(@ForAll EmbeddingType embedding) {
-        AtomicReference<ArrayType<List<Long>>> typeRef = new AtomicReference<>();
+        AtomicReference<ArrayType<List<Long>, List<Long>>> typeRef = new AtomicReference<>();
         List<List<Long>> value = List.of(List.of(1L, 2L), List.of(3L, 4L), List.of(), List.of(-5L));
         var outBytes =
                 CondensedOutputStream.use(
@@ -221,7 +221,10 @@ public class TypeSpecificationTest {
                         true);
         try (var in = new CondensedInputStream(outBytes)) {
             assertInstanceOf(ArrayType.class, in.readNextTypeMessageAndProcess());
-            var actualType = in.<ArrayType<List<Long>>>readNextTypeMessageAndProcess();
+            var actualType =
+                    in
+                            .<ArrayType<List<Long>, List<Long>>, ArrayType<List<Long>, List<Long>>>
+                                    readNextTypeMessageAndProcess();
             assertEquals(typeRef.get(), actualType);
             var msg = in.readNextInstance();
             assertNotNull(msg);
@@ -230,18 +233,18 @@ public class TypeSpecificationTest {
     }
 
     @FunctionalInterface
-    interface TypeCreator<T, C extends CondensedType<T>> {
+    interface TypeCreator<T, C extends CondensedType<T, T>> {
         C create(CondensedOutputStream out);
     }
 
     @FunctionalInterface
-    interface TypeCreatorForId<T, C extends CondensedType<T>> {
+    interface TypeCreatorForId<T, C extends CondensedType<T, T>> {
         C create(int id);
     }
 
-    public record TypeCreatorAndValue<T, C extends CondensedType<T>>(
+    public record TypeCreatorAndValue<T, C extends CondensedType<T, T>>(
             TypeCreator<T, C> creator, Arbitrary<T> value) {
-        static <T, C extends CondensedType<T>> TypeCreatorAndValue<T, C> forId(
+        static <T, C extends CondensedType<T, T>> TypeCreatorAndValue<T, C> forId(
                 TypeCreatorForId<T, C> creator, Arbitrary<T> value) {
             return new TypeCreatorAndValue<>(out -> out.writeAndStoreType(creator::create), value);
         }
@@ -288,8 +291,8 @@ public class TypeSpecificationTest {
 
     @Provide
     @SuppressWarnings({"rawtypes", "unchecked"})
-    Arbitrary<TypeCreatorAndValue<?, CondensedType<?>>> primitiveType() {
-        return (Arbitrary<TypeCreatorAndValue<?, CondensedType<?>>>)
+    Arbitrary<TypeCreatorAndValue<?, CondensedType<?, ?>>> primitiveType() {
+        return (Arbitrary<TypeCreatorAndValue<?, CondensedType<?, ?>>>)
                 (Arbitrary)
                         Arbitraries.oneOf(
                                 intType(
@@ -301,12 +304,12 @@ public class TypeSpecificationTest {
     }
 
     @Provide
-    Arbitrary<List<TypeCreatorAndValue<?, CondensedType<?>>>> primitiveTypeList() {
+    Arbitrary<List<TypeCreatorAndValue<?, CondensedType<?, ?>>>> primitiveTypeList() {
         return primitiveType().list().ofMinSize(0).ofMaxSize(10);
     }
 
     @Provide
-    ListArbitrary<TypeCreatorAndValue<?, CondensedType<?>>> primitiveTypes() {
+    ListArbitrary<TypeCreatorAndValue<?, CondensedType<?, ?>>> primitiveTypes() {
         return primitiveType().list();
     }
 
@@ -344,7 +347,7 @@ public class TypeSpecificationTest {
     }
 
     @NotNull
-    private Arbitrary<? extends TypeCreatorAndValue<?, ? extends CondensedType<?>>>
+    private Arbitrary<? extends TypeCreatorAndValue<?, ? extends CondensedType<?, ?>>>
             getMemberArbitrary(Freqs freqs) {
         if (freqs.maxDepth <= 0) {
             return primitiveType();
@@ -365,12 +368,12 @@ public class TypeSpecificationTest {
 
     @Provide
     @SuppressWarnings({"rawtypes", "unchecked"})
-    <V> Arbitrary<TypeCreatorAndValue<List<V>, ArrayType<V>>> arrayType(Freqs freqs) {
+    <V> Arbitrary<TypeCreatorAndValue<List<V>, ArrayType<V, V>>> arrayType(Freqs freqs) {
         var member = getMemberArbitrary(freqs.reduceNestedFreqs(2));
         var length = Arbitraries.integers().between(0, freqs.maxListLength);
         var embedding = Arbitraries.of(EmbeddingType.class);
         var typeAndLength = Arbitraries.entries(member, length);
-        return (Arbitrary<TypeCreatorAndValue<List<V>, ArrayType<V>>>)
+        return (Arbitrary<TypeCreatorAndValue<List<V>, ArrayType<V, V>>>)
                 (Arbitrary)
                         typeAndLength.map(
                                 e ->
@@ -389,60 +392,64 @@ public class TypeSpecificationTest {
     }
 
     @Provide
-    <V> Arbitrary<TypeCreatorAndValue<List<V>, ArrayType<V>>> arrayType() {
+    <V> Arbitrary<TypeCreatorAndValue<List<V>, ArrayType<V, V>>> arrayType() {
         return arrayType(Freqs.DEFAULT);
     }
 
     @Provide
     @SuppressWarnings({"unchecked"})
-    <T> Arbitrary<TypeCreatorAndValue<T, CondensedType<T>>> anyType() {
-        return (Arbitrary<TypeCreatorAndValue<T, CondensedType<T>>>)
+    <T> Arbitrary<TypeCreatorAndValue<T, CondensedType<T, T>>> anyType() {
+        return (Arbitrary<TypeCreatorAndValue<T, CondensedType<T, T>>>)
                 getMemberArbitrary(Freqs.DEFAULT);
     }
 
     @Provide
     @SuppressWarnings({"unchecked"})
-    private Arbitrary<List<TypeCreatorAndValue<?, ? extends CondensedType<?>>>>
+    private Arbitrary<List<TypeCreatorAndValue<?, ? extends CondensedType<?, ?>>>>
             getMemberArbitraryList(Freqs freqs) {
         return getMemberArbitrary(freqs)
                 .list()
                 .ofMaxSize(freqs.maxStructMembers)
-                .map(l -> (List<TypeCreatorAndValue<?, ? extends CondensedType<?>>>) l);
+                .map(l -> (List<TypeCreatorAndValue<?, ? extends CondensedType<?, ?>>>) l);
     }
 
     @Provide
     @SuppressWarnings({"unchecked"})
-    private Arbitrary<List<TypeCreatorAndValue<?, ? extends CondensedType<?>>>>
+    private Arbitrary<List<TypeCreatorAndValue<?, ? extends CondensedType<?, ?>>>>
             getMemberArbitraryList(Freqs freqs, int size) {
         return getMemberArbitrary(freqs)
                 .list()
                 .ofSize(size)
-                .map(l -> (List<TypeCreatorAndValue<?, ? extends CondensedType<?>>>) l);
+                .map(l -> (List<TypeCreatorAndValue<?, ? extends CondensedType<?, ?>>>) l);
     }
 
     @Provide
-    public Arbitrary<List<TypeCreatorAndValue<?, ? extends CondensedType<?>>>> members() {
+    public Arbitrary<List<TypeCreatorAndValue<?, ? extends CondensedType<?, ?>>>> members() {
         return getMemberArbitraryList(Freqs.DEFAULT);
     }
 
     @Provide
     @SuppressWarnings({"unchecked"})
-    private ListArbitrary<TypeCreatorAndValue<?, CondensedType<?>>> memberLists() {
-        return (ListArbitrary<TypeCreatorAndValue<?, CondensedType<?>>>)
+    private ListArbitrary<TypeCreatorAndValue<?, CondensedType<?, ?>>> memberLists() {
+        return (ListArbitrary<TypeCreatorAndValue<?, CondensedType<?, ?>>>)
                 getMemberArbitrary(Freqs.DEFAULT).list();
     }
 
     @Provide
-    public Arbitrary<TypeCreatorAndValue<Map<String, Object>, StructType<Map<String, Object>>>>
+    public Arbitrary<
+                    TypeCreatorAndValue<
+                            Map<String, Object>,
+                            StructType<Map<String, Object>, Map<String, Object>>>>
             structType() {
         return structType(Freqs.DEFAULT);
     }
 
     @SuppressWarnings({"unchecked", "rawtypes"})
     @NotNull
-    private static TypeCreatorAndValue<Map<String, Object>, StructType<Map<String, Object>>>
+    private static TypeCreatorAndValue<
+                    Map<String, Object>, StructType<Map<String, Object>, Map<String, Object>>>
             createStructCreator(
-                    List<TypeCreatorAndValue<?, ? extends CondensedType<?>>> members,
+                    List<TypeCreatorAndValue<?, ? extends CondensedType<?, ?>>> members,
                     List<String> names,
                     Arbitrary<EmbeddingType> embeddings) {
         if (members.isEmpty()) {
@@ -476,7 +483,8 @@ public class TypeSpecificationTest {
                                                         return m;
                                                     }));
         }
-        return new TypeCreatorAndValue<Map<String, Object>, StructType<Map<String, Object>>>(
+        return new TypeCreatorAndValue<
+                Map<String, Object>, StructType<Map<String, Object>, Map<String, Object>>>(
                 out -> {
                     var fields =
                             IntStream.range(0, members.size())
@@ -508,7 +516,10 @@ public class TypeSpecificationTest {
 
     @Provide
     @SuppressWarnings({"rawtypes", "unchecked"})
-    public Arbitrary<TypeCreatorAndValue<Map<String, Object>, StructType<Map<String, Object>>>>
+    public Arbitrary<
+                    TypeCreatorAndValue<
+                            Map<String, Object>,
+                            StructType<Map<String, Object>, Map<String, Object>>>>
             structType(Freqs freqs) {
         var sizes = Arbitraries.integers().between(0, freqs.maxStructMembers);
         var membersAndNamesComb =
@@ -531,9 +542,13 @@ public class TypeSpecificationTest {
     }
 
     private static void check(
-            TypeCreatorAndValue<Map<String, Object>, StructType<Map<String, Object>>> typeCreator,
+            TypeCreatorAndValue<
+                            Map<String, Object>,
+                            StructType<Map<String, Object>, Map<String, Object>>>
+                    typeCreator,
             int writtenValues) {
-        AtomicReference<StructType<Map<String, Object>>> typeRef = new AtomicReference<>();
+        AtomicReference<StructType<Map<String, Object>, Map<String, Object>>> typeRef =
+                new AtomicReference<>();
         var values = typeCreator.value().list().ofSize(writtenValues).sample();
         byte[] outBytes =
                 CondensedOutputStream.use(
@@ -557,7 +572,10 @@ public class TypeSpecificationTest {
     }
 
     @Provide
-    public Arbitrary<TypeCreatorAndValue<Map<String, Object>, StructType<Map<String, Object>>>>
+    public Arbitrary<
+                    TypeCreatorAndValue<
+                            Map<String, Object>,
+                            StructType<Map<String, Object>, Map<String, Object>>>>
             structTypeWithOutNesting() {
         return structType(Freqs.DEFAULT.setMaxDepth(0));
     }
@@ -565,13 +583,18 @@ public class TypeSpecificationTest {
     @Property
     public void testBasicStruct(
             @ForAll("structTypeWithOutNesting")
-                    TypeCreatorAndValue<Map<String, Object>, StructType<Map<String, Object>>>
+                    TypeCreatorAndValue<
+                                    Map<String, Object>,
+                                    StructType<Map<String, Object>, Map<String, Object>>>
                             typeCreator) {
         check(typeCreator, 3);
     }
 
     @Provide
-    public Arbitrary<TypeCreatorAndValue<Map<String, Object>, StructType<Map<String, Object>>>>
+    public Arbitrary<
+                    TypeCreatorAndValue<
+                            Map<String, Object>,
+                            StructType<Map<String, Object>, Map<String, Object>>>>
             structTypeWithoutInnerStructs() {
         return structType(Freqs.DEFAULT.setStructFreq(0));
     }
@@ -579,13 +602,18 @@ public class TypeSpecificationTest {
     @Property
     public void testBasicStructWithInnerArrays(
             @ForAll("structTypeWithoutInnerStructs")
-                    TypeCreatorAndValue<Map<String, Object>, StructType<Map<String, Object>>>
+                    TypeCreatorAndValue<
+                                    Map<String, Object>,
+                                    StructType<Map<String, Object>, Map<String, Object>>>
                             typeCreator) {
         check(typeCreator, 3);
     }
 
     @Provide
-    public Arbitrary<TypeCreatorAndValue<Map<String, Object>, StructType<Map<String, Object>>>>
+    public Arbitrary<
+                    TypeCreatorAndValue<
+                            Map<String, Object>,
+                            StructType<Map<String, Object>, Map<String, Object>>>>
             structTypeWithInnerStructs() {
         return structType(Freqs.DEFAULT.setMaxDepth(1));
     }
@@ -593,13 +621,18 @@ public class TypeSpecificationTest {
     @Property
     public void testBasicStructWithInnerStructs(
             @ForAll("structTypeWithInnerStructs")
-                    TypeCreatorAndValue<Map<String, Object>, StructType<Map<String, Object>>>
+                    TypeCreatorAndValue<
+                                    Map<String, Object>,
+                                    StructType<Map<String, Object>, Map<String, Object>>>
                             typeCreator) {
         check(typeCreator, 3);
     }
 
     @Provide
-    public Arbitrary<TypeCreatorAndValue<Map<String, Object>, StructType<Map<String, Object>>>>
+    public Arbitrary<
+                    TypeCreatorAndValue<
+                            Map<String, Object>,
+                            StructType<Map<String, Object>, Map<String, Object>>>>
             structTypeWithAll() {
         return structType(Freqs.DEFAULT);
     }
@@ -607,7 +640,9 @@ public class TypeSpecificationTest {
     @Property(tries = 100)
     public void testBasicStructWithAll(
             @ForAll("structTypeWithAll")
-                    TypeCreatorAndValue<Map<String, Object>, StructType<Map<String, Object>>>
+                    TypeCreatorAndValue<
+                                    Map<String, Object>,
+                                    StructType<Map<String, Object>, Map<String, Object>>>
                             typeCreator) {
         check(typeCreator, 1);
     }
@@ -615,21 +650,22 @@ public class TypeSpecificationTest {
     @Property
     public void testMixedListOfPrimitiveTypes(
             @ForAll("primitiveTypes") @Size(min = 1, max = 10)
-                    List<TypeCreatorAndValue<?, CondensedType<?>>> primitiveTypes,
+                    List<TypeCreatorAndValue<?, CondensedType<?, ?>>> primitiveTypes,
             @ForAll @IntRange(max = 100) int messagesWritten) {
         check(primitiveTypes, messagesWritten);
     }
 
     @Provide
     @SuppressWarnings({"unchecked"})
-    private ListArbitrary<TypeCreatorAndValue<?, CondensedType<?>>>
+    private ListArbitrary<TypeCreatorAndValue<?, CondensedType<?, ?>>>
             depthOneTypesMaxStructSizeTwo() {
-        return (ListArbitrary<TypeCreatorAndValue<?, CondensedType<?>>>)
+        return (ListArbitrary<TypeCreatorAndValue<?, CondensedType<?, ?>>>)
                 getMemberArbitrary(Freqs.DEFAULT.setMaxDepth(1).setMaxStructSize(2)).list();
     }
 
     @SuppressWarnings({"unchecked"})
-    private void check(List<TypeCreatorAndValue<?, CondensedType<?>>> types, int messagesWritten) {
+    private void check(
+            List<TypeCreatorAndValue<?, CondensedType<?, ?>>> types, int messagesWritten) {
 
         record WhatToDo(Optional<Integer> writeType, Optional<Integer> writeValueOfType) {}
         List<WhatToDo> whatToDo = new ArrayList<>();
@@ -651,7 +687,7 @@ public class TypeSpecificationTest {
             }
         }
 
-        List<CondensedType<?>> currentTypes = new ArrayList<>();
+        List<CondensedType<?, ?>> currentTypes = new ArrayList<>();
         List<Object> values = new ArrayList<>();
         byte[] outBytes =
                 CondensedOutputStream.use(
@@ -664,7 +700,7 @@ public class TypeSpecificationTest {
                                 } else {
                                     assert action.writeValueOfType.isPresent();
                                     var type =
-                                            (CondensedType<Object>)
+                                            (CondensedType<Object, Object>)
                                                     currentTypes.get(action.writeValueOfType.get());
                                     var value =
                                             types.get(action.writeValueOfType.get())
@@ -795,7 +831,8 @@ public class TypeSpecificationTest {
                             var type =
                                     out.writeAndStoreType(
                                             id ->
-                                                    new StructType<>(
+                                                    new StructType<
+                                                            Map<String, Long>, Map<String, Long>>(
                                                             id,
                                                             List.of(
                                                                     new Field<>(

@@ -9,7 +9,7 @@ import java.io.UnsupportedEncodingException;
 import java.time.Instant;
 import java.util.concurrent.TimeUnit;
 import me.bechberger.condensed.Message.CondensedTypeMessage;
-import me.bechberger.condensed.Message.Instance;
+import me.bechberger.condensed.Message.ReadInstance;
 import me.bechberger.condensed.Message.StartMessage;
 import me.bechberger.condensed.RIOException.NoStartStringException;
 import me.bechberger.condensed.types.CondensedType;
@@ -77,22 +77,22 @@ public class CondensedInputStream extends InputStream {
      *
      * @return message read or null if at end of stream
      */
-    public @Nullable Instance<?> readNextInstance() {
+    public @Nullable ReadInstance<?, ?> readNextInstance() {
         while (true) {
             Message message = readNextMessageAndProcess();
             if (message == null) {
                 return null;
             }
-            if (message instanceof Instance<?> instance) {
+            if (message instanceof ReadInstance<?, ?> instance) {
                 return instance;
             }
         }
     }
 
     @SuppressWarnings("unchecked")
-    <T> @Nullable CondensedType<T> readNextTypeMessageAndProcess() {
+    <T, R> @Nullable CondensedType<T, R> readNextTypeMessageAndProcess() {
         var msg = readNextMessageAndProcess();
-        return msg == null ? null : (CondensedType<T>) ((CondensedTypeMessage) msg).type();
+        return msg == null ? null : (CondensedType<T, R>) ((CondensedTypeMessage) msg).type();
     }
 
     private CondensedTypeMessage readAndProcessSpecifiedTypeMessage(int typeId) {
@@ -103,7 +103,7 @@ public class CondensedInputStream extends InputStream {
     private void readAndProcessStartString() {
         String startString;
         try {
-             startString = readString();
+            startString = readString();
         } catch (RIOException e) {
             throw new NoStartStringException(e);
         }
@@ -119,7 +119,7 @@ public class CondensedInputStream extends InputStream {
     @SuppressWarnings("unchecked")
     private Message readAndProcessInstanceMessage(int typeId) {
         var type = typeCollection.getType(typeId);
-        return new Instance<>((CondensedType<Object>) type, type.readFrom(this));
+        return new ReadInstance<>((CondensedType<Object, Object>) type, type.readFrom(this));
     }
 
     /**
@@ -301,7 +301,7 @@ public class CondensedInputStream extends InputStream {
         return universe;
     }
 
-    public CondensedType<?> readTypeViaId() {
+    public CondensedType<?, ?> readTypeViaId() {
         int typeId = (int) readUnsignedVarint();
         if (typeCollection.hasType(typeId)) {
             return typeCollection.getType(typeId);

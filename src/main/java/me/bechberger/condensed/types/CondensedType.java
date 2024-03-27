@@ -11,7 +11,13 @@ import me.bechberger.condensed.Universe.EmbeddingType;
 import me.bechberger.condensed.Universe.ReadingCaches;
 import me.bechberger.condensed.Universe.WritingCaches;
 
-public abstract class CondensedType<T> {
+/**
+ * A type that can be written to and read from a condensed stream
+ *
+ * @param <T> The type that is written
+ * @param <R> The type that is read
+ */
+public abstract class CondensedType<T, R> {
 
     private final int id;
     private final String name;
@@ -36,7 +42,7 @@ public abstract class CondensedType<T> {
     }
 
     /** Abstract type */
-    public abstract SpecifiedType<? extends CondensedType<T>> getSpecifiedType();
+    public abstract SpecifiedType<? extends CondensedType<T, R>> getSpecifiedType();
 
     /** Write the type specification to the stream (excluding the header) */
     public abstract void writeTo(CondensedOutputStream out, T value);
@@ -49,7 +55,7 @@ public abstract class CondensedType<T> {
     public void writeTo(
             CondensedOutputStream out,
             T value,
-            CondensedType<?> embeddingType,
+            CondensedType<?, ?> embeddingType,
             EmbeddingType embedding) {
         if (embedding == INLINE) {
             Objects.requireNonNull(value, "Value must not be null");
@@ -82,10 +88,10 @@ public abstract class CondensedType<T> {
     }
 
     /** Read the type specification from the stream (excluding the header) */
-    public abstract T readFrom(CondensedInputStream in);
+    public abstract R readFrom(CondensedInputStream in);
 
-    public T readFrom(
-            CondensedInputStream in, CondensedType<?> embeddingType, EmbeddingType embedding) {
+    public R readFrom(
+            CondensedInputStream in, CondensedType<?, ?> embeddingType, EmbeddingType embedding) {
         if (embedding == INLINE) {
             return readFrom(in);
         }
@@ -120,7 +126,7 @@ public abstract class CondensedType<T> {
         if (this == o) return true;
         if (o == null || getClass() != o.getClass()) return false;
 
-        CondensedType<?> that = (CondensedType<?>) o;
+        CondensedType<?, ?> that = (CondensedType<?, ?>) o;
 
         if (id != that.id) return false;
         if (!Objects.equals(name, that.name)) return false;

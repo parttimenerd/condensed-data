@@ -5,7 +5,7 @@ import me.bechberger.condensed.CondensedInputStream;
 import me.bechberger.condensed.CondensedOutputStream;
 
 /** A variable width integer type */
-public class VarIntType extends CondensedType<Long> {
+public class VarIntType extends CondensedType<Long, Long> {
 
     private final boolean signed;
 

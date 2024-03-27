@@ -60,7 +60,7 @@ public class CondensedOutputStream extends OutputStream {
         writeUnsignedVarInt(messageType);
     }
 
-    public <C extends CondensedType<?>> C writeAndStoreType(Function<Integer, C> typeCreator) {
+    public <C extends CondensedType<?, ?>> C writeAndStoreType(Function<Integer, C> typeCreator) {
         var type = typeCollection.addType(typeCreator);
         writeType(type);
         return type;
@@ -72,13 +72,13 @@ public class CondensedOutputStream extends OutputStream {
      * @param type the type instance to write
      */
     @SuppressWarnings("unchecked")
-    private void writeType(CondensedType<?> type) {
-        var spec = ((SpecifiedType<CondensedType<?>>) type.getSpecifiedType());
+    private void writeType(CondensedType<?, ?> type) {
+        var spec = ((SpecifiedType<CondensedType<?, ?>>) type.getSpecifiedType());
         writeMessageType(spec.id());
         spec.writeTypeSpecification(this, type);
     }
 
-    public <T> void writeMessage(CondensedType<T> type, T value) {
+    public <T, R> void writeMessage(CondensedType<T, R> type, T value) {
         writeMessageType(type.getId());
         type.writeTo(this, value);
     }
@@ -138,7 +138,7 @@ public class CondensedOutputStream extends OutputStream {
         }
     }
 
-    public void writeTypeId(CondensedType<?> type) {
+    public void writeTypeId(CondensedType<?, ?> type) {
         if (!typeCollection.containsType(type)) {
             throw new IllegalArgumentException("Type not registered: " + type);
         }

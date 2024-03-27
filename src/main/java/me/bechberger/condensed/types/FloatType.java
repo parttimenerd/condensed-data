@@ -4,7 +4,7 @@ import me.bechberger.condensed.CondensedInputStream;
 import me.bechberger.condensed.CondensedOutputStream;
 
 /** A floating point type */
-public class FloatType extends CondensedType<Float> {
+public class FloatType extends CondensedType<Float, Float> {
 
     public FloatType(int id, String name, String description) {
         super(id, name, description);

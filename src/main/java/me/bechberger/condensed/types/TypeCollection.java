@@ -25,8 +25,8 @@ public class TypeCollection {
     public static final int FIRST_CUSTOM_TYPE_ID = MAX_SPECIFIED_TYPES + 1;
     private static final SpecifiedType<?>[] specifiedTypes =
             new SpecifiedType<?>[MAX_SPECIFIED_TYPES + 1];
-    private static final CondensedType<?>[] defaultTypes =
-            new CondensedType<?>[MAX_SPECIFIED_TYPES + 1];
+    private static final CondensedType<?, ?>[] defaultTypes =
+            new CondensedType<?, ?>[MAX_SPECIFIED_TYPES + 1];
 
     static {
         specifiedTypes[0] = IntType.SPECIFIED_TYPE;
@@ -43,7 +43,7 @@ public class TypeCollection {
         }
     }
 
-    private final List<@Nullable CondensedType<?>> types;
+    private final List<@Nullable CondensedType<?, ?>> types;
 
     public TypeCollection() {
         this.types = new ArrayList<>();
@@ -94,7 +94,7 @@ public class TypeCollection {
      * @param typeCreator the function to create the type instance
      * @return the id of the added type
      */
-    public <C extends CondensedType<?>> C addType(Function<Integer, C> typeCreator) {
+    public <C extends CondensedType<?, ?>> C addType(Function<Integer, C> typeCreator) {
         int id = types.size();
         var type = typeCreator.apply(id);
         types.add(type);
@@ -108,7 +108,7 @@ public class TypeCollection {
      * @return the type
      * @throws NoSuchTypeException if no type with the given id exists
      */
-    public CondensedType<?> getType(int id) {
+    public CondensedType<?, ?> getType(int id) {
         if (!hasType(id)) {
             throw new NoSuchTypeException(id);
         }
@@ -116,17 +116,17 @@ public class TypeCollection {
     }
 
     @SuppressWarnings("unchecked")
-    public static <T> CondensedType<T> getDefaultTypeInstance(
-            SpecifiedType<? extends CondensedType<T>> specifiedType) {
+    public static <T, R> CondensedType<T, R> getDefaultTypeInstance(
+            SpecifiedType<? extends CondensedType<T, R>> specifiedType) {
         if (!specifiedType.isPrimitive()
                 || specifiedType.id() >= defaultTypes.length
                 || defaultTypes[specifiedType.id()] == null) {
             throw new SpecifiedType.NoSuchDefaultTypeException();
         }
-        return (CondensedType<T>) defaultTypes[specifiedType.id()];
+        return (CondensedType<T, R>) defaultTypes[specifiedType.id()];
     }
 
-    public boolean containsType(CondensedType<?> type) {
+    public boolean containsType(CondensedType<?, ?> type) {
         return types.contains(type);
     }
 }

@@ -6,7 +6,7 @@ import me.bechberger.condensed.CondensedOutputStream;
 import me.bechberger.condensed.CondensedOutputStream.OverflowMode;
 
 /** A fixed width integer type */
-public class IntType extends CondensedType<Long> {
+public class IntType extends CondensedType<Long, Long> {
     /** Width in bytes */
     private final int width;
 

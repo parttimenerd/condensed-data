@@ -11,32 +11,33 @@ import me.bechberger.condensed.Universe.EmbeddingType;
  * A type that represents an array of values of another type
  *
  * @param <V> the type of the values in the array
+ * @param <R> the type of the values in the array after reading
  */
-public class ArrayType<V> extends CondensedType<List<V>> {
+public class ArrayType<V, R> extends CondensedType<List<V>, List<R>> {
 
-    private final CondensedType<V> valueType;
+    private final CondensedType<V, R> valueType;
     private final EmbeddingType embedding;
 
     public ArrayType(
             int id,
             String name,
             String description,
-            CondensedType<V> valueType,
+            CondensedType<V, R> valueType,
             EmbeddingType embedding) {
         super(id, name, description);
         this.valueType = valueType;
         this.embedding = embedding;
     }
 
-    public ArrayType(int id, String name, String description, CondensedType<V> valueType) {
+    public ArrayType(int id, String name, String description, CondensedType<V, R> valueType) {
         this(id, name, description, valueType, EmbeddingType.INLINE);
     }
 
-    public ArrayType(int id, CondensedType<V> valueType) {
+    public ArrayType(int id, CondensedType<V, R> valueType) {
         this(id, valueType, EmbeddingType.INLINE);
     }
 
-    public ArrayType(int id, CondensedType<V> valueType, EmbeddingType embedding) {
+    public ArrayType(int id, CondensedType<V, R> valueType, EmbeddingType embedding) {
         this(
                 id,
                 "array<" + valueType.getName() + ">",
@@ -47,8 +48,8 @@ public class ArrayType<V> extends CondensedType<List<V>> {
 
     @Override
     @SuppressWarnings("unchecked")
-    public SpecifiedType<ArrayType<V>> getSpecifiedType() {
-        return (SpecifiedType<ArrayType<V>>) (SpecifiedType<?>) SPECIFIED_TYPE;
+    public SpecifiedType<ArrayType<V, R>> getSpecifiedType() {
+        return (SpecifiedType<ArrayType<V, R>>) (SpecifiedType<?>) SPECIFIED_TYPE;
     }
 
     @Override
@@ -60,9 +61,9 @@ public class ArrayType<V> extends CondensedType<List<V>> {
     }
 
     @Override
-    public List<V> readFrom(CondensedInputStream in) {
+    public List<R> readFrom(CondensedInputStream in) {
         int size = (int) in.readUnsignedVarint();
-        List<V> list = new ArrayList<>(size);
+        List<R> list = new ArrayList<>(size);
         for (int i = 0; i < size; i++) {
             list.add(valueType.readFrom(in, this, embedding));
         }
@@ -72,8 +73,8 @@ public class ArrayType<V> extends CondensedType<List<V>> {
     @Override
     public boolean equals(Object obj) {
         return super.equals(obj)
-                && valueType.equals(((ArrayType<?>) obj).valueType)
-                && embedding == ((ArrayType<?>) obj).embedding;
+                && valueType.equals(((ArrayType<?, ?>) obj).valueType)
+                && embedding == ((ArrayType<?, ?>) obj).embedding;
     }
 
     @Override
@@ -81,7 +82,7 @@ public class ArrayType<V> extends CondensedType<List<V>> {
         return Objects.hash(super.hashCode(), valueType);
     }
 
-    public static final SpecifiedType<ArrayType<?>> SPECIFIED_TYPE =
+    public static final SpecifiedType<ArrayType<?, ?>> SPECIFIED_TYPE =
             new SpecifiedType<>() {
                 @Override
                 public int id() {
@@ -95,19 +96,19 @@ public class ArrayType<V> extends CondensedType<List<V>> {
 
                 /** No default type for arrays */
                 @Override
-                public ArrayType<?> getDefaultType(int id) {
+                public ArrayType<?, ?> getDefaultType(int id) {
                     throw new NoSuchDefaultTypeException();
                 }
 
                 @Override
                 public void writeInnerTypeSpecification(
-                        CondensedOutputStream out, ArrayType<?> typeInstance) {
+                        CondensedOutputStream out, ArrayType<?, ?> typeInstance) {
                     out.writeUnsignedVarInt(typeInstance.valueType.getId());
                     out.writeUnsignedLong(typeInstance.embedding.ordinal(), 1);
                 }
 
                 @Override
-                public ArrayType<?> readInnerTypeSpecification(
+                public ArrayType<?, ?> readInnerTypeSpecification(
                         CondensedInputStream in, String name, String description) {
                     long innerTypeId = in.readUnsignedVarint();
                     long embedding = in.readUnsignedLong(1);

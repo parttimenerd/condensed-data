@@ -6,19 +6,21 @@ import me.bechberger.condensed.types.CondensedType;
 public sealed interface Message {
 
     /** Defines a type */
-    record CondensedTypeMessage(CondensedType<?> type) implements Message {}
+    record CondensedTypeMessage(CondensedType<?, ?> type) implements Message {}
 
     /** Starts the stream */
     record StartMessage(int version, String generatorName, String generatorVersion)
             implements Message {
         /** Used mainly for testing purposes */
-        static final StartMessage DEFAULT = new StartMessage("Unknown", "Unknown Version");
+        public static final StartMessage DEFAULT = new StartMessage("Unknown", "Unknown Version");
 
         StartMessage(String generatorName, String generatorVersion) {
             this(Constants.VERSION, generatorName, generatorVersion);
         }
     }
 
+    record WriteInstance<T, R>(CondensedType<T, R> type, T value) implements Message {}
+
     /** Regular message */
-    record Instance<T>(CondensedType<T> type, T value) implements Message {}
+    record ReadInstance<T, R>(CondensedType<T, R> type, R value) implements Message {}
 }

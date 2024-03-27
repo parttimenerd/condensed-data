@@ -3,7 +3,7 @@ package me.bechberger.condensed.types;
 import me.bechberger.condensed.CondensedInputStream;
 import me.bechberger.condensed.CondensedOutputStream;
 
-public class StringType extends CondensedType<String> {
+public class StringType extends CondensedType<String, String> {
     private static final String DEFAULT_ENCODING = "UTF-8";
     private final String encoding;
 

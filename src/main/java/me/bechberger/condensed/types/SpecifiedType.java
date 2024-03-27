@@ -7,7 +7,7 @@ import me.bechberger.condensed.CondensedOutputStream;
  * Abstract type which can read and write its specific type instances from and to a {@see
  * CondensedInputStream} and {@see CondensedOutputStream}
  */
-public interface SpecifiedType<T extends CondensedType<?>> {
+public interface SpecifiedType<T extends CondensedType<?, ?>> {
 
     class NoSuchDefaultTypeException extends RuntimeException {
         public NoSuchDefaultTypeException() {

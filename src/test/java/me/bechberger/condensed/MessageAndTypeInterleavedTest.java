@@ -80,7 +80,8 @@ public class MessageAndTypeInterleavedTest {
                 if (!write.writeValue) {
                     if (checkTypeMessage) {
                         VarIntType result =
-                                (VarIntType) (CondensedType<?>) in.readNextTypeMessageAndProcess();
+                                (VarIntType)
+                                        (CondensedType<?, ?>) in.readNextTypeMessageAndProcess();
                         assertEquals(types.get(write.typeIndex), result);
                     }
                 } else {

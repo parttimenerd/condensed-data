@@ -49,16 +49,16 @@ public class Universe {
      */
     static class WritingCachePerTypePerEmbeddingType<T> {
         private final int size;
-        private final Map<CondensedType<?>, Map<T, Integer>> cache = new HashMap<>();
+        private final Map<CondensedType<?, ?>, Map<T, Integer>> cache = new HashMap<>();
         private final ArrayDeque<Entry<Map<T, Integer>, T>> cacheOrder = new ArrayDeque<>();
-        private final Map<CondensedType<?>, Integer> lastIds = new HashMap<>();
+        private final Map<CondensedType<?, ?>, Integer> lastIds = new HashMap<>();
 
         public WritingCachePerTypePerEmbeddingType(int size) {
             this.size = size;
         }
 
         /** Put value into cache per embbeding type, write out if needed, return id */
-        public int get(T value, Consumer<T> writer, CondensedType<?> embeddingType) {
+        public int get(T value, Consumer<T> writer, CondensedType<?, ?> embeddingType) {
             Map<T, Integer> typeCache = cache.computeIfAbsent(embeddingType, k -> new HashMap<>());
             if (typeCache.containsKey(value)) {
                 return typeCache.get(value);
@@ -117,8 +117,8 @@ public class Universe {
      */
     public static class WritingCaches {
         private final int sizePerCache;
-        private final Map<CondensedType<?>, WritingCachePerType<?>> caches = new HashMap<>();
-        private final Map<CondensedType<?>, WritingCachePerTypePerEmbeddingType<?>>
+        private final Map<CondensedType<?, ?>, WritingCachePerType<?>> caches = new HashMap<>();
+        private final Map<CondensedType<?, ?>, WritingCachePerTypePerEmbeddingType<?>>
                 embeddingCaches = new HashMap<>();
 
         public WritingCaches(int sizePerCache) {
@@ -126,14 +126,14 @@ public class Universe {
         }
 
         @SuppressWarnings("unchecked")
-        private <T> WritingCachePerType<T> getCache(CondensedType<T> type) {
+        private <T, R> WritingCachePerType<T> getCache(CondensedType<T, R> type) {
             return (WritingCachePerType<T>)
                     caches.computeIfAbsent(type, k -> new WritingCachePerType<>(sizePerCache));
         }
 
         @SuppressWarnings("unchecked")
-        private <T> WritingCachePerTypePerEmbeddingType<T> getEmbeddingCache(
-                CondensedType<T> type) {
+        private <T, R> WritingCachePerTypePerEmbeddingType<T> getEmbeddingCache(
+                CondensedType<T, R> type) {
             return (WritingCachePerTypePerEmbeddingType<T>)
                     embeddingCaches.computeIfAbsent(
                             type, k -> new WritingCachePerTypePerEmbeddingType<>(sizePerCache));
@@ -149,7 +149,7 @@ public class Universe {
          * @return index of the value in the cache
          * @param <T> type of the value to cache
          */
-        public <T> int get(CondensedType<T> type, T value, Consumer<T> writer) {
+        public <T, R> int get(CondensedType<T, R> type, T value, Consumer<T> writer) {
             return getCache(type).get(value, writer);
         }
 
@@ -164,11 +164,11 @@ public class Universe {
          * @return index of the value in the cache
          * @param <T> type of the value to cache
          */
-        public <T> int get(
-                CondensedType<T> type,
+        public <T, R> int get(
+                CondensedType<T, R> type,
                 T value,
                 Consumer<T> writer,
-                CondensedType<?> embeddingType) {
+                CondensedType<?, ?> embeddingType) {
             return getEmbeddingCache(type).get(value, writer, embeddingType);
         }
     }
@@ -213,7 +213,7 @@ public class Universe {
      */
     public static class ReadingCachePerTypePerEmbeddingType<T> {
 
-        private final Map<CondensedType<?>, List<T>> values = new HashMap<>();
+        private final Map<CondensedType<?, ?>, List<T>> values = new HashMap<>();
 
         /**
          * Put the given value into the cache, returning the id of the value
@@ -221,7 +221,7 @@ public class Universe {
          * @param embeddingType type of the value that contains the passed value
          * @param value value to put into the cache
          */
-        public void put(CondensedType<?> embeddingType, T value) {
+        public void put(CondensedType<?, ?> embeddingType, T value) {
             values.computeIfAbsent(embeddingType, k -> new ArrayList<>()).add(value);
         }
 
@@ -232,7 +232,7 @@ public class Universe {
          * @param id id of the value to get
          * @return value with the given id
          */
-        public T get(CondensedType<?> embeddingType, int id) {
+        public T get(CondensedType<?, ?> embeddingType, int id) {
             if (!values.containsKey(embeddingType)) {
                 throw new IllegalArgumentException("Invalid type: " + embeddingType);
             }
@@ -245,37 +245,38 @@ public class Universe {
     }
 
     public static class ReadingCaches {
-        private final Map<CondensedType<?>, ReadingCachePerType<?>> caches = new HashMap<>();
-        private final Map<CondensedType<?>, ReadingCachePerTypePerEmbeddingType<?>>
+        private final Map<CondensedType<?, ?>, ReadingCachePerType<?>> caches = new HashMap<>();
+        private final Map<CondensedType<?, ?>, ReadingCachePerTypePerEmbeddingType<?>>
                 embeddingCaches = new HashMap<>();
 
         @SuppressWarnings("unchecked")
-        private <T> ReadingCachePerType<T> getCache(CondensedType<T> type) {
-            return (ReadingCachePerType<T>)
+        private <T, R> ReadingCachePerType<R> getCache(CondensedType<T, R> type) {
+            return (ReadingCachePerType<R>)
                     caches.computeIfAbsent(type, k -> new ReadingCachePerType<>());
         }
 
         @SuppressWarnings("unchecked")
-        private <T> ReadingCachePerTypePerEmbeddingType<T> getEmbeddingCache(
-                CondensedType<T> type) {
-            return (ReadingCachePerTypePerEmbeddingType<T>)
+        private <T, R> ReadingCachePerTypePerEmbeddingType<R> getEmbeddingCache(
+                CondensedType<T, R> type) {
+            return (ReadingCachePerTypePerEmbeddingType<R>)
                     embeddingCaches.computeIfAbsent(
                             type, k -> new ReadingCachePerTypePerEmbeddingType<>());
         }
 
-        public <T> void put(CondensedType<T> type, T value) {
+        public <T, R> void put(CondensedType<T, R> type, R value) {
             getCache(type).put(value);
         }
 
-        public <T> void put(CondensedType<T> type, CondensedType<?> embeddingType, T value) {
+        public <T, R> void put(
+                CondensedType<T, R> type, CondensedType<?, ?> embeddingType, R value) {
             getEmbeddingCache(type).put(embeddingType, value);
         }
 
-        public <T> T get(CondensedType<T> type, int id) {
+        public <T, R> R get(CondensedType<T, R> type, int id) {
             return getCache(type).get(id);
         }
 
-        public <T> T get(CondensedType<T> type, CondensedType<?> embeddingType, int id) {
+        public <T, R> R get(CondensedType<T, R> type, CondensedType<?, ?> embeddingType, int id) {
             return getEmbeddingCache(type).get(embeddingType, id);
         }
     }
