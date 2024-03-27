@@ -5,10 +5,12 @@ import static org.junit.jupiter.api.Assertions.*;
 import java.nio.charset.Charset;
 import java.util.*;
 import java.util.concurrent.atomic.AtomicReference;
+import java.util.function.Consumer;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 import me.bechberger.condensed.CondensedOutputStream.OverflowMode;
+import me.bechberger.condensed.Universe.EmbeddingType;
 import me.bechberger.condensed.types.*;
 import me.bechberger.condensed.types.StructType.Field;
 import net.jqwik.api.*;
@@ -160,31 +162,32 @@ public class TypeSpecificationTest {
             @ForAll String name,
             @ForAll String description,
             @ForAll boolean useDefaultIntType,
-            @ForAll @Size(max = 200) List<Integer> value) {
+            @ForAll @Size(max = 200) List<Integer> value,
+            @ForAll EmbeddingType embeddingType) {
         AtomicReference<ArrayType<?>> typeRef = new AtomicReference<>();
-        byte[] outBytes =
-                CondensedOutputStream.use(
-                        out -> {
-                            var innerType =
-                                    useDefaultIntType
-                                            ? TypeCollection.getDefaultTypeInstance(
-                                                    IntType.SPECIFIED_TYPE)
-                                            : out.writeAndStoreType(
-                                                    id ->
-                                                            new IntType(
-                                                                    id,
-                                                                    4,
-                                                                    true,
-                                                                    OverflowMode.ERROR));
-                            var type =
-                                    out.writeAndStoreType(
-                                            id ->
-                                                    new ArrayType<>(
-                                                            id, name, description, innerType));
-                            typeRef.set(type);
-                            out.writeMessage(type, value.stream().map(Long::valueOf).toList());
-                        },
-                        true);
+        Consumer<CondensedOutputStream> outWriter =
+                out -> {
+                    CondensedType<Long> innerType;
+                    if (useDefaultIntType) {
+                        innerType = TypeCollection.getDefaultTypeInstance(IntType.SPECIFIED_TYPE);
+                    } else {
+                        innerType =
+                                out.writeAndStoreType(
+                                        id -> new IntType(id, 4, true, OverflowMode.ERROR));
+                    }
+                    var type =
+                            out.writeAndStoreType(
+                                    id ->
+                                            new ArrayType<>(
+                                                    id,
+                                                    name,
+                                                    description,
+                                                    innerType,
+                                                    embeddingType));
+                    typeRef.set(type);
+                    out.writeMessage(type, value.stream().map(Long::valueOf).toList());
+                };
+        byte[] outBytes = CondensedOutputStream.use(outWriter, true);
         try (var in = new CondensedInputStream(outBytes)) {
             if (!useDefaultIntType) {
                 assertInstanceOf(IntType.class, in.readNextTypeMessageAndProcess());
@@ -197,8 +200,8 @@ public class TypeSpecificationTest {
         }
     }
 
-    @Test
-    public void testNestedIntArray() {
+    @Property
+    public void testNestedIntArray(@ForAll EmbeddingType embedding) {
         AtomicReference<ArrayType<List<Long>>> typeRef = new AtomicReference<>();
         List<List<Long>> value = List.of(List.of(1L, 2L), List.of(3L, 4L), List.of(), List.of(-5L));
         var outBytes =
@@ -209,7 +212,9 @@ public class TypeSpecificationTest {
                             var innerType =
                                     out.writeAndStoreType(
                                             id -> new ArrayType<>(id, innerInnerType));
-                            var type = out.writeAndStoreType(id -> new ArrayType<>(id, innerType));
+                            var type =
+                                    out.writeAndStoreType(
+                                            id -> new ArrayType<>(id, innerType, embedding));
                             typeRef.set(type);
                             out.writeMessage(type, value);
                         },
@@ -363,6 +368,7 @@ public class TypeSpecificationTest {
     <V> Arbitrary<TypeCreatorAndValue<List<V>, ArrayType<V>>> arrayType(Freqs freqs) {
         var member = getMemberArbitrary(freqs.reduceNestedFreqs(2));
         var length = Arbitraries.integers().between(0, freqs.maxListLength);
+        var embedding = Arbitraries.of(EmbeddingType.class);
         var typeAndLength = Arbitraries.entries(member, length);
         return (Arbitrary<TypeCreatorAndValue<List<V>, ArrayType<V>>>)
                 (Arbitrary)
@@ -372,12 +378,12 @@ public class TypeSpecificationTest {
                                                 out -> {
                                                     var memberType =
                                                             e.getKey().creator().create(out);
-                                                    return (ArrayType)
-                                                            out.writeAndStoreType(
-                                                                    id ->
-                                                                            new ArrayType<>(
-                                                                                    id,
-                                                                                    memberType));
+                                                    return out.writeAndStoreType(
+                                                            id ->
+                                                                    new ArrayType<>(
+                                                                            id,
+                                                                            memberType,
+                                                                            embedding.sample()));
                                                 },
                                                 e.getKey().value().list().ofSize(e.getValue())));
     }
@@ -432,6 +438,74 @@ public class TypeSpecificationTest {
         return structType(Freqs.DEFAULT);
     }
 
+    @SuppressWarnings({"unchecked", "rawtypes"})
+    @NotNull
+    private static TypeCreatorAndValue<Map<String, Object>, StructType<Map<String, Object>>>
+            createStructCreator(
+                    List<TypeCreatorAndValue<?, ? extends CondensedType<?>>> members,
+                    List<String> names,
+                    Arbitrary<EmbeddingType> embeddings) {
+        if (members.isEmpty()) {
+            return new TypeCreatorAndValue<>(
+                    out ->
+                            out.writeAndStoreType(
+                                    id -> new StructType<>(id, List.of(), l -> Map.of())),
+                    Arbitraries.just(Map.of()));
+        }
+        // problem: each member has an arbitrary, so create a combined
+        // arbitrary over all members
+        Arbitrary<Map<String, Object>> memberArbitrary =
+                members.get(0)
+                        .value()
+                        .map(
+                                v -> {
+                                    var map = new HashMap<String, Object>();
+                                    map.put(names.get(0), v);
+                                    return map;
+                                });
+        for (int i = 1; i < members.size(); i++) {
+            var j = i;
+            memberArbitrary =
+                    memberArbitrary.flatMap(
+                            m ->
+                                    members.get(j)
+                                            .value()
+                                            .map(
+                                                    v -> {
+                                                        m.put(names.get(j), v);
+                                                        return m;
+                                                    }));
+        }
+        return new TypeCreatorAndValue<Map<String, Object>, StructType<Map<String, Object>>>(
+                out -> {
+                    var fields =
+                            IntStream.range(0, members.size())
+                                    .mapToObj(
+                                            i -> {
+                                                var t = members.get(i);
+                                                return new Field<>(
+                                                        names.get(i),
+                                                        "",
+                                                        t.creator().create(out),
+                                                        (Map<String, Object> m) ->
+                                                                m.get(names.get(i)),
+                                                        embeddings.sample());
+                                            })
+                                    .toList();
+                    Function<List<?>, Map<String, Object>> constructor =
+                            (List<?> l) ->
+                                    IntStream.range(0, fields.size())
+                                            .boxed()
+                                            .collect(
+                                                    Collectors.toMap(
+                                                            j -> fields.get(j).name(),
+                                                            j -> l.get(j)));
+                    return out.writeAndStoreType(
+                            id -> new StructType<>(id, (List) fields, constructor));
+                },
+                memberArbitrary);
+    }
+
     @Provide
     @SuppressWarnings({"rawtypes", "unchecked"})
     public Arbitrary<TypeCreatorAndValue<Map<String, Object>, StructType<Map<String, Object>>>>
@@ -448,108 +522,12 @@ public class TypeSpecificationTest {
                                                 .list()
                                                 .uniqueElements()
                                                 .ofSize(size)));
+        var embeddings = Arbitraries.of(EmbeddingType.class);
         return membersAndNamesComb.flatMap(
                 membersAndNames ->
                         membersAndNames.as(
-                                (members, names) -> {
-                                    if (members.isEmpty()) {
-                                        return new TypeCreatorAndValue<
-                                                Map<String, Object>,
-                                                StructType<Map<String, Object>>>(
-                                                out -> {
-                                                    return out.writeAndStoreType(
-                                                            id ->
-                                                                    new StructType<>(
-                                                                            id,
-                                                                            List.of(),
-                                                                            l -> Map.of()));
-                                                },
-                                                Arbitraries.just(Map.of()));
-                                    }
-                                    // problem: each member has an arbitrary, so create a combined
-                                    // arbitrary over all members
-                                    Arbitrary<Map<String, Object>> memberArbitrary =
-                                            members.get(0)
-                                                    .value()
-                                                    .map(
-                                                            v -> {
-                                                                var map =
-                                                                        new HashMap<
-                                                                                String, Object>();
-                                                                map.put(names.get(0), v);
-                                                                return map;
-                                                            });
-                                    for (int i = 1; i < members.size(); i++) {
-                                        var j = i;
-                                        memberArbitrary =
-                                                memberArbitrary.flatMap(
-                                                        m ->
-                                                                members.get(j)
-                                                                        .value()
-                                                                        .map(
-                                                                                v -> {
-                                                                                    m.put(
-                                                                                            names
-                                                                                                    .get(
-                                                                                                            j),
-                                                                                            v);
-                                                                                    return m;
-                                                                                }));
-                                    }
-                                    return new TypeCreatorAndValue<
-                                            Map<String, Object>, StructType<Map<String, Object>>>(
-                                            out -> {
-                                                var fields =
-                                                        IntStream.range(0, members.size())
-                                                                .mapToObj(
-                                                                        i -> {
-                                                                            var t = members.get(i);
-                                                                            return new Field<
-                                                                                    Map<
-                                                                                            String,
-                                                                                            Object>,
-                                                                                    Object>(
-                                                                                    names.get(i),
-                                                                                    "",
-                                                                                    (CondensedType)
-                                                                                            t.creator()
-                                                                                                    .create(
-                                                                                                            out),
-                                                                                    (Map<
-                                                                                                            String,
-                                                                                                            Object>
-                                                                                                    m) ->
-                                                                                            m.get(
-                                                                                                    names
-                                                                                                            .get(
-                                                                                                                    i)));
-                                                                        })
-                                                                .toList();
-                                                Function<List<?>, Map<String, Object>> constructor =
-                                                        (List<?> l) ->
-                                                                IntStream.range(0, fields.size())
-                                                                        .boxed()
-                                                                        .collect(
-                                                                                Collectors.toMap(
-                                                                                        j ->
-                                                                                                fields.get(
-                                                                                                                (int)
-                                                                                                                        j)
-                                                                                                        .name(),
-                                                                                        j ->
-                                                                                                l
-                                                                                                        .get(
-                                                                                                                (int)
-                                                                                                                        j)));
-                                                return out.writeAndStoreType(
-                                                        id ->
-                                                                new StructType<>(
-                                                                        id,
-                                                                        (List) fields,
-                                                                        constructor));
-                                            },
-                                            memberArbitrary);
-                                }));
+                                (members, names) ->
+                                        createStructCreator(members, names, embeddings)));
     }
 
     private static void check(
@@ -572,6 +550,7 @@ public class TypeSpecificationTest {
                 var msg = in.readNextInstance();
                 assertNotNull(msg);
                 assertEquals(value, msg.value());
+                assertEquals(typeRef.get(), msg.type());
             }
             assertNull(in.readNextInstance());
         }
@@ -641,11 +620,6 @@ public class TypeSpecificationTest {
         check(primitiveTypes, messagesWritten);
     }
 
-    /* @Property
-    public void testMixedListOfTypes(@ForAll("memberLists") @Size(min = 1, max = 10) List<TypeCreatorAndValue<?, CondensedType<?>>> types, @ForAll @IntRange(max = 3) int messagesWritten) {
-        check(types, messagesWritten);
-    }*/
-
     @Provide
     @SuppressWarnings({"unchecked"})
     private ListArbitrary<TypeCreatorAndValue<?, CondensedType<?>>>
@@ -653,11 +627,6 @@ public class TypeSpecificationTest {
         return (ListArbitrary<TypeCreatorAndValue<?, CondensedType<?>>>)
                 getMemberArbitrary(Freqs.DEFAULT.setMaxDepth(1).setMaxStructSize(2)).list();
     }
-
-    /* @Property()
-    public void testMixedListOfDepthOneTypesWithMaxStructSizeTwo(@ForAll("depthOneTypesMaxStructSizeTwo") @Size(min = 1, max = 1) List<TypeCreatorAndValue<?, CondensedType<?>>> types, @ForAll @IntRange(max = 100) int messagesWritten) {
-        check(types, messagesWritten);
-    }*/
 
     @SuppressWarnings({"unchecked"})
     private void check(List<TypeCreatorAndValue<?, CondensedType<?>>> types, int messagesWritten) {
@@ -743,8 +712,8 @@ public class TypeSpecificationTest {
      *
      * <p>{Cd= , 8 =2147483646}
      */
-    @Test
-    public void testStringIntStruct() {
+    @Property
+    public void testStringIntStruct(@ForAll EmbeddingType embedding) {
         var outBytes =
                 CondensedOutputStream.use(
                         out -> {
@@ -755,25 +724,23 @@ public class TypeSpecificationTest {
                             var type =
                                     out.writeAndStoreType(
                                             id ->
-                                                    new StructType<Map<String, Object>>(
+                                                    new StructType<>(
                                                             id,
                                                             List.of(
-                                                                    new Field<
-                                                                            Map<String, Object>,
-                                                                            Object>(
+                                                                    new Field<>(
                                                                             "FQ",
                                                                             "",
                                                                             stringType,
                                                                             (Map<String, Object>
                                                                                             m) ->
-                                                                                    m.get("FQ")),
-                                                                    new Field<
-                                                                            Map<String, Object>,
-                                                                            Object>(
+                                                                                    m.get("FQ"),
+                                                                            embedding),
+                                                                    new Field<>(
                                                                             "S0c",
                                                                             "",
                                                                             intType,
-                                                                            m -> m.get("S0c"))),
+                                                                            m -> m.get("S0c"),
+                                                                            embedding)),
                                                             m ->
                                                                     Map.of(
                                                                             "FQ", m.get(0), "S0c",
@@ -803,8 +770,8 @@ public class TypeSpecificationTest {
      * java.util.HashMap {=224, PKxvQ=17384} ---- new class java.util.HashMap {=-1, PKxvQ=-2} ----
      * new class java.util.HashMap {=-17, PKxvQ=-604902}
      */
-    @Test
-    public void testIntVarIntStruct() {
+    @Property
+    public void testIntVarIntStruct(@ForAll EmbeddingType embedding) {
         var values =
                 List.of(
                         Map.of("", -2L, "PKxvQ", -2147483648L),
@@ -828,23 +795,21 @@ public class TypeSpecificationTest {
                             var type =
                                     out.writeAndStoreType(
                                             id ->
-                                                    new StructType<Map<String, Long>>(
+                                                    new StructType<>(
                                                             id,
                                                             List.of(
-                                                                    new Field<
-                                                                            Map<String, Long>,
-                                                                            Long>(
+                                                                    new Field<>(
                                                                             "",
                                                                             "",
                                                                             intType,
-                                                                            m -> m.get("")),
-                                                                    new Field<
-                                                                            Map<String, Long>,
-                                                                            Long>(
+                                                                            m -> m.get(""),
+                                                                            embedding),
+                                                                    new Field<>(
                                                                             "PKxvQ",
                                                                             "",
                                                                             intType2,
-                                                                            m -> m.get("PKxvQ"))),
+                                                                            m -> m.get("PKxvQ"),
+                                                                            embedding)),
                                                             m ->
                                                                     Map.of(
                                                                             "",

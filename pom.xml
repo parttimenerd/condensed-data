@@ -95,6 +95,9 @@
                             <reflowLongStrings>true</reflowLongStrings>
                         </googleJavaFormat>
                         <excludes>**/raw/**</excludes>
+                        <removeUnusedImports/>
+                        <importOrder/>
+                        <trimTrailingWhitespace/>
                     </java>
                 </configuration>
             </plugin>

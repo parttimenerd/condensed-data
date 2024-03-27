@@ -58,6 +58,7 @@ The following data is organized in messages:
     - String: Encoding (e.g. `UTF-8`)
   - Array-based type
     - Unsigned varint: Element type ID
+    - Embedding (see struct-based type)
   - Struct-based type
     - Unsigned varint: Number of fields
     - For each field:
@@ -70,6 +71,14 @@ The following data is organized in messages:
         - floating point type: 32 bit double
         - string-based type: UTF-8 string
         - other non-user defined types are not allowed
+      - Embedding
+        - 0: inline
+        - 1: reference into cache
+          - 0: null
+          - 1: value not in cache, followed by the value
+          - 2: value in cache, followed by the index (id starting at 2 in the cache)
+        - 2: reference into cache per embedding type
+          - ...
     - The fields are stored in the order they are defined
 
 The primitive types (not array or struct) are trivially parsed according to their specification.

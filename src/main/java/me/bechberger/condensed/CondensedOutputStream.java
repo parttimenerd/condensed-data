@@ -134,7 +134,7 @@ public class CondensedOutputStream extends OutputStream {
         try {
             write(bytes, 0, bytes.length);
         } catch (IOException e) {
-            throw new RIOException(e);
+            throw new RIOException("Can't write string", e);
         }
     }
 
@@ -271,7 +271,7 @@ public class CondensedOutputStream extends OutputStream {
         try {
             outputStream.write(b);
         } catch (IOException e) {
-            throw new RIOException(e);
+            throw new RIOException("Can't write byte", e);
         }
     }
 
@@ -280,7 +280,7 @@ public class CondensedOutputStream extends OutputStream {
         try {
             outputStream.write(b);
         } catch (IOException e) {
-            throw new RIOException(e);
+            throw new RIOException("Can't write byte array", e);
         }
     }
 

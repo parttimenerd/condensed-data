@@ -9,6 +9,8 @@ import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 import me.bechberger.condensed.CondensedInputStream;
 import me.bechberger.condensed.CondensedOutputStream;
+import me.bechberger.condensed.Universe.EmbeddingType;
+import org.jetbrains.annotations.NotNull;
 
 /** A type that represents a struct */
 public class StructType<T> extends CondensedType<T> {
@@ -17,7 +19,31 @@ public class StructType<T> extends CondensedType<T> {
             String name,
             String description,
             CondensedType<? extends F> type,
-            Function<T, F> getter) {}
+            Function<T, F> getter,
+            EmbeddingType embedding) {
+
+        public Field(
+                String name,
+                String description,
+                CondensedType<? extends F> type,
+                Function<T, F> getter) {
+            this(name, description, type, getter, EmbeddingType.INLINE);
+        }
+
+        @Override
+        public boolean equals(Object obj) {
+            return obj instanceof Field<?, ?>
+                    && name.equals(((Field<?, ?>) obj).name)
+                    && description.equals(((Field<?, ?>) obj).description)
+                    && type.equals(((Field<?, ?>) obj).type)
+                    && embedding.equals(((Field<?, ?>) obj).embedding);
+        }
+
+        @Override
+        public int hashCode() {
+            return Objects.hash(name, description, type, embedding);
+        }
+    }
 
     private final List<Field<T, ?>> fields;
     private final Function<List<?>, T> creator;
@@ -50,7 +76,9 @@ public class StructType<T> extends CondensedType<T> {
                                                         + f.name()
                                                         + (f.description().isEmpty()
                                                                 ? ""
-                                                                : " - " + f.description()))
+                                                                : " - " + f.description())
+                                                        + " "
+                                                        + f.embedding())
                                 .collect(Collectors.joining(", ")),
                 fields,
                 creator);
@@ -66,7 +94,9 @@ public class StructType<T> extends CondensedType<T> {
     @SuppressWarnings("unchecked")
     public void writeTo(CondensedOutputStream out, T value) {
         for (Field<T, ?> field : fields) {
-            ((CondensedType<Object>) field.type()).writeTo(out, field.getter().apply(value));
+            var fieldType = ((CondensedType<Object>) field.type());
+            var fieldValue = field.getter().apply(value);
+            fieldType.writeTo(out, fieldValue, this, field.embedding());
         }
     }
 
@@ -75,7 +105,8 @@ public class StructType<T> extends CondensedType<T> {
     public T readFrom(CondensedInputStream in) {
         List<Object> values = new ArrayList<>(fields.size());
         for (Field<T, ?> field : fields) {
-            values.add(((CondensedType<Object>) field.type()).readFrom(in));
+            values.add(
+                    ((CondensedType<Object>) field.type()).readFrom(in, this, field.embedding()));
         }
         return creator.apply(values);
     }
@@ -110,6 +141,7 @@ public class StructType<T> extends CondensedType<T> {
                         out.writeString(field.name());
                         out.writeString(field.description());
                         out.writeTypeId(field.type());
+                        out.writeUnsignedLong(field.embedding().ordinal(), 1);
                     }
                 }
 
@@ -123,12 +155,15 @@ public class StructType<T> extends CondensedType<T> {
                         String fieldName = in.readString(null);
                         String fieldDescription = in.readString(null);
                         CondensedType<?> fieldType = in.readTypeViaId();
+                        EmbeddingType embeddingType =
+                                EmbeddingType.valueOf((int) in.readUnsignedLong(1));
                         fields.add(
                                 new Field<>(
                                         fieldName,
                                         fieldDescription,
                                         fieldType,
-                                        Function.identity()));
+                                        Function.identity(),
+                                        embeddingType));
                     }
                     return in.getTypeCollection()
                             .addType(
@@ -139,22 +174,14 @@ public class StructType<T> extends CondensedType<T> {
                                                     description,
                                                     (List<Field<Map<String, Object>, ?>>)
                                                             (List) fields,
-                                                    (List<?> l) ->
-                                                            IntStream.range(0, fields.size())
-                                                                    .boxed()
-                                                                    .collect(
-                                                                            Collectors.toMap(
-                                                                                    j ->
-                                                                                            fields
-                                                                                                    .get(
-                                                                                                            (int)
-                                                                                                                    j)
-                                                                                                    .name,
-                                                                                    j ->
-                                                                                            (Object)
-                                                                                                    l
-                                                                                                            .get(
-                                                                                                                    j)))));
+                                                    (List<?> l) -> construct(l, fields)));
+                }
+
+                @NotNull
+                private static Map<String, Object> construct(List<?> l, List<Field<?, ?>> fields) {
+                    return IntStream.range(0, fields.size())
+                            .boxed()
+                            .collect(Collectors.toMap(j -> fields.get(j).name, l::get));
                 }
 
                 @Override

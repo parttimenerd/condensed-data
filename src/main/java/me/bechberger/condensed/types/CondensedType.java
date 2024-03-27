@@ -1,8 +1,15 @@
 package me.bechberger.condensed.types;
 
+import static me.bechberger.condensed.Universe.EmbeddingType.INLINE;
+
 import java.util.Objects;
+import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.function.Consumer;
 import me.bechberger.condensed.CondensedInputStream;
 import me.bechberger.condensed.CondensedOutputStream;
+import me.bechberger.condensed.Universe.EmbeddingType;
+import me.bechberger.condensed.Universe.ReadingCaches;
+import me.bechberger.condensed.Universe.WritingCaches;
 
 public abstract class CondensedType<T> {
 
@@ -34,8 +41,79 @@ public abstract class CondensedType<T> {
     /** Write the type specification to the stream (excluding the header) */
     public abstract void writeTo(CondensedOutputStream out, T value);
 
+    /**
+     * Write the given value to the stream, using the specified embedding type and caching if needed
+     *
+     * @see EmbeddingType
+     */
+    public void writeTo(
+            CondensedOutputStream out,
+            T value,
+            CondensedType<?> embeddingType,
+            EmbeddingType embedding) {
+        if (embedding == INLINE) {
+            Objects.requireNonNull(value, "Value must not be null");
+            writeTo(out, value);
+            return;
+        }
+        WritingCaches caches = out.getUniverse().getWritingCaches();
+        AtomicBoolean cached = new AtomicBoolean(true);
+        Consumer<T> writer =
+                v -> {
+                    out.writeUnsignedVarInt(1);
+                    writeTo(out, v);
+                    cached.set(false);
+                };
+        if (value == null) {
+            out.writeUnsignedVarInt(0);
+        } else {
+            var index =
+                    switch (embedding) {
+                        case REFERENCE -> caches.get(this, value, writer);
+                        case REFERENCE_PER_TYPE -> caches.get(this, value, writer, embeddingType);
+                        default ->
+                                throw new IllegalArgumentException(
+                                        "Invalid embedding type: " + embedding);
+                    };
+            if (cached.get()) {
+                out.writeUnsignedVarInt(index + 2);
+            }
+        }
+    }
+
     /** Read the type specification from the stream (excluding the header) */
     public abstract T readFrom(CondensedInputStream in);
+
+    public T readFrom(
+            CondensedInputStream in, CondensedType<?> embeddingType, EmbeddingType embedding) {
+        if (embedding == INLINE) {
+            return readFrom(in);
+        }
+        ReadingCaches caches = in.getUniverse().getReadingCaches();
+        var index = (int) in.readUnsignedVarint();
+        switch (index) {
+            case 0 -> {
+                return null;
+            }
+            case 1 -> {
+                var value = readFrom(in);
+                switch (embedding) {
+                    case REFERENCE -> caches.put(this, value);
+                    case REFERENCE_PER_TYPE -> caches.put(this, embeddingType, value);
+                }
+                return value;
+            }
+            default -> {
+                return switch (embedding) {
+                    case REFERENCE -> caches.get(this, index - 2);
+                    case REFERENCE_PER_TYPE -> caches.get(this, embeddingType, index - 2);
+                    default ->
+                            throw new IllegalArgumentException(
+                                    "Invalid embedding type: " + embedding);
+                };
+            }
+        }
+    }
 
     @Override
     public boolean equals(Object o) {
@@ -70,7 +148,7 @@ public abstract class CondensedType<T> {
     }
 
     public String toPrettyString(int indent) {
-        return " ".repeat(indent) + toString();
+        return " ".repeat(indent) + this;
     }
 
     public String toPrettyString() {

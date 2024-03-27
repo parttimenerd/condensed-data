@@ -11,6 +11,7 @@ import java.util.concurrent.TimeUnit;
 import me.bechberger.condensed.Message.CondensedTypeMessage;
 import me.bechberger.condensed.Message.Instance;
 import me.bechberger.condensed.Message.StartMessage;
+import me.bechberger.condensed.RIOException.NoStartStringException;
 import me.bechberger.condensed.types.CondensedType;
 import me.bechberger.condensed.types.TypeCollection;
 import org.jetbrains.annotations.Nullable;
@@ -100,9 +101,14 @@ public class CondensedInputStream extends InputStream {
     }
 
     private void readAndProcessStartString() {
-        String startString = readString();
+        String startString;
+        try {
+             startString = readString();
+        } catch (RIOException e) {
+            throw new NoStartStringException(e);
+        }
         if (!startString.equals(START_STRING)) {
-            throw new RIOException("Invalid start string: " + startString);
+            throw new NoStartStringException(startString);
         }
         startStringRead = true;
         StartMessage message =
@@ -194,12 +200,12 @@ public class CondensedInputStream extends InputStream {
                 throw new RIOException("Unexpected end of stream");
             }
         } catch (IOException e) {
-            throw new RIOException(e);
+            throw new RIOException("Can't read string", e);
         }
         try {
             return new String(data, encoding != null ? encoding : "UTF-8");
         } catch (UnsupportedEncodingException e) {
-            throw new RIOException(e);
+            throw new RIOException("Can't read string", e);
         }
     }
 
@@ -278,7 +284,7 @@ public class CondensedInputStream extends InputStream {
         try {
             return inputStream.read();
         } catch (IOException e) {
-            throw new RIOException(e);
+            throw new RIOException("Can't read byte", e);
         }
     }
 
@@ -287,7 +293,7 @@ public class CondensedInputStream extends InputStream {
         try {
             inputStream.close();
         } catch (IOException e) {
-            throw new RIOException(e);
+            throw new RIOException("Can't close stream", e);
         }
     }
 

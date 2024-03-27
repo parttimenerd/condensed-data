@@ -5,6 +5,7 @@ import java.util.List;
 import java.util.Objects;
 import me.bechberger.condensed.CondensedInputStream;
 import me.bechberger.condensed.CondensedOutputStream;
+import me.bechberger.condensed.Universe.EmbeddingType;
 
 /**
  * A type that represents an array of values of another type
@@ -12,19 +13,36 @@ import me.bechberger.condensed.CondensedOutputStream;
  * @param <V> the type of the values in the array
  */
 public class ArrayType<V> extends CondensedType<List<V>> {
-    private final CondensedType<V> valueType;
 
-    public ArrayType(int id, String name, String description, CondensedType<V> valueType) {
+    private final CondensedType<V> valueType;
+    private final EmbeddingType embedding;
+
+    public ArrayType(
+            int id,
+            String name,
+            String description,
+            CondensedType<V> valueType,
+            EmbeddingType embedding) {
         super(id, name, description);
         this.valueType = valueType;
+        this.embedding = embedding;
+    }
+
+    public ArrayType(int id, String name, String description, CondensedType<V> valueType) {
+        this(id, name, description, valueType, EmbeddingType.INLINE);
     }
 
     public ArrayType(int id, CondensedType<V> valueType) {
+        this(id, valueType, EmbeddingType.INLINE);
+    }
+
+    public ArrayType(int id, CondensedType<V> valueType, EmbeddingType embedding) {
         this(
                 id,
                 "array<" + valueType.getName() + ">",
                 "An array of " + valueType.getDescription(),
-                valueType);
+                valueType,
+                embedding);
     }
 
     @Override
@@ -37,7 +55,7 @@ public class ArrayType<V> extends CondensedType<List<V>> {
     public void writeTo(CondensedOutputStream out, List<V> value) {
         out.writeUnsignedVarInt(value.size());
         for (V v : value) {
-            valueType.writeTo(out, v);
+            valueType.writeTo(out, v, this, embedding);
         }
     }
 
@@ -46,14 +64,16 @@ public class ArrayType<V> extends CondensedType<List<V>> {
         int size = (int) in.readUnsignedVarint();
         List<V> list = new ArrayList<>(size);
         for (int i = 0; i < size; i++) {
-            list.add(valueType.readFrom(in));
+            list.add(valueType.readFrom(in, this, embedding));
         }
         return list;
     }
 
     @Override
     public boolean equals(Object obj) {
-        return super.equals(obj) && valueType.equals(((ArrayType<?>) obj).valueType);
+        return super.equals(obj)
+                && valueType.equals(((ArrayType<?>) obj).valueType)
+                && embedding == ((ArrayType<?>) obj).embedding;
     }
 
     @Override
@@ -83,12 +103,14 @@ public class ArrayType<V> extends CondensedType<List<V>> {
                 public void writeInnerTypeSpecification(
                         CondensedOutputStream out, ArrayType<?> typeInstance) {
                     out.writeUnsignedVarInt(typeInstance.valueType.getId());
+                    out.writeUnsignedLong(typeInstance.embedding.ordinal(), 1);
                 }
 
                 @Override
                 public ArrayType<?> readInnerTypeSpecification(
                         CondensedInputStream in, String name, String description) {
                     long innerTypeId = in.readUnsignedVarint();
+                    long embedding = in.readUnsignedLong(1);
                     return in.getTypeCollection()
                             .addType(
                                     id ->
@@ -97,7 +119,8 @@ public class ArrayType<V> extends CondensedType<List<V>> {
                                                     name,
                                                     description,
                                                     in.getTypeCollection()
-                                                            .getType((int) innerTypeId)));
+                                                            .getType((int) innerTypeId),
+                                                    EmbeddingType.values()[(int) embedding]));
                 }
 
                 @Override
