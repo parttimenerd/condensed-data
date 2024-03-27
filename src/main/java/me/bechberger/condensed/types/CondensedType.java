@@ -68,4 +68,12 @@ public abstract class CondensedType<T> {
                 + '\''
                 + '}';
     }
+
+    public String toPrettyString(int indent) {
+        return " ".repeat(indent) + toString();
+    }
+
+    public String toPrettyString() {
+        return toPrettyString(0);
+    }
 }

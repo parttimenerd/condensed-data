@@ -79,11 +79,6 @@ public class StringType extends CondensedType<String> {
                 }
 
                 @Override
-                public boolean equals(Object obj) {
-                    return obj instanceof StringType;
-                }
-
-                @Override
                 public boolean isPrimitive() {
                     return true;
                 }

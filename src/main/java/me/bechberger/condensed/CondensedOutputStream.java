@@ -138,6 +138,13 @@ public class CondensedOutputStream extends OutputStream {
         }
     }
 
+    public void writeTypeId(CondensedType<?> type) {
+        if (!typeCollection.containsType(type)) {
+            throw new IllegalArgumentException("Type not registered: " + type);
+        }
+        writeUnsignedVarInt(type.getId());
+    }
+
     public enum OverflowMode {
         /** Throw an IllegalArgumentException exception if the value is too large */
         ERROR,

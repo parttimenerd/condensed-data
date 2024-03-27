@@ -294,4 +294,12 @@ public class CondensedInputStream extends InputStream {
     public Universe getUniverse() {
         return universe;
     }
+
+    public CondensedType<?> readTypeViaId() {
+        int typeId = (int) readUnsignedVarint();
+        if (typeCollection.hasType(typeId)) {
+            return typeCollection.getType(typeId);
+        }
+        throw new TypeCollection.NoSuchTypeException(typeId);
+    }
 }

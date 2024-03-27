@@ -34,6 +34,7 @@ public class TypeCollection {
         specifiedTypes[2] = FloatType.SPECIFIED_TYPE;
         specifiedTypes[3] = StringType.SPECIFIED_TYPE;
         specifiedTypes[4] = ArrayType.SPECIFIED_TYPE;
+        specifiedTypes[5] = StructType.SPECIFIED_TYPE;
 
         for (int i = 0; i < specifiedTypes.length; i++) {
             if (specifiedTypes[i] != null && specifiedTypes[i].isPrimitive()) {
@@ -123,5 +124,9 @@ public class TypeCollection {
             throw new SpecifiedType.NoSuchDefaultTypeException();
         }
         return (CondensedType<T>) defaultTypes[specifiedType.id()];
+    }
+
+    public boolean containsType(CondensedType<?> type) {
+        return types.contains(type);
     }
 }

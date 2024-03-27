@@ -105,4 +105,21 @@ public class ArrayType<V> extends CondensedType<List<V>> {
                     return false;
                 }
             };
+
+    @Override
+    public String toPrettyString(int indent) {
+        String indentStr = " ".repeat(indent);
+        return indentStr
+                + "ArrayType { id = "
+                + getId()
+                + ", name = '"
+                + getName()
+                + "', description = '"
+                + getDescription()
+                + "'\n"
+                + valueType.toPrettyString(indent + 2)
+                + "\n"
+                + indentStr
+                + "}";
+    }
 }
