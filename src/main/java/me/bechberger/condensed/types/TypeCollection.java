@@ -1,8 +1,6 @@
 package me.bechberger.condensed.types;
 
-import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.List;
+import java.util.*;
 import java.util.function.Function;
 import org.jetbrains.annotations.Nullable;
 
@@ -28,13 +26,22 @@ public class TypeCollection {
     private static final CondensedType<?, ?>[] defaultTypes =
             new CondensedType<?, ?>[MAX_SPECIFIED_TYPES + 1];
 
+    public static final int INT_ID = 0;
+    public static final int VAR_INT_ID = 1;
+    public static final int BOOLEAN_ID = 2;
+    public static final int FLOAT_ID = 3;
+    public static final int STRING_ID = 4;
+    public static final int ARRAY_ID = 5;
+    public static final int STRUCT_ID = 6;
+
     static {
-        specifiedTypes[0] = IntType.SPECIFIED_TYPE;
-        specifiedTypes[1] = VarIntType.SPECIFIED_TYPE;
-        specifiedTypes[2] = FloatType.SPECIFIED_TYPE;
-        specifiedTypes[3] = StringType.SPECIFIED_TYPE;
-        specifiedTypes[4] = ArrayType.SPECIFIED_TYPE;
-        specifiedTypes[5] = StructType.SPECIFIED_TYPE;
+        specifiedTypes[INT_ID] = IntType.SPECIFIED_TYPE;
+        specifiedTypes[VAR_INT_ID] = VarIntType.SPECIFIED_TYPE;
+        specifiedTypes[BOOLEAN_ID] = BooleanType.SPECIFIED_TYPE;
+        specifiedTypes[FLOAT_ID] = FloatType.SPECIFIED_TYPE;
+        specifiedTypes[STRING_ID] = StringType.SPECIFIED_TYPE;
+        specifiedTypes[ARRAY_ID] = ArrayType.SPECIFIED_TYPE;
+        specifiedTypes[STRUCT_ID] = StructType.SPECIFIED_TYPE;
 
         for (int i = 0; i < specifiedTypes.length; i++) {
             if (specifiedTypes[i] != null && specifiedTypes[i].isPrimitive()) {
@@ -44,6 +51,7 @@ public class TypeCollection {
     }
 
     private final List<@Nullable CondensedType<?, ?>> types;
+    private int lastTypeId = FIRST_CUSTOM_TYPE_ID - 1;
 
     public TypeCollection() {
         this.types = new ArrayList<>();
@@ -95,9 +103,13 @@ public class TypeCollection {
      * @return the id of the added type
      */
     public <C extends CondensedType<?, ?>> C addType(Function<Integer, C> typeCreator) {
-        int id = types.size();
+        int id = ++lastTypeId;
+        types.add(null);
         var type = typeCreator.apply(id);
-        types.add(type);
+        if (types.get(id) != null) {
+            throw new IllegalStateException("Type with id " + id + " already exists");
+        }
+        types.set(id, type);
         return type;
     }
 
@@ -128,5 +140,101 @@ public class TypeCollection {
 
     public boolean containsType(CondensedType<?, ?> type) {
         return types.contains(type);
+    }
+
+    /** Normalize values, as the types don't work with primitive array or number classes */
+    @SuppressWarnings("unchecked")
+    public static <T, R> R normalize(T value) {
+        if (value == null) {
+            return null;
+        }
+        if (value.getClass().isArray()) {
+            if (value instanceof boolean[]) {
+                List<Boolean> booleans = new ArrayList<>();
+                for (boolean b : (boolean[]) value) {
+                    booleans.add(b);
+                }
+                return (R) booleans;
+            }
+            if (value instanceof byte[]) {
+                List<Long> longs = new ArrayList<>();
+                for (byte b : (byte[]) value) {
+                    longs.add((long) b);
+                }
+                return (R) longs;
+            }
+            if (value instanceof short[]) {
+                List<Long> longs = new ArrayList<>();
+                for (short s : (short[]) value) {
+                    longs.add((long) s);
+                }
+                return (R) longs;
+            }
+            if (value instanceof int[]) {
+                List<Long> longs = new ArrayList<>();
+                for (int i : (int[]) value) {
+                    longs.add((long) i);
+                }
+                return (R) longs;
+            }
+            if (value instanceof long[]) {
+                return (R) Arrays.stream((long[]) value).boxed().toList();
+            }
+            if (value instanceof float[]) {
+                List<Float> floats = new ArrayList<>();
+                for (float f : (float[]) value) {
+                    floats.add(f);
+                }
+                return (R) floats;
+            }
+            if (value instanceof double[]) {
+                List<Float> floats = new ArrayList<>();
+                for (double d : (double[]) value) {
+                    floats.add((float) d);
+                }
+                return (R) floats;
+            }
+            if (value instanceof char[]) {
+                List<Long> longs = new ArrayList<>();
+                for (char c : (char[]) value) {
+                    longs.add((long) c);
+                }
+                return (R) longs;
+            }
+            return (R) Arrays.stream((T[]) value).map(TypeCollection::normalize).toList();
+        }
+        if (value instanceof Float) {
+            return (R) value;
+        }
+        if (value instanceof Double) {
+            return (R) (Float) (float) (double) value;
+        }
+        if (value instanceof Character) {
+            return (R) (Long) (long) (char) value;
+        }
+        if (value instanceof Number) {
+            if (value instanceof Long) {
+                return (R) value;
+            } else if (value instanceof Integer) {
+                return (R) (Long) (long) (int) value;
+            } else if (value instanceof Short) {
+                return (R) (Long) (long) (short) value;
+            } else if (value instanceof Byte) {
+                return (R) (Long) (long) (byte) value;
+            }
+        }
+        return (R) value;
+    }
+
+    public List<CondensedType<?, ?>> getTypes() {
+        return types.stream().filter(Objects::nonNull).toList();
+    }
+
+    /** Slow way to get types by name */
+    public @Nullable CondensedType<?, ?> getTypeOrNull(String name) {
+        return types.stream()
+                .filter(t -> t != null && t.getName().equals(name))
+                .findFirst()
+                .orElse(null);
     }
 }

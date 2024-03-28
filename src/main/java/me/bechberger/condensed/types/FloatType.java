@@ -1,5 +1,7 @@
 package me.bechberger.condensed.types;
 
+import static me.bechberger.condensed.types.TypeCollection.FLOAT_ID;
+
 import me.bechberger.condensed.CondensedInputStream;
 import me.bechberger.condensed.CondensedOutputStream;
 
@@ -33,7 +35,7 @@ public class FloatType extends CondensedType<Float, Float> {
             new SpecifiedType<>() {
                 @Override
                 public int id() {
-                    return 2;
+                    return FLOAT_ID;
                 }
 
                 @Override

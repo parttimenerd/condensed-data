@@ -20,11 +20,139 @@ import org.jetbrains.annotations.Nullable;
  */
 public class CondensedOutputStream extends OutputStream {
 
+    private enum WriteMode {
+        TYPE,
+        INSTANCE,
+        OTHER
+    }
+
+    public static class SubStatistic {
+        private final WriteMode mode;
+        private int count = 0;
+        private int bytes = 0;
+        private int strings = 0;
+        private int stringBytes = 0;
+
+        public SubStatistic(WriteMode mode) {
+            this.mode = mode;
+        }
+
+        @Override
+        public String toString() {
+            return "SubStatistic{"
+                    + "mode="
+                    + mode
+                    + ", count="
+                    + count
+                    + ", bytes="
+                    + bytes
+                    + ", strings="
+                    + strings
+                    + ", stringBytes="
+                    + stringBytes
+                    + '}';
+        }
+    }
+
+    /** Statistics about the written data */
+    public static class Statistic {
+        private final SubStatistic customTypes = new SubStatistic(WriteMode.TYPE);
+        private final SubStatistic instanceMessages = new SubStatistic(WriteMode.INSTANCE);
+        private final SubStatistic other = new SubStatistic(WriteMode.OTHER);
+
+        {
+            other.count = 1;
+        }
+
+        private int bytes = 0;
+        private WriteMode mode = WriteMode.OTHER;
+
+        @Override
+        public String toString() {
+            return "Statistic{"
+                    + "customTypes="
+                    + customTypes
+                    + ", instanceMessages="
+                    + instanceMessages
+                    + ", other="
+                    + other
+                    + ", bytes="
+                    + bytes
+                    + '}';
+        }
+
+        public String toPrettyString() {
+            // print as aligned table, columns: mode, count, bytes, strings, stringBytes, last row
+            // is total, first row is header
+            return String.format(
+                    """
+                            %-10s %10s %10s %10s %10s
+                            %-10s %10d %10d %10d %10d
+                            %-10s %10d %10d %10d %10d
+                            %-10s %10d %10d %10d %10d
+                            %-10s %10d %10d %10d %10d""",
+                    "mode",
+                    "count",
+                    "bytes",
+                    "strings",
+                    "stringBytes",
+                    "types",
+                    customTypes.count,
+                    customTypes.bytes,
+                    customTypes.strings,
+                    customTypes.stringBytes,
+                    "instance",
+                    instanceMessages.count,
+                    instanceMessages.bytes,
+                    instanceMessages.strings,
+                    instanceMessages.stringBytes,
+                    "other",
+                    other.count,
+                    other.bytes,
+                    other.strings,
+                    other.stringBytes,
+                    "total",
+                    customTypes.count + instanceMessages.count + other.count,
+                    bytes,
+                    customTypes.strings + instanceMessages.strings + other.strings,
+                    customTypes.stringBytes + instanceMessages.stringBytes + other.stringBytes);
+        }
+
+        public void setModeAndCount(WriteMode mode) {
+            this.mode = mode;
+            switch (mode) {
+                case TYPE -> customTypes.count++;
+                case INSTANCE -> instanceMessages.count++;
+                case OTHER -> other.count++;
+            }
+        }
+
+        private @NotNull SubStatistic getSubStatistic() {
+            return switch (mode) {
+                case TYPE -> customTypes;
+                case INSTANCE -> instanceMessages;
+                case OTHER -> other;
+            };
+        }
+
+        public void record(int bytes) {
+            this.bytes += bytes;
+            getSubStatistic().bytes += bytes;
+        }
+
+        public void recordString(int bytes) {
+            getSubStatistic().strings++;
+            getSubStatistic().stringBytes += bytes;
+        }
+    }
+
     private final Universe universe;
 
     private final TypeCollection typeCollection;
 
     private final OutputStream outputStream;
+
+    private final Statistic statistic = new Statistic();
 
     public CondensedOutputStream(OutputStream outputStream, StartMessage startMessage) {
         this(outputStream);
@@ -73,12 +201,14 @@ public class CondensedOutputStream extends OutputStream {
      */
     @SuppressWarnings("unchecked")
     private void writeType(CondensedType<?, ?> type) {
+        statistic.setModeAndCount(WriteMode.TYPE);
         var spec = ((SpecifiedType<CondensedType<?, ?>>) type.getSpecifiedType());
         writeMessageType(spec.id());
         spec.writeTypeSpecification(this, type);
     }
 
     public <T, R> void writeMessage(CondensedType<T, R> type, T value) {
+        statistic.setModeAndCount(WriteMode.INSTANCE);
         writeMessageType(type.getId());
         type.writeTo(this, value);
     }
@@ -124,6 +254,7 @@ public class CondensedOutputStream extends OutputStream {
      * @param value string to write
      */
     public void writeString(String value, @Nullable String encoding) {
+        int bytesBefore = statistic.bytes;
         byte[] bytes;
         try {
             bytes = value.getBytes(encoding != null ? encoding : "UTF-8");
@@ -136,6 +267,7 @@ public class CondensedOutputStream extends OutputStream {
         } catch (IOException e) {
             throw new RIOException("Can't write string", e);
         }
+        statistic.recordString(statistic.bytes - bytesBefore);
     }
 
     public void writeTypeId(CondensedType<?, ?> type) {
@@ -270,6 +402,7 @@ public class CondensedOutputStream extends OutputStream {
     public void write(int b) {
         try {
             outputStream.write(b);
+            statistic.record(1);
         } catch (IOException e) {
             throw new RIOException("Can't write byte", e);
         }
@@ -278,6 +411,7 @@ public class CondensedOutputStream extends OutputStream {
     @Override
     public void write(byte @NotNull [] b) {
         try {
+            statistic.record(b.length);
             outputStream.write(b);
         } catch (IOException e) {
             throw new RIOException("Can't write byte array", e);
@@ -286,5 +420,13 @@ public class CondensedOutputStream extends OutputStream {
 
     public Universe getUniverse() {
         return universe;
+    }
+
+    public Statistic getStatistic() {
+        return statistic;
+    }
+
+    public TypeCollection getTypeCollection() {
+        return typeCollection;
     }
 }

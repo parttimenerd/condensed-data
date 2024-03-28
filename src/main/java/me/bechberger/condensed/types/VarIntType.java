@@ -1,5 +1,7 @@
 package me.bechberger.condensed.types;
 
+import static me.bechberger.condensed.types.TypeCollection.VAR_INT_ID;
+
 import java.util.Objects;
 import me.bechberger.condensed.CondensedInputStream;
 import me.bechberger.condensed.CondensedOutputStream;
@@ -70,7 +72,7 @@ public class VarIntType extends CondensedType<Long, Long> {
 
                 @Override
                 public int id() {
-                    return 1;
+                    return VAR_INT_ID;
                 }
 
                 @Override

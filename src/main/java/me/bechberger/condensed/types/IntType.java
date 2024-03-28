@@ -1,5 +1,7 @@
 package me.bechberger.condensed.types;
 
+import static me.bechberger.condensed.types.TypeCollection.INT_ID;
+
 import java.util.Objects;
 import me.bechberger.condensed.CondensedInputStream;
 import me.bechberger.condensed.CondensedOutputStream;
@@ -89,7 +91,7 @@ public class IntType extends CondensedType<Long, Long> {
             new SpecifiedType<>() {
                 @Override
                 public int id() {
-                    return 0;
+                    return INT_ID;
                 }
 
                 @Override

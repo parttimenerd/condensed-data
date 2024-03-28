@@ -281,6 +281,12 @@ public class TypeSpecificationTest {
     }
 
     @Provide
+    Arbitrary<TypeCreatorAndValue<Boolean, BooleanType>> booleanType() {
+        return Arbitraries.of(
+                TypeCreatorAndValue.forId(BooleanType::new, Arbitraries.of(true, false)));
+    }
+
+    @Provide
     Arbitrary<TypeCreatorAndValue<String, StringType>> asciiStringType() {
         return Arbitraries.strings()
                 .map(
@@ -299,6 +305,7 @@ public class TypeSpecificationTest {
                                         Arbitraries.integers().between(4, 8).sample(),
                                         Arbitraries.of(true, false).sample()),
                                 varIntType(Arbitraries.of(true, false).sample()),
+                                booleanType(),
                                 floatType(),
                                 stringType());
     }
@@ -515,7 +522,6 @@ public class TypeSpecificationTest {
     }
 
     @Provide
-    @SuppressWarnings({"rawtypes", "unchecked"})
     public Arbitrary<
                     TypeCreatorAndValue<
                             Map<String, Object>,
@@ -864,6 +870,21 @@ public class TypeSpecificationTest {
                 assertNotNull(msg);
                 assertEquals(value, msg.value());
             }
+        }
+    }
+
+    @Property
+    public void testBooleanRoundtrip(@ForAll boolean value) {
+        var type = TypeCollection.getDefaultTypeInstance(BooleanType.SPECIFIED_TYPE);
+        byte[] outBytes =
+                CondensedOutputStream.use(
+                        out -> {
+                            type.writeTo(out, value);
+                        },
+                        false);
+        try (var in = new CondensedInputStream(outBytes)) {
+            var val = type.readFrom(in);
+            assertEquals(value, val);
         }
     }
 }

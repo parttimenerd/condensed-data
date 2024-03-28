@@ -1,5 +1,7 @@
 package me.bechberger.condensed.types;
 
+import static me.bechberger.condensed.types.TypeCollection.STRING_ID;
+
 import me.bechberger.condensed.CondensedInputStream;
 import me.bechberger.condensed.CondensedOutputStream;
 
@@ -49,7 +51,7 @@ public class StringType extends CondensedType<String, String> {
             new SpecifiedType<>() {
                 @Override
                 public int id() {
-                    return 3;
+                    return STRING_ID;
                 }
 
                 @Override
