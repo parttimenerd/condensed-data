@@ -6,8 +6,6 @@ import java.nio.charset.Charset;
 import java.util.*;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Consumer;
-import java.util.function.Function;
-import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 import me.bechberger.condensed.CondensedOutputStream.OverflowMode;
 import me.bechberger.condensed.Universe.EmbeddingType;
@@ -507,16 +505,7 @@ public class TypeSpecificationTest {
                                                         embeddings.sample());
                                             })
                                     .toList();
-                    Function<List<?>, Map<String, Object>> constructor =
-                            (List<?> l) ->
-                                    IntStream.range(0, fields.size())
-                                            .boxed()
-                                            .collect(
-                                                    Collectors.toMap(
-                                                            j -> fields.get(j).name(),
-                                                            j -> l.get(j)));
-                    return out.writeAndStoreType(
-                            id -> new StructType<>(id, (List) fields, constructor));
+                    return out.writeAndStoreType(id -> new StructType<>(id, (List) fields, r -> r));
                 },
                 memberArbitrary);
     }
@@ -570,6 +559,7 @@ public class TypeSpecificationTest {
             for (var value : values) {
                 var msg = in.readNextInstance();
                 assertNotNull(msg);
+                var origMap = ((ReadStruct) msg.value()).copy();
                 assertEquals(value, msg.value());
                 assertEquals(typeRef.get(), msg.type());
             }
@@ -586,7 +576,7 @@ public class TypeSpecificationTest {
         return structType(Freqs.DEFAULT.setMaxDepth(0));
     }
 
-    @Property
+    @Property(seed = "3496424884544232945")
     public void testBasicStruct(
             @ForAll("structTypeWithOutNesting")
                     TypeCreatorAndValue<
@@ -785,8 +775,10 @@ public class TypeSpecificationTest {
                                                                             embedding)),
                                                             m ->
                                                                     Map.of(
-                                                                            "FQ", m.get(0), "S0c",
-                                                                            m.get(1))));
+                                                                            "FQ",
+                                                                            m.get("FQ"),
+                                                                            "S0c",
+                                                                            m.get("S0c"))));
                             for (int i = 0; i < 10; i++) {
                                 out.writeMessage(type, Map.of("FQ", "", "S0c", 2147483646L));
                             }
@@ -856,9 +848,11 @@ public class TypeSpecificationTest {
                                                             m ->
                                                                     Map.of(
                                                                             "",
-                                                                            (long) m.get(0),
+                                                                            (long) m.get(""),
                                                                             "PKxvQ",
-                                                                            (long) m.get(1))));
+                                                                            (long)
+                                                                                    m.get(
+                                                                                            "PKxvQ"))));
                             for (var value : values) {
                                 out.writeMessage(type, value);
                             }
@@ -876,12 +870,7 @@ public class TypeSpecificationTest {
     @Property
     public void testBooleanRoundtrip(@ForAll boolean value) {
         var type = TypeCollection.getDefaultTypeInstance(BooleanType.SPECIFIED_TYPE);
-        byte[] outBytes =
-                CondensedOutputStream.use(
-                        out -> {
-                            type.writeTo(out, value);
-                        },
-                        false);
+        byte[] outBytes = CondensedOutputStream.use(out -> type.writeTo(out, value), false);
         try (var in = new CondensedInputStream(outBytes)) {
             var val = type.readFrom(in);
             assertEquals(value, val);

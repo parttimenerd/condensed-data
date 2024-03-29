@@ -59,9 +59,9 @@ public class BooleanType extends CondensedType<Boolean, Boolean> {
 
                 @Override
                 public BooleanType readInnerTypeSpecification(
-                        CondensedInputStream in, String name, String description) {
-                    return in.getTypeCollection()
-                            .addType(id -> new BooleanType(id, name, description));
+                        CondensedInputStream in, int id, String name, String description) {
+                    return (BooleanType)
+                            in.getTypeCollection().addType(new BooleanType(id, name, description));
                 }
 
                 @Override

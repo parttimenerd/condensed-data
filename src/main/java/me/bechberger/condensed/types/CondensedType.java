@@ -95,28 +95,49 @@ public abstract class CondensedType<T, R> {
         if (embedding == INLINE) {
             return readFrom(in);
         }
+        var index = readReference(in, embeddingType, embedding);
+        return getViaReference(in, embeddingType, embedding, index);
+    }
+
+    public R getViaReference(
+            CondensedInputStream in,
+            CondensedType<?, ?> embeddingType,
+            EmbeddingType embedding,
+            int index) {
+        if (index == -1) {
+            return null;
+        }
+        ReadingCaches caches = in.getUniverse().getReadingCaches();
+        return switch (embedding) {
+            case REFERENCE -> caches.get(this, index);
+            case REFERENCE_PER_TYPE -> caches.get(this, embeddingType, index);
+            default -> throw new IllegalArgumentException("Invalid embedding type: " + embedding);
+        };
+    }
+
+    /** Returns the reference index or -1 if null */
+    public int readReference(
+            CondensedInputStream in, CondensedType<?, ?> embeddingType, EmbeddingType embedding) {
+        assert embedding == EmbeddingType.REFERENCE
+                || embedding == EmbeddingType.REFERENCE_PER_TYPE;
         ReadingCaches caches = in.getUniverse().getReadingCaches();
         var index = (int) in.readUnsignedVarint();
         switch (index) {
             case 0 -> {
-                return null;
+                return -1;
             }
             case 1 -> {
                 var value = readFrom(in);
-                switch (embedding) {
+                return switch (embedding) {
                     case REFERENCE -> caches.put(this, value);
                     case REFERENCE_PER_TYPE -> caches.put(this, embeddingType, value);
-                }
-                return value;
-            }
-            default -> {
-                return switch (embedding) {
-                    case REFERENCE -> caches.get(this, index - 2);
-                    case REFERENCE_PER_TYPE -> caches.get(this, embeddingType, index - 2);
                     default ->
                             throw new IllegalArgumentException(
                                     "Invalid embedding type: " + embedding);
                 };
+            }
+            default -> {
+                return index - 2;
             }
         }
     }
@@ -124,6 +145,9 @@ public abstract class CondensedType<T, R> {
     @Override
     public boolean equals(Object o) {
         if (this == o) return true;
+        if (o instanceof LazyType<?, ?>) {
+            return ((LazyType<?, ?>) o).getId() == id;
+        }
         if (o == null || getClass() != o.getClass()) return false;
 
         CondensedType<?, ?> that = (CondensedType<?, ?>) o;

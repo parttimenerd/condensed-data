@@ -1,5 +1,6 @@
 package me.bechberger.condensed;
 
+import static me.bechberger.condensed.CompletableContainer.ensureRecursivelyComplete;
 import static me.bechberger.condensed.Constants.START_STRING;
 
 import java.io.ByteArrayInputStream;
@@ -119,7 +120,9 @@ public class CondensedInputStream extends InputStream {
     @SuppressWarnings("unchecked")
     private Message readAndProcessInstanceMessage(int typeId) {
         var type = typeCollection.getType(typeId);
-        return new ReadInstance<>((CondensedType<Object, Object>) type, type.readFrom(this));
+        return new ReadInstance<>(
+                (CondensedType<Object, Object>) type,
+                ensureRecursivelyComplete(type.readFrom(this)));
     }
 
     /**
@@ -299,13 +302,5 @@ public class CondensedInputStream extends InputStream {
 
     public Universe getUniverse() {
         return universe;
-    }
-
-    public CondensedType<?, ?> readTypeViaId() {
-        int typeId = (int) readUnsignedVarint();
-        if (typeCollection.hasType(typeId)) {
-            return typeCollection.getType(typeId);
-        }
-        throw new TypeCollection.NoSuchTypeException(typeId);
     }
 }

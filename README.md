@@ -41,7 +41,7 @@ The following data is organized in messages:
   - the content depends on the message type
 
 ### Type Specification
-- id is given by the order of the type in the file
+- unsigned varint: Type ID
 - String: Type name
 - String: Type description
 - Followed by the type-specific data

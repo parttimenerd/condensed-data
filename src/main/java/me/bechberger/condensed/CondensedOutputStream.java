@@ -20,7 +20,7 @@ import org.jetbrains.annotations.Nullable;
  */
 public class CondensedOutputStream extends OutputStream {
 
-    private enum WriteMode {
+    public enum WriteMode {
         TYPE,
         INSTANCE,
         OTHER

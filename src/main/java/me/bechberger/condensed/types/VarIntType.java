@@ -98,10 +98,12 @@ public class VarIntType extends CondensedType<Long, Long> {
 
                 @Override
                 public VarIntType readInnerTypeSpecification(
-                        CondensedInputStream in, String name, String description) {
-                    return in.getTypeCollection()
-                            .addType(
-                                    id -> new VarIntType(id, name, description, in.readFlags()[0]));
+                        CondensedInputStream in, int id, String name, String description) {
+                    return (VarIntType)
+                            in.getTypeCollection()
+                                    .addType(
+                                            new VarIntType(
+                                                    id, name, description, in.readFlags()[0]));
                 }
             };
 

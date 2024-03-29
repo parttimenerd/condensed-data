@@ -49,9 +49,9 @@ public class FloatType extends CondensedType<Float, Float> {
 
                 @Override
                 public FloatType readInnerTypeSpecification(
-                        CondensedInputStream in, String name, String description) {
-                    return in.getTypeCollection()
-                            .addType(id -> new FloatType(id, name, description));
+                        CondensedInputStream in, int id, String name, String description) {
+                    return (FloatType)
+                            in.getTypeCollection().addType(new FloatType(id, name, description));
                 }
 
                 @Override

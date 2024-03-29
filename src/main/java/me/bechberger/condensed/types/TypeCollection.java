@@ -113,6 +113,18 @@ public class TypeCollection {
         return type;
     }
 
+    CondensedType<?, ?> addType(CondensedType<?, ?> type) {
+        int id = type.getId();
+        while (types.size() <= id) {
+            types.add(null);
+        }
+        if (types.get(id) != null) {
+            throw new IllegalStateException("Type with id " + id + " already exists");
+        }
+        types.set(id, type);
+        return type;
+    }
+
     /**
      * Get the type instance with the given id
      *
@@ -236,5 +248,12 @@ public class TypeCollection {
                 .filter(t -> t != null && t.getName().equals(name))
                 .findFirst()
                 .orElse(null);
+    }
+
+    public LazyType<?, ?> getLazyType(int id) {
+        if (hasType(id)) {
+            return new LazyType<>(getType(id));
+        }
+        return new LazyType<>(id, () -> getType(id), "type " + id);
     }
 }

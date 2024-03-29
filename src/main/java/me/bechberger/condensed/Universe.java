@@ -187,8 +187,9 @@ public class Universe {
          *
          * @param value value to put into the cache
          */
-        public void put(T value) {
+        public int put(T value) {
             values.add(value);
+            return values.size() - 1;
         }
 
         /**
@@ -221,8 +222,10 @@ public class Universe {
          * @param embeddingType type of the value that contains the passed value
          * @param value value to put into the cache
          */
-        public void put(CondensedType<?, ?> embeddingType, T value) {
-            values.computeIfAbsent(embeddingType, k -> new ArrayList<>()).add(value);
+        public int put(CondensedType<?, ?> embeddingType, T value) {
+            var list = values.computeIfAbsent(embeddingType, k -> new ArrayList<>());
+            list.add(value);
+            return list.size() - 1;
         }
 
         /**
@@ -263,13 +266,13 @@ public class Universe {
                             type, k -> new ReadingCachePerTypePerEmbeddingType<>());
         }
 
-        public <T, R> void put(CondensedType<T, R> type, R value) {
-            getCache(type).put(value);
+        public <T, R> int put(CondensedType<T, R> type, R value) {
+            return getCache(type).put(value);
         }
 
-        public <T, R> void put(
+        public <T, R> int put(
                 CondensedType<T, R> type, CondensedType<?, ?> embeddingType, R value) {
-            getEmbeddingCache(type).put(embeddingType, value);
+            return getEmbeddingCache(type).put(embeddingType, value);
         }
 
         public <T, R> R get(CondensedType<T, R> type, int id) {

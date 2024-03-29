@@ -109,12 +109,12 @@ public class IntType extends CondensedType<Long, Long> {
 
                 @Override
                 public IntType readInnerTypeSpecification(
-                        CondensedInputStream in, String name, String description) {
+                        CondensedInputStream in, int id, String name, String description) {
                     int width = (int) in.readUnsignedLong(1);
                     boolean[] flags = in.readFlags();
-                    return in.getTypeCollection()
-                            .addType(
-                                    id ->
+                    return (IntType)
+                            in.getTypeCollection()
+                                    .addType(
                                             new IntType(
                                                     id,
                                                     width,

@@ -22,6 +22,7 @@ public interface SpecifiedType<T extends CondensedType<?, ?>> {
 
     /** Write the type specification to the stream (excluding the header) */
     default void writeTypeSpecification(CondensedOutputStream out, T typeInstance) {
+        out.writeUnsignedVarInt(typeInstance.getId());
         out.writeString(typeInstance.getName());
         out.writeString(typeInstance.getDescription());
         writeInnerTypeSpecification(out, typeInstance);
@@ -34,13 +35,14 @@ public interface SpecifiedType<T extends CondensedType<?, ?>> {
 
     /** Read the type specification from the stream (excluding the type) */
     default T readTypeSpecification(CondensedInputStream in) {
-        return readInnerTypeSpecification(in, in.readString(), in.readString());
+        return readInnerTypeSpecification(
+                in, (int) in.readUnsignedVarint(), in.readString(), in.readString());
     }
 
     /**
      * Read the inner type specification from the stream (excluding the type, name and description)
      */
-    T readInnerTypeSpecification(CondensedInputStream in, String name, String description);
+    T readInnerTypeSpecification(CondensedInputStream in, int id, String name, String description);
 
     /**
      * Get the default type instance for this type, if primitive

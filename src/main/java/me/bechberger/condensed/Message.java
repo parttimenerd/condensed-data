@@ -19,8 +19,6 @@ public sealed interface Message {
         }
     }
 
-    record WriteInstance<T, R>(CondensedType<T, R> type, T value) implements Message {}
-
     /** Regular message */
     record ReadInstance<T, R>(CondensedType<T, R> type, R value) implements Message {}
 }

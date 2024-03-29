@@ -5,9 +5,10 @@ import static me.bechberger.condensed.types.TypeCollection.ARRAY_ID;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
-import java.util.function.Supplier;
+import java.util.stream.IntStream;
 import me.bechberger.condensed.CondensedInputStream;
 import me.bechberger.condensed.CondensedOutputStream;
+import me.bechberger.condensed.ReadList;
 import me.bechberger.condensed.Universe.EmbeddingType;
 
 /**
@@ -18,55 +19,19 @@ import me.bechberger.condensed.Universe.EmbeddingType;
  */
 public class ArrayType<V, R> extends CondensedType<List<V>, List<R>> {
 
-    public static class LazyType<T, R> implements Supplier<CondensedType<T, R>> {
-        private final int id;
-        private final Supplier<CondensedType<T, R>> supplier;
-        private final String name;
-        private CondensedType<T, R> type;
-
-        public LazyType(int id, Supplier<CondensedType<T, R>> supplier, String name) {
-            this.id = id;
-            this.supplier = supplier;
-            this.name = name;
-        }
-
-        @Override
-        public CondensedType<T, R> get() {
-            if (type == null) {
-                type = supplier.get();
-            }
-            return type;
-        }
-
-        public String getName() {
-            return name;
-        }
-
-        @Override
-        public boolean equals(Object obj) {
-            return obj instanceof LazyType<?, ?>
-                    && id == ((LazyType<?, ?>) obj).id
-                    && name.equals(((LazyType<?, ?>) obj).name);
-        }
-
-        @Override
-        public int hashCode() {
-            return Objects.hash(name, id);
-        }
-
-        @Override
-        public String toString() {
-            return name;
-        }
-
-        public int getId() {
-            return id;
-        }
-    }
-
-    private final CondensedType<V, R> valueType;
-    private final LazyType<V, R> valueTypeSupplier;
+    private final LazyType<V, R> valueType;
     private final EmbeddingType embedding;
+
+    public ArrayType(
+            int id,
+            String name,
+            String description,
+            LazyType<V, R> valueType,
+            EmbeddingType embedding) {
+        super(id, name, description);
+        this.valueType = valueType;
+        this.embedding = embedding;
+    }
 
     public ArrayType(
             int id,
@@ -74,56 +39,36 @@ public class ArrayType<V, R> extends CondensedType<List<V>, List<R>> {
             String description,
             CondensedType<V, R> valueType,
             EmbeddingType embedding) {
-        super(id, name, description);
-        this.valueType = valueType;
-        this.valueTypeSupplier = null;
-        this.embedding = embedding;
+        this(id, name, description, new LazyType<>(valueType), embedding);
     }
 
-    public ArrayType(
-            int id,
-            String name,
-            String description,
-            LazyType<V, R> valueTypeSupplier,
-            EmbeddingType embedding) {
-        super(id, name, description);
-        this.valueType = null;
-        this.valueTypeSupplier = valueTypeSupplier;
-        this.embedding = embedding;
-    }
-
-    public ArrayType(int id, String name, String description, CondensedType<V, R> valueType) {
+    public ArrayType(int id, String name, String description, LazyType<V, R> valueType) {
         this(id, name, description, valueType, EmbeddingType.INLINE);
     }
 
-    public ArrayType(int id, String name, String description, LazyType<V, R> valueTypeSupplier) {
-        this(id, name, description, valueTypeSupplier, EmbeddingType.INLINE);
+    public ArrayType(int id, String name, String description, CondensedType<V, R> valueType) {
+        this(id, name, description, new LazyType<>(valueType), EmbeddingType.INLINE);
+    }
+
+    public ArrayType(int id, LazyType<V, R> valueType) {
+        this(id, valueType, EmbeddingType.INLINE);
     }
 
     public ArrayType(int id, CondensedType<V, R> valueType) {
         this(id, valueType, EmbeddingType.INLINE);
     }
 
-    public ArrayType(int id, LazyType<V, R> valueTypeSupplier) {
-        this(id, valueTypeSupplier, EmbeddingType.INLINE);
-    }
-
-    public ArrayType(int id, CondensedType<V, R> valueType, EmbeddingType embedding) {
+    public ArrayType(int id, LazyType<V, R> valueType, EmbeddingType embedding) {
         this(
                 id,
                 "array<" + valueType.getName() + ">",
-                "An array of " + valueType.getDescription(),
+                "An array of " + valueType.getName() + "s",
                 valueType,
                 embedding);
     }
 
-    public ArrayType(int id, LazyType<V, R> valueTypeSupplier, EmbeddingType embedding) {
-        this(
-                id,
-                "array<" + valueTypeSupplier.getName() + ">",
-                "An array of " + valueTypeSupplier.getName() + "s",
-                valueTypeSupplier,
-                embedding);
+    public ArrayType(int id, CondensedType<V, R> valueType, EmbeddingType embedding) {
+        this(id, new LazyType<>(valueType), embedding);
     }
 
     @Override
@@ -133,11 +78,11 @@ public class ArrayType<V, R> extends CondensedType<List<V>, List<R>> {
     }
 
     public CondensedType<V, R> getValueType() {
-        return valueType == null ? valueTypeSupplier.get() : valueType;
+        return valueType.get();
     }
 
     public int getValueTypeId() {
-        return valueType == null ? valueTypeSupplier.getId() : valueType.getId();
+        return valueType.getId();
     }
 
     @Override
@@ -151,24 +96,42 @@ public class ArrayType<V, R> extends CondensedType<List<V>, List<R>> {
     @Override
     public List<R> readFrom(CondensedInputStream in) {
         int size = (int) in.readUnsignedVarint();
-        List<R> list = new ArrayList<>(size);
-        for (int i = 0; i < size; i++) {
-            list.add(getValueType().readFrom(in, this, embedding));
+        switch (embedding) {
+            case INLINE -> {
+                List<R> list = new ArrayList<>(size);
+                for (int i = 0; i < size; i++) {
+                    list.add(getValueType().readFrom(in, this, embedding));
+                }
+                return new ReadList<>(this, list);
+            }
+            case REFERENCE, REFERENCE_PER_TYPE -> {
+                var ids =
+                        IntStream.range(0, size)
+                                .mapToObj(
+                                        i -> {
+                                            int val =
+                                                    getValueType()
+                                                            .readReference(in, this, embedding);
+                                            return val == -1 ? null : val;
+                                        })
+                                .toList();
+                return new ReadList<>(
+                        this, ids, id -> getValueType().getViaReference(in, this, embedding, id));
+            }
         }
-        return list;
+        throw new IllegalArgumentException("Invalid embedding type: " + embedding);
     }
 
     @Override
     public boolean equals(Object obj) {
         return super.equals(obj)
                 && Objects.equals(valueType, ((ArrayType<?, ?>) obj).valueType)
-                && Objects.equals(valueTypeSupplier, ((ArrayType<?, ?>) obj).valueTypeSupplier)
                 && embedding == ((ArrayType<?, ?>) obj).embedding;
     }
 
     @Override
     public int hashCode() {
-        return Objects.hash(super.hashCode(), valueType, valueTypeSupplier);
+        return Objects.hash(super.hashCode(), valueType);
     }
 
     public static final SpecifiedType<ArrayType<?, ?>> SPECIFIED_TYPE =
@@ -198,18 +161,18 @@ public class ArrayType<V, R> extends CondensedType<List<V>, List<R>> {
 
                 @Override
                 public ArrayType<?, ?> readInnerTypeSpecification(
-                        CondensedInputStream in, String name, String description) {
-                    long innerTypeId = in.readUnsignedVarint();
+                        CondensedInputStream in, int id, String name, String description) {
+                    int innerTypeId = (int) in.readUnsignedVarint();
                     long embedding = in.readUnsignedLong(1);
-                    return in.getTypeCollection()
-                            .addType(
-                                    id ->
+                    var valueType = in.getTypeCollection().getLazyType(innerTypeId);
+                    return (ArrayType<?, ?>)
+                            in.getTypeCollection()
+                                    .addType(
                                             new ArrayType<>(
                                                     id,
                                                     name,
                                                     description,
-                                                    in.getTypeCollection()
-                                                            .getType((int) innerTypeId),
+                                                    valueType,
                                                     EmbeddingType.values()[(int) embedding]));
                 }
 
@@ -229,10 +192,8 @@ public class ArrayType<V, R> extends CondensedType<List<V>, List<R>> {
                 + getName()
                 + "', description = '"
                 + getDescription()
-                + "'\n"
-                + (valueType == null
-                        ? valueTypeSupplier.getName()
-                        : valueType.toPrettyString(indent + 2))
+                + "': "
+                + valueType.getName()
                 + "\n"
                 + indentStr
                 + "}";

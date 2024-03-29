@@ -67,10 +67,10 @@ public class StringType extends CondensedType<String, String> {
 
                 @Override
                 public StringType readInnerTypeSpecification(
-                        CondensedInputStream in, String name, String description) {
-                    return in.getTypeCollection()
-                            .addType(
-                                    id ->
+                        CondensedInputStream in, int id, String name, String description) {
+                    return (StringType)
+                            in.getTypeCollection()
+                                    .addType(
                                             new StringType(
                                                     id, name, description, in.readString(null)));
                 }

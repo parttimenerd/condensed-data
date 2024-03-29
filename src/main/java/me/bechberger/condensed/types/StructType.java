@@ -2,18 +2,14 @@ package me.bechberger.condensed.types;
 
 import static me.bechberger.condensed.types.TypeCollection.STRUCT_ID;
 
-import java.util.ArrayList;
-import java.util.List;
-import java.util.Map;
-import java.util.Objects;
+import java.util.*;
 import java.util.function.Function;
 import java.util.stream.Collectors;
-import java.util.stream.IntStream;
 import me.bechberger.condensed.CondensedInputStream;
 import me.bechberger.condensed.CondensedOutputStream;
+import me.bechberger.condensed.ReadStruct;
 import me.bechberger.condensed.Universe.EmbeddingType;
-import me.bechberger.condensed.types.ArrayType.LazyType;
-import org.jetbrains.annotations.NotNull;
+import org.jetbrains.annotations.Nullable;
 
 /** A type that represents a struct */
 public class StructType<T, R> extends CondensedType<T, R> {
@@ -21,15 +17,14 @@ public class StructType<T, R> extends CondensedType<T, R> {
     public static final class Field<T, F, R> {
         private final String name;
         private final String description;
-        private final CondensedType<? extends F, R> type;
-        private final LazyType<? extends F, R> typeSupplier;
+        private final LazyType<? extends F, R> type;
         private final Function<T, F> getter;
         private final EmbeddingType embedding;
 
         public Field(
                 String name,
                 String description,
-                CondensedType<? extends F, R> type,
+                LazyType<? extends F, R> type,
                 Function<T, F> getter,
                 EmbeddingType embedding) {
             this.name = name;
@@ -37,28 +32,21 @@ public class StructType<T, R> extends CondensedType<T, R> {
             this.type = type;
             this.getter = getter;
             this.embedding = embedding;
-            this.typeSupplier = null;
-        }
-
-        /** Field with a lazy type supplier */
-        public Field(
-                String name,
-                String description,
-                LazyType<? extends F, R> typeSupplier,
-                Function<T, F> getter,
-                EmbeddingType embedding) {
-            this.name = name;
-            this.description = description;
-            this.type = null;
-            this.getter = getter;
-            this.embedding = embedding;
-            this.typeSupplier = typeSupplier;
         }
 
         public Field(
                 String name,
                 String description,
                 CondensedType<? extends F, R> type,
+                Function<T, F> getter,
+                EmbeddingType embedding) {
+            this(name, description, new LazyType<>(type), getter, embedding);
+        }
+
+        public Field(
+                String name,
+                String description,
+                LazyType<? extends F, R> type,
                 Function<T, F> getter) {
             this(name, description, type, getter, EmbeddingType.INLINE);
         }
@@ -66,9 +54,9 @@ public class StructType<T, R> extends CondensedType<T, R> {
         public Field(
                 String name,
                 String description,
-                LazyType<? extends F, R> typeSupplier,
+                CondensedType<? extends F, R> typeSupplier,
                 Function<T, F> getter) {
-            this(name, description, typeSupplier, getter, EmbeddingType.INLINE);
+            this(name, description, new LazyType<>(typeSupplier), getter);
         }
 
         @Override
@@ -78,14 +66,13 @@ public class StructType<T, R> extends CondensedType<T, R> {
             }
             return name.equals(other.name)
                     && description.equals(other.description)
-                    && Objects.equals(type, other.type)
-                    && Objects.equals(typeSupplier, other.typeSupplier)
+                    && type.equals(other.type)
                     && embedding == other.embedding;
         }
 
         @Override
         public int hashCode() {
-            return Objects.hash(name, description, embedding, type, typeSupplier);
+            return Objects.hash(name, description, embedding, type);
         }
 
         public String name() {
@@ -97,7 +84,7 @@ public class StructType<T, R> extends CondensedType<T, R> {
         }
 
         public CondensedType<? extends F, R> type() {
-            return type != null ? type : Objects.requireNonNull(typeSupplier).get();
+            return type.get();
         }
 
         public Function<T, F> getter() {
@@ -118,7 +105,7 @@ public class StructType<T, R> extends CondensedType<T, R> {
                     + description
                     + ", "
                     + "type="
-                    + (type == null ? typeSupplier : type)
+                    + type
                     + ", "
                     + "getter="
                     + getter
@@ -129,34 +116,51 @@ public class StructType<T, R> extends CondensedType<T, R> {
         }
 
         public String getTypeName() {
-            return type != null ? type.getName() : Objects.requireNonNull(typeSupplier).getName();
+            return type.getName();
         }
 
         public int getTypeId() {
-            return type != null ? type.getId() : Objects.requireNonNull(typeSupplier).getId();
+            return type.getId();
         }
     }
 
     private final List<Field<T, ?, ?>> fields;
     private final Map<String, Field<T, ?, ?>> fieldMap;
-    private final Function<List<?>, R> creator;
+    private final Function<ReadStruct, R> creator;
+    private final StructType<?, ReadStruct> readStructType;
+
+    @SuppressWarnings("unchecked")
+    private StructType(
+            int id,
+            String name,
+            String description,
+            List<Field<T, ?, ?>> fields,
+            Function<ReadStruct, R> creator,
+            @Nullable StructType<?, ReadStruct> readStructType) {
+        super(id, name, description);
+        this.fields = fields;
+        this.fieldMap = fields.stream().collect(Collectors.toMap(Field::name, Function.identity()));
+        this.creator = creator;
+        this.readStructType =
+                readStructType == null ? (StructType<?, ReadStruct>) this : readStructType;
+    }
 
     public StructType(
             int id,
             String name,
             String description,
             List<Field<T, ?, ?>> fields,
-            Function<List<?>, R> creator) {
-        super(id, name, description);
-        this.fields = fields;
-        this.fieldMap = fields.stream().collect(Collectors.toMap(Field::name, Function.identity()));
-        this.creator = creator;
+            Function<ReadStruct, R> creator) {
+        this(
+                id,
+                name,
+                description,
+                fields,
+                creator,
+                new StructType<>(id, name, description, fields, r -> r, null));
     }
 
-    // maybe add another field type called RecField that contains its type as a function
-    // and a StructType constructor that doesn't auto create name and description
-
-    public StructType(int id, List<Field<T, ?, ?>> fields, Function<List<?>, R> creator) {
+    public StructType(int id, List<Field<T, ?, ?>> fields, Function<ReadStruct, R> creator) {
         this(
                 id,
                 "struct{"
@@ -198,15 +202,34 @@ public class StructType<T, R> extends CondensedType<T, R> {
     }
 
     @Override
-    @SuppressWarnings("unchecked")
+    @SuppressWarnings({"unchecked", "rawtypes"})
     public R readFrom(CondensedInputStream in) {
-        List<Object> values = new ArrayList<>(fields.size());
+        Map<String, Object> values = new HashMap<>();
+        Map<String, @Nullable Integer> idsOrNull = new HashMap<>();
         for (Field<T, ?, ?> field : fields) {
-            values.add(
-                    ((CondensedType<Object, Object>) field.type())
-                            .readFrom(in, this, field.embedding()));
+            if (field.embedding() == EmbeddingType.INLINE) {
+                values.put(
+                        field.name(),
+                        ((CondensedType<Object, Object>) field.type())
+                                .readFrom(in, this, field.embedding()));
+            } else {
+                var ref = field.type().readReference(in, this, field.embedding());
+                idsOrNull.put(field.name(), ref == -1 ? null : ref);
+            }
         }
-        return creator.apply(values);
+        ReadStruct readStruct;
+        if (idsOrNull.isEmpty()) {
+            readStruct = new ReadStruct(readStructType, values);
+        } else {
+            readStruct =
+                    new ReadStruct(
+                            readStructType,
+                            values,
+                            idsOrNull,
+                            (field, id) ->
+                                    field.type().getViaReference(in, this, field.embedding, id));
+        }
+        return creator.apply(readStruct);
     }
 
     @Override
@@ -247,41 +270,34 @@ public class StructType<T, R> extends CondensedType<T, R> {
                 @SuppressWarnings({"unchecked", "rawtypes"})
                 public StructType<Map<String, Object>, Map<String, Object>>
                         readInnerTypeSpecification(
-                                CondensedInputStream in, String name, String description) {
+                                CondensedInputStream in, int id, String name, String description) {
                     int size = (int) in.readUnsignedVarint();
                     List<Field<?, ?, ?>> fields = new ArrayList<>(size);
                     for (int i = 0; i < size; i++) {
                         String fieldName = in.readString(null);
                         String fieldDescription = in.readString(null);
-                        CondensedType<?, ?> fieldType = in.readTypeViaId();
+                        var innerTypeId = (int) in.readUnsignedVarint();
+                        var innerLazyType = in.getTypeCollection().getLazyType(innerTypeId);
                         EmbeddingType embeddingType =
                                 EmbeddingType.valueOf((int) in.readUnsignedLong(1));
                         fields.add(
                                 new Field<>(
                                         fieldName,
                                         fieldDescription,
-                                        fieldType,
+                                        innerLazyType,
                                         Function.identity(),
                                         embeddingType));
                     }
-                    return in.getTypeCollection()
-                            .addType(
-                                    id ->
+                    return (StructType<Map<String, Object>, Map<String, Object>>)
+                            in.getTypeCollection()
+                                    .addType(
                                             new StructType<>(
                                                     id,
                                                     name,
                                                     description,
                                                     (List<Field<Map<String, Object>, ?, ?>>)
                                                             (List) fields,
-                                                    (List<?> l) -> construct(l, fields)));
-                }
-
-                @NotNull
-                private static Map<String, Object> construct(
-                        List<?> l, List<Field<?, ?, ?>> fields) {
-                    return IntStream.range(0, fields.size())
-                            .boxed()
-                            .collect(Collectors.toMap(j -> fields.get(j).name, l::get));
+                                                    r -> r));
                 }
 
                 @Override
@@ -300,6 +316,8 @@ public class StructType<T, R> extends CondensedType<T, R> {
         var indentStr = " ".repeat(indent);
         return indentStr
                 + "StructType "
+                + getId()
+                + " "
                 + getName()
                 + ": "
                 + getDescription()
@@ -314,5 +332,21 @@ public class StructType<T, R> extends CondensedType<T, R> {
 
     public Field<T, ?, ?> getField(String name) {
         return fieldMap.get(name);
+    }
+
+    public int size() {
+        return fields.size();
+    }
+
+    public boolean hasField(String name) {
+        return fieldMap.containsKey(name);
+    }
+
+    public List<String> getFieldNames() {
+        return fields.stream().map(Field::name).collect(Collectors.toList());
+    }
+
+    public List<Field<T, ?, ?>> getFields() {
+        return fields;
     }
 }
