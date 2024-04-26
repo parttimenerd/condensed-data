@@ -97,7 +97,10 @@ public class TypeCollection {
     }
 
     /**
-     * Add a new type to the collection
+     * Add a new type to the collection.
+     *
+     * <p>If you're currently writing a file, make sure to also write it out. Consider using {@link
+     * me.bechberger.condensed.CondensedOutputStream#writeAndStoreType(Function)}
      *
      * @param typeCreator the function to create the type instance
      * @return the id of the added type
@@ -115,6 +118,13 @@ public class TypeCollection {
 
     CondensedType<?, ?> addType(CondensedType<?, ?> type) {
         int id = type.getId();
+        if (id - types.size() > 10000) {
+            throw new IllegalStateException(
+                    "Type id " + id + " is too far ahead of the last type id " + lastTypeId);
+        }
+        if (id < 0) {
+            throw new IllegalStateException("Type id is negative (" + id + ") which is an error");
+        }
         while (types.size() <= id) {
             types.add(null);
         }

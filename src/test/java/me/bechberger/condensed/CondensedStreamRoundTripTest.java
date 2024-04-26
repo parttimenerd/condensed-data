@@ -261,4 +261,32 @@ public class CondensedStreamRoundTripTest {
             assertNull(in.readNextMessageAndProcess());
         }
     }
+
+    @Property
+    public void testBFloat16RoundTrip(@ForAll float value) {
+        assertRoundTrip(
+                value,
+                out -> out.writeBFloat16(value),
+                CondensedInputStream::readBFloat16,
+                (a, b) -> {
+                    // mantissa of 7 bits
+                    double fraction = (1 / Math.pow(2, 7));
+                    double allowedDiff = Math.max(Math.abs(a), Math.abs(b)) * fraction;
+                    return Math.abs(a - b) <= allowedDiff;
+                });
+    }
+
+    @Property
+    public void testFloat16RoundTrip(@ForAll float value) {
+        assertRoundTrip(
+                value,
+                out -> out.writeFloat16(value),
+                CondensedInputStream::readFloat16,
+                (a, b) -> {
+                    // mantissa of 10 bits
+                    double fraction = (1 / Math.pow(2, 10));
+                    double allowedDiff = Math.max(Math.abs(a), Math.abs(b)) * fraction;
+                    return Math.abs(a - b) <= allowedDiff;
+                });
+    }
 }

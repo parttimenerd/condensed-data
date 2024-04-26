@@ -35,8 +35,10 @@ public interface SpecifiedType<T extends CondensedType<?, ?>> {
 
     /** Read the type specification from the stream (excluding the type) */
     default T readTypeSpecification(CondensedInputStream in) {
-        return readInnerTypeSpecification(
-                in, (int) in.readUnsignedVarint(), in.readString(), in.readString());
+        var t =
+                readInnerTypeSpecification(
+                        in, (int) in.readUnsignedVarint(), in.readString(), in.readString());
+        return t;
     }
 
     /**

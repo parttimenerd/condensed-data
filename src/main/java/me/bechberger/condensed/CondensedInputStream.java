@@ -9,6 +9,7 @@ import java.io.InputStream;
 import java.io.UnsupportedEncodingException;
 import java.time.Instant;
 import java.util.concurrent.TimeUnit;
+import java.util.zip.GZIPInputStream;
 import me.bechberger.condensed.Message.CondensedTypeMessage;
 import me.bechberger.condensed.Message.ReadInstance;
 import me.bechberger.condensed.Message.StartMessage;
@@ -34,7 +35,7 @@ public class CondensedInputStream extends InputStream {
 
     private final Universe universe;
     private final TypeCollection typeCollection;
-    private final InputStream inputStream;
+    private InputStream inputStream;
     private boolean startStringRead = false;
 
     public CondensedInputStream(InputStream inputStream) {
@@ -113,16 +114,26 @@ public class CondensedInputStream extends InputStream {
         }
         startStringRead = true;
         StartMessage message =
-                new StartMessage((int) readUnsignedVarint(), readString(), readString());
+                new StartMessage(
+                        (int) readUnsignedVarint(), readString(), readString(), read() == 1);
+        if (message.compressed()) {
+            try {
+                this.inputStream = new GZIPInputStream(inputStream);
+            } catch (IOException e) {
+                throw new RuntimeException(e);
+            }
+        }
         universe.setStartMessage(message);
     }
 
     @SuppressWarnings("unchecked")
     private Message readAndProcessInstanceMessage(int typeId) {
         var type = typeCollection.getType(typeId);
-        return new ReadInstance<>(
-                (CondensedType<Object, Object>) type,
-                ensureRecursivelyComplete(type.readFrom(this)));
+        var in =
+                new ReadInstance<>(
+                        (CondensedType<Object, Object>) type,
+                        ensureRecursivelyComplete(type.readFrom(this)));
+        return in;
     }
 
     /**
@@ -251,6 +262,14 @@ public class CondensedInputStream extends InputStream {
 
     public float readFloat() {
         return Float.intBitsToFloat((int) readUnsignedLong(4));
+    }
+
+    public float readFloat16() {
+        return Util.fp16ToFloat((short) readUnsignedLong(2));
+    }
+
+    public float readBFloat16() {
+        return Util.bf16ToFloat((short) readUnsignedLong(2));
     }
 
     public double readDouble() {

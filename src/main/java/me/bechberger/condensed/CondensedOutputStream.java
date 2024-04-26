@@ -6,6 +6,8 @@ import java.io.OutputStream;
 import java.io.UnsupportedEncodingException;
 import java.util.function.Consumer;
 import java.util.function.Function;
+import java.util.zip.Deflater;
+import java.util.zip.GZIPOutputStream;
 import me.bechberger.condensed.Message.StartMessage;
 import me.bechberger.condensed.types.CondensedType;
 import me.bechberger.condensed.types.SpecifiedType;
@@ -32,6 +34,9 @@ public class CondensedOutputStream extends OutputStream {
         private int bytes = 0;
         private int strings = 0;
         private int stringBytes = 0;
+        private int stringLe10Bytes = 0;
+        private int stringLe100Bytes = 0;
+        private int stringLe1000Bytes = 0;
 
         public SubStatistic(WriteMode mode) {
             this.mode = mode;
@@ -86,36 +91,57 @@ public class CondensedOutputStream extends OutputStream {
             // is total, first row is header
             return String.format(
                     """
-                            %-10s %10s %10s %10s %10s
-                            %-10s %10d %10d %10d %10d
-                            %-10s %10d %10d %10d %10d
-                            %-10s %10d %10d %10d %10d
-                            %-10s %10d %10d %10d %10d""",
+                            %-10s %10s %10s %10s %10s %10s %10s %10s
+                            %-10s %10d %10d %10d %10d %10d %10d %10d
+                            %-10s %10d %10d %10d %10d %10d %10d %10d
+                            %-10s %10d %10d %10d %10d %10d %10d %10d
+                            %-10s %10d %10d %10d %10d %10d %10d %10d""",
                     "mode",
                     "count",
                     "bytes",
                     "strings",
                     "stringBytes",
+                    "<= 10",
+                    "<= 100",
+                    "<= 1000",
                     "types",
                     customTypes.count,
                     customTypes.bytes,
                     customTypes.strings,
                     customTypes.stringBytes,
+                    customTypes.stringLe10Bytes,
+                    customTypes.stringLe100Bytes,
+                    customTypes.stringLe1000Bytes,
                     "instance",
                     instanceMessages.count,
                     instanceMessages.bytes,
                     instanceMessages.strings,
                     instanceMessages.stringBytes,
+                    instanceMessages.stringLe10Bytes,
+                    instanceMessages.stringLe100Bytes,
+                    instanceMessages.stringLe1000Bytes,
                     "other",
                     other.count,
                     other.bytes,
                     other.strings,
                     other.stringBytes,
+                    other.stringLe10Bytes,
+                    other.stringLe100Bytes,
+                    other.stringLe1000Bytes,
                     "total",
                     customTypes.count + instanceMessages.count + other.count,
                     bytes,
                     customTypes.strings + instanceMessages.strings + other.strings,
-                    customTypes.stringBytes + instanceMessages.stringBytes + other.stringBytes);
+                    customTypes.stringBytes + instanceMessages.stringBytes + other.stringBytes,
+                    customTypes.stringLe10Bytes
+                            + instanceMessages.stringLe10Bytes
+                            + other.stringLe10Bytes,
+                    customTypes.stringLe100Bytes
+                            + instanceMessages.stringLe100Bytes
+                            + other.stringLe100Bytes,
+                    customTypes.stringLe1000Bytes
+                            + instanceMessages.stringLe1000Bytes
+                            + other.stringLe1000Bytes);
         }
 
         public void setModeAndCount(WriteMode mode) {
@@ -143,6 +169,13 @@ public class CondensedOutputStream extends OutputStream {
         public void recordString(int bytes) {
             getSubStatistic().strings++;
             getSubStatistic().stringBytes += bytes;
+            if (bytes <= 10) {
+                getSubStatistic().stringLe10Bytes += bytes;
+            } else if (bytes <= 100) {
+                getSubStatistic().stringLe100Bytes += bytes;
+            } else if (bytes <= 1000) {
+                getSubStatistic().stringLe1000Bytes += bytes;
+            }
         }
     }
 
@@ -150,13 +183,30 @@ public class CondensedOutputStream extends OutputStream {
 
     private final TypeCollection typeCollection;
 
-    private final OutputStream outputStream;
+    private OutputStream outputStream;
 
     private final Statistic statistic = new Statistic();
+
+    private boolean closed = false;
+
+    private static class ConfigurableGZIPOutputStream extends GZIPOutputStream {
+        public ConfigurableGZIPOutputStream(OutputStream out, int level) throws IOException {
+            super(out);
+            def.setLevel(level);
+        }
+    }
 
     public CondensedOutputStream(OutputStream outputStream, StartMessage startMessage) {
         this(outputStream);
         writeStartString(startMessage);
+        if (startMessage.compressed()) {
+            try {
+                this.outputStream =
+                        new ConfigurableGZIPOutputStream(outputStream, Deflater.BEST_COMPRESSION);
+            } catch (IOException e) {
+                throw new RuntimeException(e);
+            }
+        }
     }
 
     /** Create an output stream without a start string and message, used for testing */
@@ -172,6 +222,15 @@ public class CondensedOutputStream extends OutputStream {
         writeUnsignedVarInt(startMessage.version());
         writeString(startMessage.generatorName());
         writeString(startMessage.generatorVersion());
+        write(startMessage.compressed() ? 1 : 0);
+    }
+
+    static byte[] useCompressed(Consumer<CondensedOutputStream> consumer) {
+        ByteArrayOutputStream outputStream = new ByteArrayOutputStream();
+        CondensedOutputStream condensedOutputStream =
+                new CondensedOutputStream(outputStream, StartMessage.DEFAULT.compress(true));
+        consumer.accept(condensedOutputStream);
+        return outputStream.toByteArray();
     }
 
     static byte[] use(Consumer<CondensedOutputStream> consumer, boolean useStartMessage) {
@@ -188,7 +247,8 @@ public class CondensedOutputStream extends OutputStream {
         writeUnsignedVarInt(messageType);
     }
 
-    public <C extends CondensedType<?, ?>> C writeAndStoreType(Function<Integer, C> typeCreator) {
+    public synchronized <C extends CondensedType<?, ?>> C writeAndStoreType(
+            Function<Integer, C> typeCreator) {
         var type = typeCollection.addType(typeCreator);
         writeType(type);
         return type;
@@ -197,17 +257,23 @@ public class CondensedOutputStream extends OutputStream {
     /**
      * Writes a type specification to the stream
      *
+     * <p>The type has to be present in the type collection.
+     *
      * @param type the type instance to write
      */
     @SuppressWarnings("unchecked")
-    private void writeType(CondensedType<?, ?> type) {
+    public void writeType(CondensedType<?, ?> type) {
+        if (!typeCollection.hasType(type.getId())
+                || !typeCollection.getType(type.getId()).equals(type)) {
+            throw new AssertionError("Type " + type + " is not present in type collection");
+        }
         statistic.setModeAndCount(WriteMode.TYPE);
         var spec = ((SpecifiedType<CondensedType<?, ?>>) type.getSpecifiedType());
         writeMessageType(spec.id());
         spec.writeTypeSpecification(this, type);
     }
 
-    public <T, R> void writeMessage(CondensedType<T, R> type, T value) {
+    public synchronized <T, R> void writeMessage(CondensedType<T, R> type, T value) {
         statistic.setModeAndCount(WriteMode.INSTANCE);
         writeMessageType(type.getId());
         type.writeTo(this, value);
@@ -373,6 +439,14 @@ public class CondensedOutputStream extends OutputStream {
         writeSignedLong(Float.floatToRawIntBits(value), 4, OverflowMode.ERROR);
     }
 
+    public void writeFloat16(float value) {
+        writeSignedLong(Util.floatToFp16(value), 2, OverflowMode.ERROR);
+    }
+
+    public void writeBFloat16(float value) {
+        writeSignedLong(Util.floatToBf16(value), 2, OverflowMode.ERROR);
+    }
+
     /** Writes a double to the stream */
     public void writeDouble(double value) {
         writeSignedLong(Double.doubleToRawLongBits(value), 8, OverflowMode.ERROR);
@@ -428,5 +502,19 @@ public class CondensedOutputStream extends OutputStream {
 
     public TypeCollection getTypeCollection() {
         return typeCollection;
+    }
+
+    @Override
+    public synchronized void close() {
+        closed = true;
+        try {
+            outputStream.close();
+        } catch (IOException e) {
+            throw new RIOException("Can't close stream", e);
+        }
+    }
+
+    public boolean isClosed() {
+        return closed;
     }
 }

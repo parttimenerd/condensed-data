@@ -13,8 +13,7 @@ import me.bechberger.condensed.types.*;
 import me.bechberger.condensed.types.StructType.Field;
 import net.jqwik.api.*;
 import net.jqwik.api.arbitraries.ListArbitrary;
-import net.jqwik.api.constraints.IntRange;
-import net.jqwik.api.constraints.Size;
+import net.jqwik.api.constraints.*;
 import org.jetbrains.annotations.NotNull;
 import org.junit.jupiter.api.Test;
 
@@ -38,6 +37,61 @@ public class TypeSpecificationTest {
             assertEquals(
                     new IntType(TypeCollection.FIRST_CUSTOM_TYPE_ID, width, signed, overflowMode),
                     result);
+        }
+    }
+
+    @Property
+    @SuppressWarnings("rawtypes")
+    public void testScaledVarintTypeRoundTrip(
+            @ForAll boolean signed,
+            @ForAll @ByteRange(min = 1) byte multiplier,
+            @ForAll long value) {
+        try (var in =
+                new CondensedInputStream(
+                        CondensedOutputStream.use(
+                                out -> {
+                                    var t =
+                                            out.writeAndStoreType(
+                                                    id ->
+                                                            new VarIntType(
+                                                                    id,
+                                                                    "",
+                                                                    "",
+                                                                    signed,
+                                                                    multiplier));
+                                    out.writeMessage(t, value);
+                                },
+                                true))) {
+            VarIntType result = (VarIntType) (CondensedType) in.readNextTypeMessageAndProcess();
+            assertEquals(
+                    new VarIntType(TypeCollection.FIRST_CUSTOM_TYPE_ID, "", "", signed, multiplier),
+                    result);
+            var msg = in.readNextInstance();
+            assertNotNull(msg);
+            assertEquals(value / multiplier * multiplier, msg.value());
+        }
+    }
+
+    @Property
+    public void testBooleanRoundTrip(@ForAll boolean value) {
+        try (var in =
+                new CondensedInputStream(
+                        CondensedOutputStream.use(
+                                out -> {
+                                    var type = out.writeAndStoreType(BooleanType::new);
+                                    out.writeMessage(type, value);
+                                },
+                                true))) {
+            BooleanType result = (BooleanType) (CondensedType) in.readNextTypeMessageAndProcess();
+            assertEquals(
+                    new BooleanType(
+                            TypeCollection.FIRST_CUSTOM_TYPE_ID, "boolean", "A boolean value"),
+                    result);
+            var msg = in.readNextInstance();
+            assertNotNull(msg);
+            assertEquals(value, msg.value());
+            assertInstanceOf(BooleanType.class, msg.type());
+            assertInstanceOf(Boolean.class, msg.value());
         }
     }
 
