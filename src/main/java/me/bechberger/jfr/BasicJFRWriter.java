@@ -18,6 +18,7 @@ import me.bechberger.condensed.types.FloatType.Type;
 import me.bechberger.condensed.types.StructType.Field;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
+import org.json.JSONArray;
 
 /**
  * Writes JFR events to a {@link CondensedOutputStream} which can be read by {@link BasicJFRReader}
@@ -158,7 +159,6 @@ public class BasicJFRWriter {
     private final Map<EventType, StructType<RecordedEvent, Map<String, Object>>> eventTypeMap;
     private final Map<TypeIdent, CondensedType<?, ?>> fieldTypes;
     private final List<Entry<TypeIdent, CondensedType<?, ?>>> fieldTypesToAdd;
-    private long lastStartTimeNanos = -1;
     private Map<Long, VarIntType> timespanTypePerDivisor = new HashMap<>();
     private VarIntType timeStampType;
     private Map<String, FloatType> memoryFloatTypes = new HashMap<>();
@@ -176,17 +176,10 @@ public class BasicJFRWriter {
         this.fieldTypes = new HashMap<>();
         this.fieldTypesToAdd = new ArrayList<>();
         this.fieldTypesCurrentlyAdding = new HashMap<>();
-        timeStampType =
-                out.writeAndStoreType(
-                        id ->
-                                new VarIntType(
-                                        id,
-                                        "timestamp",
-                                        "",
-                                        false,
-                                        configuration.timeStampTicksPerSecond()));
+        timeStampType = out.writeAndStoreType(id -> new VarIntType(id, "timestamp", "", false, 1));
         // runtime shutdown hook to close the output stream
         Runtime.getRuntime().addShutdownHook(new Thread(out::close));
+        out.setReductions(new JFRReduction.JFRReductions(configuration, universe));
     }
 
     public BasicJFRWriter(CondensedOutputStream out) {
@@ -275,6 +268,7 @@ public class BasicJFRWriter {
         if (field.getTypeName().equals("java.lang.String")) {
             return EmbeddingType.REFERENCE_PER_TYPE;
         }
+        // TODO: maybe also inline for small structs
         return field.getFields().isEmpty() || field.getTypeName().equals("jdk.jfr.StackFrame")
                 ? EmbeddingType.INLINE
                 : EmbeddingType.REFERENCE;
@@ -311,11 +305,7 @@ public class BasicJFRWriter {
     @NotNull
     private StructType<RecordedObject, Map<String, Object>> createStructType(
             ValueDescriptor field, Integer id) {
-        var fields =
-                field.getFields().stream()
-                        .filter(f -> !f.getTypeName().equals(field.getTypeName()))
-                        .map(e -> eventFieldToField(e, false))
-                        .toList();
+        var fields = field.getFields().stream().map(e -> eventFieldToField(e, false)).toList();
         var name = field.getTypeName();
         var description =
                 field.getLabel()
@@ -333,19 +323,69 @@ public class BasicJFRWriter {
                 TypeIdent.of(field), f -> createTypeAndRegister(field, field.isArray()));
     }
 
+    private String getDescription(ValueDescriptor field) {
+        // encode all important info in the description
+        JSONArray arr = new JSONArray();
+        arr.put(field.getTypeName());
+        arr.put(field.getContentType());
+        arr.put(
+                field.getAnnotationElements().stream()
+                        .map(
+                                a -> {
+                                    JSONArray annotation = new JSONArray();
+                                    annotation.put(a.getTypeName());
+                                    annotation.put(a.getValues());
+                                    return annotation;
+                                })
+                        .toList());
+        arr.put(field.getLabel());
+        arr.put(field.getDescription());
+        arr.put(field.isArray());
+        return arr.toString();
+    }
+
+    record ParsedAnnotationElement(String type, List<Object> values) {}
+
+    public record ParsedFieldDescription(
+            String type,
+            String contentType,
+            List<ParsedAnnotationElement> annotations,
+            String label,
+            String description,
+            boolean isArray) {}
+
+    @SuppressWarnings("unchecked")
+    public static ParsedFieldDescription parseFieldDescription(String description) {
+        JSONArray arr = new JSONArray(description);
+        return new ParsedFieldDescription(
+                arr.getString(0),
+                arr.isNull(1) ? null : arr.getString(1),
+                arr.getJSONArray(2).toList().stream()
+                        .map(
+                                o -> {
+                                    var a = (List<Object>) o;
+                                    return new ParsedAnnotationElement(
+                                            (String) a.get(0), (List<Object>) a.get(1));
+                                })
+                        .toList(),
+                arr.isNull(3) ? null : arr.getString(3),
+                arr.isNull(4) ? null : arr.getString(4),
+                arr.getBoolean(5));
+    }
+
     @SuppressWarnings("unchecked")
     private <T extends RecordedObject> Field<T, ?, ?> eventFieldToField(
             ValueDescriptor field, boolean topLevel) {
-        String description =
-                field.getLabel()
-                        + (field.getDescription() == null ? "" : ": " + field.getDescription());
+        String description = getDescription(field);
         EmbeddingType embedding = getEmbeddingType(field);
         var getterAndCachedType = gettObjectFunction(field, topLevel);
         var getter = (Function<T, Object>) getterAndCachedType.getter;
         var ident = TypeIdent.of(field, false);
         var cachedType = getterAndCachedType.cachedType;
+        var reductionId = getterAndCachedType.reduction.ordinal();
         if (cachedType != null) {
-            return new Field<>(field.getName(), description, cachedType, getter, embedding);
+            return new Field<>(
+                    field.getName(), description, cachedType, getter, embedding, reductionId);
         }
         Integer currentId = fieldTypesCurrentlyAdding.get(ident);
         if (currentId != null) {
@@ -360,13 +400,22 @@ public class BasicJFRWriter {
                                             "Type " + ident + " not found in caches"),
                             ident.toString()),
                     getter,
-                    embedding);
+                    embedding,
+                    reductionId);
         }
-        return new Field<>(field.getName(), description, getTypeCached(field), getter, embedding);
+        return new Field<>(
+                field.getName(), description, getTypeCached(field), getter, embedding, reductionId);
     }
 
     private record GetterAndCachedType(
-            Function<RecordedObject, Object> getter, @Nullable CondensedType<?, ?> cachedType) {}
+            Function<RecordedObject, Object> getter,
+            @Nullable CondensedType<?, ?> cachedType,
+            JFRReduction reduction) {
+        GetterAndCachedType(
+                Function<RecordedObject, Object> getter, @Nullable CondensedType<?, ?> cachedType) {
+            this(getter, cachedType, JFRReduction.NONE);
+        }
+    }
 
     private Optional<AnnotationElement> getAnnotationElement(ValueDescriptor field, String name) {
         return field.getAnnotationElements().stream()
@@ -383,15 +432,9 @@ public class BasicJFRWriter {
         String contentType = field.getContentType();
         if (contentType != null && contentType.equals("jdk.jfr.Timestamp")) {
             return new GetterAndCachedType(
-                    event -> {
-                        var instant = event.getInstant("startTime");
-                        long l = instant.getEpochSecond() * 1_000_000_000 + instant.getNano();
-                        long r = l - lastStartTimeNanos;
-                        lastStartTimeNanos = l;
-                        return Math.round(
-                                r / (1_000_000_000.0 / configuration.timeStampTicksPerSecond()));
-                    },
-                    timeStampType);
+                    event -> event.getInstant(field.getName()),
+                    timeStampType,
+                    JFRReduction.TIMESTAMP_REDUCTION);
         }
         if (contentType != null && contentType.equals("jdk.jfr.Timespan")) {
             return getTimespanType(field, topLevel);
@@ -466,6 +509,20 @@ public class BasicJFRWriter {
         return specifiedTicksPerSec;
     }
 
+    String getEventDescription(EventType type) {
+        var arr = new JSONArray();
+        arr.put(type.getLabel());
+        arr.put(type.getDescription());
+        return arr.toString();
+    }
+
+    public record ParsedEventDescription(String label, String description) {}
+
+    public static ParsedEventDescription parseEventDescription(String description) {
+        JSONArray arr = new JSONArray(description);
+        return new ParsedEventDescription(arr.getString(0), arr.getString(1));
+    }
+
     @SuppressWarnings({"unchecked", "rawtypes"})
     StructType<RecordedEvent, Map<String, Object>> createAndRegisterEventStructType(
             EventType eventType) {
@@ -478,10 +535,7 @@ public class BasicJFRWriter {
                     return new StructType<>(
                             id,
                             eventType.getName(),
-                            eventType.getLabel()
-                                    + (eventType.getDescription() == null
-                                            ? ""
-                                            : ": " + eventType.getDescription()),
+                            getEventDescription(eventType),
                             (List<Field<RecordedEvent, ?, ?>>) (List) fields,
                             members -> members);
                 });
@@ -508,6 +562,7 @@ public class BasicJFRWriter {
             universe.setStartTimeNanos(
                     event.getStartTime().getEpochSecond() * 1_000_000_000
                             + event.getStartTime().getNano());
+            universe.setLastStartTimeNanos(universe.getStartTimeNanos());
             writeUniverse();
         }
         if (out.isClosed()) {

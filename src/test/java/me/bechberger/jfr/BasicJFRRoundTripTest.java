@@ -1,9 +1,12 @@
 package me.bechberger.jfr;
 
-import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static me.bechberger.condensed.Util.equalUnderBf16Conversion;
+import static org.junit.jupiter.api.Assertions.*;
 
 import java.io.ByteArrayOutputStream;
+import java.time.Instant;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.concurrent.atomic.AtomicReference;
 import jdk.jfr.*;
 import jdk.jfr.consumer.RecordedEvent;
@@ -11,18 +14,36 @@ import jdk.jfr.consumer.RecordingStream;
 import me.bechberger.condensed.CondensedInputStream;
 import me.bechberger.condensed.CondensedOutputStream;
 import me.bechberger.condensed.Message.StartMessage;
+import me.bechberger.condensed.Util;
+import me.bechberger.util.Asserters;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 
 public class BasicJFRRoundTripTest {
 
     @Name("TestEvent")
     @Label("Label")
     @Description("Description")
-    @StackTrace(true)
-    static class TestEvent extends Event {}
+    @StackTrace()
+    static class TestEvent extends Event {
+        @Label("Label")
+        int number;
+
+        @Label("Memory")
+        @DataAmount
+        long memory = Runtime.getRuntime().freeMemory();
+
+        @Label("String")
+        String string = "Hello" + memory;
+
+        TestEvent(int number) {
+            this.number = number;
+        }
+    }
 
     @Test
-    public void testTestEventRountTrip() throws InterruptedException {
+    public void testBasicTestEventRoundTrip() throws InterruptedException {
         AtomicReference<RecordedEvent> recordedEvent = new AtomicReference<>();
         ByteArrayOutputStream outputStream = new ByteArrayOutputStream();
         final int ttps = 100;
@@ -40,7 +61,7 @@ public class BasicJFRRoundTripTest {
                             rs.close();
                         });
                 rs.startAsync();
-                BasicJFRWriterTest.TestEvent testEvent = new BasicJFRWriterTest.TestEvent();
+                TestEvent testEvent = new TestEvent(0);
                 testEvent.commit();
                 rs.awaitTermination();
             }
@@ -50,8 +71,107 @@ public class BasicJFRRoundTripTest {
             var readEvent = basicJFRReader.readNextEvent();
             assertNotNull(readEvent);
             assertEquals("TestEvent", readEvent.getType().getName());
-            assertEquals("Label: Description", readEvent.getType().getDescription());
+            assertEquals("[\"Label\",\"Description\"]", readEvent.getType().getDescription());
             assertEquals(ttps, basicJFRReader.getConfiguration().timeStampTicksPerSecond());
+            assertEquals(
+                    recordedEvent.get().getStartTime().getEpochSecond(),
+                    readEvent.get(Instant.class, "startTime").getEpochSecond());
+        }
+        try (var in = new CondensedInputStream(outputStream.toByteArray())) {
+            var bos = new ByteArrayOutputStream();
+            var jfrReader = new WritingJFRReader(new BasicJFRReader(in), bos);
+            var readEvent = jfrReader.readNextJFREvent();
+            assertNotNull(readEvent);
+            assertEquals("TestEvent", readEvent.getType().getTypeName());
+        }
+    }
+
+    /**
+     * Write {@link TestEvent} twice and read it back with the built-in JFR reader, comparing the
+     * results.
+     *
+     * <p>Important: Stacktrace equality is only minus recursive class objects, as the {@link
+     * WritingJFRReader} can't handle self-recursive objects (yet).
+     */
+    @ParameterizedTest
+    @ValueSource(ints = {1, 11, 1001, 1_000_000_000})
+    public void testTestEventRoundTrip(int ticksPerSecond) throws InterruptedException {
+        List<RecordedEvent> recordedEvents = new ArrayList<>();
+        ByteArrayOutputStream outputStream = new ByteArrayOutputStream();
+        var memoryAsFloatB16 = ticksPerSecond == 1;
+        try (CondensedOutputStream out =
+                new CondensedOutputStream(outputStream, StartMessage.DEFAULT)) {
+            BasicJFRWriter basicJFRWriter =
+                    new BasicJFRWriter(
+                            out,
+                            Configuration.DEFAULT
+                                    .withTimeStampTicksPerSecond(ticksPerSecond)
+                                    .withDurationTicksPerSecond(ticksPerSecond)
+                                    .withMemoryAsBFloat16(memoryAsFloatB16));
+            try (RecordingStream rs = new RecordingStream()) {
+                rs.onEvent(
+                        "TestEvent",
+                        event -> {
+                            basicJFRWriter.processEvent(event);
+                            recordedEvents.add(event);
+                            if (recordedEvents.size() == 2) rs.close();
+                        });
+
+                rs.startAsync();
+                new TestEvent(0).commit();
+                Thread.sleep(10);
+                var evt = new TestEvent(1);
+                evt.begin();
+                Thread.sleep(5);
+                evt.commit();
+                rs.awaitTermination();
+            }
+        }
+        try (var in = new CondensedInputStream(outputStream.toByteArray())) {
+            var events = WritingJFRReader.toJFREventsList(new BasicJFRReader(in));
+            assertEquals(2, recordedEvents.size());
+            assertEquals(recordedEvents.size(), events.size());
+            int number = 0;
+            for (var pair : Util.zip(recordedEvents, events)) {
+                var recordedEvent = pair.left;
+                var event = pair.right;
+                System.out.println(event);
+
+                // Check type and number
+                assertEquals("TestEvent", event.getEventType().getName());
+                assertEquals(number, event.getInt("number"));
+
+                // Check start time and duration
+                Asserters.assertEquals(
+                        recordedEvent.getStartTime(), event.getStartTime(), ticksPerSecond);
+                Asserters.assertEquals(
+                        recordedEvent.getDuration(), event.getDuration(), ticksPerSecond);
+
+                // Check memory field
+                if (memoryAsFloatB16) {
+                    assertTrue(
+                            equalUnderBf16Conversion(
+                                    recordedEvent.getLong("memory"), event.getLong("memory")));
+                } else {
+                    assertEquals(recordedEvent.getLong("memory"), event.getLong("memory"));
+                }
+
+                // Check string field
+                assertEquals(recordedEvent.getString("string"), event.getString("string"));
+
+                // Check stack trace
+                var recordedStackTrace = recordedEvent.getStackTrace();
+                var stackTrace = event.getStackTrace();
+                assertEquals(recordedStackTrace.isTruncated(), stackTrace.isTruncated());
+                assertEquals(recordedStackTrace.getFrames().size(), stackTrace.getFrames().size());
+                for (int i = 0; i < recordedStackTrace.getFrames().size(); i++) {
+                    var recordedFrame = recordedStackTrace.getFrames().get(i);
+                    var frame = stackTrace.getFrames().get(i);
+                    Asserters.assertEquals(recordedFrame, frame, "frame " + i);
+                }
+
+                number++;
+            }
         }
     }
 }

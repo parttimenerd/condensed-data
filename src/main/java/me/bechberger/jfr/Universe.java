@@ -4,11 +4,13 @@ import me.bechberger.condensed.types.StructType;
 import me.bechberger.condensed.types.TypeCollection;
 
 /** Universe that contains the required state like the start time */
-class Universe {
+public class Universe {
 
     private StructType<Universe, Universe> _type;
 
     private long startTimeNanos = -1;
+
+    private long lastStartTimeNanos = -1;
 
     public Universe() {}
 
@@ -19,8 +21,9 @@ class Universe {
         return _type;
     }
 
-    public Universe(long startTimeNanos) {
+    public Universe(long startTimeNanos, long lastStartTimeNanos) {
         this.startTimeNanos = startTimeNanos;
+        this.lastStartTimeNanos = lastStartTimeNanos;
     }
 
     public void setStartTimeNanos(long startTimeNanos) {
@@ -36,5 +39,16 @@ class Universe {
         if (other.startTimeNanos != -1) {
             startTimeNanos = other.startTimeNanos;
         }
+        if (other.lastStartTimeNanos != -1) {
+            lastStartTimeNanos = other.lastStartTimeNanos;
+        }
+    }
+
+    public void setLastStartTimeNanos(long lastStartTimeNanos) {
+        this.lastStartTimeNanos = lastStartTimeNanos;
+    }
+
+    public long getLastStartTimeNanos() {
+        return lastStartTimeNanos;
     }
 }

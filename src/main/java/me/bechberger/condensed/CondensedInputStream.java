@@ -7,14 +7,13 @@ import java.io.ByteArrayInputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.UnsupportedEncodingException;
-import java.time.Instant;
-import java.util.concurrent.TimeUnit;
 import java.util.zip.GZIPInputStream;
 import me.bechberger.condensed.Message.CondensedTypeMessage;
 import me.bechberger.condensed.Message.ReadInstance;
 import me.bechberger.condensed.Message.StartMessage;
 import me.bechberger.condensed.RIOException.NoStartStringException;
 import me.bechberger.condensed.types.CondensedType;
+import me.bechberger.condensed.types.Reductions;
 import me.bechberger.condensed.types.TypeCollection;
 import org.jetbrains.annotations.Nullable;
 
@@ -36,6 +35,7 @@ public class CondensedInputStream extends InputStream {
     private final Universe universe;
     private final TypeCollection typeCollection;
     private InputStream inputStream;
+    private Reductions reductions = Reductions.NONE;
     private boolean startStringRead = false;
 
     public CondensedInputStream(InputStream inputStream) {
@@ -290,12 +290,6 @@ public class CondensedInputStream extends InputStream {
         return result;
     }
 
-    public Instant readInstant(TimeUnit unit) {
-        long timeValue = readUnsignedLong(8);
-        // interpret timeValue as unit
-        return Instant.ofEpochMilli(unit.toNanos(timeValue));
-    }
-
     /**
      * Reads a single byte from the stream
      *
@@ -321,5 +315,14 @@ public class CondensedInputStream extends InputStream {
 
     public Universe getUniverse() {
         return universe;
+    }
+
+    public CondensedInputStream setReductions(Reductions reductions) {
+        this.reductions = reductions;
+        return this;
+    }
+
+    public Reductions getReductions() {
+        return reductions;
     }
 }

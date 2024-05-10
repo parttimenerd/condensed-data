@@ -122,6 +122,10 @@ public class ReadStruct implements Map<String, Object>, CompletableContainer<Rea
         return map.get(key);
     }
 
+    public <T> T get(Class<T> clazz, String key) {
+        return clazz.cast(get(key));
+    }
+
     public <T> T get(String key, Class<T> clazz) {
         return clazz.cast(get(key));
     }
@@ -174,9 +178,10 @@ public class ReadStruct implements Map<String, Object>, CompletableContainer<Rea
     @Override
     public boolean equals(Object obj) {
         ensureComplete();
-        return obj instanceof ReadStruct
-                && type.equals(((ReadStruct) obj).type)
-                && map.equals(((ReadStruct) obj).map);
+        return (obj instanceof ReadStruct
+                        && type.equals(((ReadStruct) obj).type)
+                        && map.equals(((ReadStruct) obj).map))
+                || (obj instanceof Map && map.equals(obj));
     }
 
     @Override

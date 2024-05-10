@@ -7,6 +7,7 @@ import java.util.List;
 import java.util.concurrent.Callable;
 import jdk.jfr.consumer.RecordedEvent;
 import jdk.jfr.consumer.RecordingFile;
+import me.bechberger.condensed.CondensedInputStream;
 import me.bechberger.condensed.CondensedOutputStream;
 import me.bechberger.condensed.Message.StartMessage;
 import picocli.CommandLine.*;
@@ -22,7 +23,7 @@ public class JFRCLI implements Runnable {
 
     @Spec CommandSpec spec;
 
-    @Command(name = "write", description = "Write a JFR file from a condensed file")
+    @Command(name = "condense", description = "Condense a JFR file")
     public static class WriteJFRCommand implements Callable<Integer> {
 
         // optional out path, compress flag, statistics flag
@@ -96,6 +97,42 @@ public class JFRCLI implements Runnable {
                     e.printStackTrace();
                     return 1;
                 }
+            }
+            return 0;
+        }
+    }
+
+    @Command(name = "help", description = "Print help information")
+    public void help() {
+        spec.commandLine().usage(System.out);
+    }
+
+    @Command(name = "inflate", description = "Inflate a condensed JFR file into JFR format")
+    public static class InflateJFRCommand implements Callable<Integer> {
+        @Parameters(index = "0", description = "The input file")
+        private Path inputFile;
+
+        @Parameters(index = "1", description = "The output file", defaultValue = "")
+        private Path outputFile;
+
+        private Path getOutputFile() {
+            if (outputFile.toString().isEmpty()) {
+                return inputFile.resolveSibling(inputFile.getFileName() + ".inflated.jfr");
+            }
+            return outputFile;
+        }
+
+        public Integer call() {
+            if (!Files.exists(inputFile)) {
+                System.err.println("Input file does not exist: " + inputFile);
+                return 1;
+            }
+            try (var inputStream = Files.newInputStream(inputFile)) {
+                var jfrReader = new BasicJFRReader(new CondensedInputStream(inputStream));
+                WritingJFRReader.toJFRFile(jfrReader, getOutputFile());
+            } catch (Exception e) {
+                e.printStackTrace();
+                return 1;
             }
             return 0;
         }

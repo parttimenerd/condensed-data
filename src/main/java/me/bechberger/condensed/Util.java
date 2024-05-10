@@ -1,5 +1,10 @@
 package me.bechberger.condensed;
 
+import java.time.Instant;
+import java.util.List;
+import java.util.stream.IntStream;
+import org.openjdk.jmc.common.util.Pair;
+
 public class Util {
 
     /**
@@ -119,5 +124,19 @@ public class Util {
     public static float bf16ToFloat(short input) {
         int bits = input << 16;
         return Float.intBitsToFloat(bits);
+    }
+
+    public static boolean equalUnderBf16Conversion(long first, long second) {
+        return floatToBf16((float) first) == floatToBf16((float) second);
+    }
+
+    public static <T1, T2> List<Pair<T1, T2>> zip(List<T1> list1, List<T2> list2) {
+        return IntStream.range(0, Math.min(list1.size(), list2.size()))
+                .mapToObj(i -> new Pair<>(list1.get(i), list2.get(i)))
+                .toList();
+    }
+
+    public static long toNanoSeconds(Instant instant) {
+        return instant.getEpochSecond() * 1_000_000_000 + instant.getNano();
     }
 }

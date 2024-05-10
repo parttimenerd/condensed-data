@@ -510,7 +510,8 @@ public class TypeSpecificationTest {
             createStructCreator(
                     List<TypeCreatorAndValue<?, ? extends CondensedType<?, ?>>> members,
                     List<String> names,
-                    Arbitrary<EmbeddingType> embeddings) {
+                    Arbitrary<EmbeddingType> embeddings,
+                    Arbitrary<Integer> reductionIds) {
         if (members.isEmpty()) {
             return new TypeCreatorAndValue<>(
                     out ->
@@ -556,10 +557,14 @@ public class TypeSpecificationTest {
                                                         t.creator().create(out),
                                                         (Map<String, Object> m) ->
                                                                 m.get(names.get(i)),
-                                                        embeddings.sample());
+                                                        embeddings.sample(),
+                                                        reductionIds.sample());
                                             })
                                     .toList();
-                    return out.writeAndStoreType(id -> new StructType<>(id, (List) fields, r -> r));
+                    return out.writeAndStoreType(
+                            id ->
+                                    new StructType<>(
+                                            id, (List) fields, r -> r, reductionIds.sample()));
                 },
                 memberArbitrary);
     }
@@ -583,11 +588,13 @@ public class TypeSpecificationTest {
                                                 .uniqueElements()
                                                 .ofSize(size)));
         var embeddings = Arbitraries.of(EmbeddingType.class);
+        var reductionIds = Arbitraries.integers().greaterOrEqual(0);
         return membersAndNamesComb.flatMap(
                 membersAndNames ->
                         membersAndNames.as(
                                 (members, names) ->
-                                        createStructCreator(members, names, embeddings)));
+                                        createStructCreator(
+                                                members, names, embeddings, reductionIds)));
     }
 
     private static void check(
@@ -799,7 +806,7 @@ public class TypeSpecificationTest {
      * <p>{Cd= , 8 =2147483646}
      */
     @Property
-    public void testStringIntStruct(@ForAll EmbeddingType embedding) {
+    public void testStringIntStruct(@ForAll EmbeddingType embedding, @ForAll int reductionId) {
         var outBytes =
                 CondensedOutputStream.use(
                         out -> {
@@ -820,19 +827,22 @@ public class TypeSpecificationTest {
                                                                             (Map<String, Object>
                                                                                             m) ->
                                                                                     m.get("FQ"),
-                                                                            embedding),
+                                                                            embedding,
+                                                                            reductionId),
                                                                     new Field<>(
                                                                             "S0c",
                                                                             "",
                                                                             intType,
                                                                             m -> m.get("S0c"),
-                                                                            embedding)),
+                                                                            embedding,
+                                                                            reductionId)),
                                                             m ->
                                                                     Map.of(
                                                                             "FQ",
                                                                             m.get("FQ"),
                                                                             "S0c",
-                                                                            m.get("S0c"))));
+                                                                            m.get("S0c")),
+                                                            reductionId));
                             for (int i = 0; i < 10; i++) {
                                 out.writeMessage(type, Map.of("FQ", "", "S0c", 2147483646L));
                             }
@@ -842,6 +852,13 @@ public class TypeSpecificationTest {
             for (int i = 0; i < 10; i++) {
                 var msg = in.readNextInstance();
                 assertNotNull(msg);
+                var type = msg.type();
+                assertInstanceOf(StructType.class, type);
+                assertTrue(
+                        ((StructType<?, ?>) type)
+                                .getFields().stream()
+                                        .allMatch(f -> f.reductionId() == reductionId));
+                assertEquals(reductionId, ((StructType<?, ?>) type).getReductionId());
                 assertEquals(Map.of("FQ", "", "S0c", 2147483646L), msg.value());
             }
         }
@@ -892,13 +909,15 @@ public class TypeSpecificationTest {
                                                                             "",
                                                                             intType,
                                                                             m -> m.get(""),
-                                                                            embedding),
+                                                                            embedding,
+                                                                            0),
                                                                     new Field<>(
                                                                             "PKxvQ",
                                                                             "",
                                                                             intType2,
                                                                             m -> m.get("PKxvQ"),
-                                                                            embedding)),
+                                                                            embedding,
+                                                                            0)),
                                                             m ->
                                                                     Map.of(
                                                                             "",
@@ -928,6 +947,171 @@ public class TypeSpecificationTest {
         try (var in = new CondensedInputStream(outBytes)) {
             var val = type.readFrom(in);
             assertEquals(value, val);
+        }
+    }
+
+    @Test
+    @SuppressWarnings("unchecked")
+    public void testStructFieldReduction() {
+
+        record TestStruct(String a, int b) {}
+
+        // reduction 1 just reduces the string to its length and inflates it by repeating "X"
+        Reductions reductions =
+                new Reductions() {
+
+                    @Override
+                    @SuppressWarnings("unchecked")
+                    public <R, F> R reduce(int id, F value) {
+                        if (id == 0) {
+                            return (R) value;
+                        }
+                        if (id == 1) {
+                            return (R) (Integer) ((String) value).length();
+                        }
+                        throw new IllegalArgumentException("Invalid id");
+                    }
+
+                    @Override
+                    @SuppressWarnings("unchecked")
+                    public <R, F> F inflate(int id, R reduced) {
+                        if (id == 0) {
+                            return (F) reduced;
+                        }
+                        if (id == 1) {
+                            return (F) "X".repeat((int) (long) reduced);
+                        }
+                        throw new IllegalArgumentException("Invalid id");
+                    }
+                };
+
+        var outBytes =
+                CondensedOutputStream.use(
+                        out -> {
+                            out.setReductions(reductions);
+                            var intType =
+                                    TypeCollection.getDefaultTypeInstance(IntType.SPECIFIED_TYPE);
+                            var type =
+                                    out.writeAndStoreType(
+                                            id ->
+                                                    new StructType<>(
+                                                            id,
+                                                            List.of(
+                                                                    new Field<>(
+                                                                            "a",
+                                                                            "",
+                                                                            intType,
+                                                                            (TestStruct s) -> s.a,
+                                                                            EmbeddingType.INLINE,
+                                                                            1),
+                                                                    new Field<>(
+                                                                            "b",
+                                                                            "",
+                                                                            intType,
+                                                                            s -> s.b,
+                                                                            EmbeddingType.INLINE,
+                                                                            0)),
+                                                            m ->
+                                                                    new TestStruct(
+                                                                            (String) m.get("a"),
+                                                                            (int)
+                                                                                    (long)
+                                                                                            m.get(
+                                                                                                    "b"))));
+                            out.writeMessage(type, new TestStruct("abc", 3));
+                        },
+                        true);
+        try (var in = new CondensedInputStream(outBytes).setReductions(reductions)) {
+            var value = in.readNextInstance();
+            assertNotNull(value);
+            assertEquals(Map.of("a", "XXX", "b", (long) 3), value.value());
+        }
+    }
+
+    @Test
+    public void testWholeStructReduction() {
+
+        record TestStruct(String a, int b) {}
+
+        record TestStructReduced(int a, int b) {}
+
+        // reduction 1 just reduces the string to its length and inflates it by repeating "X"
+        Reductions reductions =
+                new Reductions() {
+
+                    @Override
+                    @SuppressWarnings("unchecked")
+                    public <R, F> R reduce(int id, F value) {
+                        if (id == 0) {
+                            return (R) value;
+                        }
+                        if (id == 1) {
+                            var val = (TestStruct) value;
+                            return (R) new TestStructReduced(val.a.length(), val.b);
+                        }
+                        throw new IllegalArgumentException("Invalid id");
+                    }
+
+                    @Override
+                    @SuppressWarnings("unchecked")
+                    public <R, F> F inflate(int id, R reduced) {
+                        if (id == 0) {
+                            return (F) reduced;
+                        }
+                        if (id == 1) {
+                            var val = (ReadStruct) reduced;
+                            return (F)
+                                    new TestStruct(
+                                            "X".repeat((int) (long) val.get("a")),
+                                            (int) (long) val.get("b"));
+                        }
+                        throw new IllegalArgumentException("Invalid id");
+                    }
+                };
+
+        var outBytes =
+                CondensedOutputStream.use(
+                        out -> {
+                            out.setReductions(reductions);
+                            var intType =
+                                    TypeCollection.getDefaultTypeInstance(IntType.SPECIFIED_TYPE);
+                            var type =
+                                    out.writeAndStoreType(
+                                            id ->
+                                                    new StructType<>(
+                                                            id,
+                                                            List.of(
+                                                                    new Field<>(
+                                                                            "a",
+                                                                            "",
+                                                                            intType,
+                                                                            (TestStructReduced s) ->
+                                                                                    s.a,
+                                                                            EmbeddingType.INLINE),
+                                                                    new Field<>(
+                                                                            "b",
+                                                                            "",
+                                                                            intType,
+                                                                            s -> (long) s.b,
+                                                                            EmbeddingType.INLINE)),
+                                                            m ->
+                                                                    new TestStruct(
+                                                                            "X"
+                                                                                    .repeat(
+                                                                                            (int)
+                                                                                                    (long)
+                                                                                                            m
+                                                                                                                    .get(
+                                                                                                                            "a")),
+                                                                            (Integer) m.get("b")),
+                                                            1));
+                            out.writeMessageReduced(type, new TestStruct("abc", 3));
+                        },
+                        true);
+        try (var in = new CondensedInputStream(outBytes).setReductions(reductions)) {
+            var value = in.readNextInstance();
+            assertNotNull(value);
+            assertEquals(new TestStruct("XXX", 3), value.value());
         }
     }
 }

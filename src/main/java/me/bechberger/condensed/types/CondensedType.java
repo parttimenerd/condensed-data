@@ -59,6 +59,10 @@ public abstract class CondensedType<T, R> {
             EmbeddingType embedding) {
         if (embedding == INLINE) {
             Objects.requireNonNull(value, "Value must not be null");
+            if (value instanceof Integer && this instanceof IntType) {
+                ((IntType) this).writeTo(out, (long) (Integer) value);
+                return;
+            }
             writeTo(out, value);
             return;
         }

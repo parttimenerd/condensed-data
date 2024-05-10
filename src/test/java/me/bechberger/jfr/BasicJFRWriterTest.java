@@ -53,7 +53,7 @@ public class BasicJFRWriterTest {
             var teType = types.getTypeOrNull("TestEvent");
             assertNotNull(teType, "TestEvent type not found");
             assertEquals("TestEvent", teType.getName());
-            assertEquals("Label: Description", teType.getDescription());
+            assertEquals("[\"Label\",\"Description\"]", teType.getDescription());
             assertInstanceOf(StructType.class, teType, "TestEvent is not a struct type");
             // check that the type for TestEvent has a field named "stackTrace"
             var stackTraceField = ((StructType<?, ?>) teType).getField("stackTrace");
@@ -91,10 +91,10 @@ public class BasicJFRWriterTest {
                 TestEvent testEvent = new TestEvent();
                 testEvent.commit();
                 Thread.sleep(100);
-                rs.close();
             }
             System.out.println(out.getStatistic().toPrettyString());
         }
+
         byte[] data = outputStream.toByteArray();
         System.out.println("Data length: " + data.length);
         try (var in = new CondensedInputStream(data)) {

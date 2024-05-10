@@ -10,6 +10,7 @@ import java.util.zip.Deflater;
 import java.util.zip.GZIPOutputStream;
 import me.bechberger.condensed.Message.StartMessage;
 import me.bechberger.condensed.types.CondensedType;
+import me.bechberger.condensed.types.Reductions;
 import me.bechberger.condensed.types.SpecifiedType;
 import me.bechberger.condensed.types.TypeCollection;
 import org.jetbrains.annotations.NotNull;
@@ -185,6 +186,8 @@ public class CondensedOutputStream extends OutputStream {
 
     private OutputStream outputStream;
 
+    private Reductions reductions = Reductions.NONE;
+
     private final Statistic statistic = new Statistic();
 
     private boolean closed = false;
@@ -277,6 +280,14 @@ public class CondensedOutputStream extends OutputStream {
         statistic.setModeAndCount(WriteMode.INSTANCE);
         writeMessageType(type.getId());
         type.writeTo(this, value);
+    }
+
+    /** take care that the value matches the type if the type has a reduction */
+    @SuppressWarnings("unchecked")
+    public synchronized <T, R, V> void writeMessageReduced(CondensedType<T, R> type, V value) {
+        statistic.setModeAndCount(WriteMode.INSTANCE);
+        writeMessageType(type.getId());
+        type.writeTo(this, (T) value);
     }
 
     /**
@@ -516,5 +527,13 @@ public class CondensedOutputStream extends OutputStream {
 
     public boolean isClosed() {
         return closed;
+    }
+
+    public void setReductions(Reductions reductions) {
+        this.reductions = reductions;
+    }
+
+    public Reductions getReductions() {
+        return reductions;
     }
 }

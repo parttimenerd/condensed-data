@@ -9,7 +9,7 @@ public interface CompletableContainer<T> {
     T ensureRecursivelyComplete(IdentityHashMap<Object, Void> checked);
 
     default String toPrettyString() {
-        return toPrettyString(Integer.MAX_VALUE);
+        return toPrettyString(5);
     }
 
     default String toPrettyString(int depth) {
@@ -21,14 +21,6 @@ public interface CompletableContainer<T> {
 
     default T ensureRecursivelyComplete() {
         return ensureRecursivelyComplete(new IdentityHashMap<>());
-    }
-
-    @SuppressWarnings("unchecked")
-    static <T> T ensureComplete(T t) {
-        if (t instanceof CompletableContainer) {
-            return (T) ((CompletableContainer<Object>) t).ensureComplete();
-        }
-        return t;
     }
 
     @SuppressWarnings("unchecked")

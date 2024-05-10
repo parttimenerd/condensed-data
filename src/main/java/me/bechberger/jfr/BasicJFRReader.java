@@ -3,6 +3,7 @@ package me.bechberger.jfr;
 import me.bechberger.condensed.CondensedInputStream;
 import me.bechberger.condensed.Message.ReadInstance;
 import me.bechberger.condensed.ReadStruct;
+import me.bechberger.condensed.types.Reductions;
 import org.jetbrains.annotations.Nullable;
 
 /** Read JFR data from a {@link CondensedInputStream} which was written by {@link BasicJFRWriter} */
@@ -32,13 +33,22 @@ public class BasicJFRReader {
             } else {
                 processConfiguration(msg);
             }
+            if (in.getReductions() == Reductions.NONE) {
+                in.setReductions(new JFRReduction.JFRReductions(configuration, universe));
+            }
             msg = in.readNextInstance();
             if (msg == null) {
                 closed = true;
                 return null;
             }
         }
-        return (ReadStruct) msg.value();
+        if (configuration == null || universe == null) {
+            throw new IllegalStateException(
+                    "Configuration and Universe must be read before events");
+        }
+        var event = (ReadStruct) msg.value();
+        event.ensureRecursivelyComplete();
+        return event;
     }
 
     public Configuration getConfiguration() {
@@ -62,5 +72,9 @@ public class BasicJFRReader {
         configuration =
                 TypeUtil.createInstanceFromReadStruct(
                         Configuration.class, (ReadStruct) msg.value());
+    }
+
+    public Universe getUniverse() {
+        return universe;
     }
 }
