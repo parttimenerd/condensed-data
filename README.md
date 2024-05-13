@@ -55,7 +55,10 @@ The following data is organized in messages:
     - uint8: signedness (0: unsigned, 1: signed)
     - long: multiplier, the value is stored as `value / multiplier` and read as `value * multiplier`
   - Floating point type (maps to `float` in Java)
-    - we don't need double precision for now,v maybe add it later
+    - _we don't need double precision for now, maybe add it later_
+    - uint8: type
+      - 0: IEEE 754 32 bit float
+      - 1: BFloat16 (top 16 bits of a 32 bit float)
   - String
     - String: Encoding (e.g. `UTF-8`)
   - Array-based type
@@ -106,8 +109,30 @@ Development
 Every commit is formatted via `mvn spotless:apply` in a pre-commit hook to ensure consistent formatting, install it via:
 ```shell
 mvn install
-m
+mvn package
+```
+
 This pre-commit hook also runs the tests via `mvn test`.
+
+Benchmarking
+------------
+To create the JFR files for benchmarking, run the following command:
+```shell
+python3 bin/create_jfr_files.py
+```
+This takes a day, as it generates JFR files for
+the JFR configurations in the `benchmarks` folder and
+multiple GCs using the [renaissance benchmark](https://renaissance.dev/) suite.
+
+Now to run the benchmarks, use the following command:
+```shell
+java -jar target/condensed-data.jar benchmark
+```
+
+The generated JFR files are probably larger than real-world files, as the
+benchmark suite triggers GCs regularly, but smaller than dedicated GC benchmarks.
+
+
 
 License
 -------

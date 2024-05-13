@@ -285,7 +285,7 @@ public class Universe {
     }
 
     private @Nullable StartMessage startMessage;
-    private static final int DEFAULT_SIZE = 100000;
+    private static final int DEFAULT_SIZE = 1000;
     private final WritingCaches writingCaches;
     private final ReadingCaches readingCaches = new ReadingCaches();
 

@@ -2,7 +2,9 @@ package me.bechberger.jfr;
 
 import static me.bechberger.condensed.types.TypeCollection.normalize;
 
+import java.io.IOException;
 import java.nio.charset.Charset;
+import java.nio.file.Path;
 import java.util.*;
 import java.util.Map.Entry;
 import java.util.concurrent.ConcurrentHashMap;
@@ -10,6 +12,7 @@ import java.util.function.Function;
 import jdk.jfr.*;
 import jdk.jfr.consumer.RecordedEvent;
 import jdk.jfr.consumer.RecordedObject;
+import jdk.jfr.consumer.RecordingFile;
 import me.bechberger.condensed.CondensedOutputStream;
 import me.bechberger.condensed.CondensedOutputStream.OverflowMode;
 import me.bechberger.condensed.Universe.EmbeddingType;
@@ -555,7 +558,28 @@ public class BasicJFRWriter {
         out.writeMessage(universeType, universe);
     }
 
+    private boolean isUnnecessaryEvent(RecordedEvent event) {
+        switch (event.getEventType().getName()) {
+            case "jdk.G1HeapRegionTypeChange":
+                // from == to
+                return event.getString("from").equals(event.getString("to"));
+            default:
+                return false;
+        }
+    }
+
+    /** Checks if the event should be ignored */
+    private boolean ignoreEvent(RecordedEvent event) {
+        if (configuration.ignoreUnnecessaryEvents()) {
+            return isUnnecessaryEvent(event);
+        }
+        return false;
+    }
+
     public void processEvent(RecordedEvent event) {
+        if (ignoreEvent(event)) {
+            return;
+        }
         if (!wroteConfiguration) {
             writeConfiguration();
             wroteConfiguration = true;
@@ -573,5 +597,23 @@ public class BasicJFRWriter {
                         event.getEventType(), this::createAndRegisterEventStructType);
         processFieldTypesToAdd();
         out.writeMessage(type, event);
+    }
+
+    public void processJFRFile(RecordingFile r) {
+        while (r.hasMoreEvents()) {
+            try {
+                processEvent(r.readEvent());
+            } catch (IOException e) {
+                throw new RuntimeException(e);
+            }
+        }
+    }
+
+    public void processJFRFile(Path file) {
+        try (var r = new RecordingFile(file)) {
+            processJFRFile(r);
+        } catch (IOException e) {
+            throw new RuntimeException(e);
+        }
     }
 }

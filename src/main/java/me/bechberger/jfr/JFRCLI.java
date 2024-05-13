@@ -2,14 +2,14 @@ package me.bechberger.jfr;
 
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.util.ArrayList;
-import java.util.List;
+import java.util.Iterator;
 import java.util.concurrent.Callable;
-import jdk.jfr.consumer.RecordedEvent;
 import jdk.jfr.consumer.RecordingFile;
 import me.bechberger.condensed.CondensedInputStream;
 import me.bechberger.condensed.CondensedOutputStream;
 import me.bechberger.condensed.Message.StartMessage;
+import me.bechberger.jfr.Benchmark.TableConfig;
+import org.jetbrains.annotations.NotNull;
 import picocli.CommandLine.*;
 import picocli.CommandLine.Model.CommandSpec;
 
@@ -17,7 +17,11 @@ import picocli.CommandLine.Model.CommandSpec;
 @Command(
         name = "cjfr",
         description = "Work with condensed JFR files",
-        subcommands = {JFRCLI.WriteJFRCommand.class},
+        subcommands = {
+            JFRCLI.WriteJFRCommand.class,
+            JFRCLI.InflateJFRCommand.class,
+            JFRCLI.BenchmarkCommand.class
+        },
         mixinStandardHelpOptions = true)
 public class JFRCLI implements Runnable {
 
@@ -35,7 +39,7 @@ public class JFRCLI implements Runnable {
         private Path outputFile;
 
         @Option(
-                names = {"-c", "--compress"},
+                names = {"--compress"},
                 description = "Compress the output file")
         private boolean compress = false;
 
@@ -44,11 +48,23 @@ public class JFRCLI implements Runnable {
                 description = "Print statistics")
         private boolean statistics = false;
 
+        static class ConfigurationIterable implements Iterable<String> {
+            @NotNull
+            @Override
+            public Iterator<String> iterator() {
+                return Configuration.configurations.values().stream()
+                        .map(Configuration::name)
+                        .sorted()
+                        .iterator();
+            }
+        }
+
         @Option(
-                names = {"-r", "--reasonable-default"},
-                description =
-                        "Reduce time precision and more without noticeable loss of information")
-        private boolean reasonableDefault = false;
+                names = {"-c", "--configuration"},
+                description = "The configuration to use, possible values: ${COMPLETION-CANDIDATES}",
+                completionCandidates = ConfigurationIterable.class,
+                defaultValue = "default")
+        private Configuration configuration = Configuration.DEFAULT;
 
         private Path getOutputFile() {
             if (outputFile.toString().isEmpty()) {
@@ -66,14 +82,8 @@ public class JFRCLI implements Runnable {
                     new CondensedOutputStream(
                             Files.newOutputStream(getOutputFile()),
                             StartMessage.DEFAULT.compress(compress))) {
-                var basicJFRWriter =
-                        new BasicJFRWriter(
-                                out,
-                                reasonableDefault
-                                        ? Configuration.REASONABLE_DEFAULT
-                                        : Configuration.DEFAULT);
+                var basicJFRWriter = new BasicJFRWriter(out, configuration);
                 try (RecordingFile r = new RecordingFile(inputFile)) {
-                    List<RecordedEvent> list = new ArrayList<>();
                     while (r.hasMoreEvents()) {
                         basicJFRWriter.processEvent(r.readEvent());
                     }
@@ -133,6 +143,42 @@ public class JFRCLI implements Runnable {
             } catch (Exception e) {
                 e.printStackTrace();
                 return 1;
+            }
+            return 0;
+        }
+    }
+
+    @Command(
+            name = "benchmark",
+            description = "Run the benchmarks on all files in the benchmark folder")
+    public static class BenchmarkCommand implements Callable<Integer> {
+        @Option(
+                names = {"-k", "--keep-condensed-file"},
+                description = "Keep the condensed file")
+        private boolean keepCondensedFile = false;
+
+        @Option(
+                names = {"-i", "--inflate-condensed-file"},
+                description = "Inflate the condensed file")
+        private boolean inflateCondensedFile = false;
+
+        @Option(
+                names = {"-I", "--keep-inflated-file"},
+                description = "Keep the inflated file")
+        private boolean keepInflatedFile = false;
+
+        @Option(names = "--csv", description = "Output results as CSV")
+        private boolean csv = false;
+
+        public Integer call() {
+            var results =
+                    new Benchmark(Configuration.configurations.values().stream().sorted().toList())
+                            .runBenchmarks(
+                                    keepCondensedFile, inflateCondensedFile, keepInflatedFile);
+            if (csv) {
+                System.out.println(results.toTable(new TableConfig(false)).toCSV());
+            } else {
+                System.out.println(results.toTable(new TableConfig(true)));
             }
             return 0;
         }

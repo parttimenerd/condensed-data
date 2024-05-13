@@ -5,14 +5,14 @@ import static org.junit.jupiter.api.Assertions.*;
 
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
+import java.io.UnsupportedEncodingException;
+import java.nio.charset.Charset;
 import java.util.function.BiPredicate;
 import java.util.function.Consumer;
 import java.util.function.Function;
 import me.bechberger.condensed.CondensedOutputStream.OverflowMode;
 import me.bechberger.condensed.Message.StartMessage;
-import net.jqwik.api.Example;
-import net.jqwik.api.ForAll;
-import net.jqwik.api.Property;
+import net.jqwik.api.*;
 import net.jqwik.api.constraints.*;
 import org.assertj.core.api.Assertions;
 import org.junit.jupiter.api.Test;
@@ -87,9 +87,51 @@ public class CondensedStreamRoundTripTest {
                 value, out -> out.writeSignedVarInt(value), CondensedInputStream::readSignedVarint);
     }
 
+    @Provide
+    public Arbitrary<String> encodings() {
+        return Arbitraries.of(Charset.defaultCharset().toString(), "UTF-8", "UTF-16");
+    }
+
+    private static String stringToBytesString(String value, String encoding) {
+        try {
+            StringBuilder sb = new StringBuilder();
+            sb.append("new byte[] {");
+            byte[] bytes = value.getBytes(encoding);
+            for (int i = 0; i < bytes.length; i++) {
+                if (i > 0) {
+                    sb.append(", ");
+                }
+                sb.append("(byte) ");
+                sb.append(bytes[i]);
+            }
+            sb.append("}");
+            return sb.toString();
+        } catch (UnsupportedEncodingException e) {
+            throw new RuntimeException(e);
+        }
+    }
+
     @Property
-    public void testStringRoundTrip(@ForAll String value) {
-        assertRoundTrip(value, out -> out.writeString(value), CondensedInputStream::readString);
+    public void testStringRoundTrip(@ForAll String value, @ForAll("encodings") String encoding) {
+        assertRoundTrip(
+                value,
+                out -> out.writeString(value, encoding),
+                in -> in.readString(encoding),
+                (a, b) -> {
+                    if (!a.equals(b)) {
+                        System.out.println(
+                                "a: "
+                                        + a
+                                        + " "
+                                        + stringToBytesString(a, encoding)
+                                        + " b: "
+                                        + b
+                                        + " "
+                                        + stringToBytesString(b, encoding));
+                        return false;
+                    }
+                    return true;
+                });
     }
 
     @Property

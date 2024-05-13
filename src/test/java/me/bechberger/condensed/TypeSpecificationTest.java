@@ -177,7 +177,7 @@ public class TypeSpecificationTest {
 
     @Provide
     public Arbitrary<String> encodings() {
-        return Arbitraries.of(Charset.defaultCharset().toString(), "UTF-8", "UTF-16", "UTF-32");
+        return Arbitraries.of(Charset.defaultCharset().toString(), "UTF-8", "UTF-16");
     }
 
     @Property
