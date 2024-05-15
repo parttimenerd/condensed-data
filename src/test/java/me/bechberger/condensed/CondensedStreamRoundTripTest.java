@@ -12,6 +12,10 @@ import java.util.function.Consumer;
 import java.util.function.Function;
 import me.bechberger.condensed.CondensedOutputStream.OverflowMode;
 import me.bechberger.condensed.Message.StartMessage;
+import me.bechberger.condensed.Universe.HashAndEqualsConfig;
+import me.bechberger.condensed.Universe.HashAndEqualsWrapper;
+import me.bechberger.condensed.types.StringType;
+import me.bechberger.condensed.types.TypeCollection;
 import net.jqwik.api.*;
 import net.jqwik.api.constraints.*;
 import org.assertj.core.api.Assertions;
@@ -330,5 +334,26 @@ public class CondensedStreamRoundTripTest {
                     double allowedDiff = Math.max(Math.abs(a), Math.abs(b)) * fraction;
                     return Math.abs(a - b) <= allowedDiff;
                 });
+    }
+
+    @Example
+    public void testUniverseWithCustomHashAndEquals() {
+        var stringType = TypeCollection.getDefaultTypeInstance(StringType.SPECIFIED_TYPE);
+        record StringHashWrapper(String value) implements HashAndEqualsWrapper<String> {
+            @Override
+            public int hashCode() {
+                return 1;
+            }
+
+            @Override
+            public boolean equals(Object obj) {
+                return true;
+            }
+        }
+        HashAndEqualsConfig config = new HashAndEqualsConfig();
+        config.put(stringType, StringHashWrapper::new);
+        var universe = new Universe(config);
+        assertEquals(0, universe.getWritingCaches().get(stringType, "test", s -> {}));
+        assertEquals(0, universe.getWritingCaches().get(stringType, "test2", s -> {}));
     }
 }

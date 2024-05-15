@@ -1,14 +1,12 @@
 package me.bechberger.condensed;
 
-import java.io.ByteArrayOutputStream;
-import java.io.IOException;
-import java.io.OutputStream;
-import java.io.UnsupportedEncodingException;
+import java.io.*;
 import java.util.function.Consumer;
 import java.util.function.Function;
 import java.util.zip.Deflater;
 import java.util.zip.GZIPOutputStream;
 import me.bechberger.condensed.Message.StartMessage;
+import me.bechberger.condensed.Universe.HashAndEqualsConfig;
 import me.bechberger.condensed.types.CondensedType;
 import me.bechberger.condensed.types.Reductions;
 import me.bechberger.condensed.types.SpecifiedType;
@@ -180,7 +178,7 @@ public class CondensedOutputStream extends OutputStream {
         }
     }
 
-    private final Universe universe;
+    private Universe universe;
 
     private final TypeCollection typeCollection;
 
@@ -202,13 +200,22 @@ public class CondensedOutputStream extends OutputStream {
     }
 
     public CondensedOutputStream(OutputStream outputStream, StartMessage startMessage) {
-        this(outputStream);
+        this(outputStream, startMessage, new Universe());
+    }
+
+    public void setHashAndEqualsConfig(HashAndEqualsConfig hashAndEqualsConfig) {
+        universe.setHashAndEqualsConfig(hashAndEqualsConfig);
+    }
+
+    public CondensedOutputStream(
+            OutputStream outputStream, StartMessage startMessage, Universe universe) {
+        this(outputStream, universe);
         writeStartString(startMessage);
         if (startMessage.compressed()) {
             try {
                 this.outputStream =
                         new CondensedOutputStream.ConfigurableGZIPOutputStream(
-                                outputStream, Deflater.DEFAULT_COMPRESSION);
+                                outputStream, Deflater.BEST_COMPRESSION);
             } catch (IOException e) {
                 throw new RuntimeException(e);
             }
@@ -216,10 +223,14 @@ public class CondensedOutputStream extends OutputStream {
     }
 
     /** Create an output stream without a start string and message, used for testing */
-    CondensedOutputStream(OutputStream outputStream) {
-        this.universe = new Universe();
+    CondensedOutputStream(OutputStream outputStream, Universe universe) {
         this.typeCollection = new TypeCollection();
         this.outputStream = outputStream;
+        this.universe = universe;
+    }
+
+    CondensedOutputStream(OutputStream outputStream) {
+        this(outputStream, new Universe());
     }
 
     private void writeStartString(StartMessage startMessage) {

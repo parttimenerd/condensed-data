@@ -18,6 +18,7 @@ import me.bechberger.condensed.Util;
 import me.bechberger.util.Asserters;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.CsvSource;
 import org.junit.jupiter.params.provider.ValueSource;
 
 public class BasicJFRRoundTripTest {
@@ -208,15 +209,29 @@ public class BasicJFRRoundTripTest {
      * @throws InterruptedException
      */
     @ParameterizedTest
-    @ValueSource(ints = {1, 64, -1})
-    public void testTestEventWithStackTraceReduction(int maxDepth) throws InterruptedException {
+    @CsvSource({
+        "1,true",
+        "11,true",
+        "64,true",
+        "-1,true",
+        "1,false",
+        "11,false",
+        "64,false",
+        "-1,false"
+    })
+    public void testTestEventWithStackTraceReduction(int maxDepth, boolean useSpecHashes)
+            throws InterruptedException {
         int count = 4;
         List<RecordedEvent> recordedEvents = new ArrayList<>();
         ByteArrayOutputStream outputStream = new ByteArrayOutputStream();
         try (CondensedOutputStream out =
                 new CondensedOutputStream(outputStream, StartMessage.DEFAULT)) {
             BasicJFRWriter basicJFRWriter =
-                    new BasicJFRWriter(out, Configuration.DEFAULT.withMaxStackTraceDepth(maxDepth));
+                    new BasicJFRWriter(
+                            out,
+                            Configuration.DEFAULT
+                                    .withMaxStackTraceDepth(maxDepth)
+                                    .withUseSpecificHashesAndRefs(useSpecHashes));
             try (RecordingStream rs = new RecordingStream()) {
                 rs.onEvent(
                         "TestEvent",

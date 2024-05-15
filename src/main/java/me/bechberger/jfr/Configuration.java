@@ -20,7 +20,8 @@ public record Configuration(
         long durationTicksPerSecond,
         boolean memoryAsBFloat16,
         boolean ignoreUnnecessaryEvents,
-        long maxStackTraceDepth)
+        long maxStackTraceDepth,
+        boolean useSpecificHashesAndRefs)
         implements Cloneable, Comparable<Configuration> {
 
     public static final Configuration DEFAULT =
@@ -31,7 +32,8 @@ public record Configuration(
                     1_000_000_000,
                     false,
                     true,
-                    -1);
+                    -1,
+                    false);
 
     public Configuration {
         if (timeStampTicksPerSecond <= 0) {
@@ -54,7 +56,8 @@ public record Configuration(
                     100_000,
                     true,
                     true,
-                    64);
+                    -1,
+                    true);
 
     public static final Map<String, Configuration> configurations =
             Map.of(
@@ -87,6 +90,10 @@ public record Configuration(
 
     public Configuration withName(String name) {
         return withFieldValue("name", name);
+    }
+
+    public Configuration withUseSpecificHashesAndRefs(boolean useSpecificHashesAndRefs) {
+        return withFieldValue("useSpecificHashesAndRefs", useSpecificHashesAndRefs);
     }
 
     public Configuration withFieldValue(String fieldName, Object value) {

@@ -104,8 +104,27 @@ public enum JFRReduction {
         }
 
         ReducedStackTrace limitFrames(int size) {
+            if (this.frames.size() <= size) {
+                return this;
+            }
             return new ReducedStackTrace(
                     frames.subList(0, size), truncated || frames.size() > size);
+        }
+
+        @Override
+        public int hashCode() {
+            return frames.hashCode() + (truncated ? 1 : 0);
+        }
+
+        @Override
+        public boolean equals(Object obj) {
+            if (this == obj) {
+                return true;
+            }
+            if (!(obj instanceof ReducedStackTrace other)) {
+                return false;
+            }
+            return frames.equals(other.frames) && truncated == other.truncated;
         }
     }
 

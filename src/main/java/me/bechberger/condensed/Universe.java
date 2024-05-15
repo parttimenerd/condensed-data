@@ -3,6 +3,7 @@ package me.bechberger.condensed;
 import java.util.*;
 import java.util.Map.Entry;
 import java.util.function.Consumer;
+import java.util.function.Function;
 import java.util.function.Supplier;
 import me.bechberger.condensed.Message.StartMessage;
 import me.bechberger.condensed.types.CondensedType;
@@ -40,6 +41,31 @@ public class Universe {
                 writer.accept(value);
                 return id;
             }
+        }
+    }
+
+    public interface HashAndEqualsWrapper<V> {
+        V value();
+
+        int hashCode();
+    }
+
+    static class WritingCachePerTypeWithCustomHash<T> extends WritingCachePerType<T> {
+
+        private final Function<T, HashAndEqualsWrapper<T>> wrapperFactory;
+        private final WritingCachePerType<HashAndEqualsWrapper<T>> cache;
+
+        public WritingCachePerTypeWithCustomHash(
+                int size, Function<T, HashAndEqualsWrapper<T>> wrapperFactory) {
+            super(0);
+            this.wrapperFactory = wrapperFactory;
+            this.cache = new WritingCachePerType<>(size);
+        }
+
+        @Override
+        public int get(T value, Consumer<T> writer) {
+            return cache.get(
+                    wrapperFactory.apply(value), wrapper -> writer.accept(wrapper.value()));
         }
     }
 
@@ -81,6 +107,28 @@ public class Universe {
         }
     }
 
+    static class WritingCachePerTypePerEmbeddingTypeWithCustomHash<T>
+            extends WritingCachePerTypePerEmbeddingType<T> {
+
+        private final Function<T, HashAndEqualsWrapper<T>> wrapperFactory;
+        private final WritingCachePerTypePerEmbeddingType<HashAndEqualsWrapper<T>> cache;
+
+        public WritingCachePerTypePerEmbeddingTypeWithCustomHash(
+                int size, Function<T, HashAndEqualsWrapper<T>> wrapperFactory) {
+            super(0);
+            this.wrapperFactory = wrapperFactory;
+            this.cache = new WritingCachePerTypePerEmbeddingType<>(size);
+        }
+
+        @Override
+        public int get(T value, Consumer<T> writer, CondensedType<?, ?> embeddingType) {
+            return cache.get(
+                    wrapperFactory.apply(value),
+                    wrapper -> writer.accept(wrapper.value()),
+                    embeddingType);
+        }
+    }
+
     /** The type of embedding for a field's value */
     public enum EmbeddingType {
         /** Embed a value directly */
@@ -110,6 +158,32 @@ public class Universe {
         }
     }
 
+    public static class HashAndEqualsConfig {
+
+        public static final HashAndEqualsConfig NONE = new HashAndEqualsConfig();
+
+        private final Map<String, Function<?, HashAndEqualsWrapper<?>>> wrapperFactories =
+                new HashMap<>();
+
+        @SuppressWarnings({"unchecked", "rawtypes"})
+        public <T> void put(String name, Function<T, HashAndEqualsWrapper<T>> factory) {
+            wrapperFactories.put(name, (Function<?, HashAndEqualsWrapper<?>>) (Function) factory);
+        }
+
+        public <T> void put(
+                CondensedType<T, ?> type, Function<T, HashAndEqualsWrapper<T>> factory) {
+            put(type.getName(), factory);
+        }
+
+        @SuppressWarnings({"unchecked", "rawtypes"})
+        public <T> Optional<Function<T, HashAndEqualsWrapper<T>>> getWrapperFactory(
+                CondensedType<T, ?> type) {
+            return Optional.ofNullable(
+                    (Function<T, HashAndEqualsWrapper<T>>)
+                            (Function) wrapperFactories.get(type.getName()));
+        }
+    }
+
     /**
      * Collection of caches for writing data out per type
      *
@@ -118,18 +192,31 @@ public class Universe {
      */
     public static class WritingCaches {
         private final int sizePerCache;
+        private final HashAndEqualsConfig hashAndEqualsConfig;
         private final Map<CondensedType<?, ?>, WritingCachePerType<?>> caches = new HashMap<>();
         private final Map<CondensedType<?, ?>, WritingCachePerTypePerEmbeddingType<?>>
                 embeddingCaches = new HashMap<>();
 
-        public WritingCaches(int sizePerCache) {
+        public WritingCaches(HashAndEqualsConfig config, int sizePerCache) {
+            this.hashAndEqualsConfig = config;
             this.sizePerCache = sizePerCache;
         }
 
         @SuppressWarnings("unchecked")
         private <T, R> WritingCachePerType<T> getCache(CondensedType<T, R> type) {
             return (WritingCachePerType<T>)
-                    caches.computeIfAbsent(type, k -> new WritingCachePerType<>(sizePerCache));
+                    caches.computeIfAbsent(
+                            type,
+                            k ->
+                                    hashAndEqualsConfig
+                                            .getWrapperFactory(type)
+                                            .map(
+                                                    factory ->
+                                                            (WritingCachePerType<T>)
+                                                                    new WritingCachePerTypeWithCustomHash<>(
+                                                                            sizePerCache, factory))
+                                            .orElseGet(
+                                                    () -> new WritingCachePerType<>(sizePerCache)));
         }
 
         @SuppressWarnings("unchecked")
@@ -137,7 +224,19 @@ public class Universe {
                 CondensedType<T, R> type) {
             return (WritingCachePerTypePerEmbeddingType<T>)
                     embeddingCaches.computeIfAbsent(
-                            type, k -> new WritingCachePerTypePerEmbeddingType<>(sizePerCache));
+                            type,
+                            k ->
+                                    hashAndEqualsConfig
+                                            .getWrapperFactory(type)
+                                            .map(
+                                                    factory ->
+                                                            (WritingCachePerTypePerEmbeddingType<T>)
+                                                                    new WritingCachePerTypePerEmbeddingTypeWithCustomHash<>(
+                                                                            sizePerCache, factory))
+                                            .orElseGet(
+                                                    () ->
+                                                            new WritingCachePerTypePerEmbeddingType<>(
+                                                                    sizePerCache)));
         }
 
         /**
@@ -171,6 +270,10 @@ public class Universe {
                 Consumer<T> writer,
                 CondensedType<?, ?> embeddingType) {
             return getEmbeddingCache(type).get(value, writer, embeddingType);
+        }
+
+        public boolean isEmpty() {
+            return caches.isEmpty() && embeddingCaches.isEmpty();
         }
     }
 
@@ -293,15 +396,31 @@ public class Universe {
     private @Nullable StartMessage startMessage;
 
     public static final int DEFAULT_SIZE = 20000;
-    private final WritingCaches writingCaches;
+    private WritingCaches writingCaches;
     private final ReadingCaches readingCaches = new ReadingCaches();
 
-    public Universe(int cacheSize) {
-        writingCaches = new WritingCaches(cacheSize);
+    public Universe(HashAndEqualsConfig config, int cacheSize) {
+        writingCaches = new WritingCaches(config, cacheSize);
+    }
+
+    public Universe(HashAndEqualsConfig hashAndEqualsConfig) {
+        this(hashAndEqualsConfig, DEFAULT_SIZE);
     }
 
     public Universe() {
-        this(DEFAULT_SIZE);
+        this(HashAndEqualsConfig.NONE);
+    }
+
+    public Universe(int cacheSize) {
+        this(HashAndEqualsConfig.NONE, cacheSize);
+    }
+
+    void setHashAndEqualsConfig(HashAndEqualsConfig config) {
+        if (!writingCaches.isEmpty()) {
+            throw new IllegalStateException(
+                    "Cannot change config after writing caches have been created");
+        }
+        writingCaches = new WritingCaches(config, DEFAULT_SIZE);
     }
 
     void setStartMessage(@NotNull StartMessage startMessage) {

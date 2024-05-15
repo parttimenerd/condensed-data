@@ -21,6 +21,7 @@ public class StructType<T, R> extends CondensedType<T, R> {
         private final Function<T, F> getter;
         private final EmbeddingType embedding;
         private final int reductionId;
+        private final int hashCode;
 
         public Field(
                 String name,
@@ -35,6 +36,7 @@ public class StructType<T, R> extends CondensedType<T, R> {
             this.getter = getter;
             this.embedding = embedding;
             this.reductionId = reductionId;
+            this.hashCode = Objects.hash(name, description, type, embedding);
         }
 
         public Field(
@@ -87,7 +89,8 @@ public class StructType<T, R> extends CondensedType<T, R> {
             if (!(obj instanceof Field<?, ?, ?> other)) {
                 return false;
             }
-            return name.equals(other.name)
+            return hashCode == other.hashCode
+                    && name.equals(other.name)
                     && description.equals(other.description)
                     && type.equals(other.type)
                     && embedding == other.embedding;
@@ -95,7 +98,7 @@ public class StructType<T, R> extends CondensedType<T, R> {
 
         @Override
         public int hashCode() {
-            return Objects.hash(name, description, embedding, type);
+            return hashCode;
         }
 
         public String name() {
@@ -156,6 +159,7 @@ public class StructType<T, R> extends CondensedType<T, R> {
     private final Function<ReadStruct, R> creator;
     private final StructType<?, ReadStruct> readStructType;
     private final int reductionId;
+    private final int hashCode;
 
     @SuppressWarnings("unchecked")
     private StructType(
@@ -173,6 +177,7 @@ public class StructType<T, R> extends CondensedType<T, R> {
         this.readStructType =
                 readStructType == null ? (StructType<?, ReadStruct>) this : readStructType;
         this.reductionId = reductionId;
+        this.hashCode = Objects.hash(super.hashCode(), fields, creator, reductionId);
     }
 
     public StructType(
@@ -296,7 +301,7 @@ public class StructType<T, R> extends CondensedType<T, R> {
 
     @Override
     public int hashCode() {
-        return Objects.hash(super.hashCode(), fields.hashCode());
+        return hashCode;
     }
 
     public static final SpecifiedType<StructType<?, ?>> SPECIFIED_TYPE =

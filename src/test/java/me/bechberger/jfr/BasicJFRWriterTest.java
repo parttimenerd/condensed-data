@@ -58,10 +58,6 @@ public class BasicJFRWriterTest {
             // check that the type for TestEvent has a field named "stackTrace"
             var stackTraceField = ((StructType<?, ?>) teType).getField("stackTrace");
             assertNotNull(stackTraceField, "stackTrace field not found");
-
-            for (var type : out.getTypeCollection().getTypes()) {
-                System.out.println(type.toPrettyString());
-            }
         }
         byte[] data = outputStream.toByteArray();
         System.out.println(recordedEvent.get());

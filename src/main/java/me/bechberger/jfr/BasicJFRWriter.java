@@ -12,11 +12,13 @@ import java.util.function.Function;
 import jdk.jfr.*;
 import jdk.jfr.consumer.RecordedEvent;
 import jdk.jfr.consumer.RecordedObject;
+import jdk.jfr.consumer.RecordedStackTrace;
 import jdk.jfr.consumer.RecordingFile;
 import me.bechberger.condensed.CondensedOutputStream;
 import me.bechberger.condensed.CondensedOutputStream.OverflowMode;
 import me.bechberger.condensed.ReadStruct;
 import me.bechberger.condensed.Universe.EmbeddingType;
+import me.bechberger.condensed.Universe.HashAndEqualsConfig;
 import me.bechberger.condensed.types.*;
 import me.bechberger.condensed.types.FloatType.Type;
 import me.bechberger.condensed.types.StructType.Field;
@@ -186,6 +188,10 @@ public class BasicJFRWriter {
         // runtime shutdown hook to close the output stream
         Runtime.getRuntime().addShutdownHook(new Thread(out::close));
         out.setReductions(new JFRReduction.JFRReductions(configuration, universe));
+        out.setHashAndEqualsConfig(
+                configuration.useSpecificHashesAndRefs()
+                        ? new JFRHashConfig()
+                        : HashAndEqualsConfig.NONE);
     }
 
     public BasicJFRWriter(CondensedOutputStream out) {
@@ -457,7 +463,12 @@ public class BasicJFRWriter {
         if (field.getTypeName().equals("jdk.types.StackTrace")
                 && configuration.maxStackTraceDepth() != -1) {
             return new GetterAndCachedType(
-                    event -> new ReducedStackTrace(event.getValue(field.getName())),
+                    event -> {
+                        var trace = event.getValue(field.getName());
+                        return trace == null
+                                ? null
+                                : new ReducedStackTrace((RecordedStackTrace) trace);
+                    },
                     getReducedStackTraceType(field),
                     JFRReduction.STACK_TRACE_REDUCTION);
         }
