@@ -169,7 +169,103 @@ public class BasicJFRRoundTripTest {
                     var frame = stackTrace.getFrames().get(i);
                     Asserters.assertEquals(recordedFrame, frame, "frame " + i);
                 }
+                number++;
+            }
+        }
+    }
 
+    private void func1(int id) {
+        func2(id);
+    }
+
+    private void func2(int id) {
+        func3(id);
+    }
+
+    private void func3(int id) {
+        if (id % 2 == 0) {
+            func4(id);
+        } else {
+            func5(id);
+        }
+    }
+
+    private void func4(int id) {
+        new TestEvent(id).commit();
+    }
+
+    private void func5(int id) {
+        new TestEvent(id).commit();
+    }
+
+    /**
+     * Write multiple {@link TestEvent}s with different stack traces and read them back with the
+     * built-in JFR reader, comparing the results.
+     *
+     * <p>Used to find a nasty bug related to recursive data types
+     *
+     * @param maxDepth maximum stack depth
+     * @throws InterruptedException
+     */
+    @ParameterizedTest
+    @ValueSource(ints = {1, 64, -1})
+    public void testTestEventWithStackTraceReduction(int maxDepth) throws InterruptedException {
+        int count = 4;
+        List<RecordedEvent> recordedEvents = new ArrayList<>();
+        ByteArrayOutputStream outputStream = new ByteArrayOutputStream();
+        try (CondensedOutputStream out =
+                new CondensedOutputStream(outputStream, StartMessage.DEFAULT)) {
+            BasicJFRWriter basicJFRWriter =
+                    new BasicJFRWriter(out, Configuration.DEFAULT.withMaxStackTraceDepth(maxDepth));
+            try (RecordingStream rs = new RecordingStream()) {
+                rs.onEvent(
+                        "TestEvent",
+                        event -> {
+                            basicJFRWriter.processEvent(event);
+                            recordedEvents.add(event);
+                            if (recordedEvents.size() == 2) rs.close();
+                        });
+
+                rs.startAsync();
+                for (int i = 0; i < count; i++) {
+                    func1(i);
+                }
+                rs.awaitTermination();
+            }
+        }
+        try (var in = new CondensedInputStream(outputStream.toByteArray())) {
+            var events = WritingJFRReader.toJFREventsList(new BasicJFRReader(in));
+            assertEquals(count, recordedEvents.size());
+            assertEquals(recordedEvents.size(), events.size());
+            maxDepth = maxDepth == -1 ? Integer.MAX_VALUE : maxDepth;
+            int number = 0;
+            for (var pair : Util.zip(recordedEvents, events)) {
+                var recordedEvent = pair.left;
+                var event = pair.right;
+                System.out.println(event);
+
+                // Check type and number
+                assertEquals("TestEvent", event.getEventType().getName());
+                assertEquals(number, event.getInt("number"));
+
+                // Check stack trace
+                var recordedStackTrace = recordedEvent.getStackTrace();
+                var stackTrace = event.getStackTrace();
+                if (recordedStackTrace.getFrames().size() > maxDepth) {
+                    assertTrue(stackTrace.isTruncated());
+                    assertEquals(maxDepth, stackTrace.getFrames().size());
+                } else {
+                    assertEquals(recordedStackTrace.isTruncated(), stackTrace.isTruncated());
+                    assertEquals(
+                            recordedStackTrace.getFrames().size(), stackTrace.getFrames().size());
+                }
+                for (int i = 0;
+                        i < Math.min(recordedStackTrace.getFrames().size(), maxDepth);
+                        i++) {
+                    var recordedFrame = recordedStackTrace.getFrames().get(i);
+                    var frame = stackTrace.getFrames().get(i);
+                    Asserters.assertEquals(recordedFrame, frame, "frame " + i);
+                }
                 number++;
             }
         }

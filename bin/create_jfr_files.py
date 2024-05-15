@@ -6,6 +6,7 @@ for each GC algorithm and JFR config file.
 """
 
 import os
+import shutil
 import subprocess
 import time
 from pathlib import Path
@@ -91,9 +92,14 @@ def run_benchmark(benchmark: str, benchmark_name: str, jfc_file: Path, gc_algori
     if not force_gc:
         args.append("--no-forced-gc")
     subprocess.run(args,
-                   cwd=BENCHMARK_FOLDER, check=True)
+                   cwd=BENCHMARK_FOLDER, check=True,
+                   stdout=subprocess.DEVNULL)
     end_time = time.time()
     print(f"Finished benchmark for {gc_algorithm} with {jfc_file.name} in {end_time - start_time:.2f} seconds")
+    # delete launcher-* folders
+    for folder in BENCHMARK_FOLDER.glob("launcher-*"):
+        shutil.rmtree(folder)
+
     record_timing(jfr_file_path, jfc_file, gc_algorithm, end_time - start_time)
 
 

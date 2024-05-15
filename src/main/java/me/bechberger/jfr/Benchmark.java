@@ -172,6 +172,15 @@ public class Benchmark {
                             r -> r.jfrFile().compressedSize(),
                             3,
                             tconf.humanReadableMemory));
+            header.add(
+                    new TableColumnDescription<>(
+                            "%",
+                            "%.2f%%",
+                            r -> {
+                                var originalSize = r.jfrFile().size();
+                                var compressedSize = r.jfrFile().compressedSize;
+                                return (float) compressedSize / originalSize * 100;
+                            }));
             // add the following for each configuration: runtime, size
             configurations()
                     .forEach(
@@ -186,6 +195,28 @@ public class Benchmark {
                                                 "size",
                                                 r -> r.forConfiguration(config).size(),
                                                 3,
+                                                tconf.humanReadableMemory));
+                                header.add(
+                                        new TableColumnDescription<>(
+                                                "%",
+                                                "%.2f%%",
+                                                r -> {
+                                                    var originalSize = r.jfrFile().size();
+                                                    var compressedSize =
+                                                            r.forConfiguration(config).size();
+                                                    return (float) compressedSize
+                                                            / originalSize
+                                                            * 100;
+                                                }));
+                                header.add(
+                                        TableColumnDescription.ofMemory(
+                                                "per-hour",
+                                                r -> {
+                                                    var runtime = r.jfrFile().runtime();
+                                                    var size = r.forConfiguration(config).size();
+                                                    return (long) (size / runtime * 3600f);
+                                                },
+                                                1,
                                                 tconf.humanReadableMemory));
                             });
             return new Table<>(header, results);

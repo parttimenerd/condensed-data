@@ -131,10 +131,9 @@ public abstract class CondensedType<T, R> {
                 return -1;
             }
             case 1 -> {
-                var value = readFrom(in);
                 return switch (embedding) {
-                    case REFERENCE -> caches.put(this, value);
-                    case REFERENCE_PER_TYPE -> caches.put(this, embeddingType, value);
+                    case REFERENCE -> caches.put(this, () -> readFrom(in));
+                    case REFERENCE_PER_TYPE -> caches.put(this, embeddingType, () -> readFrom(in));
                     default ->
                             throw new IllegalArgumentException(
                                     "Invalid embedding type: " + embedding);

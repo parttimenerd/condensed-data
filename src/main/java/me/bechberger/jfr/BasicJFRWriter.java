@@ -15,10 +15,12 @@ import jdk.jfr.consumer.RecordedObject;
 import jdk.jfr.consumer.RecordingFile;
 import me.bechberger.condensed.CondensedOutputStream;
 import me.bechberger.condensed.CondensedOutputStream.OverflowMode;
+import me.bechberger.condensed.ReadStruct;
 import me.bechberger.condensed.Universe.EmbeddingType;
 import me.bechberger.condensed.types.*;
 import me.bechberger.condensed.types.FloatType.Type;
 import me.bechberger.condensed.types.StructType.Field;
+import me.bechberger.jfr.JFRReduction.ReducedStackTrace;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 import org.json.JSONArray;
@@ -165,6 +167,7 @@ public class BasicJFRWriter {
     private Map<Long, VarIntType> timespanTypePerDivisor = new HashMap<>();
     private VarIntType timeStampType;
     private Map<String, FloatType> memoryFloatTypes = new HashMap<>();
+    private StructType<?, ?> reducedStackTraceType;
     private Universe universe = new Universe();
     private boolean wroteConfiguration = false;
     private CondensedType<Universe, Universe> universeType;
@@ -450,9 +453,61 @@ public class BasicJFRWriter {
                         getMemoryFloatType(dataAmount.get()));
             }
         }
+        JFRReduction reduction = JFRReduction.NONE;
+        if (field.getTypeName().equals("jdk.types.StackTrace")
+                && configuration.maxStackTraceDepth() != -1) {
+            return new GetterAndCachedType(
+                    event -> new ReducedStackTrace(event.getValue(field.getName())),
+                    getReducedStackTraceType(field),
+                    JFRReduction.STACK_TRACE_REDUCTION);
+        }
         return new GetterAndCachedType(
                 event -> normalize(event.getValue(field.getName())),
-                getTypeOrNull(TypeIdent.of(field)));
+                getTypeOrNull(TypeIdent.of(field)),
+                reduction);
+    }
+
+    @SuppressWarnings({"unchecked", "rawtypes"})
+    private StructType<?, ?> getReducedStackTraceType(ValueDescriptor field) {
+        if (reducedStackTraceType == null) {
+            var truncatedField =
+                    field.getFields().stream()
+                            .filter(f -> f.getName().equals("truncated"))
+                            .findFirst()
+                            .get();
+            var framesField =
+                    field.getFields().stream()
+                            .filter(f -> f.getName().equals("frames"))
+                            .findFirst()
+                            .get();
+            reducedStackTraceType =
+                    out.writeAndStoreType(
+                            id -> {
+                                var arrayType =
+                                        out.writeAndStoreType(
+                                                innerId -> createArrayType(framesField, innerId));
+                                return new StructType<ReducedStackTrace, ReadStruct>(
+                                        id,
+                                        "jdk.types.StackTrace",
+                                        "Reduced stack trace",
+                                        List.of(
+                                                new Field<>(
+                                                        "truncated",
+                                                        getDescription(truncatedField),
+                                                        TypeCollection.getDefaultTypeInstance(
+                                                                BooleanType.SPECIFIED_TYPE),
+                                                        ReducedStackTrace::isTruncated,
+                                                        EmbeddingType.INLINE),
+                                                new Field<>(
+                                                        "frames",
+                                                        getDescription(framesField),
+                                                        arrayType,
+                                                        ReducedStackTrace::getFrames,
+                                                        EmbeddingType.INLINE)),
+                                        obj -> obj);
+                            });
+        }
+        return reducedStackTraceType;
     }
 
     private FloatType getMemoryFloatType(String kind) {

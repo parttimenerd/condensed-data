@@ -3,6 +3,10 @@ package me.bechberger.jfr;
 import static me.bechberger.condensed.Util.toNanoSeconds;
 
 import java.time.Instant;
+import java.util.List;
+import jdk.jfr.consumer.RecordedFrame;
+import jdk.jfr.consumer.RecordedStackTrace;
+import me.bechberger.condensed.ReadStruct;
 import me.bechberger.condensed.types.Reductions;
 
 /**
@@ -61,7 +65,49 @@ public enum JFRReduction {
                     System.out.println("     " + nanoSeconds);
                     return Instant.ofEpochSecond(0, nanoSeconds);
                 }
+            }),
+    STACK_TRACE_REDUCTION(
+            new StructReductionFunction<ReducedStackTrace, ReducedStackTrace>() {
+                @Override
+                public ReducedStackTrace reduce(
+                        Configuration configuration, Universe universe, ReducedStackTrace value) {
+                    return value.limitFrames((int) configuration.maxStackTraceDepth());
+                }
+
+                @Override
+                public ReadStruct inflate(
+                        Configuration configuration, Universe universe, ReadStruct reduced) {
+                    return reduced;
+                }
             });
+
+    static class ReducedStackTrace {
+
+        private final List<RecordedFrame> frames;
+        private final boolean truncated;
+
+        ReducedStackTrace(RecordedStackTrace stackTrace) {
+            this(stackTrace.getFrames(), stackTrace.isTruncated());
+        }
+
+        ReducedStackTrace(List<RecordedFrame> frames, boolean truncated) {
+            this.frames = frames;
+            this.truncated = truncated;
+        }
+
+        List<RecordedFrame> getFrames() {
+            return frames;
+        }
+
+        boolean isTruncated() {
+            return truncated;
+        }
+
+        ReducedStackTrace limitFrames(int size) {
+            return new ReducedStackTrace(
+                    frames.subList(0, size), truncated || frames.size() > size);
+        }
+    }
 
     interface ReductionFunction<R, F> {
         R reduce(Configuration configuration, Universe universe, F value);
@@ -69,9 +115,16 @@ public enum JFRReduction {
         F inflate(Configuration configuration, Universe universe, R reduced);
     }
 
+    interface StructReductionFunction<R, F> {
+        R reduce(Configuration configuration, Universe universe, F value);
+
+        ReadStruct inflate(Configuration configuration, Universe universe, ReadStruct reduced);
+    }
+
     private final Class<?> valueClass;
     private final Class<?> reducedClass;
     private final ReductionFunction<?, ?> function;
+    private final StructReductionFunction<?, ?> structFunction;
 
     record JFRReductions(Configuration configuration, Universe universe) implements Reductions {
 
@@ -94,12 +147,25 @@ public enum JFRReduction {
         this.valueClass = valueClass;
         this.reducedClass = reducedClass;
         this.function = function;
+        this.structFunction = null;
+    }
+
+    @SuppressWarnings("unchecked")
+    <F, R> JFRReduction(StructReductionFunction<R, F> function) {
+        this.valueClass = null;
+        this.reducedClass = null;
+        this.function = null;
+        this.structFunction = function;
     }
 
     @SuppressWarnings({"unchecked", "rawtypes"})
     public Object reduce(Configuration configuration, Universe universe, Object value) {
         if (value == null) {
             return null;
+        }
+        if (structFunction != null) {
+            return ((StructReductionFunction) structFunction)
+                    .reduce(configuration, universe, value);
         }
         if (valueClass.isInstance(value)) {
             return ((ReductionFunction) function).reduce(configuration, universe, value);
@@ -117,6 +183,18 @@ public enum JFRReduction {
     public Object inflate(Configuration configuration, Universe universe, Object reduced) {
         if (reduced == null) {
             return null;
+        }
+        if (structFunction != null) {
+            if (!(reduced instanceof ReadStruct reducedStruct)) {
+                throw new IllegalArgumentException(
+                        "Reduced "
+                                + reduced
+                                + " of class "
+                                + reduced.getClass()
+                                + " is not a ReadStruct");
+            }
+            return ((StructReductionFunction) structFunction)
+                    .inflate(configuration, universe, (ReadStruct) reduced);
         }
         if (reducedClass.isInstance(reduced)) {
             return ((ReductionFunction) function).inflate(configuration, universe, reduced);

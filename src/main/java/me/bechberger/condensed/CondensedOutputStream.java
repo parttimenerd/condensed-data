@@ -194,6 +194,8 @@ public class CondensedOutputStream extends OutputStream {
 
     private static class ConfigurableGZIPOutputStream extends GZIPOutputStream {
         public ConfigurableGZIPOutputStream(OutputStream out, int level) throws IOException {
+            /*super(out, BLOCKSIZE.SIZE_1MB, -1, LZ4Factory.fastestInstance().highCompressor(),
+            XXHashFactory.fastestInstance().hash32(), Bits.BLOCK_INDEPENDENCE);*/
             super(out);
             def.setLevel(level);
         }
@@ -205,7 +207,8 @@ public class CondensedOutputStream extends OutputStream {
         if (startMessage.compressed()) {
             try {
                 this.outputStream =
-                        new ConfigurableGZIPOutputStream(outputStream, Deflater.BEST_COMPRESSION);
+                        new CondensedOutputStream.ConfigurableGZIPOutputStream(
+                                outputStream, Deflater.DEFAULT_COMPRESSION);
             } catch (IOException e) {
                 throw new RuntimeException(e);
             }
@@ -507,7 +510,7 @@ public class CondensedOutputStream extends OutputStream {
         return universe;
     }
 
-    public Statistic getStatistic() {
+    public CondensedOutputStream.Statistic getStatistic() {
         return statistic;
     }
 

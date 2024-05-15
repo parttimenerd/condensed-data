@@ -12,13 +12,15 @@ import me.bechberger.condensed.types.TypeCollection;
  * @param memoryAsBFloat16 store memory as BFloat16, looses some precision
  * @param ignoreUnnecessaryEvents ignore events that don't add any information like
  *     jdk.G1HeapRegionTypeChange without a change
+ * @param maxStackTraceDepth maximum stacktrace depth to store, -1 for unlimited
  */
 public record Configuration(
         String name,
         long timeStampTicksPerSecond,
         long durationTicksPerSecond,
         boolean memoryAsBFloat16,
-        boolean ignoreUnnecessaryEvents)
+        boolean ignoreUnnecessaryEvents,
+        long maxStackTraceDepth)
         implements Cloneable, Comparable<Configuration> {
 
     public static final Configuration DEFAULT =
@@ -28,13 +30,31 @@ public record Configuration(
                                                        */
                     1_000_000_000,
                     false,
-                    true);
+                    true,
+                    -1);
+
+    public Configuration {
+        if (timeStampTicksPerSecond <= 0) {
+            throw new IllegalArgumentException("timeStampTicksPerSecond must be positive");
+        }
+        if (durationTicksPerSecond <= 0) {
+            throw new IllegalArgumentException("durationTicksPerSecond must be positive");
+        }
+        if (maxStackTraceDepth != -1 && maxStackTraceDepth <= 0) {
+            throw new IllegalArgumentException("maxStackTraceDepth must be -1 or positive");
+        }
+    }
 
     /** with conservative lossy compression */
     public static final Configuration REASONABLE_DEFAULT =
             new Configuration(
-                    "reasonable default", /* milli seconds */ 1_000, /* 10 us
-    granularity */ 100_000, true, true);
+                    "reasonable default", /* milli seconds */
+                    1_000, /* 10 us
+                           granularity */
+                    100_000,
+                    true,
+                    true,
+                    64);
 
     public static final Map<String, Configuration> configurations =
             Map.of(
@@ -59,6 +79,10 @@ public record Configuration(
 
     public Configuration withIgnoreUnnecessaryEvents(boolean ignore) {
         return withFieldValue("ignoreUnnecessaryEvents", ignore);
+    }
+
+    public Configuration withMaxStackTraceDepth(long maxStackTraceDepth) {
+        return withFieldValue("maxStackTraceDepth", maxStackTraceDepth);
     }
 
     public Configuration withName(String name) {

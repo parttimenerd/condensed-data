@@ -3,6 +3,7 @@ package me.bechberger.condensed;
 import java.util.*;
 import java.util.Map.Entry;
 import java.util.function.Consumer;
+import java.util.function.Supplier;
 import me.bechberger.condensed.Message.StartMessage;
 import me.bechberger.condensed.types.CondensedType;
 import org.jetbrains.annotations.NotNull;
@@ -185,11 +186,14 @@ public class Universe {
         /**
          * Put the given value into the cache, returning the id of the value
          *
-         * @param value value to put into the cache
+         * @param reader value to put into the cache
          */
-        public int put(T value) {
-            values.add(value);
-            return values.size() - 1;
+        public int put(Supplier<T> reader) {
+            // mimic writing cache behavior
+            int id = values.size();
+            values.add(null);
+            values.set(id, reader.get());
+            return id;
         }
 
         /**
@@ -220,12 +224,14 @@ public class Universe {
          * Put the given value into the cache, returning the id of the value
          *
          * @param embeddingType type of the value that contains the passed value
-         * @param value value to put into the cache
+         * @param reader value to put into the cache
          */
-        public int put(CondensedType<?, ?> embeddingType, T value) {
+        public int put(CondensedType<?, ?> embeddingType, Supplier<T> reader) {
             var list = values.computeIfAbsent(embeddingType, k -> new ArrayList<>());
-            list.add(value);
-            return list.size() - 1;
+            int id = list.size();
+            list.add(null);
+            list.set(id, reader.get());
+            return id;
         }
 
         /**
@@ -266,13 +272,13 @@ public class Universe {
                             type, k -> new ReadingCachePerTypePerEmbeddingType<>());
         }
 
-        public <T, R> int put(CondensedType<T, R> type, R value) {
-            return getCache(type).put(value);
+        public <T, R> int put(CondensedType<T, R> type, Supplier<R> reader) {
+            return getCache(type).put(reader);
         }
 
         public <T, R> int put(
-                CondensedType<T, R> type, CondensedType<?, ?> embeddingType, R value) {
-            return getEmbeddingCache(type).put(embeddingType, value);
+                CondensedType<T, R> type, CondensedType<?, ?> embeddingType, Supplier<R> reader) {
+            return getEmbeddingCache(type).put(embeddingType, reader);
         }
 
         public <T, R> R get(CondensedType<T, R> type, int id) {
@@ -285,7 +291,8 @@ public class Universe {
     }
 
     private @Nullable StartMessage startMessage;
-    private static final int DEFAULT_SIZE = 1000;
+
+    public static final int DEFAULT_SIZE = 20000;
     private final WritingCaches writingCaches;
     private final ReadingCaches readingCaches = new ReadingCaches();
 
