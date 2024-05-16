@@ -11,11 +11,14 @@ import java.util.concurrent.atomic.AtomicReference;
 import jdk.jfr.*;
 import jdk.jfr.consumer.RecordedEvent;
 import jdk.jfr.consumer.RecordingStream;
+import me.bechberger.condensed.Compression;
 import me.bechberger.condensed.CondensedInputStream;
 import me.bechberger.condensed.CondensedOutputStream;
 import me.bechberger.condensed.Message.StartMessage;
 import me.bechberger.condensed.Util;
 import me.bechberger.util.Asserters;
+import net.jqwik.api.ForAll;
+import net.jqwik.api.Property;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.CsvSource;
@@ -220,6 +223,17 @@ public class BasicJFRRoundTripTest {
         "-1,false"
     })
     public void testTestEventWithStackTraceReduction(int maxDepth, boolean useSpecHashes)
+            throws InterruptedException {
+        extracted(maxDepth, useSpecHashes, Compression.DEFAULT);
+    }
+
+    @Property
+    public void testTestEventWithAllCompressions(@ForAll Compression compression)
+            throws InterruptedException {
+        extracted(-1, true, compression);
+    }
+
+    private void extracted(int maxDepth, boolean useSpecHashes, Compression compression)
             throws InterruptedException {
         int count = 4;
         List<RecordedEvent> recordedEvents = new ArrayList<>();

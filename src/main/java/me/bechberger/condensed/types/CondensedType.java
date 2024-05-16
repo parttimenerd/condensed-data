@@ -1,7 +1,6 @@
 package me.bechberger.condensed.types;
 
 import static me.bechberger.condensed.Universe.EmbeddingType.INLINE;
-import static me.bechberger.condensed.Universe.EmbeddingType.NULLABLE_INLINE;
 
 import java.util.Objects;
 import java.util.concurrent.atomic.AtomicBoolean;

@@ -655,6 +655,7 @@ public class BasicJFRWriter {
         out.writeMessage(type, event);
     }
 
+    /** Be sure to close the output stream after writing all events */
     public void processJFRFile(RecordingFile r) {
         while (r.hasMoreEvents()) {
             try {
@@ -665,6 +666,7 @@ public class BasicJFRWriter {
         }
     }
 
+    /** Be sure to close the output stream after writing all events */
     public void processJFRFile(Path file) {
         try (var r = new RecordingFile(file)) {
             processJFRFile(r);

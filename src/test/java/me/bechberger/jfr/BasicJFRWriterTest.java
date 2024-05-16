@@ -8,6 +8,7 @@ import jdk.jfr.*;
 import jdk.jfr.Configuration;
 import jdk.jfr.consumer.RecordedEvent;
 import jdk.jfr.consumer.RecordingStream;
+import me.bechberger.condensed.Compression;
 import me.bechberger.condensed.CondensedInputStream;
 import me.bechberger.condensed.CondensedOutputStream;
 import me.bechberger.condensed.Message.StartMessage;
@@ -74,7 +75,8 @@ public class BasicJFRWriterTest {
     public void testMultipleEvents() throws Exception {
         var outputStream = new ByteArrayOutputStream();
         try (CondensedOutputStream out =
-                new CondensedOutputStream(outputStream, StartMessage.DEFAULT.compress(true))) {
+                new CondensedOutputStream(
+                        outputStream, StartMessage.DEFAULT.compress(Compression.DEFAULT))) {
             BasicJFRWriter basicJFRWriter = new BasicJFRWriter(out);
             try (RecordingStream rs =
                     new RecordingStream(Configuration.getConfiguration("default"))) {

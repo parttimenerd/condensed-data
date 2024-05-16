@@ -1,7 +1,6 @@
 package me.bechberger.jfr;
 
 import java.util.IdentityHashMap;
-import java.util.List;
 import java.util.Objects;
 import java.util.Set;
 import jdk.jfr.ValueDescriptor;
@@ -182,7 +181,12 @@ public class JFRHashConfig extends HashAndEqualsConfig {
     }
 
     public static boolean isPrimitiveStructOrArray(ValueDescriptor field, int depth) {
-        return depth > 0 && field.getFields().stream().allMatch(f -> field.getFields().isEmpty() || isPrimitiveStructOrArray(f, depth - 1));
+        return depth > 0
+                && field.getFields().stream()
+                        .allMatch(
+                                f ->
+                                        field.getFields().isEmpty()
+                                                || isPrimitiveStructOrArray(f, depth - 1));
     }
 
     public static EmbeddingType getEmbeddingType(ValueDescriptor field) {

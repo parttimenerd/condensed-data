@@ -56,7 +56,9 @@ public class Asserters {
                         + " but was "
                         + actual
                         + " which is more than "
-                        + Math.max(NANOSECONDS_PER_SECOND / ticksPerSecond, ALLOWED_NANOSECOND_DIFFERENCE)
+                        + Math.max(
+                                NANOSECONDS_PER_SECOND / ticksPerSecond,
+                                ALLOWED_NANOSECOND_DIFFERENCE)
                         + " nanoseconds off");
     }
 

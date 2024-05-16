@@ -10,21 +10,21 @@ public sealed interface Message {
 
     /** Starts the stream */
     record StartMessage(
-            int version, String generatorName, String generatorVersion, boolean compressed)
+            int version, String generatorName, String generatorVersion, Compression compression)
             implements Message {
         /** Used mainly for testing purposes */
         public static final StartMessage DEFAULT = new StartMessage("Unknown", "Unknown Version");
 
         StartMessage(String generatorName, String generatorVersion) {
-            this(generatorName, generatorVersion, false);
+            this(generatorName, generatorVersion, Compression.NONE);
         }
 
-        StartMessage(String generatorName, String generatorVersion, boolean compressed) {
-            this(Constants.VERSION, generatorName, generatorVersion, compressed);
+        StartMessage(String generatorName, String generatorVersion, Compression compression) {
+            this(Constants.VERSION, generatorName, generatorVersion, compression);
         }
 
-        public StartMessage compress(boolean b) {
-            return new StartMessage(version, generatorName, generatorVersion, b);
+        public StartMessage compress(Compression compression) {
+            return new StartMessage(version, generatorName, generatorVersion, compression);
         }
     }
 

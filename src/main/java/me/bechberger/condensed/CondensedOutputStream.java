@@ -3,8 +3,7 @@ package me.bechberger.condensed;
 import java.io.*;
 import java.util.function.Consumer;
 import java.util.function.Function;
-import java.util.zip.Deflater;
-import java.util.zip.GZIPOutputStream;
+import me.bechberger.condensed.Compression.CompressionLevel;
 import me.bechberger.condensed.Message.StartMessage;
 import me.bechberger.condensed.Universe.HashAndEqualsConfig;
 import me.bechberger.condensed.types.CondensedType;
@@ -19,7 +18,7 @@ import org.jetbrains.annotations.Nullable;
  *
  * <p>Writes data that can be read by {@see CondensedInputStream}
  */
-public class CondensedOutputStream extends OutputStream {
+public class CondensedOutputStream extends OutputStream implements AutoCloseable {
 
     public enum WriteMode {
         TYPE,
@@ -190,15 +189,6 @@ public class CondensedOutputStream extends OutputStream {
 
     private boolean closed = false;
 
-    private static class ConfigurableGZIPOutputStream extends GZIPOutputStream {
-        public ConfigurableGZIPOutputStream(OutputStream out, int level) throws IOException {
-            /*super(out, BLOCKSIZE.SIZE_1MB, -1, LZ4Factory.fastestInstance().highCompressor(),
-            XXHashFactory.fastestInstance().hash32(), Bits.BLOCK_INDEPENDENCE);*/
-            super(out);
-            def.setLevel(level);
-        }
-    }
-
     public CondensedOutputStream(OutputStream outputStream, StartMessage startMessage) {
         this(outputStream, startMessage, new Universe());
     }
@@ -211,14 +201,11 @@ public class CondensedOutputStream extends OutputStream {
             OutputStream outputStream, StartMessage startMessage, Universe universe) {
         this(outputStream, universe);
         writeStartString(startMessage);
-        if (startMessage.compressed()) {
-            try {
-                this.outputStream =
-                        new CondensedOutputStream.ConfigurableGZIPOutputStream(
-                                outputStream, Deflater.BEST_COMPRESSION);
-            } catch (IOException e) {
-                throw new RuntimeException(e);
-            }
+        if (startMessage.compression() != Compression.NONE) {
+            this.outputStream =
+                    startMessage
+                            .compression()
+                            .wrap(outputStream, CompressionLevel.HIGH_COMPRESSION);
         }
     }
 
@@ -239,13 +226,14 @@ public class CondensedOutputStream extends OutputStream {
         writeUnsignedVarInt(startMessage.version());
         writeString(startMessage.generatorName());
         writeString(startMessage.generatorVersion());
-        write(startMessage.compressed() ? 1 : 0);
+        writeString(startMessage.compression().name());
     }
 
     static byte[] useCompressed(Consumer<CondensedOutputStream> consumer) {
         ByteArrayOutputStream outputStream = new ByteArrayOutputStream();
         CondensedOutputStream condensedOutputStream =
-                new CondensedOutputStream(outputStream, StartMessage.DEFAULT.compress(true));
+                new CondensedOutputStream(
+                        outputStream, StartMessage.DEFAULT.compress(Compression.DEFAULT));
         consumer.accept(condensedOutputStream);
         return outputStream.toByteArray();
     }
@@ -353,10 +341,12 @@ public class CondensedOutputStream extends OutputStream {
             throw new RuntimeException(e);
         }
         writeUnsignedVarInt(bytes.length);
-        try {
-            write(bytes, 0, bytes.length);
-        } catch (IOException e) {
-            throw new RIOException("Can't write string", e);
+        if (bytes.length > 0) {
+            try {
+                outputStream.write(bytes, 0, bytes.length);
+            } catch (IOException e) {
+                throw new RIOException("Can't write string", e);
+            }
         }
         statistic.recordString(statistic.bytes - bytesBefore);
     }
@@ -407,7 +397,7 @@ public class CondensedOutputStream extends OutputStream {
         if (value < 0 || value > 255) {
             throw new IllegalArgumentException("Value " + value + " does not fit into 1 byte");
         }
-        write((byte)value);
+        write((byte) value);
     }
 
     /**

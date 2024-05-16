@@ -5,6 +5,7 @@ import java.nio.file.Path;
 import java.util.Iterator;
 import java.util.concurrent.Callable;
 import jdk.jfr.consumer.RecordingFile;
+import me.bechberger.condensed.Compression;
 import me.bechberger.condensed.CondensedInputStream;
 import me.bechberger.condensed.CondensedOutputStream;
 import me.bechberger.condensed.Message.StartMessage;
@@ -81,7 +82,7 @@ public class JFRCLI implements Runnable {
             try (var out =
                     new CondensedOutputStream(
                             Files.newOutputStream(getOutputFile()),
-                            StartMessage.DEFAULT.compress(compress))) {
+                            StartMessage.DEFAULT.compress(Compression.DEFAULT))) {
                 var basicJFRWriter = new BasicJFRWriter(out, configuration);
                 try (RecordingFile r = new RecordingFile(inputFile)) {
                     while (r.hasMoreEvents()) {
@@ -170,9 +171,16 @@ public class JFRCLI implements Runnable {
         @Option(names = "--csv", description = "Output results as CSV")
         private boolean csv = false;
 
+        @Option(names = "--regexp", description = "Regular expression to filter files")
+        private String regexp = ".*";
+
         public Integer call() {
             var results =
-                    new Benchmark(Configuration.configurations.values().stream().sorted().toList())
+                    new Benchmark(
+                                    Configuration.configurations.values().stream()
+                                            .sorted()
+                                            .toList(),
+                                    regexp)
                             .runBenchmarks(
                                     keepCondensedFile, inflateCondensedFile, keepInflatedFile);
             if (csv) {

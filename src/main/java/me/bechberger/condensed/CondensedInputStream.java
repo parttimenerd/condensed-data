@@ -7,7 +7,6 @@ import java.io.ByteArrayInputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.UnsupportedEncodingException;
-import java.util.zip.GZIPInputStream;
 import me.bechberger.condensed.Message.CondensedTypeMessage;
 import me.bechberger.condensed.Message.ReadInstance;
 import me.bechberger.condensed.Message.StartMessage;
@@ -115,14 +114,11 @@ public class CondensedInputStream extends InputStream {
         startStringRead = true;
         StartMessage message =
                 new StartMessage(
-                        (int) readUnsignedVarint(), readString(), readString(), read() == 1);
-        if (message.compressed()) {
-            try {
-                this.inputStream = new GZIPInputStream(inputStream);
-            } catch (IOException e) {
-                throw new RuntimeException(e);
-            }
-        }
+                        (int) readUnsignedVarint(),
+                        readString(),
+                        readString(),
+                        Compression.valueOf(readString()));
+        this.inputStream = message.compression().wrap(inputStream);
         universe.setStartMessage(message);
     }
 

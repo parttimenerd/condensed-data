@@ -25,7 +25,9 @@ Each file starts with a header:
 - Unsigned varint: Version
 - String: Generator name
 - String: Generator version
-- boolean: the following content is gzip compressed (1) or not (0)
+- String: compression algorithm
+  - GZIP: zip compression
+  - LZ4FRAME: LZ4 compression (frame format), faster than GZIP and therefore the default
 
 The following data is organized in messages:
 

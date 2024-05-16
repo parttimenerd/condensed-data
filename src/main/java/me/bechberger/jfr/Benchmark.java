@@ -8,6 +8,7 @@ import java.util.List;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
+import me.bechberger.condensed.Compression;
 import me.bechberger.condensed.CondensedInputStream;
 import me.bechberger.condensed.CondensedOutputStream;
 import me.bechberger.condensed.Message.StartMessage;
@@ -225,7 +226,7 @@ public class Benchmark {
 
     private final List<JFRFile> jfrFiles;
 
-    public Benchmark(List<Configuration> configurations) {
+    public Benchmark(List<Configuration> configurations, String fileRegex) {
         this.configurations = configurations;
         if (configurations.isEmpty()) {
             throw new IllegalArgumentException("No configurations provided");
@@ -234,10 +235,10 @@ public class Benchmark {
             throw new IllegalArgumentException(
                     "Benchmark folder does not exist, run this from the project root");
         }
-        this.jfrFiles = readJFRFiles();
+        this.jfrFiles = readJFRFiles(fileRegex);
     }
 
-    private List<JFRFile> readJFRFiles() {
+    private List<JFRFile> readJFRFiles(String fileRegex) {
         // content of benchmark_times.txt:
         // benchmark_file.jfr, gc_algo, jfc, gc_runtime in seconds, compressed size in bytes
         // e.g.:
@@ -272,6 +273,7 @@ public class Benchmark {
                                         size,
                                         compressedSize);
                             })
+                    .filter(jfrFile -> jfrFile.name().matches(fileRegex + ".*"))
                     .collect(Collectors.toList());
         } catch (IOException e) {
             throw new RuntimeException(e);
@@ -288,12 +290,15 @@ public class Benchmark {
             var cjfrFile =
                     jfrFile.file.resolveSibling(
                             jfrFile.file.getFileName() + "_" + configuration.name() + ".cjfr");
-            var out =
+            long start;
+            try (var out =
                     new CondensedOutputStream(
-                            Files.newOutputStream(cjfrFile), StartMessage.DEFAULT.compress(true));
-            var start = System.nanoTime();
-            var basicJFRWriter = new BasicJFRWriter(out, configuration);
-            basicJFRWriter.processJFRFile(jfrFile.file);
+                            Files.newOutputStream(cjfrFile),
+                            StartMessage.DEFAULT.compress(Compression.DEFAULT))) {
+                start = System.nanoTime();
+                var basicJFRWriter = new BasicJFRWriter(out, configuration);
+                basicJFRWriter.processJFRFile(jfrFile.file);
+            }
             var result =
                     new SingleResult(
                             configuration,

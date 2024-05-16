@@ -3,6 +3,7 @@ package me.bechberger.jfr;
 import static me.bechberger.condensed.Util.toNanoSeconds;
 
 import java.time.Instant;
+import java.util.ArrayList;
 import java.util.List;
 import jdk.jfr.consumer.RecordedFrame;
 import jdk.jfr.consumer.RecordedStackTrace;
@@ -147,6 +148,8 @@ public enum JFRReduction {
 
     record JFRReductions(Configuration configuration, Universe universe) implements Reductions {
 
+        private static List<JFRReduction> values = new ArrayList<>();
+
         @Override
         @SuppressWarnings("unchecked")
         public <R, F> R reduce(int id, F value) {
@@ -167,6 +170,7 @@ public enum JFRReduction {
         this.reducedClass = reducedClass;
         this.function = function;
         this.structFunction = null;
+        JFRReductions.values.add(this);
     }
 
     @SuppressWarnings("unchecked")
@@ -175,6 +179,7 @@ public enum JFRReduction {
         this.reducedClass = null;
         this.function = null;
         this.structFunction = function;
+        JFRReductions.values.add(this);
     }
 
     @SuppressWarnings({"unchecked", "rawtypes"})
@@ -228,6 +233,6 @@ public enum JFRReduction {
     }
 
     public static JFRReduction get(int id) {
-        return values()[id];
+        return JFRReductions.values.get(id);
     }
 }
