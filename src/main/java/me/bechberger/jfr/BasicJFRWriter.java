@@ -455,12 +455,14 @@ public class BasicJFRWriter {
             return new GetterAndCachedType(
                     event -> {
                         var trace = event.getValue(field.getName());
+                        // doing this in reductions is wasteful
                         return trace == null
                                 ? null
-                                : new ReducedStackTrace((RecordedStackTrace) trace);
+                                : ReducedStackTrace.create(
+                                        (RecordedStackTrace) trace,
+                                        (int) configuration.maxStackTraceDepth());
                     },
-                    getReducedStackTraceType(field),
-                    JFRReduction.STACK_TRACE_REDUCTION);
+                    getReducedStackTraceType(field));
         }
         return new GetterAndCachedType(
                 event -> normalize(event.getValue(field.getName())),

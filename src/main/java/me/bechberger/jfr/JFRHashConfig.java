@@ -194,7 +194,7 @@ public class JFRHashConfig extends HashAndEqualsConfig {
             return EmbeddingType.REFERENCE_PER_TYPE;
         }
         // TODO: maybe also inline for small structs
-        if (field.getFields().isEmpty() || field.getTypeName().equals("jdk.jfr.StackFrame")) {
+        if (field.getFields().isEmpty() || field.getTypeName().equals("jdk.types.StackFrame")) {
             return EmbeddingType.INLINE;
         }
         if (isPrimitiveStructOrArray(field, 2)) {

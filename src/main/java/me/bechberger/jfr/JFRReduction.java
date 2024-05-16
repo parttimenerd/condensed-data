@@ -66,34 +66,34 @@ public enum JFRReduction {
                     System.out.println("     " + nanoSeconds);
                     return Instant.ofEpochSecond(0, nanoSeconds);
                 }
-            }),
-    STACK_TRACE_REDUCTION(
-            new StructReductionFunction<ReducedStackTrace, ReducedStackTrace>() {
-                @Override
-                public ReducedStackTrace reduce(
-                        Configuration configuration, Universe universe, ReducedStackTrace value) {
-                    return value.limitFrames((int) configuration.maxStackTraceDepth());
-                }
-
-                @Override
-                public ReadStruct inflate(
-                        Configuration configuration, Universe universe, ReadStruct reduced) {
-                    return reduced;
-                }
             });
 
     static class ReducedStackTrace {
 
         private final List<RecordedFrame> frames;
         private final boolean truncated;
+        private final RecordedStackTrace backing;
 
-        ReducedStackTrace(RecordedStackTrace stackTrace) {
-            this(stackTrace.getFrames(), stackTrace.isTruncated());
+        private ReducedStackTrace(RecordedStackTrace stackTrace) {
+            this.frames = stackTrace.getFrames();
+            this.truncated = stackTrace.isTruncated();
+            this.backing = stackTrace;
         }
 
-        ReducedStackTrace(List<RecordedFrame> frames, boolean truncated) {
+        private ReducedStackTrace(
+                RecordedStackTrace backing, List<RecordedFrame> frames, boolean truncated) {
             this.frames = frames;
             this.truncated = truncated;
+            this.backing = backing;
+        }
+
+        static ReducedStackTrace create(RecordedStackTrace stackTrace, int limit) {
+            var frames = stackTrace.getFrames();
+            if (frames.size() <= limit || limit == -1) {
+                return new ReducedStackTrace(stackTrace);
+            }
+            return new ReducedStackTrace(
+                    stackTrace, stackTrace.getFrames().subList(0, limit), true);
         }
 
         List<RecordedFrame> getFrames() {
@@ -104,17 +104,9 @@ public enum JFRReduction {
             return truncated;
         }
 
-        ReducedStackTrace limitFrames(int size) {
-            if (this.frames.size() <= size) {
-                return this;
-            }
-            return new ReducedStackTrace(
-                    frames.subList(0, size), truncated || frames.size() > size);
-        }
-
         @Override
         public int hashCode() {
-            return frames.hashCode() + (truncated ? 1 : 0);
+            return backing.hashCode();
         }
 
         @Override
@@ -125,7 +117,7 @@ public enum JFRReduction {
             if (!(obj instanceof ReducedStackTrace other)) {
                 return false;
             }
-            return frames.equals(other.frames) && truncated == other.truncated;
+            return other.backing == backing;
         }
     }
 
