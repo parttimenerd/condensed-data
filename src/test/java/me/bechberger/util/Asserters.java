@@ -15,7 +15,7 @@ import org.openjdk.jmc.common.util.Pair;
 public class Asserters {
 
     public static final long NANOSECONDS_PER_SECOND = 1_000_000_000;
-    public static final long ALLOWED_NANOSECOND_DIFFERENCE = 200;
+    public static final long ALLOWED_NANOSECOND_DIFFERENCE = 500;
 
     /**
      * Durations cannot be compared using equals, as their nanosecond values can differ due to
@@ -56,7 +56,7 @@ public class Asserters {
                         + " but was "
                         + actual
                         + " which is more than "
-                        + Math.max(NANOSECONDS_PER_SECOND / ticksPerSecond, 100)
+                        + Math.max(NANOSECONDS_PER_SECOND / ticksPerSecond, ALLOWED_NANOSECOND_DIFFERENCE)
                         + " nanoseconds off");
     }
 

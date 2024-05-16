@@ -3,8 +3,10 @@ package me.bechberger.jfr;
 import java.util.IdentityHashMap;
 import java.util.List;
 import java.util.Objects;
+import java.util.Set;
+import jdk.jfr.ValueDescriptor;
 import jdk.jfr.consumer.*;
-import me.bechberger.condensed.Universe;
+import me.bechberger.condensed.Universe.EmbeddingType;
 import me.bechberger.condensed.Universe.HashAndEqualsConfig;
 import me.bechberger.condensed.Universe.HashAndEqualsWrapper;
 
@@ -13,19 +15,6 @@ import me.bechberger.condensed.Universe.HashAndEqualsWrapper;
  * the ones that we put into caches so that the equality and hash code are not identity based.
  */
 public class JFRHashConfig extends HashAndEqualsConfig {
-
-    /** Objects that should be stored by reference in structs, not yet used */
-    static final List<String> TYPES_TO_REF =
-            List.of(
-                    "jdk.types.Class",
-                    "jdk.types.ClassLoader",
-                    "jdk.types.Method",
-                    "jdk.types.Module",
-                    "jdk.types.StackFrame",
-                    "jdk.types.Thread",
-                    "jdk.types.ThreadGroup");
-
-    static final List<String> NULLABLE_NON_REF_TYPES = List.of("jdk.types.StackTrace");
 
     record ClassWrapper(RecordedClass value) implements HashAndEqualsWrapper<RecordedClass> {
 
@@ -102,7 +91,8 @@ public class JFRHashConfig extends HashAndEqualsConfig {
                                         value.getLineNumber(),
                                         f.getBytecodeIndex(),
                                         f.getMethod().getType().getId(),
-                                        f.getMethod().getName());
+                                        f.getMethod().getName(),
+                                        f.getType());
                             });
         }
 
@@ -135,7 +125,8 @@ public class JFRHashConfig extends HashAndEqualsConfig {
                 return value.getBytecodeIndex() == other.value.getBytecodeIndex()
                         && method.getType().getId() == otherMethod.getType().getId()
                         && method.getName().equals(otherMethod.getName())
-                        && method.getDescriptor().equals(otherMethod.getDescriptor());
+                        && method.getDescriptor().equals(otherMethod.getDescriptor())
+                        && value.getType().equals(other.value.getType());
             }
             return false;
         }
@@ -173,24 +164,38 @@ public class JFRHashConfig extends HashAndEqualsConfig {
     }
 
     public JFRHashConfig() {
-        put("jdk.types.Class", ClassWrapper::new);
+        put("java.lang.Class", ClassWrapper::new);
         put("jdk.types.ClassLoader", ClassLoaderWrapper::new);
         put("jdk.types.Method", MethodWrapper::new);
         put(
                 "jdk.types.StackFrame",
                 (RecordedFrame f) -> new StackFrameWrapper(f, methodHashCodeCache));
-        put("jdk.types.Thread", ThreadWrapper::new);
+        put("java.lang.Thread", ThreadWrapper::new);
         put("jdk.types.ThreadGroup", ThreadGroupWrapper::new);
     }
 
-    public boolean shouldBeAReference(String type) {
-        return TYPES_TO_REF.contains(type);
+    private static final Set<String> PRIMITIVE_TYPES =
+            Set.of("int", "long", "float", "double", "boolean", "char", "byte", "short");
+
+    public static boolean isPrimitive(String type) {
+        return PRIMITIVE_TYPES.contains(type);
     }
 
-    public static Universe createUniverse(Configuration configuration) {
-        return new Universe(
-                configuration.useSpecificHashesAndRefs()
-                        ? new JFRHashConfig()
-                        : HashAndEqualsConfig.NONE);
+    public static boolean isPrimitiveStructOrArray(ValueDescriptor field, int depth) {
+        return depth > 0 && field.getFields().stream().allMatch(f -> field.getFields().isEmpty() || isPrimitiveStructOrArray(f, depth - 1));
+    }
+
+    public static EmbeddingType getEmbeddingType(ValueDescriptor field) {
+        if (field.getTypeName().equals("java.lang.String")) {
+            return EmbeddingType.REFERENCE_PER_TYPE;
+        }
+        // TODO: maybe also inline for small structs
+        if (field.getFields().isEmpty() || field.getTypeName().equals("jdk.jfr.StackFrame")) {
+            return EmbeddingType.INLINE;
+        }
+        if (isPrimitiveStructOrArray(field, 2)) {
+            return EmbeddingType.NULLABLE_INLINE;
+        }
+        return EmbeddingType.REFERENCE;
     }
 }

@@ -102,7 +102,7 @@ public class IntType extends CondensedType<Long, Long> {
                 @Override
                 public void writeInnerTypeSpecification(
                         CondensedOutputStream out, IntType typeInstance) {
-                    out.writeUnsignedLong(typeInstance.width, 1);
+                    out.writeSingleByte(typeInstance.width);
                     out.writeFlags(
                             typeInstance.signed, typeInstance.overflowMode == OverflowMode.ERROR);
                 }

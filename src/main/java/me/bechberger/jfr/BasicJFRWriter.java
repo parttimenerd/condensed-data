@@ -276,19 +276,9 @@ public class BasicJFRWriter {
         };
     }
 
-    private EmbeddingType getEmbeddingType(ValueDescriptor field) {
-        if (field.getTypeName().equals("java.lang.String")) {
-            return EmbeddingType.REFERENCE_PER_TYPE;
-        }
-        // TODO: maybe also inline for small structs
-        return field.getFields().isEmpty() || field.getTypeName().equals("jdk.jfr.StackFrame")
-                ? EmbeddingType.INLINE
-                : EmbeddingType.REFERENCE;
-    }
-
     @NotNull
     private ArrayType<?, ?> createArrayType(ValueDescriptor field, Integer id) {
-        EmbeddingType embedding = getEmbeddingType(field);
+        EmbeddingType embedding = JFRHashConfig.getEmbeddingType(field);
         TypeIdent innerIdent = TypeIdent.of(field, false);
         var name = field.getTypeName() + "[]";
         var innerType = getTypeOrNull(innerIdent);
@@ -389,7 +379,7 @@ public class BasicJFRWriter {
     private <T extends RecordedObject> Field<T, ?, ?> eventFieldToField(
             ValueDescriptor field, boolean topLevel) {
         String description = getDescription(field);
-        EmbeddingType embedding = getEmbeddingType(field);
+        EmbeddingType embedding = JFRHashConfig.getEmbeddingType(field);
         var getterAndCachedType = gettObjectFunction(field, topLevel);
         var getter = (Function<T, Object>) getterAndCachedType.getter;
         var ident = TypeIdent.of(field, false);

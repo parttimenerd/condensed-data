@@ -78,11 +78,12 @@ The following data is organized in messages:
         - other non-user defined types are not allowed
       - Embedding
         - 0: inline
-        - 1: reference into cache
+        - 1: inline, but nullable (prefix with a byte indicating null or non-null)
+        - 2: reference into cache
           - 0: null
           - 1: value not in cache, followed by the value
           - 2: value in cache, followed by the index (id starting at 2 in the cache)
-        - 2: reference into cache per embedding type
+        - 3: reference into cache per embedding type
           - ...
       - Unsigned varint: reduction id (used in JFR), 0 for none
     - Unsigned varint: reduction id

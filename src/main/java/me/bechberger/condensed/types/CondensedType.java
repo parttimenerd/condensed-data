@@ -1,6 +1,7 @@
 package me.bechberger.condensed.types;
 
 import static me.bechberger.condensed.Universe.EmbeddingType.INLINE;
+import static me.bechberger.condensed.Universe.EmbeddingType.NULLABLE_INLINE;
 
 import java.util.Objects;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -57,8 +58,18 @@ public abstract class CondensedType<T, R> {
             T value,
             CondensedType<?, ?> embeddingType,
             EmbeddingType embedding) {
-        if (embedding == INLINE) {
-            Objects.requireNonNull(value, "Value must not be null");
+        if (embedding == INLINE || embedding == EmbeddingType.NULLABLE_INLINE) {
+            if (embedding == EmbeddingType.NULLABLE_INLINE) {
+                if (value == null) {
+                    out.writeUnsignedVarInt(0);
+                    return;
+                } else {
+                    out.writeUnsignedVarInt(1);
+                }
+            }
+            if (value == null) {
+                throw new IllegalArgumentException("Value of type " + name + " must not be null");
+            }
             if (value instanceof Integer && this instanceof IntType) {
                 ((IntType) this).writeTo(out, (long) (Integer) value);
                 return;
@@ -96,7 +107,12 @@ public abstract class CondensedType<T, R> {
 
     public R readFrom(
             CondensedInputStream in, CondensedType<?, ?> embeddingType, EmbeddingType embedding) {
-        if (embedding == INLINE) {
+        if (embedding == EmbeddingType.NULLABLE_INLINE) {
+            if (in.readUnsignedLong(1) == 0) {
+                return null;
+            }
+        }
+        if (embedding == INLINE || embedding == EmbeddingType.NULLABLE_INLINE) {
             return readFrom(in);
         }
         var index = readReference(in, embeddingType, embedding);

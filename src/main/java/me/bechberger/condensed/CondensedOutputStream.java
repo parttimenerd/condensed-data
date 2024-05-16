@@ -397,7 +397,17 @@ public class CondensedOutputStream extends OutputStream {
     }
 
     public void writeUnsignedLong(long value, int bytes) {
+        if (bytes == 1) {
+            writeSingleByte(value);
+        }
         writeUnsignedLong(value, bytes, OverflowMode.ERROR);
+    }
+
+    public void writeSingleByte(long value) {
+        if (value < 0 || value > 255) {
+            throw new IllegalArgumentException("Value " + value + " does not fit into 1 byte");
+        }
+        write((byte)value);
     }
 
     /**

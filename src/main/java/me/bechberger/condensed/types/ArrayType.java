@@ -97,7 +97,7 @@ public class ArrayType<V, R> extends CondensedType<List<V>, List<R>> {
     public List<R> readFrom(CondensedInputStream in) {
         int size = (int) in.readUnsignedVarint();
         switch (embedding) {
-            case INLINE -> {
+            case INLINE, NULLABLE_INLINE -> {
                 List<R> list = new ArrayList<>(size);
                 for (int i = 0; i < size; i++) {
                     list.add(getValueType().readFrom(in, this, embedding));
@@ -156,7 +156,7 @@ public class ArrayType<V, R> extends CondensedType<List<V>, List<R>> {
                 public void writeInnerTypeSpecification(
                         CondensedOutputStream out, ArrayType<?, ?> typeInstance) {
                     out.writeUnsignedVarInt(typeInstance.getValueTypeId());
-                    out.writeUnsignedLong(typeInstance.embedding.ordinal(), 1);
+                    out.writeSingleByte(typeInstance.embedding.ordinal());
                 }
 
                 @Override

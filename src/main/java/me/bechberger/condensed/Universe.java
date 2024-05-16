@@ -133,6 +133,8 @@ public class Universe {
     public enum EmbeddingType {
         /** Embed a value directly */
         INLINE,
+        /** Embed a value directly, might be null */
+        NULLABLE_INLINE,
         /**
          * Store the value in a cache and reference it with an index per-value type, might be null
          */

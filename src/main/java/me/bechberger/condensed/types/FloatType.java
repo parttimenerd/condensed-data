@@ -87,7 +87,7 @@ public class FloatType extends CondensedType<Float, Float> {
                 @Override
                 public void writeInnerTypeSpecification(
                         CondensedOutputStream out, FloatType typeInstance) {
-                    out.writeUnsignedLong(typeInstance.type.ordinal(), 1);
+                    out.writeSingleByte(typeInstance.type.ordinal());
                 }
 
                 @Override

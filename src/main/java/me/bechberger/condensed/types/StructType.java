@@ -261,7 +261,8 @@ public class StructType<T, R> extends CondensedType<T, R> {
         Map<String, Object> values = new HashMap<>();
         Map<String, @Nullable Integer> idsOrNull = new HashMap<>();
         for (Field<T, ?, ?> field : fields) {
-            if (field.embedding() == EmbeddingType.INLINE) {
+            if (field.embedding() == EmbeddingType.INLINE
+                    || field.embedding() == EmbeddingType.NULLABLE_INLINE) {
                 var value =
                         ((CondensedType<Object, Object>) field.type())
                                 .readFrom(in, this, field.embedding());
@@ -320,11 +321,11 @@ public class StructType<T, R> extends CondensedType<T, R> {
                 public void writeInnerTypeSpecification(
                         CondensedOutputStream out, StructType<?, ?> type) {
                     out.writeUnsignedVarInt(type.fields.size());
-                    for (Field<?, ?, ?> field : type.fields) {
+                    for (StructType.Field<?, ?, ?> field : type.fields) {
                         out.writeString(field.name());
                         out.writeString(field.description());
                         out.writeUnsignedVarInt(field.getTypeId());
-                        out.writeUnsignedLong(field.embedding().ordinal(), 1);
+                        out.writeSingleByte(field.embedding().ordinal());
                         out.writeUnsignedVarInt(field.reductionId);
                     }
                     out.writeUnsignedVarInt(type.reductionId);
