@@ -18,10 +18,11 @@ RENAISSANCE_JAR = BENCHMARK_FOLDER / "renaissance-gpl-0.15.0.jar"
 JFC_FILES = list(BENCHMARK_FOLDER.glob("*.jfc"))
 TIMING_FILE = BENCHMARK_FOLDER / "benchmark_times.txt"
 
-SUPPORTED_GC_ALGORITHMS = ["G1"]
+SUPPORTED_GC_ALGORITHMS = ["G1", "SerialGC", "ParallelGC", "ZGC"]
 
 # these benchmarks cause to many exceptions to be thrown
-EXCLUDED_BENCHMARKS = ["finagle-chirper", "finagle-http"]
+# or aren't usable with one of the GCs (SerialGC doesn't like akka-uct)
+EXCLUDED_BENCHMARKS = ["finagle-chirper", "finagle-http", "akka-uct"]
 
 
 def get_all_benchmarks() -> List[str]:
@@ -93,7 +94,7 @@ def run_benchmark(benchmark: str, benchmark_name: str, jfc_file: Path, gc_algori
         args.append("--no-forced-gc")
     subprocess.run(args,
                    cwd=BENCHMARK_FOLDER, check=True,
-                   stdout=subprocess.DEVNULL)
+                  )
     end_time = time.time()
     print(f"Finished benchmark for {gc_algorithm} with {jfc_file.name} in {end_time - start_time:.2f} seconds")
     # delete launcher-* folders
@@ -113,8 +114,12 @@ def main():
     for jfc_file in JFC_FILES:
         for gc_algorithm in SUPPORTED_GC_ALGORITHMS:
             for benchmark in ["dotty", "all"]:
+                if benchmark == "all" and jfc_file.stem == "gc_details" and gc_algorithm == "G1":
+                    continue
                 run_benchmark(benchmark, "renaissance-" + benchmark, jfc_file, gc_algorithm, force_gc=False)
 
+    for benchmark in ["dotty", "all"]:
+        run_benchmark(benchmark, "renaissance-" + benchmark, Path("default.jfc"), "G1", force_gc=False)
 
 if __name__ == "__main__":
     main()
