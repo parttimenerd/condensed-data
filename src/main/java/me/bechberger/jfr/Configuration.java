@@ -21,7 +21,8 @@ public record Configuration(
         boolean memoryAsBFloat16,
         boolean ignoreUnnecessaryEvents,
         long maxStackTraceDepth,
-        boolean useSpecificHashesAndRefs)
+        boolean useSpecificHashesAndRefs,
+        boolean combinePLABPromotionEvents)
         implements Cloneable, Comparable<Configuration> {
 
     public static final Configuration DEFAULT =
@@ -33,7 +34,21 @@ public record Configuration(
                     false,
                     true,
                     -1,
+                    false,
                     false);
+
+    /** with conservative lossy compression */
+    public static final Configuration REASONABLE_DEFAULT =
+            new Configuration(
+                    "reasonable default", /* milli seconds */
+                    1_000, /* 10 us
+                           granularity */
+                    100_000,
+                    true,
+                    true,
+                    -1,
+                    true,
+                    true);
 
     public Configuration {
         if (timeStampTicksPerSecond <= 0) {
@@ -46,18 +61,6 @@ public record Configuration(
             throw new IllegalArgumentException("maxStackTraceDepth must be -1 or positive");
         }
     }
-
-    /** with conservative lossy compression */
-    public static final Configuration REASONABLE_DEFAULT =
-            new Configuration(
-                    "reasonable default", /* milli seconds */
-                    1_000, /* 10 us
-                           granularity */
-                    100_000,
-                    true,
-                    true,
-                    -1,
-                    true);
 
     public static final Map<String, Configuration> configurations =
             Map.of(
@@ -119,6 +122,10 @@ public record Configuration(
         } catch (IllegalAccessException | InvocationTargetException | InstantiationException e) {
             throw new RuntimeException(e);
         }
+    }
+
+    public boolean eventCombinersEnabled() {
+        return combinePLABPromotionEvents;
     }
 
     @Override

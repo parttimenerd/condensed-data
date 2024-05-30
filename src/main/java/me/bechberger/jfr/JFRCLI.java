@@ -60,11 +60,28 @@ public class JFRCLI implements Runnable {
             }
         }
 
+        static class ConfigurationConverter implements ITypeConverter<Configuration> {
+            public ConfigurationConverter() {}
+
+            @Override
+            public Configuration convert(String value) {
+                if (!Configuration.configurations.containsKey(value)) {
+                    throw new IllegalArgumentException(
+                            "Unknown configuration: "
+                                    + value
+                                    + " use one of "
+                                    + Configuration.configurations.keySet());
+                }
+                return Configuration.configurations.get(value);
+            }
+        }
+
         @Option(
                 names = {"-c", "--configuration"},
                 description = "The configuration to use, possible values: ${COMPLETION-CANDIDATES}",
                 completionCandidates = ConfigurationIterable.class,
-                defaultValue = "default")
+                defaultValue = "default",
+                converter = ConfigurationConverter.class)
         private Configuration configuration = Configuration.DEFAULT;
 
         private Path getOutputFile() {

@@ -39,7 +39,7 @@ import org.json.JSONArray;
  *       StructType} for the event
  * </ul>
  */
-public class BasicJFRWriter {
+public class BasicJFRWriter implements Cloneable {
 
     // optimization ideas:
     // - every "JVM: Flag" flag is only emitted once, as there are change events
@@ -170,9 +170,10 @@ public class BasicJFRWriter {
     private VarIntType timeStampType;
     private Map<String, FloatType> memoryFloatTypes = new HashMap<>();
     private StructType<?, ?> reducedStackTraceType;
-    private Universe universe = new Universe();
+    Universe universe = new Universe();
     private boolean wroteConfiguration = false;
     private CondensedType<Universe, Universe> universeType;
+    private final JFREventCombiner eventCombiner;
 
     /** field types that are not yet added, but their creation code is running + id */
     private final Map<TypeIdent, Integer> fieldTypesCurrentlyAdding;
@@ -192,6 +193,8 @@ public class BasicJFRWriter {
                 configuration.useSpecificHashesAndRefs()
                         ? new JFRHashConfig()
                         : HashAndEqualsConfig.NONE);
+
+        eventCombiner = new JFREventCombiner(out, configuration, this);
     }
 
     public BasicJFRWriter(CondensedOutputStream out) {
@@ -224,7 +227,7 @@ public class BasicJFRWriter {
         fieldTypesToAdd.clear();
     }
 
-    private CondensedType<?, ?> createTypeAndRegister(ValueDescriptor field, boolean isArray) {
+    CondensedType<?, ?> createTypeAndRegister(ValueDescriptor field, boolean isArray) {
         return out.writeAndStoreType(
                 id -> {
                     fieldTypesCurrentlyAdding.put(TypeIdent.of(field), id);
@@ -320,7 +323,7 @@ public class BasicJFRWriter {
                 members -> members);
     }
 
-    private CondensedType<?, ?> getTypeCached(ValueDescriptor field) {
+    CondensedType<?, ?> getTypeCached(ValueDescriptor field) {
         return getTypeOrElse(
                 TypeIdent.of(field), f -> createTypeAndRegister(field, field.isArray()));
     }
@@ -654,6 +657,11 @@ public class BasicJFRWriter {
                 eventTypeMap.computeIfAbsent(
                         event.getEventType(), this::createAndRegisterEventStructType);
         processFieldTypesToAdd();
+
+        if (eventCombiner.processEvent(event)) {
+            return;
+        }
+
         out.writeMessage(type, event);
     }
 
@@ -666,6 +674,7 @@ public class BasicJFRWriter {
                 throw new RuntimeException(e);
             }
         }
+        close();
     }
 
     /** Be sure to close the output stream after writing all events */
@@ -675,5 +684,10 @@ public class BasicJFRWriter {
         } catch (IOException e) {
             throw new RuntimeException(e);
         }
+    }
+
+    public void close() {
+        eventCombiner.close();
+        out.close();
     }
 }

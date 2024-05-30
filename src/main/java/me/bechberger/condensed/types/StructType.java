@@ -206,6 +206,16 @@ public class StructType<T, R> extends CondensedType<T, R> {
         this(id, name, description, fields, creator, 0);
     }
 
+    @SuppressWarnings("unchecked")
+    public StructType(int id, List<Field<T, ?, ?>> fields) {
+        this(id, fields, r -> (R) r, 0);
+    }
+
+    @SuppressWarnings("unchecked")
+    public StructType(int id, String name, List<Field<T, ?, ?>> fields) {
+        this(id, name, "", fields, r -> (R) r, 0);
+    }
+
     public StructType(int id, List<Field<T, ?, ?>> fields, Function<ReadStruct, R> creator) {
         this(id, fields, creator, 0);
     }
