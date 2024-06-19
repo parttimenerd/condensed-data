@@ -14,6 +14,12 @@ import org.jetbrains.annotations.Nullable;
 /** A type that represents a struct */
 public class StructType<T, R> extends CondensedType<T, R> {
 
+    /*
+     * A field in a struct
+     * @param <T> the type of the struct
+     * @param <F> the type of the field
+     * @param <R> the type of the field's reduction
+     */
     public static final class Field<T, F, R> {
         private final String name;
         private final String description;

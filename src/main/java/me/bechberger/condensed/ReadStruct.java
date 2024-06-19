@@ -2,13 +2,14 @@ package me.bechberger.condensed;
 
 import java.util.*;
 import java.util.function.BiFunction;
+import java.util.stream.Collectors;
 import me.bechberger.condensed.types.StructType;
 import me.bechberger.condensed.types.StructType.Field;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
 /** A read-only struct that loads its values lazily */
-public class ReadStruct implements Map<String, Object>, CompletableContainer<ReadStruct> {
+public class ReadStruct implements Map<String, Object>, ReadContainer<ReadStruct> {
     private final StructType<?, ReadStruct> type;
     private final Map<String, Object> map;
     private final @Nullable BiFunction<Field<?, ?, ?>, Integer, Object> accessor;
@@ -44,9 +45,6 @@ public class ReadStruct implements Map<String, Object>, CompletableContainer<Rea
         for (var field : type.getFieldNames()) {
             if (!map.containsKey(field)) {
                 throw new IllegalArgumentException("Missing field " + field);
-            }
-            if (map.get(field) == null) {
-                throw new IllegalArgumentException("Field " + field + " is null");
             }
         }
     }
@@ -122,12 +120,55 @@ public class ReadStruct implements Map<String, Object>, CompletableContainer<Rea
         return map.get(key);
     }
 
+    public Object getOrThrow(Object key) {
+        Object value = get(key);
+        if (value == null) {
+            throw new NoSuchElementException("No such key: " + key);
+        }
+        return value;
+    }
+
     public <T> T get(Class<T> clazz, String key) {
         return clazz.cast(get(key));
     }
 
     public <T> T get(String key, Class<T> clazz) {
         return clazz.cast(get(key));
+    }
+
+    @SuppressWarnings("unchecked")
+    public <T> List<T> getList(String key) {
+        return (List<T>) get(List.class, key);
+    }
+
+    @SuppressWarnings({"rawtypes", "unchecked"})
+    public <T, V> List<Map.Entry<T, V>> asMapEntryList(String key) {
+        var val = getOrThrow(key);
+        if (!(val instanceof List)) {
+            throw new AssertionError("Expected list got " + val.getClass());
+        }
+        return (List<Map.Entry<T, V>>)
+                ((List) val)
+                        .stream()
+                                .map(
+                                        v -> {
+                                            if (!(v instanceof Map)
+                                                    || !((Map<?, ?>) v).containsKey("key")
+                                                    || !((Map<?, ?>) v).containsKey("value")) {
+                                                throw new AssertionError(
+                                                        "Expected mapped pair (key, value), but got"
+                                                                + " "
+                                                                + v);
+                                            }
+                                            return Map.entry(
+                                                    ((Map<?, ?>) v).get("key"),
+                                                    ((Map<?, ?>) v).get("value"));
+                                        })
+                                .collect(Collectors.toList());
+    }
+
+    public ReadStruct getStruct(String key) {
+        return get(ReadStruct.class, key);
     }
 
     @Nullable
@@ -199,6 +240,10 @@ public class ReadStruct implements Map<String, Object>, CompletableContainer<Rea
         return new ReadStruct(type, new HashMap<>(map), accessor, idsOrNull);
     }
 
+    public boolean hasField(String name) {
+        return type.hasField(name);
+    }
+
     @Override
     public String toPrettyString(
             int indent, IdentityHashMap<Object, Void> alreadyPrintedInPath, int depth) {
@@ -216,7 +261,8 @@ public class ReadStruct implements Map<String, Object>, CompletableContainer<Rea
                     alreadyPrintedInPath.put(value, null);
                     sb.append(
                             ((CompletableContainer<?>) value)
-                                    .toPrettyString(indent + 2, alreadyPrintedInPath, depth - 1));
+                                    .toPrettyString(indent + 2, alreadyPrintedInPath, depth - 1)
+                                    .strip());
                     sb.append("\n");
                     alreadyPrintedInPath.remove(value);
                 }

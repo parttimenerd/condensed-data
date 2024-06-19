@@ -11,7 +11,7 @@ public class BasicJFRReader {
 
     private final CondensedInputStream in;
     private Configuration configuration = Configuration.DEFAULT;
-    private Universe universe = new Universe();
+    private final Universe universe = new Universe();
     private boolean closed = false;
 
     public BasicJFRReader(CondensedInputStream in) {
@@ -76,5 +76,9 @@ public class BasicJFRReader {
 
     public Universe getUniverse() {
         return universe;
+    }
+
+    public CondensedInputStream getInputStream() {
+        return in;
     }
 }

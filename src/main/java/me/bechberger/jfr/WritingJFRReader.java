@@ -2,6 +2,7 @@ package me.bechberger.jfr;
 
 import static me.bechberger.condensed.Util.toNanoSeconds;
 
+import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.OutputStream;
 import java.nio.file.Files;
@@ -14,6 +15,7 @@ import jdk.jfr.consumer.RecordingFile;
 import me.bechberger.condensed.ReadList;
 import me.bechberger.condensed.ReadStruct;
 import me.bechberger.condensed.types.*;
+import me.bechberger.jfr.JFREventCombiner.JFREventReconstitutor;
 import org.jetbrains.annotations.Nullable;
 import org.openjdk.jmc.flightrecorder.writer.*;
 import org.openjdk.jmc.flightrecorder.writer.api.*;
@@ -28,10 +30,21 @@ public class WritingJFRReader {
     private RecordingImpl recording;
     private final Map<CondensedType<?, ?>, Predefined> typeMap = new IdentityHashMap<>();
     private final Map<CondensedType<?, ?>, Type> realTypeMap = new IdentityHashMap<>();
+    private final JFREventReconstitutor reconstitutor = new JFREventReconstitutor(this);
+    private final Queue<TypedValue> eventsToEmit = new ArrayDeque<>();
+    private final Map<String, Integer> combinedEventCount = new HashMap<>();
 
     public WritingJFRReader(BasicJFRReader reader, OutputStream outputStream) {
         this.reader = reader;
         this.outputStream = outputStream;
+    }
+
+    public WritingJFRReader(BasicJFRReader reader) {
+        this(reader, new ByteArrayOutputStream());
+    }
+
+    public JFREventReconstitutor getReconstitutor() {
+        return reconstitutor;
     }
 
     void initRecording(Universe universe) {
@@ -46,6 +59,9 @@ public class WritingJFRReader {
     }
 
     public @Nullable TypedValue readNextJFREvent() {
+        if (!eventsToEmit.isEmpty()) {
+            return eventsToEmit.poll();
+        }
         var event = reader.readNextEvent();
         if (event == null) {
             return null;
@@ -53,23 +69,46 @@ public class WritingJFRReader {
         if (recording == null) {
             initRecording(reader.getUniverse());
         }
+        if (reconstitutor.isCombinedEvent(event)) {
+            combinedEventCount.put(
+                    event.getType().getName(),
+                    combinedEventCount.getOrDefault(event.getType().getName(), 0) + 1);
+            eventsToEmit.addAll(reconstitutor.reconstitute(this.reader.getInputStream(), event));
+            return readNextJFREvent(); // comes in handy when the combined events
+        }
         var evt = toTypedValue(event, true, new ReadStructPath());
         recording.writeEvent(evt);
         return evt;
+    }
+
+    public Map<String, Integer> getCombinedEventCount() {
+        return Collections.unmodifiableMap(combinedEventCount);
+    }
+
+    public CondensedType<?, ?> getCondensedType(String name) {
+        return Objects.requireNonNull(
+                reader.getInputStream().getTypeCollection().getTypeOrNull(name));
+    }
+
+    /** Turn a read struct with a known event type into a typed value */
+    public TypedValue fromReadStruct(ReadStruct struct) {
+        return toTypedValue(struct, true, new ReadStructPath());
+    }
+
+    public List<TypedValue> readAllJFREvents() {
+        List<TypedValue> events = new ArrayList<>();
+        TypedValue evt;
+        while ((evt = readNextJFREvent()) != null) {
+            events.add(evt);
+        }
+        return events;
     }
 
     private Predefined getPredefType(CondensedType<?, ?> type, boolean isEvent) {
         if (typeMap.containsKey(type)) {
             return typeMap.get(type);
         }
-        typeMap.put(
-                type,
-                new Predefined() {
-                    @Override
-                    public String getTypeName() {
-                        return type.getName();
-                    }
-                });
+        typeMap.put(type, () -> type.getName());
         realTypeMap.put(type, createType(type, isEvent));
         return typeMap.get(type);
     }
@@ -88,8 +127,7 @@ public class WritingJFRReader {
             case "long" -> Builtin.LONG;
             case "float" -> Builtin.FLOAT;
             case "double" -> Builtin.DOUBLE;
-            case "String" -> Builtin.STRING;
-            case "java.lang.String" -> Builtin.STRING;
+            case "String", "java.lang.String" -> Builtin.STRING;
             default -> null;
         };
     }
@@ -292,8 +330,17 @@ public class WritingJFRReader {
                                             .getField(field.getName())
                                             .getTypeName()
                                             .equals("timestamp")) {
-                                        var instant = (Instant) value;
-                                        value = toNanoSeconds(instant);
+                                        if (value instanceof Instant) {
+                                            value = toNanoSeconds((Instant) value);
+                                        } else if (value instanceof Long) {
+                                            value = value;
+                                        } else {
+                                            throw new IllegalArgumentException(
+                                                    "Expected Instant or Long (nanoseconds) for "
+                                                            + field.getName()
+                                                            + ", got: "
+                                                            + value);
+                                        }
                                     }
                                     var prim = getTypedPrimitiveValue(field, value);
                                     if (prim != null) {

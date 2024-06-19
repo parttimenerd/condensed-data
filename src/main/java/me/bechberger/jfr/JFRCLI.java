@@ -3,6 +3,7 @@ package me.bechberger.jfr;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Iterator;
+import java.util.List;
 import java.util.concurrent.Callable;
 import jdk.jfr.consumer.RecordingFile;
 import me.bechberger.condensed.Compression;
@@ -10,6 +11,8 @@ import me.bechberger.condensed.CondensedInputStream;
 import me.bechberger.condensed.CondensedOutputStream;
 import me.bechberger.condensed.Message.StartMessage;
 import me.bechberger.jfr.Benchmark.TableConfig;
+import me.bechberger.jfr.JFRCLI.WriteJFRCommand.ConfigurationConverter;
+import me.bechberger.jfr.JFRCLI.WriteJFRCommand.ConfigurationIterable;
 import org.jetbrains.annotations.NotNull;
 import picocli.CommandLine.*;
 import picocli.CommandLine.Model.CommandSpec;
@@ -188,22 +191,30 @@ public class JFRCLI implements Runnable {
         @Option(names = "--csv", description = "Output results as CSV")
         private boolean csv = false;
 
+        @Option(names = "--only-per-hour", description = "Only show per-hour columns")
+        private boolean onlyPerHour = false;
+
         @Option(names = "--regexp", description = "Regular expression to filter files")
         private String regexp = ".*";
 
+        @Option(
+                names = {"-c", "--configuratiosn"},
+                description = "The configuration to use, possible values: ${COMPLETION-CANDIDATES}",
+                completionCandidates = ConfigurationIterable.class,
+                converter = ConfigurationConverter.class,
+                arity = "1..")
+        private List<Configuration> configurations =
+                Configuration.configurations.values().stream().sorted().toList();
+
         public Integer call() {
             var results =
-                    new Benchmark(
-                                    Configuration.configurations.values().stream()
-                                            .sorted()
-                                            .toList(),
-                                    regexp)
+                    new Benchmark(configurations, regexp)
                             .runBenchmarks(
                                     keepCondensedFile, inflateCondensedFile, keepInflatedFile);
             if (csv) {
-                System.out.println(results.toTable(new TableConfig(false)).toCSV());
+                System.out.println(results.toTable(new TableConfig(false, onlyPerHour)).toCSV());
             } else {
-                System.out.println(results.toTable(new TableConfig(true)));
+                System.out.println(results.toTable(new TableConfig(true, onlyPerHour)));
             }
             return 0;
         }

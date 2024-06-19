@@ -69,9 +69,15 @@ public abstract class CondensedType<T, R> {
             if (value == null) {
                 throw new IllegalArgumentException("Value of type " + name + " must not be null");
             }
-            if (value instanceof Integer && this instanceof IntType) {
-                ((IntType) this).writeTo(out, (long) (Integer) value);
-                return;
+            if (value instanceof Integer) {
+                if (this instanceof IntType) {
+                    ((IntType) this).writeTo(out, (long) (Integer) value);
+                    return;
+                }
+                if (this instanceof VarIntType) {
+                    ((VarIntType) this).writeTo(out, (long) (Integer) value);
+                    return;
+                }
             }
             writeTo(out, value);
             return;

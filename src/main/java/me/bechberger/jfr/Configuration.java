@@ -13,6 +13,12 @@ import me.bechberger.condensed.types.TypeCollection;
  * @param ignoreUnnecessaryEvents ignore events that don't add any information like
  *     jdk.G1HeapRegionTypeChange without a change
  * @param maxStackTraceDepth maximum stacktrace depth to store, -1 for unlimited
+ * @param sumObjectSizes sum object sizes in jdk.ObjectAllocationInNewTLAB,
+ *     jdk.ObjectAllocationOutsideTLAB and ObjectAllocation events
+ * @param combineEventsWithoutDataLoss combine events without data loss
+ * @param combinePLABPromotionEvents combine and reduce jdk.PromoteObjectInNewPLAB and
+ *     jdk.PromoteObjectOutsidePLAB events
+ * @param combineObjectAllocationSampleEvents combine and reduce jdk.ObjectSample events
  */
 public record Configuration(
         String name,
@@ -22,8 +28,13 @@ public record Configuration(
         boolean ignoreUnnecessaryEvents,
         long maxStackTraceDepth,
         boolean useSpecificHashesAndRefs,
-        boolean combinePLABPromotionEvents)
-        implements Cloneable, Comparable<Configuration> {
+        boolean combineEventsWithoutDataLoss,
+        boolean combinePLABPromotionEvents,
+        boolean combineObjectAllocationSampleEvents,
+        boolean sumObjectSizes,
+        boolean ignoreZeroSizedTenuredAges,
+        boolean ignoreTooShortGCPauses)
+        implements Comparable<Configuration> {
 
     public static final Configuration DEFAULT =
             new Configuration(
@@ -34,21 +45,30 @@ public record Configuration(
                     false,
                     true,
                     -1,
+                    true,
+                    true,
+                    false,
+                    false,
+                    false,
                     false,
                     false);
 
     /** with conservative lossy compression */
     public static final Configuration REASONABLE_DEFAULT =
-            new Configuration(
-                    "reasonable default", /* milli seconds */
-                    1_000, /* 10 us
-                           granularity */
-                    100_000,
-                    true,
-                    true,
-                    -1,
-                    true,
-                    true);
+            DEFAULT.withName("reasonable default")
+                    .withMemoryAsBFloat16(true)
+                    .withTimeStampTicksPerSecond(1_000)
+                    .withDurationTicksPerSecond(1_000_000)
+                    .withUseSpecificHashesAndRefs(true)
+                    .withIgnoreZeroSizedTenuredAges(true)
+                    .withIgnoreTooShortGCPauses(true);
+
+    public static final Configuration REDUCED_DEFAULT =
+            REASONABLE_DEFAULT
+                    .withName("reduced default")
+                    .withCombinePLABPromotionEvents(true)
+                    .withCombineObjectAllocationSampleEvents(true)
+                    .withSumObjectSizes(true);
 
     public Configuration {
         if (timeStampTicksPerSecond <= 0) {
@@ -65,7 +85,8 @@ public record Configuration(
     public static final Map<String, Configuration> configurations =
             Map.of(
                     "default", DEFAULT,
-                    "reasonable-default", REASONABLE_DEFAULT);
+                    "reasonable-default", REASONABLE_DEFAULT,
+                    "reduced-default", REDUCED_DEFAULT);
 
     static StructType<Configuration, Configuration> createType(TypeCollection collection) {
         return TypeUtil.createStructWithPrimitiveFields(collection, Configuration.class);
@@ -97,6 +118,32 @@ public record Configuration(
 
     public Configuration withUseSpecificHashesAndRefs(boolean useSpecificHashesAndRefs) {
         return withFieldValue("useSpecificHashesAndRefs", useSpecificHashesAndRefs);
+    }
+
+    public Configuration withCombineEventsWithoutDataLoss(boolean combineEventsWithoutDataLoss) {
+        return withFieldValue("combineEventsWithoutDataLoss", combineEventsWithoutDataLoss);
+    }
+
+    public Configuration withCombinePLABPromotionEvents(boolean combinePLABPromotionEvents) {
+        return withFieldValue("combinePLABPromotionEvents", combinePLABPromotionEvents);
+    }
+
+    public Configuration withCombineObjectAllocationSampleEvents(
+            boolean combineObjectAllocationSampleEvents) {
+        return withFieldValue(
+                "combineObjectAllocationSampleEvents", combineObjectAllocationSampleEvents);
+    }
+
+    public Configuration withSumObjectSizes(boolean sumObjectSizes) {
+        return withFieldValue("sumObjectSizes", sumObjectSizes);
+    }
+
+    public Configuration withIgnoreZeroSizedTenuredAges(boolean ignoreZeroSizedTenuredAges) {
+        return withFieldValue("ignoreZeroSizedTenuredAges", ignoreZeroSizedTenuredAges);
+    }
+
+    public Configuration withIgnoreTooShortGCPauses(boolean ignoreTooShortGCPauses) {
+        return withFieldValue("ignoreTooShortGCPauses", ignoreTooShortGCPauses);
     }
 
     public Configuration withFieldValue(String fieldName, Object value) {

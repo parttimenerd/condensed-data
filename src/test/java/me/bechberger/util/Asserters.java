@@ -38,6 +38,12 @@ public class Asserters {
         assertEqualsJFRNanos(expected.toNanos(), actual.toNanos(), ticksPerSecond);
     }
 
+    /** Compare durations with a condensation factor */
+    public static void assertEquals(
+            Duration expected, Duration actual, long ticksPerSecond, String message) {
+        assertEqualsJFRNanos(expected.toNanos(), actual.toNanos(), ticksPerSecond, message);
+    }
+
     public static void assertEqualsJFRNanos(
             long expected, long actual, long ticksPerSecond, String message) {
         var diff = Math.abs(expected - actual);
@@ -82,9 +88,9 @@ public class Asserters {
         assertEquals(expected, actual, "Expected " + expected + " but was " + actual);
     }
 
-    record AccessPathEntry(String field, Object expectedValue, Object actualValue) {}
+    public record AccessPathEntry(String field, Object expectedValue, Object actualValue) {}
 
-    record AccessPath(List<AccessPathEntry> path) {
+    public record AccessPath(List<AccessPathEntry> path) {
         public AccessPath() {
             this(new ArrayList<>());
         }
@@ -185,12 +191,11 @@ public class Asserters {
                         message,
                         currentlyChecking,
                         currentPath);
-            } else if (expectedValue instanceof List<?>) {
+            } else if (expectedValue instanceof List<?> expectedList) {
                 assertInstanceOf(
                         List.class,
                         actualValue,
                         message + ": Expected " + expectedValue + " but was " + actualValue);
-                var expectedList = (List<?>) expectedValue;
                 var actualList = (List<?>) actualValue;
                 Assertions.assertEquals(
                         expectedList.size(),

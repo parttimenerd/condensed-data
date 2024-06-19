@@ -6,7 +6,7 @@ import me.bechberger.condensed.types.ArrayType;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
-public class ReadList<T> implements List<T>, CompletableContainer<ReadList<T>> {
+public class ReadList<T> implements List<T>, ReadContainer<List<T>> {
     private final ArrayType<?, T> type;
     private final @Nullable List<@Nullable Integer> idsOrNull;
     private final List<T> list;

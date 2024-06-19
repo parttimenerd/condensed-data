@@ -4,18 +4,16 @@ import static me.bechberger.condensed.Util.equalUnderBf16Conversion;
 import static org.junit.jupiter.api.Assertions.*;
 
 import java.io.ByteArrayOutputStream;
+import java.time.Duration;
 import java.time.Instant;
-import java.util.ArrayList;
-import java.util.List;
+import java.util.*;
 import java.util.concurrent.atomic.AtomicReference;
+import java.util.stream.Collectors;
 import jdk.jfr.*;
 import jdk.jfr.consumer.RecordedEvent;
 import jdk.jfr.consumer.RecordingStream;
-import me.bechberger.condensed.Compression;
-import me.bechberger.condensed.CondensedInputStream;
-import me.bechberger.condensed.CondensedOutputStream;
+import me.bechberger.condensed.*;
 import me.bechberger.condensed.Message.StartMessage;
-import me.bechberger.condensed.Util;
 import me.bechberger.util.Asserters;
 import net.jqwik.api.ForAll;
 import net.jqwik.api.Property;
@@ -297,6 +295,322 @@ public class BasicJFRRoundTripTest {
                 }
                 number++;
             }
+        }
+    }
+
+    @Test
+    @SuppressWarnings("unchecked")
+    public void testGCAllocAndPromoteCombiner() {
+        boolean sumObjectSizes = false;
+        List<RecordedEvent> recordedInNewPlabEvents = new ArrayList<>();
+        List<RecordedEvent> recordedObjectAllocationEvents = new ArrayList<>();
+        ByteArrayOutputStream outputStream = new ByteArrayOutputStream();
+        try (CondensedOutputStream out =
+                new CondensedOutputStream(outputStream, StartMessage.DEFAULT)) {
+            BasicJFRWriter basicJFRWriter =
+                    new BasicJFRWriter(
+                            out,
+                            Configuration.DEFAULT
+                                    .withCombinePLABPromotionEvents(true)
+                                    .withCombineObjectAllocationSampleEvents(true)
+                                    .withSumObjectSizes(sumObjectSizes));
+            try (RecordingStream rs = new RecordingStream()) {
+                rs.enable("jdk.PromoteObjectInNewPLAB");
+                rs.onEvent(
+                        "jdk.PromoteObjectInNewPLAB",
+                        event -> {
+                            System.out.println(event);
+                            basicJFRWriter.processEvent(event);
+                            recordedInNewPlabEvents.add(event);
+                        });
+                rs.enable("jdk.ObjectAllocationSample");
+                rs.onEvent(
+                        "jdk.ObjectAllocationSample",
+                        event -> {
+                            System.out.println(event);
+                            basicJFRWriter.processEvent(event);
+                            recordedObjectAllocationEvents.add(event);
+                        });
+                rs.onEvent("TestEvent", e -> rs.close());
+
+                rs.startAsync();
+
+                // try to trigger a GC event
+                // by allocating a large chunk and then calling System.gc()
+
+                System.out.println(new byte[1024 * 1024 * 1024].length);
+                System.gc();
+
+                System.out.println(new byte[1024 * 1024].length);
+                System.gc();
+
+                new TestEvent(0).commit();
+
+                rs.awaitTermination();
+            } catch (InterruptedException e) {
+                throw new RuntimeException(e);
+            }
+            basicJFRWriter.close();
+        }
+        try (var in = new CondensedInputStream(outputStream.toByteArray())) {
+
+            boolean hadCombinedPlabEvent = false;
+            boolean hadObjectAllocationEvent = false;
+
+            int foundAllocClassEntries = 0;
+
+            var message = in.readNextInstance();
+            while (message != null) {
+                System.out.println("Got message: " + message + " of type " + message.type());
+
+                if (message.type().getName().equals("jdk.combined.PromoteObjectInNewPLAB")) {
+                    var combined = (ReadStruct) message.value();
+                    var map = (ReadList<ReadStruct>) combined.get("map");
+                    var gcId = (long) combined.get("gcId");
+                    var forIdPerClass =
+                            recordedInNewPlabEvents.stream()
+                                    .filter(e -> e.getLong("gcId") == gcId)
+                                    .collect(Collectors.groupingBy(e -> e.getClass("objectClass")));
+                    assertEquals(
+                            forIdPerClass.size(),
+                            map.size(),
+                            "Number of classes for GC ID " + gcId + " does not match");
+
+                    hadCombinedPlabEvent = true;
+                }
+
+                if (message.type().getName().equals("jdk.combined.ObjectAllocationSample")) {
+                    var combined = (ReadStruct) message.value();
+                    var map = (ReadList<ReadStruct>) combined.get("map");
+                    foundAllocClassEntries += map.size();
+                    hadObjectAllocationEvent = true;
+                }
+
+                message = in.readNextInstance();
+            }
+            assertTrue(hadCombinedPlabEvent, "No combined PLAB event found");
+            assertTrue(hadObjectAllocationEvent, "No combined ObjectAllocation event found");
+
+            var perClass =
+                    recordedObjectAllocationEvents.stream()
+                            .collect(Collectors.groupingBy(e -> e.getClass("objectClass")));
+
+            assertTrue(
+                    perClass.size() <= foundAllocClassEntries,
+                    "Number of classes for does not match");
+        }
+    }
+
+    @ParameterizedTest
+    @CsvSource({"true", "false"})
+    @SuppressWarnings("unchecked")
+    public void testTenuringDistributionCombiner(boolean ignoreZeroSizedTenuredAges) {
+        Map<Long, Map<Long, Long>> gcIdToAgeToSize = new HashMap<>();
+        ByteArrayOutputStream outputStream = new ByteArrayOutputStream();
+        try (CondensedOutputStream out =
+                new CondensedOutputStream(outputStream, StartMessage.DEFAULT)) {
+            BasicJFRWriter basicJFRWriter =
+                    new BasicJFRWriter(
+                            out,
+                            Configuration.DEFAULT
+                                    .withCombinePLABPromotionEvents(true)
+                                    .withCombineObjectAllocationSampleEvents(true)
+                                    .withCombineEventsWithoutDataLoss(true)
+                                    .withIgnoreZeroSizedTenuredAges(ignoreZeroSizedTenuredAges));
+            try (RecordingStream rs = new RecordingStream()) {
+                rs.enable("jdk.TenuringDistribution");
+                rs.onEvent(
+                        "jdk.TenuringDistribution",
+                        event -> {
+                            System.out.println(event);
+                            basicJFRWriter.processEvent(event);
+                            var gcId = event.getLong("gcId");
+                            var age = event.getLong("age");
+                            var size = event.getLong("size");
+                            gcIdToAgeToSize
+                                    .computeIfAbsent(gcId, k -> new HashMap<>())
+                                    .put(age, size);
+                        });
+                rs.onEvent("TestEvent", e -> rs.close());
+
+                rs.startAsync();
+
+                // try to trigger a GC event
+                // by allocating a large chunk and then calling System.gc()
+
+                System.out.println(new byte[1024 * 1024 * 1024].length);
+                System.gc();
+
+                System.out.println(new byte[1024 * 1024 * 1024].length);
+                System.gc();
+
+                new TestEvent(0).commit();
+
+                rs.awaitTermination();
+            } catch (InterruptedException e) {
+                throw new RuntimeException(e);
+            }
+            basicJFRWriter.close();
+        }
+        if (gcIdToAgeToSize.isEmpty()) {
+            fail("No TenuringDistribution events found, alter test");
+        }
+        try (var in = new CondensedInputStream(outputStream.toByteArray())) {
+            boolean hadTenuringDistributionEvent = false;
+            var message = in.readNextInstance();
+            while (message != null) {
+                System.out.println("Got message: " + message + " of type " + message.type());
+                if (message.type().getName().equals("jdk.combined.TenuringDistribution")) {
+                    var combined = (ReadStruct) message.value();
+                    var map = (ReadList<ReadStruct>) combined.get("map");
+                    var gcId = (long) combined.get("gcId");
+                    var expectedAgeToSize = gcIdToAgeToSize.get(gcId);
+
+                    for (var entry : map) {
+                        var age = (long) entry.get("key");
+                        var size = (long) entry.get("value");
+                        assertEquals(
+                                expectedAgeToSize.get(age),
+                                size,
+                                "Size for age " + age + " does not match");
+                    }
+
+                    if (ignoreZeroSizedTenuredAges) {
+                        // all ages not in the map should be 0
+                        for (var entry : expectedAgeToSize.entrySet()) {
+                            assertEquals(
+                                    entry.getValue() == 0,
+                                    map.stream()
+                                            .noneMatch(e -> e.get("key").equals(entry.getKey())));
+                        }
+                    } else {
+                        assertEquals(
+                                expectedAgeToSize.size(),
+                                map.size(),
+                                "Number of ages does not match");
+                    }
+
+                    hadTenuringDistributionEvent = true;
+                }
+                message = in.readNextInstance();
+            }
+            assertTrue(
+                    hadTenuringDistributionEvent, "No combined TenuringDistribution event found");
+        }
+    }
+
+    @ParameterizedTest
+    @CsvSource({"1_000_000, false", "1_000, false", "1_000, true"})
+    @SuppressWarnings("unchecked")
+    public void testGCPhasePauseLevel1Combiner(
+            long durationTicksPerSecond, boolean ignoreTooShortGCPauses) {
+        Map<Long, Map<String, Duration>> gcIdToNameToDuration = new HashMap<>();
+        ByteArrayOutputStream outputStream = new ByteArrayOutputStream();
+        var config =
+                Configuration.DEFAULT
+                        .withCombinePLABPromotionEvents(true)
+                        .withCombineObjectAllocationSampleEvents(true)
+                        .withCombineEventsWithoutDataLoss(true)
+                        .withDurationTicksPerSecond(durationTicksPerSecond)
+                        .withIgnoreTooShortGCPauses(ignoreTooShortGCPauses);
+        try (CondensedOutputStream out =
+                new CondensedOutputStream(outputStream, StartMessage.DEFAULT)) {
+            BasicJFRWriter basicJFRWriter = new BasicJFRWriter(out, config);
+            try (RecordingStream rs = new RecordingStream()) {
+                rs.enable("jdk.GCPhasePauseLevel1");
+                rs.onEvent(
+                        "jdk.GCPhasePauseLevel1",
+                        event -> {
+                            System.out.println(event);
+                            basicJFRWriter.processEvent(event);
+                            var gcId = event.getLong("gcId");
+                            var name = event.getString("name");
+                            var duration = event.getDuration();
+                            gcIdToNameToDuration
+                                    .computeIfAbsent(gcId, k -> new HashMap<>())
+                                    .put(name, duration);
+                        });
+                rs.onEvent("TestEvent", e -> rs.close());
+
+                rs.startAsync();
+
+                // try to trigger a GC event
+                // by allocating a large chunk and then calling System.gc()
+
+                System.out.println(new byte[1024 * 1024 * 1024].length);
+                System.gc();
+
+                System.out.println(new byte[1024 * 1024 * 1024].length);
+                System.gc();
+
+                new TestEvent(0).commit();
+
+                rs.awaitTermination();
+            } catch (InterruptedException e) {
+                throw new RuntimeException(e);
+            }
+            basicJFRWriter.close();
+        }
+        try (var in = new CondensedInputStream(outputStream.toByteArray())) {
+            boolean hadGCPhasePauseLevel1Event = false;
+            var message = in.readNextInstance();
+            while (message != null) {
+                System.out.println("Got message: " + message + " of type " + message.type());
+                if (message.type().getName().equals("jdk.combined.GCPhasePauseLevel1")) {
+                    var combined = (ReadStruct) message.value();
+                    var map = (ReadList<ReadStruct>) combined.get("map");
+                    var gcId = (long) combined.get("gcId");
+                    var nameToDuration = gcIdToNameToDuration.get(gcId);
+
+                    for (var entry : map) {
+                        var name = (String) entry.get("key");
+                        var duration = Duration.ofNanos((Long) entry.get("value"));
+                        Asserters.assertEquals(
+                                nameToDuration.get(name),
+                                duration,
+                                config.durationTicksPerSecond(),
+                                "Duration for name " + name + " does not match");
+                    }
+
+                    if (ignoreTooShortGCPauses) {
+                        // assert that all durations that are not in the map are equal to 0 under
+                        // the ticks
+                        for (var entry : nameToDuration.entrySet()) {
+                            var notInMap =
+                                    map.stream()
+                                            .noneMatch(e -> e.get("key").equals(entry.getKey()));
+                            if (notInMap) {
+                                Asserters.assertEquals(
+                                        Duration.ZERO,
+                                        entry.getValue(),
+                                        config.durationTicksPerSecond(),
+                                        "Duration for name " + entry.getKey() + " is not zero");
+                            } else {
+                                var actualDuration =
+                                        map.stream()
+                                                .filter(e -> e.get("key").equals(entry.getKey()))
+                                                .findFirst()
+                                                .orElseThrow()
+                                                .get("value");
+                                assertNotEquals(
+                                        0L,
+                                        actualDuration,
+                                        "Duration for name " + entry.getKey() + " is zero");
+                            }
+                        }
+                    } else {
+                        assertEquals(
+                                nameToDuration.size(),
+                                map.size(),
+                                "Number of GCPhasePauseLevel1 events does not match");
+                    }
+
+                    hadGCPhasePauseLevel1Event = true;
+                }
+
+                message = in.readNextInstance();
+            }
+            assertTrue(hadGCPhasePauseLevel1Event, "No combined GCPhasePauseLevel1 event found");
         }
     }
 }

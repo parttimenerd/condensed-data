@@ -146,7 +146,7 @@ public class Benchmark {
         }
     }
 
-    public record TableConfig(boolean humanReadableMemory) {}
+    public record TableConfig(boolean humanReadableMemory, boolean onlyPerHour) {}
 
     public record Results(List<Result> results) {
 
@@ -162,56 +162,88 @@ public class Benchmark {
             List<TableColumnDescription<Result>> header = new ArrayList<>();
             // file, runtime, original size, compressed size
             header.add(new TableColumnDescription<>("JFR file", "%s", r -> r.jfrFile().name()));
-            header.add(
-                    new TableColumnDescription<>("runtime (s)", "%.2f", r -> r.jfrFile.runtime()));
+            if (!tconf.onlyPerHour) {
+                header.add(
+                        new TableColumnDescription<>(
+                                "runtime (s)", "%.2f", r -> r.jfrFile.runtime()));
+                header.add(
+                        TableColumnDescription.ofMemory(
+                                "original", r -> r.jfrFile().size(), 3, tconf.humanReadableMemory));
+                header.add(
+                        TableColumnDescription.ofMemory(
+                                "compressed",
+                                r -> r.jfrFile().compressedSize(),
+                                3,
+                                tconf.humanReadableMemory));
+            }
+            // add per-hour column
             header.add(
                     TableColumnDescription.ofMemory(
-                            "original", r -> r.jfrFile().size(), 3, tconf.humanReadableMemory));
-            header.add(
-                    TableColumnDescription.ofMemory(
-                            "compressed",
-                            r -> r.jfrFile().compressedSize(),
-                            3,
-                            tconf.humanReadableMemory));
-            header.add(
-                    new TableColumnDescription<>(
-                            "%",
-                            "%.2f%%",
+                            tconf.onlyPerHour ? "original per-hour" : "per-hour",
                             r -> {
-                                var originalSize = r.jfrFile().size();
-                                var compressedSize = r.jfrFile().compressedSize;
-                                return (float) compressedSize / originalSize * 100;
-                            }));
+                                var runtime = r.jfrFile().runtime();
+                                var size = r.jfrFile().size();
+                                return (long) (size / runtime * 3600f);
+                            },
+                            1,
+                            tconf.humanReadableMemory));
+            if (!tconf.onlyPerHour) {
+                // add % column
+                header.add(
+                        new TableColumnDescription<>(
+                                "%",
+                                "%.2f%%",
+                                r -> {
+                                    var originalSize = r.jfrFile().size();
+                                    var compressedSize = r.jfrFile().compressedSize;
+                                    return (float) compressedSize / originalSize * 100;
+                                }));
+            }
+            // add per-hour column
+            header.add(
+                    TableColumnDescription.ofMemory(
+                            tconf.onlyPerHour ? "compressed per-hour" : "per-hour",
+                            r -> {
+                                var runtime = r.jfrFile().runtime();
+                                var size = r.jfrFile().compressedSize;
+                                return (long) (size / runtime * 3600f);
+                            },
+                            1,
+                            tconf.humanReadableMemory));
             // add the following for each configuration: runtime, size
             configurations()
                     .forEach(
                             config -> {
-                                header.add(
-                                        new TableColumnDescription<>(
-                                                config.name(),
-                                                "%.2f s",
-                                                r -> r.forConfiguration(config).runtime()));
+                                if (!tconf.onlyPerHour) {
+                                    header.add(
+                                            new TableColumnDescription<>(
+                                                    config.name(),
+                                                    "%.2f s",
+                                                    r -> r.forConfiguration(config).runtime()));
+                                    header.add(
+                                            TableColumnDescription.ofMemory(
+                                                    "size",
+                                                    r -> r.forConfiguration(config).size(),
+                                                    3,
+                                                    tconf.humanReadableMemory));
+                                    header.add(
+                                            new TableColumnDescription<>(
+                                                    "%",
+                                                    "%.2f%%",
+                                                    r -> {
+                                                        var originalSize = r.jfrFile().size();
+                                                        var compressedSize =
+                                                                r.forConfiguration(config).size();
+                                                        return (float) compressedSize
+                                                                / originalSize
+                                                                * 100;
+                                                    }));
+                                }
                                 header.add(
                                         TableColumnDescription.ofMemory(
-                                                "size",
-                                                r -> r.forConfiguration(config).size(),
-                                                3,
-                                                tconf.humanReadableMemory));
-                                header.add(
-                                        new TableColumnDescription<>(
-                                                "%",
-                                                "%.2f%%",
-                                                r -> {
-                                                    var originalSize = r.jfrFile().size();
-                                                    var compressedSize =
-                                                            r.forConfiguration(config).size();
-                                                    return (float) compressedSize
-                                                            / originalSize
-                                                            * 100;
-                                                }));
-                                header.add(
-                                        TableColumnDescription.ofMemory(
-                                                "per-hour",
+                                                tconf.onlyPerHour
+                                                        ? config.name() + " per-hour"
+                                                        : "per-hour",
                                                 r -> {
                                                     var runtime = r.jfrFile().runtime();
                                                     var size = r.forConfiguration(config).size();
@@ -257,7 +289,7 @@ public class Benchmark {
                                 var gcAlgorithm = parts[1];
                                 var jfcFile = parts[2];
                                 var runtime = Float.parseFloat(parts[3]);
-                                long size = 0;
+                                long size;
                                 try {
                                     size = Files.size(jfrFile);
                                 } catch (IOException e) {
@@ -340,7 +372,7 @@ public class Benchmark {
                         .map(
                                 jfrFile -> {
                                     var configResults =
-                                            configurations.stream()
+                                            configurations.parallelStream()
                                                     .map(
                                                             configuration ->
                                                                     benchmark(

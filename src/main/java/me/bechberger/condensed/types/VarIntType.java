@@ -147,6 +147,7 @@ public class VarIntType extends CondensedType<Long, Long> {
                 + '\''
                 + ", signed="
                 + signed
+                + (multiplier != 1 ? ", multiplier=" + multiplier : "")
                 + '}';
     }
 }

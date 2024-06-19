@@ -125,17 +125,14 @@ python3 bin/create_jfr_files.py
 ```
 This takes a day, as it generates JFR files for
 the JFR configurations in the `benchmarks` folder and
-multiple GCs using the [renaissance benchmark](https://renaissance.dev/) suite.
+multiple GCs using the [renaissance benchmark](https://renaissance.dev/) suite with `--no-forced-gc`.
 
 Now to run the benchmarks, use the following command:
 ```shell
 java -jar target/condensed-data.jar benchmark
 ```
 
-The generated JFR files are probably larger than real-world files, as the
-benchmark suite triggers GCs regularly, but smaller than dedicated GC benchmarks.
-
-
+The generated JFR files are probably larger than real-world files, but smaller than dedicated GC benchmarks.
 
 License
 -------

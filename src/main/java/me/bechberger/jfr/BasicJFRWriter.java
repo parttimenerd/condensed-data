@@ -16,7 +16,6 @@ import jdk.jfr.consumer.RecordedStackTrace;
 import jdk.jfr.consumer.RecordingFile;
 import me.bechberger.condensed.CondensedOutputStream;
 import me.bechberger.condensed.CondensedOutputStream.OverflowMode;
-import me.bechberger.condensed.ReadStruct;
 import me.bechberger.condensed.Universe.EmbeddingType;
 import me.bechberger.condensed.Universe.HashAndEqualsConfig;
 import me.bechberger.condensed.types.*;
@@ -39,7 +38,7 @@ import org.json.JSONArray;
  *       StructType} for the event
  * </ul>
  */
-public class BasicJFRWriter implements Cloneable {
+public class BasicJFRWriter {
 
     // optimization ideas:
     // - every "JVM: Flag" flag is only emitted once, as there are change events
@@ -68,7 +67,7 @@ public class BasicJFRWriter implements Cloneable {
                     annotations.stream().anyMatch(a -> a.getTypeName().equals("jdk.jfr.Unsigned"));
         }
 
-        private static Map<String, Boolean> isAnnotationContentTypeAnnotation =
+        private static final Map<String, Boolean> isAnnotationContentTypeAnnotation =
                 new ConcurrentHashMap<>();
 
         public boolean isUnsigned() {
@@ -166,9 +165,9 @@ public class BasicJFRWriter implements Cloneable {
     private final Map<EventType, StructType<RecordedEvent, Map<String, Object>>> eventTypeMap;
     private final Map<TypeIdent, CondensedType<?, ?>> fieldTypes;
     private final List<Entry<TypeIdent, CondensedType<?, ?>>> fieldTypesToAdd;
-    private Map<Long, VarIntType> timespanTypePerDivisor = new HashMap<>();
-    private VarIntType timeStampType;
-    private Map<String, FloatType> memoryFloatTypes = new HashMap<>();
+    private final Map<Long, VarIntType> timespanTypePerDivisor = new HashMap<>();
+    private final VarIntType timeStampType;
+    private final Map<String, FloatType> memoryFloatTypes = new HashMap<>();
     private StructType<?, ?> reducedStackTraceType;
     Universe universe = new Universe();
     private boolean wroteConfiguration = false;
@@ -199,6 +198,10 @@ public class BasicJFRWriter implements Cloneable {
 
     public BasicJFRWriter(CondensedOutputStream out) {
         this(out, Configuration.REASONABLE_DEFAULT);
+    }
+
+    JFREventCombiner getEventCombiner() {
+        return eventCombiner;
     }
 
     private @Nullable CondensedType<?, ?> getTypeOrNull(TypeIdent name) {
@@ -263,12 +266,9 @@ public class BasicJFRWriter implements Cloneable {
             case "short" -> new IntType(id, name, "", 2, !isUnsigned, OverflowMode.ERROR);
             case "char" -> new IntType(id, name, "", 2, false, OverflowMode.ERROR);
             case "boolean" -> new BooleanType(id, name, "");
-            case "long" -> new VarIntType(id, name, "", !isUnsigned);
-            case "int" -> new VarIntType(id, name, "", !isUnsigned);
-            case "java.lang.String" -> {
-                var s = new StringType(id, name, "", Charset.defaultCharset().toString());
-                yield s;
-            }
+            case "long", "int" -> new VarIntType(id, name, "", !isUnsigned);
+            case "java.lang.String" ->
+                    new StringType(id, name, "", Charset.defaultCharset().toString());
             case "float", "double" -> new FloatType(id, name, "");
             default ->
                     throw new IllegalArgumentException(
@@ -361,7 +361,12 @@ public class BasicJFRWriter implements Cloneable {
 
     @SuppressWarnings("unchecked")
     public static ParsedFieldDescription parseFieldDescription(String description) {
-        JSONArray arr = new JSONArray(description);
+        JSONArray arr;
+        try {
+            arr = new JSONArray(description);
+        } catch (Exception e) {
+            throw new IllegalArgumentException("Invalid description: " + description, e);
+        }
         return new ParsedFieldDescription(
                 arr.getString(0),
                 arr.isNull(1) ? null : arr.getString(1),
@@ -480,19 +485,19 @@ public class BasicJFRWriter implements Cloneable {
                     field.getFields().stream()
                             .filter(f -> f.getName().equals("truncated"))
                             .findFirst()
-                            .get();
+                            .orElseThrow();
             var framesField =
                     field.getFields().stream()
                             .filter(f -> f.getName().equals("frames"))
                             .findFirst()
-                            .get();
+                            .orElseThrow();
             reducedStackTraceType =
                     out.writeAndStoreType(
                             id -> {
                                 var arrayType =
                                         out.writeAndStoreType(
                                                 innerId -> createArrayType(framesField, innerId));
-                                return new StructType<ReducedStackTrace, ReadStruct>(
+                                return new StructType<>(
                                         id,
                                         "jdk.types.StackTrace",
                                         "Reduced stack trace",
@@ -540,16 +545,37 @@ public class BasicJFRWriter implements Cloneable {
                                 : configuration.durationTicksPerSecond());
         return new GetterAndCachedType(
                 event -> {
-                    if (event.getDuration(field.getName()).getSeconds() < -MAX_DURATION_SECONDS) {
+                    var duration = event.getDuration(field.getName());
+                    if (duration.getSeconds() < -MAX_DURATION_SECONDS) {
                         return -MAX_DURATION_SECONDS * ticksPerSec;
-                    } else if (event.getDuration(field.getName()).getSeconds()
-                            > MAX_DURATION_SECONDS) {
+                    } else if (duration.getSeconds() > MAX_DURATION_SECONDS) {
                         return MAX_DURATION_SECONDS * ticksPerSec;
                     }
-                    var val = event.getDuration(field.getName()).toNanos();
-                    return val;
+                    return duration.toNanos();
                 },
                 getCachedTimespanType(1_000_000_000 / ticksPerSec));
+    }
+
+    VarIntType getDurationType() {
+        long ticksPerSec = configuration.durationTicksPerSecond();
+        return getCachedTimespanType(1_000_000_000 / ticksPerSec);
+    }
+
+    boolean isEffectivelyZeroDuration(long ticks) {
+        long ticksPerSec = configuration.durationTicksPerSecond();
+        long multiplier = 1_000_000_000 / ticksPerSec;
+        return ticks < multiplier && ticks > -multiplier;
+    }
+
+    Long getDurationValue(RecordedEvent event, String field) {
+        long ticksPerSec = configuration.durationTicksPerSecond();
+        var duration = event.getDuration(field);
+        if (duration.getSeconds() < -MAX_DURATION_SECONDS) {
+            return -MAX_DURATION_SECONDS * ticksPerSec;
+        } else if (duration.getSeconds() > MAX_DURATION_SECONDS) {
+            return MAX_DURATION_SECONDS * ticksPerSec;
+        }
+        return duration.toNanos();
     }
 
     private static long getSpecifiedTicksPerSec(ValueDescriptor field) {
@@ -560,17 +586,15 @@ public class BasicJFRWriter implements Cloneable {
                                 .findFirst()
                                 .map(a -> a.getValue("value"))
                                 .orElse(Timespan.NANOSECONDS);
-        long specifiedTicksPerSec =
-                switch (ticksAnnotationValue) {
-                    case Timespan.NANOSECONDS, Timespan.TICKS -> 1_000_000_000;
-                    case Timespan.MICROSECONDS -> 1_000_000;
-                    case Timespan.MILLISECONDS -> 1_000;
-                    case Timespan.SECONDS -> 1;
-                    default ->
-                            throw new IllegalArgumentException(
-                                    "Unsupported timespan: " + ticksAnnotationValue);
-                };
-        return specifiedTicksPerSec;
+        return switch (ticksAnnotationValue) {
+            case Timespan.NANOSECONDS, Timespan.TICKS -> 1_000_000_000;
+            case Timespan.MICROSECONDS -> 1_000_000;
+            case Timespan.MILLISECONDS -> 1_000;
+            case Timespan.SECONDS -> 1;
+            default ->
+                    throw new IllegalArgumentException(
+                            "Unsupported timespan: " + ticksAnnotationValue);
+        };
     }
 
     String getEventDescription(EventType type) {
@@ -620,13 +644,22 @@ public class BasicJFRWriter implements Cloneable {
     }
 
     private boolean isUnnecessaryEvent(RecordedEvent event) {
-        switch (event.getEventType().getName()) {
-            case "jdk.G1HeapRegionTypeChange":
-                // from == to
-                return event.getString("from").equals(event.getString("to"));
-            default:
-                return false;
-        }
+        return switch (event.getEventType().getName()) {
+            case "jdk.G1HeapRegionTypeChange" ->
+                    // from == to
+                    event.getString("from").equals(event.getString("to"));
+            case "jdk.MetaspaceChunkFreeListSummary" ->
+                    // all zero
+                    event.getLong("specializedChunks") == 0
+                            && event.getLong("specializedChunksTotalSize") == 0
+                            && event.getLong("smallChunks") == 0
+                            && event.getLong("smallChunksTotalSize") == 0
+                            && event.getLong("mediumChunks") == 0
+                            && event.getLong("mediumChunksTotalSize") == 0
+                            && event.getLong("humongousChunks") == 0
+                            && event.getLong("humongousChunksTotalSize") == 0;
+            default -> false;
+        };
     }
 
     /** Checks if the event should be ignored */
@@ -663,6 +696,14 @@ public class BasicJFRWriter implements Cloneable {
         }
 
         out.writeMessage(type, event);
+    }
+
+    /**
+     * Writes the {@link StructType} for the event type to the underlying output if it is not
+     * already written
+     */
+    public void writeOutEventTypeIfNeeded(EventType eventType) {
+        eventTypeMap.computeIfAbsent(eventType, this::createAndRegisterEventStructType);
     }
 
     /** Be sure to close the output stream after writing all events */

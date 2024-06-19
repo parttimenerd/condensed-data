@@ -5,11 +5,13 @@ import static me.bechberger.condensed.types.TypeCollection.ARRAY_ID;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
+import java.util.function.Function;
 import java.util.stream.IntStream;
 import me.bechberger.condensed.CondensedInputStream;
 import me.bechberger.condensed.CondensedOutputStream;
 import me.bechberger.condensed.ReadList;
 import me.bechberger.condensed.Universe.EmbeddingType;
+import me.bechberger.condensed.types.SpecifiedType.NoSuchDefaultTypeException;
 
 /**
  * A type that represents an array of values of another type
@@ -197,5 +199,94 @@ public class ArrayType<V, R> extends CondensedType<List<V>, List<R>> {
                 + "\n"
                 + indentStr
                 + "}";
+    }
+
+    /**
+     * An array type that wraps another type and converts it to an array
+     *
+     * @param <O> the type of the object to convert
+     * @param <V> the type of the values in the array
+     * @param <R> the type of the values in the array after reading
+     */
+    public static class WrappedArrayType<O, V, R> extends CondensedType<O, List<R>> {
+        private final ArrayType<V, R> arrayType;
+        private final Function<O, List<V>> converter;
+
+        public WrappedArrayType(ArrayType<V, R> arrayType, Function<O, List<V>> converter) {
+            super(arrayType.getId(), arrayType.getName(), arrayType.getDescription());
+            this.arrayType = arrayType;
+            this.converter = converter;
+        }
+
+        public static final SpecifiedType<WrappedArrayType<?, ?, ?>> SPECIFIED_TYPE =
+                new SpecifiedType<>() {
+                    @Override
+                    public int id() {
+                        return ARRAY_ID;
+                    }
+
+                    @Override
+                    public String name() {
+                        return "array";
+                    }
+
+                    /** No default type for arrays */
+                    @Override
+                    public WrappedArrayType<?, ?, ?> getDefaultType(int id) {
+                        throw new NoSuchDefaultTypeException();
+                    }
+
+                    @Override
+                    @SuppressWarnings({"unchecked", "rawtypes"})
+                    public void writeInnerTypeSpecification(
+                            CondensedOutputStream out, WrappedArrayType<?, ?, ?> typeInstance) {
+                        typeInstance
+                                .arrayType
+                                .getSpecifiedType()
+                                .writeInnerTypeSpecification(
+                                        out, (ArrayType) typeInstance.arrayType);
+                    }
+
+                    @Override
+                    public WrappedArrayType<?, ?, ?> readInnerTypeSpecification(
+                            CondensedInputStream in, int id, String name, String description) {
+                        return new WrappedArrayType<>(
+                                ArrayType.SPECIFIED_TYPE.readInnerTypeSpecification(
+                                        in, id, name, description),
+                                java.util.function.Function.identity());
+                    }
+
+                    @Override
+                    public boolean isPrimitive() {
+                        return false;
+                    }
+                };
+
+        @Override
+        @SuppressWarnings("unchecked")
+        public SpecifiedType<WrappedArrayType<O, V, R>> getSpecifiedType() {
+            return (SpecifiedType<WrappedArrayType<O, V, R>>) (SpecifiedType<?>) SPECIFIED_TYPE;
+        }
+
+        @Override
+        public void writeTo(CondensedOutputStream out, O value) {
+            arrayType.writeTo(out, converter.apply(value));
+        }
+
+        @Override
+        public List<R> readFrom(CondensedInputStream in) {
+            return arrayType.readFrom(in);
+        }
+
+        @Override
+        public boolean equals(Object obj) {
+            return super.equals(obj)
+                    && arrayType.equals(((WrappedArrayType<?, ?, ?>) obj).arrayType);
+        }
+
+        @Override
+        public int hashCode() {
+            return arrayType.hashCode();
+        }
     }
 }

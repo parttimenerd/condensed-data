@@ -64,13 +64,170 @@
                 </executions>
             </plugin>
             <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-compiler-plugin</artifactId>
-                <version>3.11.0</version>
+                <!-- Prefer using the latest release. -->
+                <version>3.12.0</version>
                 <configuration>
-                    <!-- required if you want to report source code names of property method parameters -->
+                    <annotationProcessorPaths>
+                        <!-- Error Prone itself. -->
+                        <path>
+                            <groupId>com.google.errorprone</groupId>
+                            <artifactId>error_prone_core</artifactId>
+                            <version>${error-prone.version}</version>
+                        </path>
+                        <!-- Error Prone Support's additional bug checkers. -->
+                        <path>
+                            <groupId>tech.picnic.error-prone-support</groupId>
+                            <artifactId>error-prone-contrib</artifactId>
+                            <version>${error-prone-support.version}</version>
+                        </path>
+                        <!-- Error Prone Support's Refaster rules. -->
+                        <path>
+                            <groupId>tech.picnic.error-prone-support</groupId>
+                            <artifactId>refaster-runner</artifactId>
+                            <version>${error-prone-support.version}</version>
+                        </path>
+                    </annotationProcessorPaths>
                     <compilerArgs>
-                        <arg>-parameters</arg>
+                        <arg>
+                            -Xplugin:ErrorProne
+                            <!-- Add other Error Prone flags here. See
+                            https://errorprone.info/docs/flags. -->
+
+                            <!-- We use a separate Maven profile to
+                            raise all warnings as errors. This way one
+                            can optionally collect all warnings without
+                            failing the build on the first error
+                            encountered. -->
+                            -XepAllErrorsAsWarnings
+                            -XepAllSuggestionsAsWarnings
+                            <!-- We want to enable almost all Error
+                            Prone bug pattern checkers, so we enable
+                            all and then selectively deactivate some. -->
+                            -XepAllDisabledChecksAsWarnings
+                            <!-- Some generated classes violate Error
+                            Prone bug patterns. We cannot in all cases
+                            avoid that, so we simply tell Error Prone
+                            not to warn about generated code. -->
+                            -XepDisableWarningsInGeneratedCode
+                            -XepExcludedPaths:\Q${project.build.directory}${file.separator}\E.*
+                            <!-- We don't target Android. -->
+                            -Xep:AndroidJdkLibsChecker:OFF
+                            <!-- We should enable this check, but not
+                            all its suggestions are good. We should
+                            probably first rename some inner types. See
+                            https://github.com/google/error-prone/issues/1651. -->
+                            -Xep:BadImport:OFF
+                            <!-- Disabled for now, but TBD. -->
+                            -Xep:BooleanParameter:OFF
+                            <!-- XXX: PSM-2229: Enable once methods
+                            with selected annotations can be excluded. -->
+                            -Xep:CanIgnoreReturnValueSuggester:OFF
+                            <!-- See https://github.com/google/error-prone/issues/922. -->
+                            -Xep:CannotMockFinalClass:OFF
+                            <!-- See https://github.com/google/error-prone/issues/3362. -->
+                            -Xep:CannotMockFinalMethod:OFF
+                            <!-- XXX: Too many false positives and the
+                            check ignores suppressions. -->
+                            -Xep:ConstantPatternCompile:OFF
+                            <!-- XXX: Too many debatable matches;
+                            requires further analysis. -->
+                            -Xep:DirectInvocationOnMock:OFF
+                            <!-- XXX: PSM-1625: Improve the matching
+                            logic first. -->
+                            -Xep:DistinctVarargsChecker:OFF
+                            <!-- This check performs a
+                            `compilesWithFix` validation for fields
+                            that can potentially be `final`. This
+                            significantly impacts build times. We
+                            should only enable this check once more
+                            code is cleaned up and/or the check has
+                            been made to rely less on `compilesWithFix`. -->
+                            -Xep:FieldCanBeFinal:OFF
+                            <!-- Nice idea, but way too many false
+                            positives at this time. We should first
+                            finalize the replacement of "manually
+                            created" DTOs with Immutables-generated
+                            types, so that we no longer have fields
+                            that exist solely for serialization
+                            purposes. -->
+                            -Xep:FieldCanBeLocal:OFF
+                            <!-- Disabled for now, but should be
+                            enabled once we cleaned up the code base. -->
+                            -Xep:InterfaceWithOnlyStatics:OFF
+                            <!-- Unclear whether this is an improvement. -->
+                            -Xep:Interruption:OFF
+                            <!-- We don't target JDK 7. -->
+                            -Xep:Java7ApiChecker:OFF
+                            <!-- We don't target JDK 8. -->
+                            -Xep:Java8ApiChecker:OFF
+                            <!-- Suggests some controversial renames. -->
+                            -Xep:MemberName:OFF
+                            <!-- Disabled for now, but TBD. -->
+                            -Xep:MethodCanBeStatic:OFF
+                            <!-- While generally an anti-pattern,
+                            nullable `Optional` fields are common in
+                            jOOQ-deserialized entity types. -->
+                            -Xep:NullableOptional:OFF
+                            <!-- Deals with an Android-specific
+                            limitation not applicable to us. See also
+                            https://github.com/google/error-prone/issues/488. -->
+                            -Xep:StaticOrDefaultInterfaceMethod:OFF
+                            <!-- To be enabled once we've fully
+                            migrated to JUnit. -->
+                            -Xep:TryFailRefactoring:OFF
+                            <!-- XXX: PSM-1251: To be enabled once
+                            false positives have been reduced to a
+                            minimum. -->
+                            -Xep:UnusedVariable:OFF
+                            <!-- We generally discourage `var` use. -->
+                            -Xep:Varifier:OFF
+                            <!-- XXX: For generic type parameters, this
+                            check is not compatible with JSR-305's
+                            `@Nullable` and it adds too much noise for
+                            Reactor types. -->
+                            -Xep:VoidMissingNullable:OFF
+                            <!-- Yoda conditions are not always more
+                            readable than the alternative. -->
+                            -Xep:YodaCondition:OFF
+                            -XepOpt:BadImport:BadEnclosingTypes=org.immutables.value.Value
+                            -XepOpt:CheckReturnValue:CheckAllConstructors=true
+                            <!-- XXX: Enable once there are fewer
+                            false-positives.
+                            -XepOpt:CheckReturnValue:CheckAllMethods=true -->
+                            -XepOpt:InlineMe:SkipInliningsWithComments=false
+                            -XepOpt:Nullness:Conservative=false
+                            <!-- XXX: Enable after manual cleanup. (The
+                            suggested fixes sometimes leave behind
+                            unreachable code, or introduce trailing
+                            comments that are subsequently flagged by
+                            Checkstyle.
+                            -XepOpt:StatementSwitchToExpressionSwitch:EnableAssignmentSwitchConversion=true
+                            -XepOpt:StatementSwitchToExpressionSwitch:EnableDirectConversion=true
+                            -XepOpt:StatementSwitchToExpressionSwitch:EnableReturnSwitchConversion=true -->
+                            <!--
+                            START Error Prone Support configuration.
+                            -->
+                            <!-- XXX: PSM-1332: Enable once
+                            sufficiently configurable. -->
+                            -Xep:LexicographicalAnnotationListing:OFF
+                            <!-- Code flagged by this is not necessarily improved by
+                            not having nested publishers, e.g. in jOOQ related code. -->
+                            -Xep:NestedPublishers:OFF
+                            <!-- XXX: PSM-1367: Enable once this
+                            check's performance has been improved. -->
+                            -Xep:Refaster:OFF
+                            <!-- XXX: PSM-1670: Enable once impact
+                            downstream is assessed. -->
+                            -Xep:StringJoin:OFF
+                            -XepOpt:ErrorProneSupport:IgnoreClasspathCompat=true
+                            -XepOpt:Refaster:NamePattern=^(?!.*(AssertJ|Var)).*
+                        </arg>
+                        <arg>-XDcompilePolicy=simple</arg>
                     </compilerArgs>
+                    <!-- Enable this if you'd like to fail your build upon warnings. -->
+                    <!-- <failOnWarning>true</failOnWarning> -->
                 </configuration>
             </plugin>
             <plugin>
@@ -221,10 +378,11 @@
 
     <properties>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
-        <maven.compiler.source>17</maven.compiler.source>
-        <maven.compiler.target>${maven.compiler.source}</maven.compiler.target>
+        <maven.compiler.release>17</maven.compiler.release>
         <jqwik.version>1.8.2</jqwik.version>
         <assertj.version>3.24.2</assertj.version>
+        <error-prone.version>2.26.1</error-prone.version>
+        <error-prone-support.version>0.16.1</error-prone-support.version>
     </properties>
 
     <distributionManagement>
