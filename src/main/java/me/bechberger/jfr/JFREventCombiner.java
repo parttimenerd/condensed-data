@@ -16,6 +16,7 @@ import me.bechberger.condensed.ReadStruct;
 import me.bechberger.condensed.types.*;
 import me.bechberger.condensed.types.ArrayType.WrappedArrayType;
 import me.bechberger.condensed.types.StructType.Field;
+import me.bechberger.jfr.EventCombiner.Combiner;
 import me.bechberger.jfr.EventReconstitutor.Reconstitutor;
 import me.bechberger.jfr.JFREventCombiner.MapEntry.ArrayValue;
 import me.bechberger.jfr.JFREventCombiner.MapEntry.MapValue;
@@ -339,7 +340,7 @@ public class JFREventCombiner extends EventCombiner {
             } else if (valueDefinition instanceof MapEntry.ArrayValue<?, ?>) {
                 return ((ArrayValue<?, ?>) valueDefinition).val.name;
             } else if (valueDefinition instanceof MapEntry.MapValue<?, ?, ?>) {
-                return "map";
+                return ((MapValue<?, ?, ?>) valueDefinition).key.name;
             } else {
                 throw new IllegalArgumentException(
                         "Unknown value definition type " + valueDefinition);
@@ -411,6 +412,7 @@ public class JFREventCombiner extends EventCombiner {
         }
     }
 
+    /** A reconstitutor of JFR events, the inverse of {@link JFREventCombiner.AbstractCombiner} */
     public abstract static class AbstractReconstitutor<C extends AbstractCombiner<?, ?>>
             implements Reconstitutor<C, TypedValue> {
 
@@ -465,6 +467,13 @@ public class JFREventCombiner extends EventCombiner {
 
             public TypedValueEventBuilder put(String field, Object value) {
                 map.put(field, value);
+                return this;
+            }
+
+            public TypedValueEventBuilder put(
+                    String keyField, String valueField, Map.Entry<?, ?> value) {
+                map.put(keyField, value.getKey());
+                map.put(valueField, value.getValue());
                 return this;
             }
 
@@ -570,11 +579,12 @@ public class JFREventCombiner extends EventCombiner {
 
     record GCIdToken(long gcId) {}
 
-    record GCIdState(Instant startTime, long gcId, DefinedMap<RecordedEvent> map)
-            implements JFRObjectState {}
+    record GCIdState(Instant startTime, long gcId, JFREventCombiner.DefinedMap<RecordedEvent> map)
+            implements JFREventCombiner.JFRObjectState {}
 
     /** GC id based combiner */
-    abstract static class GCIdBasedCombiner extends AbstractCombiner<GCIdToken, GCIdState> {
+    abstract static class GCIdBasedCombiner
+            extends JFREventCombiner.AbstractCombiner<GCIdToken, GCIdState> {
 
         public GCIdBasedCombiner(
                 String typeName,
@@ -636,10 +646,10 @@ public class JFREventCombiner extends EventCombiner {
                                     (CondensedType<Object, Object>)
                                             basicJFRWriter.getTypeCached(
                                                     eventType.getField("objectSize"));
-            MapEntry<RecordedEvent, Object> objectsMapValue =
+            JFREventCombiner.MapEntry<RecordedEvent, Object> objectsMapValue =
                     configuration.sumObjectSizes()
                             ? new SingleValue<RecordedEvent, Object>(
-                                    new MapPartValue<>(
+                                    new JFREventCombiner.MapPartValue<>(
                                             "objectSize",
                                             objectSizeCreator,
                                             e -> e.getLong("objectSize")),
@@ -924,6 +934,30 @@ public class JFREventCombiner extends EventCombiner {
         }
     }
 
+    static class ObjectAllocationSampleReconstitutor
+            extends AbstractReconstitutor<ObjectAllocationSampleCombiner> {
+
+        /**
+         * Creates a new instance
+         *
+         * @param jfrWriter writer to use for reconstitution
+         */
+        public ObjectAllocationSampleReconstitutor(WritingJFRReader jfrWriter) {
+            super("jdk.ObjectAllocationSample", jfrWriter);
+        }
+
+        @Override
+        public List<TypedValue> reconstitute(
+                StructType<?, ?> resultEventType,
+                ReadStruct combinedReadEvent,
+                TypedValueEventBuilder builder) {
+            builder.put("endTime").addStandardFieldsIfNeeded();
+            return combinedReadEvent.asMapEntryList("objectClass").stream()
+                    .map(e -> builder.put("objectClass", "weight", e).build())
+                    .toList();
+        }
+    }
+
     enum PSHeapSummaryWhen {
         BEFORE,
         AFTER
@@ -1064,7 +1098,10 @@ public class JFREventCombiner extends EventCombiner {
 
         private static Map<String, Reconstitutor<?, TypedValue>> createReconstitutors(
                 WritingJFRReader jfrWriter) {
-            return new HashMap<>();
+            return new HashMap<>(
+                    Map.of(
+                            "jdk.combined.ObjectAllocationSample",
+                            new ObjectAllocationSampleReconstitutor(jfrWriter)));
         }
     }
 }

@@ -1,10 +1,11 @@
 package me.bechberger.jfr;
 
-import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.*;
 
 import java.io.ByteArrayOutputStream;
 import java.time.Instant;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.function.Function;
@@ -25,6 +26,7 @@ import me.bechberger.jfr.JFREventCombiner.*;
 import me.bechberger.jfr.JFREventCombiner.MapEntry.ArrayValue;
 import me.bechberger.jfr.JFREventCombiner.MapEntry.MapValue;
 import me.bechberger.jfr.JFREventCombiner.MapEntry.SingleValue;
+import org.jetbrains.annotations.Nullable;
 import org.junit.jupiter.api.Test;
 import org.openjdk.jmc.flightrecorder.writer.api.TypedValue;
 
@@ -265,7 +267,7 @@ public class JFREventCombinerTest {
                 ReadStruct combinedReadEvent,
                 TypedValueEventBuilder builder) {
             builder.put("state").addStandardFieldsIfNeeded();
-            return combinedReadEvent.asMapEntryList("map").stream()
+            return combinedReadEvent.asMapEntryList("state2").stream()
                     .map(v -> builder.put("state2", v.getKey(), "val", v.getValue()).build())
                     .toList();
         }
@@ -306,6 +308,55 @@ public class JFREventCombinerTest {
         assertEqualsTV(Map.of("state2", 1, "val", 1), res.readEvents.get(3));
     }
 
+    /**
+     * Test {@link me.bechberger.jfr.JFREventCombiner.ObjectAllocationSampleCombiner} and {@link
+     * ObjectAllocationSampleReconstitutor}
+     */
+    @Test
+    public void testObjectAllocationSampleCombiner() {
+        var res =
+                runJFRWithCombiner(
+                        Map.of(
+                                "jdk.ObjectAllocationSample",
+                                new CombinerAndReconstitutor(
+                                        "jdk.combined.ObjectAllocationSample")),
+                        Configuration.DEFAULT.withCombineObjectAllocationSampleEvents(true),
+                        () -> {
+                            System.out.println(new byte[1024 * 1024 * 1024].length);
+                            System.gc();
+                        });
+        assertTrue(
+                res.combinedEventCount.size() < res.readEvents.size(),
+                "Less combined then recorded events");
+        Map<String, Long> sizePerClass = new HashMap<>();
+        for (var event : res.recordedEvents) {
+            var className = event.getClass("objectClass").getName().replace('.', '/');
+            var weight = event.getLong("weight");
+            sizePerClass.put(className, sizePerClass.getOrDefault(className, 0L) + weight);
+        }
+        Map<String, Long> reconSizePerClass = new HashMap<>();
+        for (var event : res.readEvents) {
+            if (!event.getType().getTypeName().equals("jdk.ObjectAllocationSample")) {
+                continue;
+            }
+            var objClass = (TypedValue) get2(event, "objectClass");
+            var className = get(objClass, "name").toString();
+            var weight = (long) get(event, "weight");
+            reconSizePerClass.put(
+                    className, reconSizePerClass.getOrDefault(className, 0L) + weight);
+        }
+        assertMapEquals(sizePerClass, reconSizePerClass);
+    }
+
+    private static <T, V> void assertMapEquals(Map<T, V> expected, Map<T, V> actual) {
+        for (var expectedClass : expected.keySet()) {
+            if (actual.get(expectedClass) == null) {
+                fail(expectedClass + " not found");
+            }
+            assertEquals(expected.get(expectedClass), actual.get(expectedClass));
+        }
+    }
+
     private static void assertEqualsTV(Map<String, Object> expected, TypedValue event) {
         for (var entry : expected.entrySet()) {
             assertEquals(
@@ -324,34 +375,57 @@ public class JFREventCombinerTest {
                 .getValue();
     }
 
+    private static Object get2(TypedValue value, String name) {
+        return value.getFieldValues().stream()
+                .filter(f -> f.getField().getName().equals(name))
+                .findFirst()
+                .orElseThrow()
+                .getValue();
+    }
+
     record EventCombinerTestResult(
             List<RecordedEvent> recordedEvents,
             List<TypedValue> readEvents,
             Map<String, Integer> combinedEventCount) {}
 
     record CombinerAndReconstitutor(
-            Function<BasicJFRWriter, ? extends Combiner<?, ?>> combiner,
+            @Nullable Function<BasicJFRWriter, ? extends Combiner<?, ?>> combiner,
             String combinedEvent,
-            Function<WritingJFRReader, AbstractReconstitutor<?>> reconstitutor) {}
+            @Nullable Function<WritingJFRReader, AbstractReconstitutor<?>> reconstitutor) {
+        CombinerAndReconstitutor(String combinedEvent) {
+            this(null, combinedEvent, null);
+        }
+    }
 
     EventCombinerTestResult runJFRWithCombiner(
             Map<String, CombinerAndReconstitutor> combiners, Runnable createEvents) {
+        return runJFRWithCombiner(combiners, Configuration.DEFAULT, createEvents);
+    }
+
+    EventCombinerTestResult runJFRWithCombiner(
+            Map<String, CombinerAndReconstitutor> combiners,
+            Configuration configuration,
+            Runnable createEvents) {
         List<RecordedEvent> recordedEvents = new ArrayList<>();
         ByteArrayOutputStream outputStream = new ByteArrayOutputStream();
         try (CondensedOutputStream out =
                 new CondensedOutputStream(outputStream, StartMessage.DEFAULT)) {
-            BasicJFRWriter basicJFRWriter = new BasicJFRWriter(out, Configuration.DEFAULT);
+            BasicJFRWriter basicJFRWriter = new BasicJFRWriter(out, Configuration.REDUCED_DEFAULT);
             try (RecordingStream rs = new RecordingStream()) {
                 for (var combiner : combiners.entrySet()) {
+                    System.out.println("enable " + combiner.getKey());
+                    rs.enable(combiner.getKey());
                     rs.onEvent(
                             combiner.getKey(),
                             event -> {
-                                var combinerInstance =
-                                        combiner.getValue().combiner.apply(basicJFRWriter);
-                                basicJFRWriter
-                                        .getEventCombiner()
-                                        .putIfNotThere(
-                                                event.getEventType(), () -> combinerInstance);
+                                if (combiner.getValue().combiner != null) {
+                                    var combinerInstance =
+                                            combiner.getValue().combiner.apply(basicJFRWriter);
+                                    basicJFRWriter
+                                            .getEventCombiner()
+                                            .putIfNotThere(
+                                                    event.getEventType(), () -> combinerInstance);
+                                }
                                 basicJFRWriter.processEvent(event);
                                 recordedEvents.add(event);
                             });
@@ -375,8 +449,10 @@ public class JFREventCombinerTest {
         try (var in = new CondensedInputStream(outputStream.toByteArray())) {
             WritingJFRReader reader = new WritingJFRReader(new BasicJFRReader(in));
             for (var combiner : combiners.values()) {
-                reader.getReconstitutor()
-                        .put(combiner.combinedEvent, combiner.reconstitutor.apply(reader));
+                if (combiner.reconstitutor != null) {
+                    reader.getReconstitutor()
+                            .put(combiner.combinedEvent, combiner.reconstitutor.apply(reader));
+                }
             }
             var readEvents = reader.readAllJFREvents();
             return new EventCombinerTestResult(

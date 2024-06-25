@@ -365,7 +365,7 @@ public class BasicJFRRoundTripTest {
 
                 if (message.type().getName().equals("jdk.combined.PromoteObjectInNewPLAB")) {
                     var combined = (ReadStruct) message.value();
-                    var map = (ReadList<ReadStruct>) combined.get("map");
+                    var map = (ReadList<ReadStruct>) combined.get("objectClass");
                     var gcId = (long) combined.get("gcId");
                     var forIdPerClass =
                             recordedInNewPlabEvents.stream()
@@ -381,7 +381,7 @@ public class BasicJFRRoundTripTest {
 
                 if (message.type().getName().equals("jdk.combined.ObjectAllocationSample")) {
                     var combined = (ReadStruct) message.value();
-                    var map = (ReadList<ReadStruct>) combined.get("map");
+                    var map = (ReadList<ReadStruct>) combined.get("objectClass");
                     foundAllocClassEntries += map.size();
                     hadObjectAllocationEvent = true;
                 }
@@ -462,7 +462,7 @@ public class BasicJFRRoundTripTest {
                 System.out.println("Got message: " + message + " of type " + message.type());
                 if (message.type().getName().equals("jdk.combined.TenuringDistribution")) {
                     var combined = (ReadStruct) message.value();
-                    var map = (ReadList<ReadStruct>) combined.get("map");
+                    var map = (ReadList<ReadStruct>) combined.get("age");
                     var gcId = (long) combined.get("gcId");
                     var expectedAgeToSize = gcIdToAgeToSize.get(gcId);
 
@@ -558,7 +558,7 @@ public class BasicJFRRoundTripTest {
                 System.out.println("Got message: " + message + " of type " + message.type());
                 if (message.type().getName().equals("jdk.combined.GCPhasePauseLevel1")) {
                     var combined = (ReadStruct) message.value();
-                    var map = (ReadList<ReadStruct>) combined.get("map");
+                    var map = (ReadList<ReadStruct>) combined.get("name");
                     var gcId = (long) combined.get("gcId");
                     var nameToDuration = gcIdToNameToDuration.get(gcId);
 
