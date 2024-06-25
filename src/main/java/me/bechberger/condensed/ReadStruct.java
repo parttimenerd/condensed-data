@@ -2,7 +2,6 @@ package me.bechberger.condensed;
 
 import java.util.*;
 import java.util.function.BiFunction;
-import java.util.stream.Collectors;
 import me.bechberger.condensed.types.StructType;
 import me.bechberger.condensed.types.StructType.Field;
 import org.jetbrains.annotations.NotNull;

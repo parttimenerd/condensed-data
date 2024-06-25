@@ -1,11 +1,14 @@
 package me.bechberger.jfr;
 
+import static me.bechberger.condensed.types.TypeCollection.normalize;
 import static org.junit.jupiter.api.Assertions.*;
 
 import java.io.ByteArrayOutputStream;
 import java.time.Instant;
 import java.util.*;
+import java.util.function.BiPredicate;
 import java.util.function.Function;
+
 import jdk.jfr.*;
 import jdk.jfr.consumer.RecordedEvent;
 import jdk.jfr.consumer.RecordingStream;
@@ -360,7 +363,9 @@ public class JFREventCombinerTest {
                                 "jdk.PromoteObjectInNewPLAB",
                                 new CombinerAndReconstitutor(
                                         "jdk.combined.PromoteObjectInNewPLAB")),
-                        Configuration.DEFAULT.withCombinePLABPromotionEvents(true).withSumObjectSizes(sumObjectSizes),
+                        Configuration.DEFAULT
+                                .withCombinePLABPromotionEvents(true)
+                                .withSumObjectSizes(sumObjectSizes),
                         () -> {
                             System.out.println(new byte[1024 * 1024 * 1024].length);
                             System.gc();
@@ -384,12 +389,57 @@ public class JFREventCombinerTest {
         assertMapEquals(sizePerAgePerClass, reconSizePerAgePerClass);
     }
 
+    /**
+     * Test {@link me.bechberger.jfr.JFREventCombiner.TenuringDistributionCombiner} and
+     * {@link TenuringDistributionReconstitutor}
+     */
+    @ParameterizedTest
+    @ValueSource(booleans = {true, false})
+    public void testTenuringDistributionCombiner(boolean ignoreZeroSized) {
+        var res =
+                runJFRWithCombiner(
+                        Map.of(
+                                "jdk.TenuringDistribution",
+                                new CombinerAndReconstitutor(
+                                        "jdk.combined.TenuringDistribution")),
+                        Configuration.DEFAULT.withCombineEventsWithoutDataLoss(true)
+                                .withIgnoreZeroSizedTenuredAges(ignoreZeroSized),
+                        () -> {
+                            System.out.println(new byte[1024 * 1024 * 1024].length);
+                            System.gc();
+                        });
+        assertTrue(
+                res.combinedEventCount.size() <= res.readEvents.size(),
+                "Less combined then recorded events");
+        Map<Long, Long> sizePerAge = new HashMap<>();
+        for (var event : res.recordedEvents) {
+            var age = event.getLong("age");
+            var size = event.getLong("size");
+            sizePerAge.put(age, sizePerAge.getOrDefault(age, 0L) + size);
+        }
+        Map<Long, Long> reconSizePerAge = new HashMap<>();
+        for (var event : res.readEvents) {
+            var age = getLong(event, "age");
+            var size = getLong(event, "size");
+            reconSizePerAge.put(age, reconSizePerAge.getOrDefault(age, 0L) + size);
+        }
+        assertMapEquals(sizePerAge, reconSizePerAge, (age, size) -> size == 0 && ignoreZeroSized);
+    }
+
     private static <T, V> void assertMapEquals(Map<T, V> expected, Map<T, V> actual) {
-        for (var expectedClass : expected.keySet()) {
-            if (actual.get(expectedClass) == null) {
-                fail(expectedClass + " not found");
+        assertMapEquals(expected, actual, (k, v) -> false);
+    }
+
+    private static <T, V> void assertMapEquals(Map<T, V> expected, Map<T, V> actual, BiPredicate<T, V> canKeyBeNonPresent) {
+        for (var key : expected.keySet()) {
+            if (actual.get(key) == null && !canKeyBeNonPresent.test(key, expected.get(key))) {
+                fail(key + " not found");
             }
-            assertEquals(expected.get(expectedClass), actual.get(expectedClass));
+            if (expected.get(key).equals(0L)) {
+                assertTrue(actual.get(key) == null || actual.get(key).equals(0L));
+                continue;
+            }
+            assertEquals(expected.get(key), actual.get(key));
         }
     }
 
@@ -403,7 +453,7 @@ public class JFREventCombinerTest {
     }
 
     private static long getLong(TypedValue value, String name) {
-        return (long)Objects.requireNonNullElse(get(value, name), 0L);
+        return (long) Objects.requireNonNullElse(normalize(get(value, name)), 0L);
     }
 
     private static Object get(TypedValue value, String name) {
@@ -450,7 +500,7 @@ public class JFREventCombinerTest {
         ByteArrayOutputStream outputStream = new ByteArrayOutputStream();
         try (CondensedOutputStream out =
                 new CondensedOutputStream(outputStream, StartMessage.DEFAULT)) {
-            BasicJFRWriter basicJFRWriter = new BasicJFRWriter(out, Configuration.REDUCED_DEFAULT);
+            BasicJFRWriter basicJFRWriter = new BasicJFRWriter(out, configuration);
             try (RecordingStream rs = new RecordingStream()) {
                 for (var combiner : combiners.entrySet()) {
                     System.out.println("enable " + combiner.getKey());

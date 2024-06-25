@@ -3,7 +3,6 @@ package me.bechberger.condensed;
 import java.util.*;
 import java.util.function.IntFunction;
 import java.util.stream.Collectors;
-
 import me.bechberger.condensed.types.ArrayType;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
@@ -264,20 +263,20 @@ public class ReadList<T> implements List<T>, ReadContainer<List<T>> {
         return (List<Map.Entry<K, V>>)
                 ((List) this)
                         .stream()
-                        .map(
-                                v -> {
-                                    if (!(v instanceof Map)
-                                            || !((Map<?, ?>) v).containsKey("key")
-                                            || !((Map<?, ?>) v).containsKey("value")) {
-                                        throw new AssertionError(
-                                                "Expected mapped pair (key, value), but got"
-                                                        + " "
-                                                        + v);
-                                    }
-                                    return Map.entry(
-                                            ((Map<?, ?>) v).get("key"),
-                                            ((Map<?, ?>) v).get("value"));
-                                })
-                        .collect(Collectors.toList());
+                                .map(
+                                        v -> {
+                                            if (!(v instanceof Map)
+                                                    || !((Map<?, ?>) v).containsKey("key")
+                                                    || !((Map<?, ?>) v).containsKey("value")) {
+                                                throw new AssertionError(
+                                                        "Expected mapped pair (key, value), but got"
+                                                                + " "
+                                                                + v);
+                                            }
+                                            return Map.entry(
+                                                    ((Map<?, ?>) v).get("key"),
+                                                    ((Map<?, ?>) v).get("value"));
+                                        })
+                                .collect(Collectors.toList());
     }
 }

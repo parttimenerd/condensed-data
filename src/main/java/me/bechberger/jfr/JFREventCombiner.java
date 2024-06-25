@@ -1,5 +1,7 @@
 package me.bechberger.jfr;
 
+import static me.bechberger.condensed.types.TypeCollection.normalize;
+
 import java.time.Instant;
 import java.util.*;
 import java.util.Map.Entry;
@@ -8,7 +10,6 @@ import java.util.function.Function;
 import java.util.function.Supplier;
 import java.util.logging.Logger;
 import java.util.stream.Stream;
-
 import jdk.jfr.EventType;
 import jdk.jfr.consumer.RecordedClass;
 import jdk.jfr.consumer.RecordedEvent;
@@ -27,8 +28,6 @@ import me.bechberger.jfr.JFREventCombiner.MapEntry.SingleValue;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 import org.openjdk.jmc.flightrecorder.writer.api.TypedValue;
-
-import static me.bechberger.condensed.types.TypeCollection.normalize;
 
 /**
  * Contains combiners for JFR events to reduce the amount of data written to the stream
@@ -434,7 +433,9 @@ public class JFREventCombiner extends EventCombiner {
             this.eventTypeName = eventTypeName;
             this.jfrWriter = jfrWriter;
             if (eventTypeName.contains(".combined.")) {
-                throw new AssertionError("Don't use the combined event type name here, try " + eventTypeName.replace(".combined.", "."));
+                throw new AssertionError(
+                        "Don't use the combined event type name here, try "
+                                + eventTypeName.replace(".combined.", "."));
             }
         }
 
@@ -702,34 +703,55 @@ public class JFREventCombiner extends EventCombiner {
 
     static class PromoteObjectReconstitutor extends AbstractReconstitutor<PromoteObjectCombiner> {
 
-        public PromoteObjectReconstitutor(String combinedEventTypeName, WritingJFRReader jfrWriter) {
+        public PromoteObjectReconstitutor(
+                String combinedEventTypeName, WritingJFRReader jfrWriter) {
             super(combinedEventTypeName, jfrWriter);
         }
 
         @Override
         @SuppressWarnings("unchecked")
-        public List<TypedValue> reconstitute(StructType<?, ?> resultEventType, ReadStruct combinedReadEvent, TypedValueEventBuilder builder) {
+        public List<TypedValue> reconstitute(
+                StructType<?, ?> resultEventType,
+                ReadStruct combinedReadEvent,
+                TypedValueEventBuilder builder) {
             builder.addStandardFieldsIfNeeded().put("gcId");
             if (resultEventType.hasField("plabSize")) {
                 builder.put("plabSize", -1L);
             }
             return combinedReadEvent.asMapEntryList("objectClass").stream()
-                    .flatMap(e -> {
-                        builder.put("objectClass", e.getKey());
-                        return ((ReadList<?>)e.getValue()).asMapEntryList()
-                                .stream().flatMap(tae -> {
-                                    var tenAndAge = (long)tae.getKey();
-                                    var tenured = tenAndAge >= 64;
-                                    var tenuringAge = tenAndAge % 64;
-                                    builder.put("tenured", tenured);
-                                    builder.put("tenuringAge", tenuringAge);
-                                    if (tae.getValue() instanceof Long) {
-                                        return Stream.of(builder.put("objectSize", tae.getValue()).build());
-                                    } else {
-                                        return ((ReadList<Long>)tae.getValue()).stream().map(s -> builder.put("objectSize", s).build());
-                                    }
-                                });
-                    }).toList();
+                    .flatMap(
+                            e -> {
+                                builder.put("objectClass", e.getKey());
+                                return ((ReadList<?>) e.getValue())
+                                        .asMapEntryList().stream()
+                                                .flatMap(
+                                                        tae -> {
+                                                            var tenAndAge = (long) tae.getKey();
+                                                            var tenured = tenAndAge >= 64;
+                                                            var tenuringAge = tenAndAge % 64;
+                                                            builder.put("tenured", tenured);
+                                                            builder.put("tenuringAge", tenuringAge);
+                                                            if (tae.getValue() instanceof Long) {
+                                                                return Stream.of(
+                                                                        builder.put(
+                                                                                        "objectSize",
+                                                                                        tae
+                                                                                                .getValue())
+                                                                                .build());
+                                                            } else {
+                                                                return ((ReadList<Long>)
+                                                                                tae.getValue())
+                                                                        .stream()
+                                                                                .map(
+                                                                                        s ->
+                                                                                                builder.put(
+                                                                                                                "objectSize",
+                                                                                                                s)
+                                                                                                        .build());
+                                                            }
+                                                        });
+                            })
+                    .toList();
         }
     }
 
@@ -757,7 +779,6 @@ public class JFREventCombiner extends EventCombiner {
                                     (CondensedType<Long, Long>)
                                             basicJFRWriter.getTypeCached(
                                                     eventType.getField("size"));
-
             return new MapValue<>(
                     new MapPartValue<>(
                             "age",
@@ -770,9 +791,24 @@ public class JFREventCombiner extends EventCombiner {
                     map ->
                             configuration.ignoreZeroSizedTenuredAges()
                                     ? map.entrySet().stream()
-                                            .filter(e -> e.getValue() != 0)
+                                            .filter(e -> e.getValue() != 0L)
                                             .toList()
                                     : new ArrayList<>(map.entrySet()));
+        }
+    }
+
+    static class TenuringDistributionReconstitutor extends AbstractReconstitutor<TenuringDistributionCombiner> {
+
+        public TenuringDistributionReconstitutor(WritingJFRReader jfrWriter) {
+            super("jdk.TenuringDistribution", jfrWriter);
+        }
+
+        @Override
+        public List<TypedValue> reconstitute(StructType<?, ?> resultEventType, ReadStruct combinedReadEvent, TypedValueEventBuilder builder) {
+            builder.put("gcId").addStandardFieldsIfNeeded();
+            return combinedReadEvent.asMapEntryList("age").stream()
+                    .map(e -> builder.put("age", "size", e).build())
+                    .toList();
         }
     }
 
@@ -1146,10 +1182,16 @@ public class JFREventCombiner extends EventCombiner {
                                     new ObjectAllocationSampleReconstitutor(jfrWriter)),
                             Map.entry(
                                     "jdk.combined.PromoteObjectInNewPLAB",
-                                    new PromoteObjectReconstitutor("jdk.PromoteObjectInNewPLAB", jfrWriter)),
+                                    new PromoteObjectReconstitutor(
+                                            "jdk.PromoteObjectInNewPLAB", jfrWriter)),
                             Map.entry(
                                     "jdk.combined.PromoteObjectOutsidePLAB",
-                                    new PromoteObjectReconstitutor("jdk.PromoteObjectOutsidePLAB", jfrWriter))));
+                                    new PromoteObjectReconstitutor(
+                                            "jdk.PromoteObjectOutsidePLAB", jfrWriter)),
+                            Map.entry(
+                                    "jdk.combined.TenuringDistribution",
+                                    new TenuringDistributionReconstitutor(jfrWriter)
+                            )));
         }
     }
 }
