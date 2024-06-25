@@ -797,14 +797,18 @@ public class JFREventCombiner extends EventCombiner {
         }
     }
 
-    static class TenuringDistributionReconstitutor extends AbstractReconstitutor<TenuringDistributionCombiner> {
+    static class TenuringDistributionReconstitutor
+            extends AbstractReconstitutor<TenuringDistributionCombiner> {
 
         public TenuringDistributionReconstitutor(WritingJFRReader jfrWriter) {
             super("jdk.TenuringDistribution", jfrWriter);
         }
 
         @Override
-        public List<TypedValue> reconstitute(StructType<?, ?> resultEventType, ReadStruct combinedReadEvent, TypedValueEventBuilder builder) {
+        public List<TypedValue> reconstitute(
+                StructType<?, ?> resultEventType,
+                ReadStruct combinedReadEvent,
+                TypedValueEventBuilder builder) {
             builder.put("gcId").addStandardFieldsIfNeeded();
             return combinedReadEvent.asMapEntryList("age").stream()
                     .map(e -> builder.put("age", "size", e).build())
@@ -856,6 +860,19 @@ public class JFREventCombiner extends EventCombiner {
                                                                             e.getValue()))
                                             .toList()
                                     : new ArrayList<>(map.entrySet()));
+        }
+    }
+
+    static class GCPhasePauseLevelReconstitutor extends AbstractReconstitutor<GCPhasePauseLevelCombiner> {
+        public GCPhasePauseLevelReconstitutor(String eventTypeName, WritingJFRReader jfrWriter) {
+            super(eventTypeName, jfrWriter);
+        }
+
+        @Override
+        public List<TypedValue> reconstitute(StructType<?, ?> resultEventType, ReadStruct combinedReadEvent, TypedValueEventBuilder builder) {
+            builder.put("gcId").addStandardFieldsIfNeeded();
+            return combinedReadEvent.asMapEntryList("name").stream()
+                    .map(e -> builder.put("name", "duration", e).build()).toList();
         }
     }
 
@@ -1189,9 +1206,12 @@ public class JFREventCombiner extends EventCombiner {
                                     new PromoteObjectReconstitutor(
                                             "jdk.PromoteObjectOutsidePLAB", jfrWriter)),
                             Map.entry(
-                                    "jdk.combined.TenuringDistribution",
-                                    new TenuringDistributionReconstitutor(jfrWriter)
-                            )));
+                                    "jdk.combined.GCPhasePauseLevel1",
+                                    new GCPhasePauseLevelReconstitutor("jdk.GCPhasePauseLevel2", jfrWriter)),
+                            Map.entry(
+                                    "jdk.combined.GCPhasePauseLevel2",
+                                    new GCPhasePauseLevelReconstitutor("jdk.GCPhasePauseLevel2", jfrWriter))
+                            ));
         }
     }
 }

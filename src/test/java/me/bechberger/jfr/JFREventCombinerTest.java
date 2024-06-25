@@ -4,11 +4,12 @@ import static me.bechberger.condensed.types.TypeCollection.normalize;
 import static org.junit.jupiter.api.Assertions.*;
 
 import java.io.ByteArrayOutputStream;
+import java.time.Duration;
 import java.time.Instant;
+import java.time.temporal.TemporalUnit;
 import java.util.*;
 import java.util.function.BiPredicate;
 import java.util.function.Function;
-
 import jdk.jfr.*;
 import jdk.jfr.consumer.RecordedEvent;
 import jdk.jfr.consumer.RecordingStream;
@@ -341,7 +342,7 @@ public class JFREventCombinerTest {
             if (!event.getType().getTypeName().equals("jdk.ObjectAllocationSample")) {
                 continue;
             }
-            var objClass = (TypedValue) get2(event, "objectClass");
+            var objClass = (TypedValue) getNonScalar(event, "objectClass");
             var className = get(objClass, "name").toString();
             var weight = (long) get(event, "weight");
             reconSizePerClass.put(
@@ -380,7 +381,7 @@ public class JFREventCombinerTest {
         }
         Map<String, Map<Long, Long>> reconSizePerAgePerClass = new HashMap<>();
         for (var event : res.readEvents) {
-            var objClass = (TypedValue) get2(event, "objectClass");
+            var objClass = (TypedValue) getNonScalar(event, "objectClass");
             var className = get(objClass, "name").toString();
             var age = (long) (int) get(event, "tenuringAge");
             var perAge = reconSizePerAgePerClass.computeIfAbsent(className, k -> new HashMap<>());
@@ -390,8 +391,8 @@ public class JFREventCombinerTest {
     }
 
     /**
-     * Test {@link me.bechberger.jfr.JFREventCombiner.TenuringDistributionCombiner} and
-     * {@link TenuringDistributionReconstitutor}
+     * Test {@link me.bechberger.jfr.JFREventCombiner.TenuringDistributionCombiner} and {@link
+     * TenuringDistributionReconstitutor}
      */
     @ParameterizedTest
     @ValueSource(booleans = {true, false})
@@ -400,9 +401,9 @@ public class JFREventCombinerTest {
                 runJFRWithCombiner(
                         Map.of(
                                 "jdk.TenuringDistribution",
-                                new CombinerAndReconstitutor(
-                                        "jdk.combined.TenuringDistribution")),
-                        Configuration.DEFAULT.withCombineEventsWithoutDataLoss(true)
+                                new CombinerAndReconstitutor("jdk.combined.TenuringDistribution")),
+                        Configuration.DEFAULT
+                                .withCombineEventsWithoutDataLoss(true)
                                 .withIgnoreZeroSizedTenuredAges(ignoreZeroSized),
                         () -> {
                             System.out.println(new byte[1024 * 1024 * 1024].length);
@@ -426,11 +427,48 @@ public class JFREventCombinerTest {
         assertMapEquals(sizePerAge, reconSizePerAge, (age, size) -> size == 0 && ignoreZeroSized);
     }
 
+    /**
+     * Test {@link me.bechberger.jfr.JFREventCombiner.GCPhasePauseLevelCombiner} and {@link
+     * GCPhasePauseLevelReconstitutor}
+     */
+    @Test
+    public void testGCPhasePauseLevelCombiner() {
+        var res =
+                runJFRWithCombiner(
+                        Map.of(
+                                "jdk.GCPhasePauseLevel1",
+                                new CombinerAndReconstitutor("jdk.combined.GCPhasePauseLevel1")),
+                        Configuration.DEFAULT
+                                .withCombineEventsWithoutDataLoss(true)
+                                .withIgnoreTooShortGCPauses(false),
+                        () -> {
+                            System.out.println(new byte[1024 * 1024 * 1024].length);
+                            System.gc();
+                        });
+        assertTrue(
+                res.combinedEventCount.size() <= res.readEvents.size(),
+                "Less combined then recorded events");
+        Map<String, Long> durationPerPhase = new HashMap<>();
+        for (var event : res.recordedEvents) {
+            var name = event.getString("name");
+            var duration = event.getLong("duration");
+            durationPerPhase.put(name, durationPerPhase.getOrDefault(name, 0L) + duration);
+        }
+        Map<String, Long> reconDurationPerPhase = new HashMap<>();
+        for (var event : res.readEvents) {
+            var name = (String)get(event, "name");
+            var duration = getLong(event, "duration");
+            reconDurationPerPhase.put(name, reconDurationPerPhase.getOrDefault(name, 0L) + duration);
+        }
+        assertMapEquals(durationPerPhase, reconDurationPerPhase, (age, size) -> false);
+    }
+
     private static <T, V> void assertMapEquals(Map<T, V> expected, Map<T, V> actual) {
         assertMapEquals(expected, actual, (k, v) -> false);
     }
 
-    private static <T, V> void assertMapEquals(Map<T, V> expected, Map<T, V> actual, BiPredicate<T, V> canKeyBeNonPresent) {
+    private static <T, V> void assertMapEquals(
+            Map<T, V> expected, Map<T, V> actual, BiPredicate<T, V> canKeyBeNonPresent) {
         for (var key : expected.keySet()) {
             if (actual.get(key) == null && !canKeyBeNonPresent.test(key, expected.get(key))) {
                 fail(key + " not found");
@@ -465,7 +503,7 @@ public class JFREventCombinerTest {
                 .getValue();
     }
 
-    private static Object get2(TypedValue value, String name) {
+    private static Object getNonScalar(TypedValue value, String name) {
         return value.getFieldValues().stream()
                 .filter(f -> f.getField().getName().equals(name))
                 .findFirst()
@@ -503,7 +541,6 @@ public class JFREventCombinerTest {
             BasicJFRWriter basicJFRWriter = new BasicJFRWriter(out, configuration);
             try (RecordingStream rs = new RecordingStream()) {
                 for (var combiner : combiners.entrySet()) {
-                    System.out.println("enable " + combiner.getKey());
                     rs.enable(combiner.getKey());
                     rs.onEvent(
                             combiner.getKey(),
