@@ -4,10 +4,7 @@ import static org.junit.jupiter.api.Assertions.*;
 
 import java.io.ByteArrayOutputStream;
 import java.time.Instant;
-import java.util.ArrayList;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
+import java.util.*;
 import java.util.function.Function;
 import jdk.jfr.*;
 import jdk.jfr.consumer.RecordedEvent;
@@ -28,6 +25,8 @@ import me.bechberger.jfr.JFREventCombiner.MapEntry.MapValue;
 import me.bechberger.jfr.JFREventCombiner.MapEntry.SingleValue;
 import org.jetbrains.annotations.Nullable;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.openjdk.jmc.flightrecorder.writer.api.TypedValue;
 
 public class JFREventCombinerTest {
@@ -348,6 +347,43 @@ public class JFREventCombinerTest {
         assertMapEquals(sizePerClass, reconSizePerClass);
     }
 
+    /**
+     * Test {@link me.bechberger.jfr.JFREventCombiner.PromoteObjectCombiner} and {@link
+     * PromoteObjectCombiner}
+     */
+    @ParameterizedTest
+    @ValueSource(booleans = {true, false})
+    public void testPromoteObjectInNewTLABCombiner(boolean sumObjectSizes) {
+        var res =
+                runJFRWithCombiner(
+                        Map.of(
+                                "jdk.PromoteObjectInNewPLAB",
+                                new CombinerAndReconstitutor(
+                                        "jdk.combined.PromoteObjectInNewPLAB")),
+                        Configuration.DEFAULT.withCombinePLABPromotionEvents(true).withSumObjectSizes(sumObjectSizes),
+                        () -> {
+                            System.out.println(new byte[1024 * 1024 * 1024].length);
+                            System.gc();
+                        });
+        // idea: sum sizes per tenuringAge per Object class
+        Map<String, Map<Long, Long>> sizePerAgePerClass = new HashMap<>();
+        for (var event : res.recordedEvents) {
+            var className = event.getClass("objectClass").getName().replace('.', '/');
+            var perAge = sizePerAgePerClass.computeIfAbsent(className, k -> new HashMap<>());
+            var age = event.getLong("tenuringAge");
+            perAge.put(age, perAge.getOrDefault(age, 0L) + event.getLong("objectSize"));
+        }
+        Map<String, Map<Long, Long>> reconSizePerAgePerClass = new HashMap<>();
+        for (var event : res.readEvents) {
+            var objClass = (TypedValue) get2(event, "objectClass");
+            var className = get(objClass, "name").toString();
+            var age = (long) (int) get(event, "tenuringAge");
+            var perAge = reconSizePerAgePerClass.computeIfAbsent(className, k -> new HashMap<>());
+            perAge.put(age, perAge.getOrDefault(age, 0L) + getLong(event, "objectSize"));
+        }
+        assertMapEquals(sizePerAgePerClass, reconSizePerAgePerClass);
+    }
+
     private static <T, V> void assertMapEquals(Map<T, V> expected, Map<T, V> actual) {
         for (var expectedClass : expected.keySet()) {
             if (actual.get(expectedClass) == null) {
@@ -364,6 +400,10 @@ public class JFREventCombinerTest {
                     get(event, entry.getKey()),
                     "Wrong value for field " + entry.getKey());
         }
+    }
+
+    private static long getLong(TypedValue value, String name) {
+        return (long)Objects.requireNonNullElse(get(value, name), 0L);
     }
 
     private static Object get(TypedValue value, String name) {

@@ -7,11 +7,14 @@ import java.util.function.BiFunction;
 import java.util.function.Function;
 import java.util.function.Supplier;
 import java.util.logging.Logger;
+import java.util.stream.Stream;
+
 import jdk.jfr.EventType;
 import jdk.jfr.consumer.RecordedClass;
 import jdk.jfr.consumer.RecordedEvent;
 import me.bechberger.condensed.CondensedOutputStream;
 import me.bechberger.condensed.CondensedOutputStream.OverflowMode;
+import me.bechberger.condensed.ReadList;
 import me.bechberger.condensed.ReadStruct;
 import me.bechberger.condensed.types.*;
 import me.bechberger.condensed.types.ArrayType.WrappedArrayType;
@@ -24,6 +27,8 @@ import me.bechberger.jfr.JFREventCombiner.MapEntry.SingleValue;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 import org.openjdk.jmc.flightrecorder.writer.api.TypedValue;
+
+import static me.bechberger.condensed.types.TypeCollection.normalize;
 
 /**
  * Contains combiners for JFR events to reduce the amount of data written to the stream
@@ -428,6 +433,9 @@ public class JFREventCombiner extends EventCombiner {
         public AbstractReconstitutor(String eventTypeName, WritingJFRReader jfrWriter) {
             this.eventTypeName = eventTypeName;
             this.jfrWriter = jfrWriter;
+            if (eventTypeName.contains(".combined.")) {
+                throw new AssertionError("Don't use the combined event type name here, try " + eventTypeName.replace(".combined.", "."));
+            }
         }
 
         @Override
@@ -466,21 +474,21 @@ public class JFREventCombiner extends EventCombiner {
             }
 
             public TypedValueEventBuilder put(String field, Object value) {
-                map.put(field, value);
+                map.put(field, normalize(value));
                 return this;
             }
 
             public TypedValueEventBuilder put(
                     String keyField, String valueField, Map.Entry<?, ?> value) {
-                map.put(keyField, value.getKey());
-                map.put(valueField, value.getValue());
+                put(keyField, value.getKey());
+                put(valueField, value.getValue());
                 return this;
             }
 
             public TypedValueEventBuilder put(
                     String field1, Object value1, String field2, Object value2) {
-                map.put(field1, value1);
-                map.put(field2, value2);
+                put(field1, value1);
+                put(field2, value2);
                 return this;
             }
 
@@ -491,9 +499,9 @@ public class JFREventCombiner extends EventCombiner {
                     Object value2,
                     String field3,
                     Object value3) {
-                map.put(field1, value1);
-                map.put(field2, value2);
-                map.put(field3, value3);
+                put(field1, value1);
+                put(field2, value2);
+                put(field3, value3);
                 return this;
             }
 
@@ -506,10 +514,10 @@ public class JFREventCombiner extends EventCombiner {
                     Object value3,
                     String field4,
                     Object value4) {
-                map.put(field1, value1);
-                map.put(field2, value2);
-                map.put(field3, value3);
-                map.put(field4, value4);
+                put(field1, value1);
+                put(field2, value2);
+                put(field3, value3);
+                put(field4, value4);
                 return this;
             }
 
@@ -519,7 +527,7 @@ public class JFREventCombiner extends EventCombiner {
              * @param field field name in both the combined event and the result event
              */
             public TypedValueEventBuilder put(String field) {
-                map.put(field, combinedReadEvent.get(field));
+                put(field, combinedReadEvent.get(field));
                 return this;
             }
 
@@ -689,6 +697,39 @@ public class JFREventCombiner extends EventCombiner {
                                                     (e.getBoolean("tenured") ? 64 : 0)
                                                             + e.getLong("tenuringAge")),
                                     objectsMapValue));
+        }
+    }
+
+    static class PromoteObjectReconstitutor extends AbstractReconstitutor<PromoteObjectCombiner> {
+
+        public PromoteObjectReconstitutor(String combinedEventTypeName, WritingJFRReader jfrWriter) {
+            super(combinedEventTypeName, jfrWriter);
+        }
+
+        @Override
+        @SuppressWarnings("unchecked")
+        public List<TypedValue> reconstitute(StructType<?, ?> resultEventType, ReadStruct combinedReadEvent, TypedValueEventBuilder builder) {
+            builder.addStandardFieldsIfNeeded().put("gcId");
+            if (resultEventType.hasField("plabSize")) {
+                builder.put("plabSize", -1L);
+            }
+            return combinedReadEvent.asMapEntryList("objectClass").stream()
+                    .flatMap(e -> {
+                        builder.put("objectClass", e.getKey());
+                        return ((ReadList<?>)e.getValue()).asMapEntryList()
+                                .stream().flatMap(tae -> {
+                                    var tenAndAge = (long)tae.getKey();
+                                    var tenured = tenAndAge >= 64;
+                                    var tenuringAge = tenAndAge % 64;
+                                    builder.put("tenured", tenured);
+                                    builder.put("tenuringAge", tenuringAge);
+                                    if (tae.getValue() instanceof Long) {
+                                        return Stream.of(builder.put("objectSize", tae.getValue()).build());
+                                    } else {
+                                        return ((ReadList<Long>)tae.getValue()).stream().map(s -> builder.put("objectSize", s).build());
+                                    }
+                                });
+                    }).toList();
         }
     }
 
@@ -1099,9 +1140,16 @@ public class JFREventCombiner extends EventCombiner {
         private static Map<String, Reconstitutor<?, TypedValue>> createReconstitutors(
                 WritingJFRReader jfrWriter) {
             return new HashMap<>(
-                    Map.of(
-                            "jdk.combined.ObjectAllocationSample",
-                            new ObjectAllocationSampleReconstitutor(jfrWriter)));
+                    Map.ofEntries(
+                            Map.entry(
+                                    "jdk.combined.ObjectAllocationSample",
+                                    new ObjectAllocationSampleReconstitutor(jfrWriter)),
+                            Map.entry(
+                                    "jdk.combined.PromoteObjectInNewPLAB",
+                                    new PromoteObjectReconstitutor("jdk.PromoteObjectInNewPLAB", jfrWriter)),
+                            Map.entry(
+                                    "jdk.combined.PromoteObjectOutsidePLAB",
+                                    new PromoteObjectReconstitutor("jdk.PromoteObjectOutsidePLAB", jfrWriter))));
         }
     }
 }

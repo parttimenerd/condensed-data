@@ -144,27 +144,10 @@ public class ReadStruct implements Map<String, Object>, ReadContainer<ReadStruct
     @SuppressWarnings({"rawtypes", "unchecked"})
     public <T, V> List<Map.Entry<T, V>> asMapEntryList(String key) {
         var val = getOrThrow(key);
-        if (!(val instanceof List)) {
+        if (!(val instanceof ReadList)) {
             throw new AssertionError("Expected list got " + val.getClass());
         }
-        return (List<Map.Entry<T, V>>)
-                ((List) val)
-                        .stream()
-                                .map(
-                                        v -> {
-                                            if (!(v instanceof Map)
-                                                    || !((Map<?, ?>) v).containsKey("key")
-                                                    || !((Map<?, ?>) v).containsKey("value")) {
-                                                throw new AssertionError(
-                                                        "Expected mapped pair (key, value), but got"
-                                                                + " "
-                                                                + v);
-                                            }
-                                            return Map.entry(
-                                                    ((Map<?, ?>) v).get("key"),
-                                                    ((Map<?, ?>) v).get("value"));
-                                        })
-                                .collect(Collectors.toList());
+        return ((ReadList<?>) val).asMapEntryList();
     }
 
     public ReadStruct getStruct(String key) {
