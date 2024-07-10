@@ -3,6 +3,10 @@ package me.bechberger.jfr;
 import me.bechberger.condensed.types.StructType;
 import me.bechberger.condensed.types.TypeCollection;
 
+import java.time.Duration;
+import java.time.temporal.ChronoUnit;
+import java.time.temporal.TemporalUnit;
+
 /** Universe that contains the required state like the start time */
 public class Universe {
 
@@ -50,5 +54,12 @@ public class Universe {
 
     public long getLastStartTimeNanos() {
         return lastStartTimeNanos;
+    }
+
+    public Duration getDuration() {
+        if (startTimeNanos == -1) {
+            return Duration.ZERO;
+        }
+        return Duration.of(lastStartTimeNanos - startTimeNanos, ChronoUnit.NANOS);
     }
 }

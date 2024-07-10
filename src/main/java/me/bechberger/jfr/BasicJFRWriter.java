@@ -5,6 +5,8 @@ import static me.bechberger.condensed.types.TypeCollection.normalize;
 import java.io.IOException;
 import java.nio.charset.Charset;
 import java.nio.file.Path;
+import java.time.Duration;
+import java.time.Instant;
 import java.util.*;
 import java.util.Map.Entry;
 import java.util.concurrent.ConcurrentHashMap;
@@ -39,13 +41,6 @@ import org.json.JSONArray;
  * </ul>
  */
 public class BasicJFRWriter {
-
-    // optimization ideas:
-    // - every "JVM: Flag" flag is only emitted once, as there are change events
-    // - every event with period beginChunk or endChunk is stored by reference
-    // - timspan and timestamp are stored as varints
-    // TODO: test compression, test that only one Timestamp type is created
-    // create simple file CLI to compress and read in files
 
     /**
      * Annotations of a field, only {@link jdk.jfr.ContentType} annotated annotations are considered
@@ -694,7 +689,6 @@ public class BasicJFRWriter {
         if (eventCombiner.processEvent(event)) {
             return;
         }
-
         out.writeMessage(type, event);
     }
 
@@ -730,5 +724,13 @@ public class BasicJFRWriter {
     public void close() {
         eventCombiner.close();
         out.close();
+    }
+
+    public int estimateSize() {
+        return out.estimateSize();
+    }
+
+    public Duration getDuration() {
+        return universe.getDuration();
     }
 }

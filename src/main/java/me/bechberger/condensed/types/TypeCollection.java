@@ -166,7 +166,7 @@ public class TypeCollection {
 
     /** Normalize values, as the types don't work with primitive array or number classes */
     @SuppressWarnings("unchecked")
-    public static <T, R> R normalize(T value) {
+    public static <T, R> @Nullable R normalize(@Nullable T value) {
         if (value == null) {
             return null;
         }

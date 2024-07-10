@@ -48,9 +48,11 @@
                     <finalName>${project.artifactId}</finalName>
                     <appendAssemblyId>false</appendAssemblyId>
                     <archive>
-                        <manifest>
-                            <mainClass>me.bechberger.jfr.JFRCLI</mainClass>
-                        </manifest>
+                        <manifestEntries>
+                            <Main-Class>me.bechberger.jfr.cli.JFRCLI</Main-Class>
+                            <Premain-Class>me.bechberger.jfr.cli.Agent</Premain-Class>
+                            <Agent-Class>me.bechberger.jfr.cli.Agent</Agent-Class>
+                        </manifestEntries>
                     </archive>
                 </configuration>
                 <executions>
@@ -227,7 +229,7 @@
                         <arg>-XDcompilePolicy=simple</arg>
                     </compilerArgs>
                     <!-- Enable this if you'd like to fail your build upon warnings. -->
-                    <!-- <failOnWarning>true</failOnWarning> -->
+                    <!--<failOnWarning>true</failOnWarning>-->
                 </configuration>
             </plugin>
             <plugin>
@@ -373,6 +375,11 @@
             <groupId>org.lz4</groupId>
             <artifactId>lz4-java</artifactId>
             <version>1.8.0</version>
+        </dependency>
+        <dependency>
+            <groupId>com.palantir.human-readable-types</groupId>
+            <artifactId>human-readable-types</artifactId>
+            <version>1.7.0</version>
         </dependency>
     </dependencies>
 

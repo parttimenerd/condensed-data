@@ -863,16 +863,21 @@ public class JFREventCombiner extends EventCombiner {
         }
     }
 
-    static class GCPhasePauseLevelReconstitutor extends AbstractReconstitutor<GCPhasePauseLevelCombiner> {
+    static class GCPhasePauseLevelReconstitutor
+            extends AbstractReconstitutor<GCPhasePauseLevelCombiner> {
         public GCPhasePauseLevelReconstitutor(String eventTypeName, WritingJFRReader jfrWriter) {
             super(eventTypeName, jfrWriter);
         }
 
         @Override
-        public List<TypedValue> reconstitute(StructType<?, ?> resultEventType, ReadStruct combinedReadEvent, TypedValueEventBuilder builder) {
+        public List<TypedValue> reconstitute(
+                StructType<?, ?> resultEventType,
+                ReadStruct combinedReadEvent,
+                TypedValueEventBuilder builder) {
             builder.put("gcId").addStandardFieldsIfNeeded();
             return combinedReadEvent.asMapEntryList("name").stream()
-                    .map(e -> builder.put("name", "duration", e).build()).toList();
+                    .map(e -> builder.put("name", "duration", e).build())
+                    .toList();
         }
     }
 
@@ -1207,11 +1212,12 @@ public class JFREventCombiner extends EventCombiner {
                                             "jdk.PromoteObjectOutsidePLAB", jfrWriter)),
                             Map.entry(
                                     "jdk.combined.GCPhasePauseLevel1",
-                                    new GCPhasePauseLevelReconstitutor("jdk.GCPhasePauseLevel2", jfrWriter)),
+                                    new GCPhasePauseLevelReconstitutor(
+                                            "jdk.GCPhasePauseLevel2", jfrWriter)),
                             Map.entry(
                                     "jdk.combined.GCPhasePauseLevel2",
-                                    new GCPhasePauseLevelReconstitutor("jdk.GCPhasePauseLevel2", jfrWriter))
-                            ));
+                                    new GCPhasePauseLevelReconstitutor(
+                                            "jdk.GCPhasePauseLevel2", jfrWriter))));
         }
     }
 }

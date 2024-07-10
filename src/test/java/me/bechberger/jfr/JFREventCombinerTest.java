@@ -4,9 +4,7 @@ import static me.bechberger.condensed.types.TypeCollection.normalize;
 import static org.junit.jupiter.api.Assertions.*;
 
 import java.io.ByteArrayOutputStream;
-import java.time.Duration;
 import java.time.Instant;
-import java.time.temporal.TemporalUnit;
 import java.util.*;
 import java.util.function.BiPredicate;
 import java.util.function.Function;
@@ -456,9 +454,10 @@ public class JFREventCombinerTest {
         }
         Map<String, Long> reconDurationPerPhase = new HashMap<>();
         for (var event : res.readEvents) {
-            var name = (String)get(event, "name");
+            var name = (String) get(event, "name");
             var duration = getLong(event, "duration");
-            reconDurationPerPhase.put(name, reconDurationPerPhase.getOrDefault(name, 0L) + duration);
+            reconDurationPerPhase.put(
+                    name, reconDurationPerPhase.getOrDefault(name, 0L) + duration);
         }
         assertMapEquals(durationPerPhase, reconDurationPerPhase, (age, size) -> false);
     }

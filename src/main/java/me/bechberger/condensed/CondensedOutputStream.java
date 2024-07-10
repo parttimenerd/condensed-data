@@ -182,6 +182,7 @@ public class CondensedOutputStream extends OutputStream implements AutoCloseable
     private final TypeCollection typeCollection;
 
     private OutputStream outputStream;
+    private final CountingOutputStream underlyingCountingStream;
 
     private Reductions reductions = Reductions.NONE;
 
@@ -212,7 +213,8 @@ public class CondensedOutputStream extends OutputStream implements AutoCloseable
     /** Create an output stream without a start string and message, used for testing */
     CondensedOutputStream(OutputStream outputStream, Universe universe) {
         this.typeCollection = new TypeCollection();
-        this.outputStream = outputStream;
+        this.underlyingCountingStream = new CountingOutputStream(outputStream);
+        this.outputStream = underlyingCountingStream;
         this.universe = universe;
     }
 
@@ -549,5 +551,10 @@ public class CondensedOutputStream extends OutputStream implements AutoCloseable
 
     public Reductions getReductions() {
         return reductions;
+    }
+
+    /** Estimates the size of the currently written file in bytes */
+    public int estimateSize() {
+        return underlyingCountingStream.writtenBytes();
     }
 }

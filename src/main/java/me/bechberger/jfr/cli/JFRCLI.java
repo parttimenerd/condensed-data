@@ -1,19 +1,26 @@
-package me.bechberger.jfr;
+package me.bechberger.jfr.cli;
 
+import java.io.File;
+import java.io.IOException;
+import java.net.URISyntaxException;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.util.Iterator;
 import java.util.List;
 import java.util.concurrent.Callable;
+
+import com.sun.tools.attach.AgentInitializationException;
+import com.sun.tools.attach.AgentLoadException;
+import com.sun.tools.attach.AttachNotSupportedException;
+import com.sun.tools.attach.VirtualMachine;
 import jdk.jfr.consumer.RecordingFile;
 import me.bechberger.condensed.Compression;
 import me.bechberger.condensed.CondensedInputStream;
 import me.bechberger.condensed.CondensedOutputStream;
 import me.bechberger.condensed.Message.StartMessage;
+import me.bechberger.jfr.*;
 import me.bechberger.jfr.Benchmark.TableConfig;
-import me.bechberger.jfr.JFRCLI.WriteJFRCommand.ConfigurationConverter;
-import me.bechberger.jfr.JFRCLI.WriteJFRCommand.ConfigurationIterable;
-import org.jetbrains.annotations.NotNull;
+import me.bechberger.jfr.cli.CLIUtils.ConfigurationConverter;
+import me.bechberger.jfr.cli.CLIUtils.ConfigurationIterable;
 import picocli.CommandLine.*;
 import picocli.CommandLine.Model.CommandSpec;
 
@@ -24,7 +31,8 @@ import picocli.CommandLine.Model.CommandSpec;
         subcommands = {
             JFRCLI.WriteJFRCommand.class,
             JFRCLI.InflateJFRCommand.class,
-            JFRCLI.BenchmarkCommand.class
+            JFRCLI.BenchmarkCommand.class,
+            JFRCLI.AgentCommand.class
         },
         mixinStandardHelpOptions = true)
 public class JFRCLI implements Runnable {
@@ -45,39 +53,12 @@ public class JFRCLI implements Runnable {
         @Option(
                 names = {"--compress"},
                 description = "Compress the output file")
-        private boolean compress = false;
+        private boolean compress = true;
 
         @Option(
                 names = {"-s", "--statistics"},
                 description = "Print statistics")
         private boolean statistics = false;
-
-        static class ConfigurationIterable implements Iterable<String> {
-            @NotNull
-            @Override
-            public Iterator<String> iterator() {
-                return Configuration.configurations.values().stream()
-                        .map(Configuration::name)
-                        .sorted()
-                        .iterator();
-            }
-        }
-
-        static class ConfigurationConverter implements ITypeConverter<Configuration> {
-            public ConfigurationConverter() {}
-
-            @Override
-            public Configuration convert(String value) {
-                if (!Configuration.configurations.containsKey(value)) {
-                    throw new IllegalArgumentException(
-                            "Unknown configuration: "
-                                    + value
-                                    + " use one of "
-                                    + Configuration.configurations.keySet());
-                }
-                return Configuration.configurations.get(value);
-            }
-        }
 
         @Option(
                 names = {"-c", "--configuration"},
@@ -220,6 +201,72 @@ public class JFRCLI implements Runnable {
         }
     }
 
+    @Command(name = "agent", description = "Use the included Java agent on a specific JVM process")
+    public static class AgentCommand implements Callable<Integer> {
+        @Parameters(index = "0", paramLabel = "PID", description = "The PID of the JVM process", defaultValue = "-1")
+        private int pid;
+
+        @Parameters(index = "1", paramLabel = "OPTIONS", description = "Options for the agent or 'read' to read the output continuously")
+        private String options;
+
+        private static Path ownJAR() throws URISyntaxException {
+            return Path.of(new File(AgentCommand.class.getProtectionDomain().getCodeSource().getLocation()
+                    .toURI()).getPath()).toAbsolutePath();
+        }
+
+        private static void listVMs() {
+            System.out.println("You have to parse the process id of a JVM");
+            System.out.println("Possible JVMs that are currently running are: ");
+            for (var vm : VirtualMachine.list()) {
+                if (vm.displayName().isEmpty()) {
+                    continue;
+                }
+                System.out.printf("%6s  %s%n", vm.id(), vm.displayName());
+            }
+            System.out.println("This might include JVMs lower than version 17 which are not supported.");
+        }
+
+        public Integer call() {
+            if (pid == -1) {
+                listVMs();
+                return -1;
+            }
+            if (options.equals("read")) {
+                AgentIO agentIO = new AgentIO(pid);
+                while (Files.exists(agentIO.getOutputFile())) {
+                    var out = agentIO.readOutput();
+                    if (out != null) {
+                        System.out.print(out);
+                    }
+                }
+                return 0;
+            }
+            try {
+                VirtualMachine jvm = VirtualMachine.attach(pid + "");
+                jvm.loadAgent(ownJAR().toString(), options);
+                jvm.detach();
+                AgentIO agentIO = new AgentIO(pid);
+                String out;
+                while ((out = agentIO.readOutput()) != null) {
+                    Thread.sleep(50);
+                    System.out.print(out);
+                }
+            } catch (URISyntaxException ex) {
+                System.err.println("Can't find the current JAR file");
+                return 1;
+            } catch (AgentLoadException | IOException | AgentInitializationException e) {
+                System.err.println("Can't load the agent: " + e.getMessage());
+                return 1;
+            } catch (AttachNotSupportedException e) {
+                System.err.println("Can't attach to the JVM process");
+                return 1;
+            } catch (InterruptedException e) {
+                return 1;
+            }
+            return 0;
+        }
+    }
+
     @Override
     public void run() {
         throw new ParameterException(spec.commandLine(), "Missing required subcommand");
@@ -229,4 +276,5 @@ public class JFRCLI implements Runnable {
         int exitCode = new picocli.CommandLine(new JFRCLI()).execute(args);
         System.exit(exitCode);
     }
+
 }
