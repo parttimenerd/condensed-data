@@ -209,7 +209,7 @@
                             -XepOpt:StatementSwitchToExpressionSwitch:EnableDirectConversion=true
                             -XepOpt:StatementSwitchToExpressionSwitch:EnableReturnSwitchConversion=true -->
                             <!--
-                            START Error Prone Support configuration.
+                            START Error Prone Support generatorConfiguration.
                             -->
                             <!-- XXX: PSM-1332: Enable once
                             sufficiently configurable. -->

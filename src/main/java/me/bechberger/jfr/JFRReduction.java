@@ -63,7 +63,6 @@ public enum JFRReduction {
                                                     / configuration.timeStampTicksPerSecond()));
                     nanoSeconds += universe.getLastStartTimeNanos();
                     universe.setLastStartTimeNanos(nanoSeconds);
-                    System.out.println("     " + nanoSeconds);
                     return Instant.ofEpochSecond(0, nanoSeconds);
                 }
             });

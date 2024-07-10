@@ -210,7 +210,7 @@ public class Benchmark {
                             },
                             1,
                             tconf.humanReadableMemory));
-            // add the following for each configuration: runtime, size
+            // add the following for each generatorConfiguration: runtime, size
             configurations()
                     .forEach(
                             config -> {

@@ -134,6 +134,12 @@ java -jar target/condensed-data.jar benchmark
 
 The generated JFR files are probably larger than real-world files, but smaller than dedicated GC benchmarks.
 
+TODO
+----
+- [ ] check that flags are only recorded once
+- [ ] test start, stop and status via CLI
+- [ ] test agent
+
 License
 -------
 MIT, Copyright 2024 SAP SE or an SAP affiliate company, Johannes Bechberger and contributors

@@ -228,6 +228,7 @@ public class CondensedOutputStream extends OutputStream implements AutoCloseable
         writeUnsignedVarInt(startMessage.version());
         writeString(startMessage.generatorName());
         writeString(startMessage.generatorVersion());
+        writeString(startMessage.generatorConfiguration());
         writeString(startMessage.compression().name());
     }
 

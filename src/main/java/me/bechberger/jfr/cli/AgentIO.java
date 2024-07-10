@@ -1,24 +1,22 @@
 package me.bechberger.jfr.cli;
 
-import org.jetbrains.annotations.Nullable;
+import static java.nio.file.StandardOpenOption.APPEND;
+import static java.nio.file.StandardOpenOption.CREATE;
 
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.util.List;
 import java.util.logging.*;
-
-import static java.nio.file.StandardOpenOption.APPEND;
-import static java.nio.file.StandardOpenOption.CREATE;
+import org.jetbrains.annotations.Nullable;
 
 /**
  * Communicating between the agent and the CLI
- * <p>
- * Problem when the agent is attached, it prints to the same output stream as the Java application
- * it's attached to, not the CLI
- * <p>
- * Idea: Create an output file that the agent writes to and the CLI reads from and a file that contains
- * the number of bytes already read.
+ *
+ * <p>Problem when the agent is attached, it prints to the same output stream as the Java
+ * application it's attached to, not the CLI
+ *
+ * <p>Idea: Create an output file that the agent writes to and the CLI reads from and a file that
+ * contains the number of bytes already read.
  */
 public class AgentIO {
 
@@ -26,7 +24,8 @@ public class AgentIO {
         @Override
         public String format(LogRecord record) {
             var classParts = record.getSourceClassName().split("[$.]");
-            return String.format("%1$tF %1$tT %2$s %3$s: %4$s%n",
+            return String.format(
+                    "%1$tF %1$tT %2$s %3$s: %4$s%n",
                     record.getMillis(), // Timestamp
                     record.getLevel(), // Log level
                     classParts[classParts.length - 1], // Class name
@@ -50,7 +49,8 @@ public class AgentIO {
     }
 
     private Path getTmpFileName(String name) {
-        return Path.of(System.getProperty("java.io.tmpdir"), agentIdentifier + "-" + pid + "-" + name);
+        return Path.of(
+                System.getProperty("java.io.tmpdir"), agentIdentifier + "-" + pid + "-" + name);
     }
 
     public Path getOutputFile() {
@@ -81,20 +81,19 @@ public class AgentIO {
         var consoleHandler = new ConsoleHandler();
         consoleHandler.setFormatter(new SingleLineFormatter());
         logger.addHandler(consoleHandler);
-        var fileHandler = new Handler() {
-            @Override
-            public void publish(java.util.logging.LogRecord record) {
-                writeOutput(consoleHandler.getFormatter().format(record));
-            }
+        var fileHandler =
+                new Handler() {
+                    @Override
+                    public void publish(java.util.logging.LogRecord record) {
+                        writeOutput(consoleHandler.getFormatter().format(record));
+                    }
 
-            @Override
-            public void flush() {
-            }
+                    @Override
+                    public void flush() {}
 
-            @Override
-            public void close() {
-            }
-        };
+                    @Override
+                    public void close() {}
+                };
         logger.addHandler(fileHandler);
         return logger;
     }
@@ -113,13 +112,21 @@ public class AgentIO {
     public @Nullable String readOutput() {
         try {
             // get bytes read
-            long bytesRead = Files.exists(getReadBytesFile()) ? Long.parseLong(Files.readString(getReadBytesFile())) : 0;
+            long bytesRead =
+                    Files.exists(getReadBytesFile())
+                            ? Long.parseLong(Files.readString(getReadBytesFile()))
+                            : 0;
             if (Files.exists(getOutputFile())) {
                 String output;
                 try (var input = Files.newInputStream(getOutputFile())) {
                     long skipped = input.skip(bytesRead);
                     if (skipped != bytesRead) {
-                        LOGGER.warning("Could not skip " + bytesRead + " bytes, only " + skipped + " bytes skipped");
+                        LOGGER.warning(
+                                "Could not skip "
+                                        + bytesRead
+                                        + " bytes, only "
+                                        + skipped
+                                        + " bytes skipped");
                     }
                     if (input.available() != 0) {
                         output = new String(input.readAllBytes());
@@ -129,7 +136,10 @@ public class AgentIO {
                 }
                 // write bytes read
                 if (output != null) {
-                    Files.writeString(getReadBytesFile(), String.valueOf(output.getBytes().length + bytesRead), CREATE);
+                    Files.writeString(
+                            getReadBytesFile(),
+                            String.valueOf(output.getBytes().length + bytesRead),
+                            CREATE);
                 }
                 if (Files.exists(getIsClosedFile())) {
                     Files.deleteIfExists(getIsClosedFile());

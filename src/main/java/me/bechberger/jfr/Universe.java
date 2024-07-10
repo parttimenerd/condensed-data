@@ -1,11 +1,9 @@
 package me.bechberger.jfr;
 
-import me.bechberger.condensed.types.StructType;
-import me.bechberger.condensed.types.TypeCollection;
-
 import java.time.Duration;
 import java.time.temporal.ChronoUnit;
-import java.time.temporal.TemporalUnit;
+import me.bechberger.condensed.types.StructType;
+import me.bechberger.condensed.types.TypeCollection;
 
 /** Universe that contains the required state like the start time */
 public class Universe {

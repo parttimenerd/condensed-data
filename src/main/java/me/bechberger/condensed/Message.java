@@ -8,9 +8,21 @@ public sealed interface Message {
     /** Defines a type */
     record CondensedTypeMessage(CondensedType<?, ?> type) implements Message {}
 
-    /** Starts the stream */
+    /**
+     * Starts the stream
+     *
+     * @param version the version of the format
+     * @param generatorName the name of the generator
+     * @param generatorVersion the version of the generator
+     * @param generatorConfiguration generatorConfiguration related to the generation
+     * @param compression the compression used
+     */
     record StartMessage(
-            int version, String generatorName, String generatorVersion, Compression compression)
+            int version,
+            String generatorName,
+            String generatorVersion,
+            String generatorConfiguration,
+            Compression compression)
             implements Message {
         /** Used mainly for testing purposes */
         public static final StartMessage DEFAULT = new StartMessage("Unknown", "Unknown Version");
@@ -20,11 +32,12 @@ public sealed interface Message {
         }
 
         StartMessage(String generatorName, String generatorVersion, Compression compression) {
-            this(Constants.VERSION, generatorName, generatorVersion, compression);
+            this(Constants.VERSION, generatorName, generatorVersion, "", compression);
         }
 
         public StartMessage compress(Compression compression) {
-            return new StartMessage(version, generatorName, generatorVersion, compression);
+            return new StartMessage(
+                    version, generatorName, generatorVersion, generatorConfiguration, compression);
         }
     }
 

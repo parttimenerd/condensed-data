@@ -2,21 +2,6 @@ package me.bechberger.jfr.cli;
 
 import com.palantir.humanreadabletypes.HumanReadableByteCount;
 import com.palantir.humanreadabletypes.HumanReadableDuration;
-import jdk.jfr.consumer.RecordedEvent;
-import jdk.jfr.consumer.RecordingStream;
-import me.bechberger.condensed.CondensedOutputStream;
-import me.bechberger.condensed.Message.StartMessage;
-import me.bechberger.jfr.BasicJFRWriter;
-import me.bechberger.jfr.Configuration;
-import me.bechberger.jfr.cli.CLIUtils.ByteSizeConverter;
-import me.bechberger.jfr.cli.CLIUtils.ConfigurationConverter;
-import me.bechberger.jfr.cli.CLIUtils.ConfigurationIterable;
-import me.bechberger.jfr.cli.CLIUtils.DurationConverter;
-import org.jetbrains.annotations.Nullable;
-import picocli.CommandLine;
-import picocli.CommandLine.*;
-import picocli.CommandLine.Model.CommandSpec;
-
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -27,29 +12,40 @@ import java.util.*;
 import java.util.Map.Entry;
 import java.util.concurrent.Callable;
 import java.util.concurrent.atomic.AtomicBoolean;
-import java.util.concurrent.atomic.AtomicReference;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
+import jdk.jfr.consumer.RecordedEvent;
+import jdk.jfr.consumer.RecordingStream;
+import me.bechberger.condensed.Compression;
+import me.bechberger.condensed.CondensedOutputStream;
+import me.bechberger.condensed.Message.StartMessage;
+import me.bechberger.jfr.BasicJFRWriter;
+import me.bechberger.jfr.Configuration;
+import me.bechberger.jfr.cli.CLIUtils.ByteSizeConverter;
+import me.bechberger.jfr.cli.CLIUtils.ConfigurationConverter;
+import me.bechberger.jfr.cli.CLIUtils.ConfigurationIterable;
+import me.bechberger.jfr.cli.CLIUtils.DurationConverter;
+import picocli.CommandLine;
+import picocli.CommandLine.*;
+import picocli.CommandLine.Model.CommandSpec;
 
 @Command(
         name = "cjfr agent",
         description = "Agent for recording condensed JFR files",
         subcommands = {
-                Agent.StartCommand.class,
-                Agent.StopCommand.class,
-                Agent.StatusCommand.class
-        }
-)
+            Agent.StartCommand.class,
+            Agent.StopCommand.class,
+            Agent.StatusCommand.class
+        })
 /**
- * TODO: Test and test that everything from my side can crash without impacting
- * the rest of the system
- * Maybe record an error state
+ * TODO: Test and test that everything from my side can crash without impacting the rest of the
+ * system Maybe record an error state
  */
 public class Agent implements Runnable {
 
-    static abstract class RecordingThread implements Runnable {
+    abstract static class RecordingThread implements Runnable {
 
         private final Configuration configuration;
         private final String jfrConfig;
@@ -62,13 +58,20 @@ public class Agent implements Runnable {
         private final AtomicBoolean shouldStop = new AtomicBoolean(false);
         final Instant start = Instant.now();
 
-        RecordingThread(Configuration configuration, boolean verbose, String jfrConfig, String miscJfrConfig,
-                        Runnable removeFromParent) throws IOException, ParseException {
+        RecordingThread(
+                Configuration configuration,
+                boolean verbose,
+                String jfrConfig,
+                String miscJfrConfig,
+                Runnable removeFromParent)
+                throws IOException, ParseException {
             this.agentIO.setLogLevel(verbose ? Level.ALL : Level.WARNING);
             this.configuration = configuration;
             this.jfrConfig = jfrConfig;
-            var parsedJfrConfig = jfrConfig.isEmpty() ? jdk.jfr.Configuration.getConfiguration("default") :
-                    jdk.jfr.Configuration.getConfiguration(jfrConfig);
+            var parsedJfrConfig =
+                    jfrConfig.isEmpty()
+                            ? jdk.jfr.Configuration.getConfiguration("default")
+                            : jdk.jfr.Configuration.getConfiguration(jfrConfig);
             logger.info("Using config " + parsedJfrConfig.getName());
             this.miscJfrConfig = miscJfrConfig;
             try {
@@ -134,11 +137,16 @@ public class Agent implements Runnable {
 
         List<Entry<String, String>> getStatus() {
             List<Entry<String, String>> status = new ArrayList<>();
-            status.add(Map.entry("configuration", configuration.name()));
+            status.add(Map.entry("generatorConfiguration", configuration.name()));
             status.add(Map.entry("jfr-config", jfrConfig));
             status.add(Map.entry("misc-jfr-config", miscJfrConfig));
             status.add(Map.entry("start", start.toString()));
-            status.add(Map.entry("duration", HumanReadableDuration.nanoseconds(Duration.between(start, Instant.now()).toNanos()).toString()));
+            status.add(
+                    Map.entry(
+                            "duration",
+                            HumanReadableDuration.nanoseconds(
+                                            Duration.between(start, Instant.now()).toNanos())
+                                    .toString()));
             status.addAll(getMiscStatus());
             return status;
         }
@@ -155,20 +163,37 @@ public class Agent implements Runnable {
         private final BasicJFRWriter jfrWriter;
         private final Logger logger;
 
-        SingleRecordingThread(String path, Configuration configuration, boolean verbose, String jfrConfig, String miscJfrConfig,
-                              Duration maxDuration, long maxSize, Runnable onRecordingStopped) throws IOException, ParseException {
+        SingleRecordingThread(
+                String path,
+                Configuration configuration,
+                boolean verbose,
+                String jfrConfig,
+                String miscJfrConfig,
+                Duration maxDuration,
+                long maxSize,
+                Runnable onRecordingStopped)
+                throws IOException, ParseException {
             super(configuration, verbose, jfrConfig, miscJfrConfig, onRecordingStopped);
             this.logger = agentIO.getLogger("jfr-condenser-agent");
             this.path = path;
             this.maxDuration = maxDuration;
             this.maxSize = maxSize;
-            var out = new CondensedOutputStream(Files.newOutputStream(Path.of(path)), StartMessage.DEFAULT);
+            var out =
+                    new CondensedOutputStream(
+                            Files.newOutputStream(Path.of(path)),
+                            new StartMessage(
+                                    Constants.FORMAT_VERSION,
+                                    "condensed jfr agent",
+                                    Constants.VERSION,
+                                    Agent.agentArgs,
+                                    Compression.DEFAULT));
             this.jfrWriter = new BasicJFRWriter(out);
         }
 
         @Override
         void onEvent(RecordedEvent event) {
-            if (maxDuration.toNanos() > 0 && Duration.between(this.start, Instant.now()).compareTo(maxDuration) > 0) {
+            if (maxDuration.toNanos() > 0
+                    && Duration.between(this.start, Instant.now()).compareTo(maxDuration) > 0) {
                 synchronized (syncObject) {
                     stop();
                 }
@@ -192,9 +217,15 @@ public class Agent implements Runnable {
         List<Entry<String, String>> getMiscStatus() {
             List<Entry<String, String>> status = new ArrayList<>();
             status.add(Map.entry("path", path));
-            status.add(Map.entry("max-duration", HumanReadableDuration.nanoseconds(maxDuration.toNanos()).toString()));
+            status.add(
+                    Map.entry(
+                            "max-duration",
+                            HumanReadableDuration.nanoseconds(maxDuration.toNanos()).toString()));
             status.add(Map.entry("max-size", HumanReadableByteCount.bytes(maxSize).toString()));
-            status.add(Map.entry("current-size", HumanReadableByteCount.bytes(jfrWriter.estimateSize()).toString()));
+            status.add(
+                    Map.entry(
+                            "current-size",
+                            HumanReadableByteCount.bytes(jfrWriter.estimateSize()).toString()));
             return status;
         }
     }
@@ -203,7 +234,9 @@ public class Agent implements Runnable {
 
         @Option(
                 names = "condenser-config",
-                description = "The condenser configuration to use, possible values: ${COMPLETION-CANDIDATES}",
+                description =
+                        "The condenser generatorConfiguration to use, possible values:"
+                                + " ${COMPLETION-CANDIDATES}",
                 completionCandidates = ConfigurationIterable.class,
                 defaultValue = "reasonable-default",
                 converter = ConfigurationConverter.class)
@@ -211,24 +244,20 @@ public class Agent implements Runnable {
 
         @Option(
                 names = "misc-jfr-config",
-                description = "Additional JFR config, '|' separated, like 'jfr.ExecutionSample#interval=1s'",
-                defaultValue = ""
-        )
+                description =
+                        "Additional JFR config, '|' separated, like"
+                                + " 'jfr.ExecutionSample#interval=1s'",
+                defaultValue = "")
         private String miscJfrConfig = "";
 
         @Option(
                 names = "max-duration",
                 description = "The maximum duration of the recording",
                 defaultValue = "0s",
-                converter = DurationConverter.class
-        )
+                converter = DurationConverter.class)
         private Duration maxDuration;
 
-        @Option(
-                names = "verbose",
-                description = "Be verbose",
-                defaultValue = "false"
-        )
+        @Option(names = "verbose", description = "Be verbose", defaultValue = "false")
         private boolean verbose;
     }
 
@@ -238,27 +267,27 @@ public class Agent implements Runnable {
     @Command(name = "start", description = "Start the recording")
     static class StartCommand implements Callable<Integer> {
 
-        @Parameters(index = "0", paramLabel = "PATH", description = "Path to the recording file .cjfr file",
+        @Parameters(
+                index = "0",
+                paramLabel = "PATH",
+                description = "Path to the recording file .cjfr file",
                 defaultValue = "recording.cjfr")
         private String path;
 
         @Parameters(
                 index = "1",
                 paramLabel = "JFR_CONFIG",
-                description = "The JFR configuration to use.",
-                defaultValue = "default"
-        )
+                description = "The JFR generatorConfiguration to use.",
+                defaultValue = "default")
         private String jfrConfig = "default";
 
-        @Mixin
-        private StartMixin startMixin;
+        @Mixin private StartMixin startMixin;
 
         @Option(
                 names = "max-size",
                 description = "The maximum size of the recording file",
                 defaultValue = "0B",
-                converter = ByteSizeConverter.class
-        )
+                converter = ByteSizeConverter.class)
         private long maxSize;
 
         @Override
@@ -267,8 +296,16 @@ public class Agent implements Runnable {
                 System.err.println("Recording already running, please stop it first");
                 return 1;
             }
-            currentRecordingThread = new Agent.SingleRecordingThread(path, startMixin.configuration, startMixin.verbose, jfrConfig,
-                    startMixin.miscJfrConfig, startMixin.maxDuration, maxSize, () -> currentRecordingThread = null);
+            currentRecordingThread =
+                    new Agent.SingleRecordingThread(
+                            path,
+                            startMixin.configuration,
+                            startMixin.verbose,
+                            jfrConfig,
+                            startMixin.miscJfrConfig,
+                            startMixin.maxDuration,
+                            maxSize,
+                            () -> currentRecordingThread = null);
             new Thread(currentRecordingThread).start();
             return 0;
         }
@@ -309,8 +346,7 @@ public class Agent implements Runnable {
         }
     }
 
-    @Spec
-    CommandSpec spec;
+    @Spec CommandSpec spec;
 
     @Command(name = "help", description = "Print help information")
     public void help() {
@@ -326,15 +362,21 @@ public class Agent implements Runnable {
         premain(agentArgs);
     }
 
-    public static void premain(String agentArgs) {
-        new CommandLine(new Agent()).execute(Arrays.stream(agentArgs.split(","))
-                .flatMap(a -> {
-                    if (a.contains("=")) {
-                        var parts = a.split("=", 2);
-                        return Stream.of("--" + parts[0], parts[1]);
-                    }
-                    return Stream.of(a);
-                }).toArray(String[]::new));
-    }
+    private static String agentArgs;
 
+    public static void premain(String agentArgs) {
+        Agent.agentArgs = agentArgs;
+        new CommandLine(new Agent())
+                .execute(
+                        Arrays.stream(agentArgs.split(","))
+                                .flatMap(
+                                        a -> {
+                                            if (a.contains("=")) {
+                                                var parts = a.split("=", 2);
+                                                return Stream.of("--" + parts[0], parts[1]);
+                                            }
+                                            return Stream.of(a);
+                                        })
+                                .toArray(String[]::new));
+    }
 }

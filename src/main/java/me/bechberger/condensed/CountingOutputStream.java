@@ -1,9 +1,8 @@
 package me.bechberger.condensed;
 
-import org.jetbrains.annotations.NotNull;
-
 import java.io.IOException;
 import java.io.OutputStream;
+import org.jetbrains.annotations.NotNull;
 
 class CountingOutputStream extends OutputStream {
     private final OutputStream out;

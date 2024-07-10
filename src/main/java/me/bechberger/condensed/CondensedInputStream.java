@@ -117,6 +117,7 @@ public class CondensedInputStream extends InputStream {
                         (int) readUnsignedVarint(),
                         readString(),
                         readString(),
+                        readString(),
                         Compression.valueOf(readString()));
         this.inputStream = message.compression().wrap(inputStream);
         universe.setStartMessage(message);

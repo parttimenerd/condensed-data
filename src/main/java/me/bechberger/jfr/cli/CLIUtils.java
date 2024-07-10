@@ -2,12 +2,11 @@ package me.bechberger.jfr.cli;
 
 import com.palantir.humanreadabletypes.HumanReadableByteCount;
 import com.palantir.humanreadabletypes.HumanReadableDuration;
+import java.time.Duration;
+import java.util.Iterator;
 import me.bechberger.jfr.Configuration;
 import org.jetbrains.annotations.NotNull;
 import picocli.CommandLine.ITypeConverter;
-
-import java.time.Duration;
-import java.util.Iterator;
 
 public class CLIUtils {
     static class ConfigurationIterable implements Iterable<String> {
@@ -28,7 +27,7 @@ public class CLIUtils {
         public Configuration convert(String value) {
             if (!Configuration.configurations.containsKey(value)) {
                 throw new IllegalArgumentException(
-                        "Unknown configuration: "
+                        "Unknown generatorConfiguration: "
                                 + value
                                 + " use one of "
                                 + Configuration.configurations.keySet());
