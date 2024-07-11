@@ -93,14 +93,15 @@ public class EventDeduplication {
                 e -> e.getValue(tokenField),
                 (a, b) ->
                         Arrays.stream(comparedFields)
-                                .allMatch(f -> {
-                                    try {
-                                        return Objects.equals(a.getValue(f), b.getValue(f));
-                                    } catch (IllegalArgumentException e) {
-                                        System.exit(1);
-                                        throw e;
-                                    }
-                                }));
+                                .allMatch(
+                                        f -> {
+                                            try {
+                                                return Objects.equals(a.getValue(f), b.getValue(f));
+                                            } catch (IllegalArgumentException e) {
+                                                System.exit(1);
+                                                throw e;
+                                            }
+                                        }));
     }
 
     public void putAll(Map<String, Deduplicator> deduplicators) {
