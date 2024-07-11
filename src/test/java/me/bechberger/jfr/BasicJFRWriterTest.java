@@ -1,8 +1,12 @@
 package me.bechberger.jfr;
 
+import static java.util.Map.entry;
 import static org.junit.jupiter.api.Assertions.*;
 
 import java.io.ByteArrayOutputStream;
+import java.io.IOException;
+import java.text.ParseException;
+import java.util.List;
 import java.util.concurrent.atomic.AtomicReference;
 import jdk.jfr.*;
 import jdk.jfr.Configuration;
@@ -104,5 +108,62 @@ public class BasicJFRWriterTest {
                 System.out.println(instance.type());
             }
         }
+    }
+
+    @Name("TestEvent2")
+    @Label("Label")
+    @Description("Description")
+    static class TestEvent2 extends Event {
+        int key;
+        int value;
+
+        TestEvent2(int key, int value) {
+            this.key = key;
+            this.value = value;
+        }
+    }
+
+    @Test
+    public void testEventDeduplication() throws IOException, ParseException, InterruptedException {
+        var outputStream = new ByteArrayOutputStream();
+        try (CondensedOutputStream out =
+                new CondensedOutputStream(
+                        outputStream, StartMessage.DEFAULT.compress(Compression.DEFAULT))) {
+            BasicJFRWriter basicJFRWriter = new BasicJFRWriter(out);
+            basicJFRWriter.getDeduplication().put("TestEvent2", e -> e.getInt("key"), "value");
+            try (RecordingStream rs = new RecordingStream()) {
+                rs.onEvent(
+                        "TestEvent2",
+                        event -> {
+                            basicJFRWriter.processEvent(event);
+                            if (event.getInt("key") == -1) {
+                                rs.close();
+                            }
+                        });
+                rs.onEvent("TestEvent", basicJFRWriter::processEvent);
+                rs.startAsync();
+                new TestEvent2(1, 2).commit();
+                new TestEvent2(1, 2).commit();
+                new TestEvent2(1, 3).commit();
+                new TestEvent2(1, 3).commit();
+                new TestEvent2(1, 2).commit();
+                new TestEvent2(2, 2).commit();
+                new TestEvent2(-1, 2).commit(); // stop
+                new TestEvent().commit();
+                rs.awaitTermination();
+            }
+            basicJFRWriter.close();
+        }
+        byte[] data = outputStream.toByteArray();
+        System.out.println("Data length: " + data.length);
+        BasicJFRReader reader = new BasicJFRReader(new CondensedInputStream(data));
+        var events = reader.readAll();
+        assertEquals(6, events.size());
+        assertEquals(
+                List.of(entry(1, 2), entry(1, 3), entry(1, 2), entry(2, 2), entry(-1, 2)),
+                events.subList(0, 5).stream()
+                        .map(s -> entry((int) (long) s.get("key"), (int) (long) s.get("value")))
+                        .toList());
+        assertEquals("TestEvent", events.get(5).getType().getName());
     }
 }

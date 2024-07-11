@@ -167,6 +167,7 @@ public class BasicJFRWriter {
     private boolean wroteConfiguration = false;
     private CondensedType<Universe, Universe> universeType;
     private final JFREventCombiner eventCombiner;
+    private final EventDeduplication deduplication;
 
     /** field types that are not yet added, but their creation code is running + id */
     private final Map<TypeIdent, Integer> fieldTypesCurrentlyAdding;
@@ -188,6 +189,7 @@ public class BasicJFRWriter {
                         : HashAndEqualsConfig.NONE);
 
         eventCombiner = new JFREventCombiner(out, configuration, this);
+        deduplication = new JFREventDeduplication(configuration);
     }
 
     public BasicJFRWriter(CondensedOutputStream out) {
@@ -659,7 +661,7 @@ public class BasicJFRWriter {
     /** Checks if the event should be ignored */
     private boolean ignoreEvent(RecordedEvent event) {
         if (configuration.ignoreUnnecessaryEvents()) {
-            return isUnnecessaryEvent(event);
+            return isUnnecessaryEvent(event) || deduplication.recordAndCheckIfDuplicate(event);
         }
         return false;
     }
@@ -731,5 +733,9 @@ public class BasicJFRWriter {
 
     public Duration getDuration() {
         return universe.getDuration();
+    }
+
+    public EventDeduplication getDeduplication() {
+        return deduplication;
     }
 }

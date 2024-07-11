@@ -1,5 +1,7 @@
 package me.bechberger.jfr;
 
+import java.util.ArrayList;
+import java.util.List;
 import me.bechberger.condensed.CondensedInputStream;
 import me.bechberger.condensed.Message.ReadInstance;
 import me.bechberger.condensed.ReadStruct;
@@ -80,5 +82,14 @@ public class BasicJFRReader {
 
     public CondensedInputStream getInputStream() {
         return in;
+    }
+
+    public List<ReadStruct> readAll() {
+        var result = new ArrayList<ReadStruct>();
+        ReadStruct event;
+        while ((event = readNextEvent()) != null) {
+            result.add(event);
+        }
+        return result;
     }
 }
