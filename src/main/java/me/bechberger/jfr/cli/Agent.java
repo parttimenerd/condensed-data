@@ -38,7 +38,8 @@ import picocli.CommandLine.Model.CommandSpec;
             Agent.StartCommand.class,
             Agent.StopCommand.class,
             Agent.StatusCommand.class
-        })
+        },
+        mixinStandardHelpOptions = true)
 /**
  * TODO: Test and test that everything from my side can crash without impacting the rest of the
  * system Maybe record an error state
@@ -264,7 +265,7 @@ public class Agent implements Runnable {
     private static final Object syncObject = new Object();
     private static Agent.RecordingThread currentRecordingThread;
 
-    @Command(name = "start", description = "Start the recording")
+    @Command(name = "start", description = "Start the recording", mixinStandardHelpOptions = true)
     static class StartCommand implements Callable<Integer> {
 
         @Parameters(
@@ -311,7 +312,7 @@ public class Agent implements Runnable {
         }
     }
 
-    @Command(name = "stop", description = "Stop the recording")
+    @Command(name = "stop", description = "Stop the recording", mixinStandardHelpOptions = true)
     static class StopCommand implements Callable<Integer> {
 
         @Override
@@ -327,7 +328,7 @@ public class Agent implements Runnable {
         }
     }
 
-    @Command(name = "status", description = "Get the status of the recording")
+    @Command(name = "status", description = "Get the status of the recording", mixinStandardHelpOptions = true)
     static class StatusCommand implements Callable<Integer> {
 
         @Override
@@ -368,12 +369,15 @@ public class Agent implements Runnable {
         Agent.agentArgs = agentArgs;
         new CommandLine(new Agent())
                 .execute(
-                        Arrays.stream(agentArgs.split(","))
+                        Arrays.stream((agentArgs == null ? "" : agentArgs).split(","))
                                 .flatMap(
                                         a -> {
                                             if (a.contains("=")) {
                                                 var parts = a.split("=", 2);
                                                 return Stream.of("--" + parts[0], parts[1]);
+                                            }
+                                            if (a.equals("help") || a.equals("verbose")) {
+                                                return Stream.of("--" + a);
                                             }
                                             return Stream.of(a);
                                         })

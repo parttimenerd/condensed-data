@@ -51,7 +51,7 @@ public class JFRCLI implements Runnable {
 
     @Spec CommandSpec spec;
 
-    @Command(name = "condense", description = "Condense a JFR file")
+    @Command(name = "condense", description = "Condense a JFR file", mixinStandardHelpOptions = true)
     public static class WriteJFRCommand implements Callable<Integer> {
 
         // optional out path, compress flag, statistics flag
@@ -133,7 +133,7 @@ public class JFRCLI implements Runnable {
         }
     }
 
-    @Command(name = "help", description = "Print help information")
+    @Command(name = "help", description = "Print help information", mixinStandardHelpOptions = true)
     public void help() {
         spec.commandLine().usage(System.out);
     }
@@ -171,7 +171,8 @@ public class JFRCLI implements Runnable {
 
     @Command(
             name = "benchmark",
-            description = "Run the benchmarks on all files in the benchmark folder")
+            description = "Run the benchmarks on all files in the benchmark folder",
+    mixinStandardHelpOptions = true)
     public static class BenchmarkCommand implements Callable<Integer> {
         @Option(
                 names = {"-k", "--keep-condensed-file"},
@@ -222,7 +223,8 @@ public class JFRCLI implements Runnable {
         }
     }
 
-    @Command(name = "agent", description = "Use the included Java agent on a specific JVM process")
+    @Command(name = "agent", description = "Use the included Java agent on a specific JVM process",
+    mixinStandardHelpOptions = true)
     public static class AgentCommand implements Callable<Integer> {
         @Parameters(
                 index = "0",
@@ -303,7 +305,7 @@ public class JFRCLI implements Runnable {
         }
     }
 
-    @Command(name = "summary", description = "Print a summary of the condensed JFR file")
+    @Command(name = "summary", description = "Print a summary of the condensed JFR file", mixinStandardHelpOptions = true)
     public static class SummaryCommand implements Callable<Integer> {
         @Parameters(index = "0", description = "The input file")
         private Path inputFile;

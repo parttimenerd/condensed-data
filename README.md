@@ -3,109 +3,85 @@ Condensed Data
 
 [![ci](https://github.com/parttimenerd/condensed-data/actions/workflows/ci.yml/badge.svg)](https://github.com/parttimenerd/condensed-data/actions/workflows/ci.yml)
 
-A base library for reading and writing condensed event data
+A library and tool for reading and writing condensed JFR event data
 to disk. Focusing on a simple, yet space saving, format.
+Storing JFR data via a compressing agent that allows file rotations
+and more.
 
-The main usage will be to compress JFR files related to GC.
-This project might later also include the compressor and a
-compressing JFR agent.
+The main usage is to compress JFR files related to GC.
 
-Data Specification
-------------------
+Usage
+-----
 
-This data specification is independent of JFR.
-It is designed to be a simple and space efficient way to stream
-data with self-describing types to disk.
+The tool can be used via its CLI:
+```shell
+> java -jar target/condensed-data.jar -h
+Usage: cjfr [-hV] [COMMAND]
+CLI for condensed JFR files
+  -h, --help      Show this help message and exit.
+  -V, --version   Print version information and exit.
+Commands:
+  condense   Condense a JFR file
+  inflate    Inflate a condensed JFR file into JFR format
+  benchmark  Run the benchmarks on all files in the benchmark folder
+  agent      Use the included Java agent on a specific JVM process
+  summary    Print a summary of the condensed JFR file
+  view       View a specific event of a condensed JFR file as a table
+  help       Print help information
+```
+But you can also use its built-in Java agent to directly record condensed JFR files:
+```shell
+> java -javaagent:target/condensed-data.jar=help
+Usage: cjfr agent [-hV] [COMMAND]
+Agent for recording condensed JFR files
+  -h, --help      Show this help message and exit.
+  -V, --version   Print version information and exit.
+Commands:
+  start   Start the recording
+  stop    Stop the recording
+  status  Get the status of the recording
+  help    Print help information
+> java -javaagent:target/condensed-data.jar=start,help
 
-Basic encodings:
-- String is encoded with a length prefix (unsigned varint)
-
-Each file starts with a header:
-- String: "CondensedData"
-- Unsigned varint: Version
-- String: Generator name
-- String: Generator version
-- String: compression algorithm
-  - GZIP: zip compression
-  - LZ4FRAME: LZ4 compression (frame format), faster than GZIP and therefore the default
-
-The following data is organized in messages:
-
-- Unsigned varint: Type id
-    - 0: int-based type
-    - 1: Varint-based type
-    - 2: Floating point type
-    - 3: String-based type
-    - 4: Array-based type
-    - 5: Struct-based type
-    - 6 - 15: reserved for future use
-    - 16+: user defined type
-- Content
-  - the content depends on the message type
-
-### Type Specification
-- unsigned varint: Type ID
-- String: Type name
-- String: Type description
-- Followed by the type-specific data
-  - int-based type (maps to ``long` in Java)
-    - uint8: width (1 to 8) in bytes
-    - uint8: flags
-      - lowest bit: 0: unsigned, 1: signed
-      - second lowest bit: when to large: 0 to throw error, 1 to saturate
-  - Varint-based type (maps to `long` in Java)
-    - uint8: signedness (0: unsigned, 1: signed)
-    - long: multiplier, the value is stored as `value / multiplier` and read as `value * multiplier`
-  - Floating point type (maps to `float` in Java)
-    - _we don't need double precision for now, maybe add it later_
-    - uint8: type
-      - 0: IEEE 754 32 bit float
-      - 1: BFloat16 (top 16 bits of a 32 bit float)
-  - String
-    - String: Encoding (e.g. `UTF-8`)
-  - Array-based type
-    - Unsigned varint: Element type ID
-    - Embedding (see struct-based type)
-  - Struct-based type
-    - Unsigned varint: Number of fields
-    - For each field:
-      - String: Field name
-      - String: Description
-      - Unsigned varint: Field type ID
-        - an id of < 16 means the default version of each type
-        - int-based type: 32 bit signed integer
-        - varint-based type: signed integer
-        - floating point type: 32 bit double
-        - string-based type: UTF-8 string
-        - other non-user defined types are not allowed
-      - Embedding
-        - 0: inline
-        - 1: inline, but nullable (prefix with a byte indicating null or non-null)
-        - 2: reference into cache
-          - 0: null
-          - 1: value not in cache, followed by the value
-          - 2: value in cache, followed by the index (id starting at 2 in the cache)
-        - 3: reference into cache per embedding type
-          - ...
-      - Unsigned varint: reduction id (used in JFR), 0 for none
-    - Unsigned varint: reduction id
-    - The fields are stored in the order they are defined
-
-The primitive types (not array or struct) are trivially parsed according to their specification.
-
-### Struct-based type
-- The fields are stored in the order they are defined
-
-### Array-based type
-- unsigned varint: number of elements
-- each element is stored according to its type and embedding (see struct-based type)
-
-### User defined type
-As specified by the type specification.
+Usage: cjfr agent start [-hV] [verbose] [condenser-config=<configuration>]
+                        [max-duration=<maxDuration>] [max-size=<maxSize>]
+                        [misc-jfr-config=<miscJfrConfig>] PATH JFR_CONFIG
+Start the recording
+      PATH                 Path to the recording file .cjfr file
+      JFR_CONFIG           The JFR generatorConfiguration to use.
+      condenser-config=<configuration>
+                           The condenser generatorConfiguration to use,
+                             possible values: default, reasonable default,
+                             reduced default
+  -h, --help               Show this help message and exit.
+      max-duration=<maxDuration>
+                           The maximum duration of the recording
+      max-size=<maxSize>   The maximum size of the recording file
+      misc-jfr-config=<miscJfrConfig>
+                           Additional JFR config, '|' separated, like 'jfr.
+                             ExecutionSample#interval=1s'
+  -V, --version            Print version information and exit.
+      verbose              Be verbose
+```
 
 Requirements
 ------------
 JDK 17+
+
+File Format
+-----------
+The file format is described in [FORMAT.md](doc/FORMAT.md) and
+is designed to be
+
+- simple
+- self-describing (the type information is stored in the file)
+- compressed (supports GZIP and LZ4 compression natively)
+- space efficient (e.g. by using varints and caches)
+- streamable
+- allows to reduce event data even further by using reducers and reconstitutors
+
+In many cases, we can reduce accuracy without losing the gist of the data.
+This drastically reduces the size of the data.
 
 Development
 -----------
@@ -137,9 +113,11 @@ The generated JFR files are probably larger than real-world files, but smaller t
 TODO
 ----
 - [x] check that flags are only recorded once
-- [ ] test start, stop and status via CLI
-- [ ] implement simple view
+- [x] test start, stop and status via CLI
+- [x] implement simple view
 - [ ] test agent
+- [ ] support file rotation
+- [ ] make all tools support multiple files and selection by query
 
 License
 -------
