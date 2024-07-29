@@ -223,6 +223,27 @@
                             <!-- XXX: PSM-1670: Enable once impact
                             downstream is assessed. -->
                             -Xep:StringJoin:OFF
+                            -Xep:StaticImport:OFF
+                            -Xep:InconsistentOverloads:OFF
+                            -Xep:Var:OFF
+                            -Xep:WildcardImport:OFF
+                            <!-- It's hard without -->
+                            -Xep:TypeParameterUnusedInFormals:OFF
+                            <!-- Remove later -->
+                            -Xep:ThrowSpecificExceptions:OFF
+                            -Xep:TooManyParameters:OFF
+                            -Xep:CollectorMutability:OFF
+                            -Xep:ImmutableMemberCollection:OFF
+                            -Xep:LongDoubleConversion:OFF
+                            -Xep:FormatStringConcatenation:OFF
+                            <!-- Remove later -->
+                            -Xep:SystemOut:OFF
+                            -Xep:JavaInstantGetSecondsGetNano:OFF
+                            -Xep:ImmutableEnumChecker:OFF
+                            -Xep:EnumOrdinal:OFF
+                            -Xep:StringCaseLocaleUsage:OFF
+                            -Xep:PreferredInterfaceType:OFF
+                            -Xep:TimeZoneUsage:OFF
                             -XepOpt:ErrorProneSupport:IgnoreClasspathCompat=true
                             -XepOpt:Refaster:NamePattern=^(?!.*(AssertJ|Var)).*
                         </arg>
@@ -380,6 +401,12 @@
             <groupId>com.palantir.human-readable-types</groupId>
             <artifactId>human-readable-types</artifactId>
             <version>1.7.0</version>
+        </dependency>
+        <dependency>
+            <groupId>com.google.errorprone</groupId>
+            <artifactId>error_prone_annotation</artifactId>
+            <version>2.23.0</version>
+            <scope>compile</scope>
         </dependency>
     </dependencies>
 

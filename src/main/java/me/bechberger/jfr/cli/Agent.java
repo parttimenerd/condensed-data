@@ -328,7 +328,10 @@ public class Agent implements Runnable {
         }
     }
 
-    @Command(name = "status", description = "Get the status of the recording", mixinStandardHelpOptions = true)
+    @Command(
+            name = "status",
+            description = "Get the status of the recording",
+            mixinStandardHelpOptions = true)
     static class StatusCommand implements Callable<Integer> {
 
         @Override
