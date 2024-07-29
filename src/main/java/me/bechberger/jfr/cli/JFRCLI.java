@@ -27,6 +27,9 @@ import me.bechberger.jfr.*;
 import me.bechberger.jfr.Benchmark.TableConfig;
 import me.bechberger.jfr.cli.CLIUtils.ConfigurationConverter;
 import me.bechberger.jfr.cli.CLIUtils.ConfigurationIterable;
+import me.bechberger.jfr.cli.JFRView.JFRViewConfig;
+import me.bechberger.jfr.cli.JFRView.PrintConfig;
+import me.bechberger.jfr.cli.JFRView.TruncateMode;
 import me.bechberger.util.TimeUtil;
 import picocli.CommandLine.*;
 import picocli.CommandLine.Model.CommandSpec;
@@ -34,13 +37,14 @@ import picocli.CommandLine.Model.CommandSpec;
 /** A CLI for writing JFR (and more) based on {@link BasicJFRWriter} */
 @Command(
         name = "cjfr",
-        description = "Work with condensed JFR files",
+        description = "CLI for condensed JFR files",
         subcommands = {
             JFRCLI.WriteJFRCommand.class,
             JFRCLI.InflateJFRCommand.class,
             JFRCLI.BenchmarkCommand.class,
             JFRCLI.AgentCommand.class,
             JFRCLI.SummaryCommand.class,
+            JFRCLI.ViewCommand.class
         },
         mixinStandardHelpOptions = true)
 public class JFRCLI implements Runnable {
@@ -384,6 +388,77 @@ public class JFRCLI implements Runnable {
                 Instant.ofEpochMilli(reader.getUniverse().getStartTimeNanos() / 1000_000),
                 Instant.ofEpochMilli(reader.getUniverse().getLastStartTimeNanos() / 1000_000),
                 eventCounts);
+    }
+
+    @Command(
+            name = "view",
+            description = "View a specific event of a condensed JFR file as a table",
+            mixinStandardHelpOptions = true)
+    public static class ViewCommand implements Callable<Integer> {
+        @Parameters(index = "0", description = "The event name", paramLabel = "EVENT_NAME")
+        private String eventName;
+
+        @Parameters(index = "1", description = "The input file", paramLabel = "INPUT_FILE")
+        private Path inputFile;
+
+        @Option(names = "--width", description = "Width of the table")
+        private int width = 160;
+
+        @Option(
+                names = "--truncate",
+                description = "How to truncate the output cells, 'begining' or 'end'")
+        private String truncate = "end";
+
+        @Option(names = "--cell-height", description = "Height of the table cells")
+        private int cellHeight = 1;
+
+        @Option(
+                names = "--limit",
+                description =
+                        "Limit the number of events of the given type to print, or -1 for no limit")
+        private int limit = -1;
+
+        @Override
+        public Integer call() {
+            if (!Files.exists(inputFile)) {
+                System.err.println("Input file does not exist: " + inputFile);
+                return 1;
+            }
+            try (var inputStream = Files.newInputStream(inputFile)) {
+                var jfrReader = new BasicJFRReader(new CondensedInputStream(inputStream));
+                var struct = jfrReader.readNextEvent();
+                JFRView view = null;
+                int count = 0;
+                while (struct != null) {
+                    if (struct.getType().getName().equals(eventName)) {
+                        if (view == null) {
+                            view =
+                                    new JFRView(
+                                            new JFRViewConfig(struct.getType()),
+                                            new PrintConfig(
+                                                    width,
+                                                    cellHeight,
+                                                    TruncateMode.valueOf(truncate.toUpperCase())));
+                            for (var line : view.header()) {
+                                System.out.println(line);
+                            }
+                        }
+                        for (var line : view.rows(struct)) {
+                            System.out.println(line);
+                        }
+                        count++;
+                        if (limit != -1 && count >= limit) {
+                            break;
+                        }
+                    }
+                    struct = jfrReader.readNextEvent();
+                }
+            } catch (Exception e) {
+                e.printStackTrace();
+                return 1;
+            }
+            return 0;
+        }
     }
 
     @Override

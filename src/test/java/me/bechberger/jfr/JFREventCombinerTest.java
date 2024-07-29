@@ -1,6 +1,5 @@
 package me.bechberger.jfr;
 
-import static me.bechberger.condensed.types.TypeCollection.normalize;
 import static org.junit.jupiter.api.Assertions.*;
 
 import java.io.ByteArrayOutputStream;
@@ -164,8 +163,8 @@ public class JFREventCombinerTest {
         for (int i = 0; i < 5; i++) {
             var recordedEvent = res.recordedEvents.get(i);
             var readEvent = res.readEvents.get(i);
-            assertEquals(recordedEvent.getInt("state"), get(readEvent, "state"));
-            assertEquals(recordedEvent.getInt("val"), get(readEvent, "val"));
+            assertEquals(recordedEvent.getInt("state"), TypedValueUtil.get(readEvent, "state"));
+            assertEquals(recordedEvent.getInt("val"), TypedValueUtil.get(readEvent, "val"));
         }
     }
 
@@ -340,9 +339,9 @@ public class JFREventCombinerTest {
             if (!event.getType().getTypeName().equals("jdk.ObjectAllocationSample")) {
                 continue;
             }
-            var objClass = (TypedValue) getNonScalar(event, "objectClass");
-            var className = get(objClass, "name").toString();
-            var weight = (long) get(event, "weight");
+            var objClass = (TypedValue) TypedValueUtil.getNonScalar(event, "objectClass");
+            var className = TypedValueUtil.get(objClass, "name").toString();
+            var weight = (long) TypedValueUtil.get(event, "weight");
             reconSizePerClass.put(
                     className, reconSizePerClass.getOrDefault(className, 0L) + weight);
         }
@@ -379,11 +378,13 @@ public class JFREventCombinerTest {
         }
         Map<String, Map<Long, Long>> reconSizePerAgePerClass = new HashMap<>();
         for (var event : res.readEvents) {
-            var objClass = (TypedValue) getNonScalar(event, "objectClass");
-            var className = get(objClass, "name").toString();
-            var age = (long) (int) get(event, "tenuringAge");
+            var objClass = (TypedValue) TypedValueUtil.getNonScalar(event, "objectClass");
+            var className = TypedValueUtil.get(objClass, "name").toString();
+            var age = (long) (int) TypedValueUtil.get(event, "tenuringAge");
             var perAge = reconSizePerAgePerClass.computeIfAbsent(className, k -> new HashMap<>());
-            perAge.put(age, perAge.getOrDefault(age, 0L) + getLong(event, "objectSize"));
+            perAge.put(
+                    age,
+                    perAge.getOrDefault(age, 0L) + TypedValueUtil.getLong(event, "objectSize"));
         }
         assertMapEquals(sizePerAgePerClass, reconSizePerAgePerClass);
     }
@@ -418,8 +419,8 @@ public class JFREventCombinerTest {
         }
         Map<Long, Long> reconSizePerAge = new HashMap<>();
         for (var event : res.readEvents) {
-            var age = getLong(event, "age");
-            var size = getLong(event, "size");
+            var age = TypedValueUtil.getLong(event, "age");
+            var size = TypedValueUtil.getLong(event, "size");
             reconSizePerAge.put(age, reconSizePerAge.getOrDefault(age, 0L) + size);
         }
         assertMapEquals(sizePerAge, reconSizePerAge, (age, size) -> size == 0 && ignoreZeroSized);
@@ -454,8 +455,8 @@ public class JFREventCombinerTest {
         }
         Map<String, Long> reconDurationPerPhase = new HashMap<>();
         for (var event : res.readEvents) {
-            var name = (String) get(event, "name");
-            var duration = getLong(event, "duration");
+            var name = (String) TypedValueUtil.get(event, "name");
+            var duration = TypedValueUtil.getLong(event, "duration");
             reconDurationPerPhase.put(
                     name, reconDurationPerPhase.getOrDefault(name, 0L) + duration);
         }
@@ -484,30 +485,9 @@ public class JFREventCombinerTest {
         for (var entry : expected.entrySet()) {
             assertEquals(
                     entry.getValue(),
-                    get(event, entry.getKey()),
+                    TypedValueUtil.get(event, entry.getKey()),
                     "Wrong value for field " + entry.getKey());
         }
-    }
-
-    private static long getLong(TypedValue value, String name) {
-        return (long) Objects.requireNonNullElse(normalize(get(value, name)), 0L);
-    }
-
-    private static Object get(TypedValue value, String name) {
-        return value.getFieldValues().stream()
-                .filter(f -> f.getField().getName().equals(name))
-                .findFirst()
-                .orElseThrow()
-                .getValue()
-                .getValue();
-    }
-
-    private static Object getNonScalar(TypedValue value, String name) {
-        return value.getFieldValues().stream()
-                .filter(f -> f.getField().getName().equals(name))
-                .findFirst()
-                .orElseThrow()
-                .getValue();
     }
 
     record EventCombinerTestResult(

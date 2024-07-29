@@ -136,8 +136,9 @@ The generated JFR files are probably larger than real-world files, but smaller t
 
 TODO
 ----
-- [ ] check that flags are only recorded once
+- [x] check that flags are only recorded once
 - [ ] test start, stop and status via CLI
+- [ ] implement simple view
 - [ ] test agent
 
 License
