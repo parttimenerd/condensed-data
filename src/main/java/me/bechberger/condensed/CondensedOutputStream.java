@@ -175,6 +175,10 @@ public class CondensedOutputStream extends OutputStream implements AutoCloseable
                 getSubStatistic().stringLe1000Bytes += bytes;
             }
         }
+
+        public int getBytes() {
+            return bytes;
+        }
     }
 
     private Universe universe;

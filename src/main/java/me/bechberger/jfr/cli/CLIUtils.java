@@ -9,7 +9,7 @@ import org.jetbrains.annotations.NotNull;
 import picocli.CommandLine.ITypeConverter;
 
 public class CLIUtils {
-    static class ConfigurationIterable implements Iterable<String> {
+    public static class ConfigurationIterable implements Iterable<String> {
         @NotNull
         @Override
         public Iterator<String> iterator() {
@@ -20,7 +20,7 @@ public class CLIUtils {
         }
     }
 
-    static class ConfigurationConverter implements ITypeConverter<Configuration> {
+    public static class ConfigurationConverter implements ITypeConverter<Configuration> {
         public ConfigurationConverter() {}
 
         @Override
@@ -36,14 +36,14 @@ public class CLIUtils {
         }
     }
 
-    static class ByteSizeConverter implements ITypeConverter<Long> {
+    public static class ByteSizeConverter implements ITypeConverter<Long> {
         @Override
         public Long convert(String value) {
             return HumanReadableByteCount.valueOf(value).toBytes();
         }
     }
 
-    static class DurationConverter implements ITypeConverter<Duration> {
+    public static class DurationConverter implements ITypeConverter<Duration> {
         @Override
         public Duration convert(String value) {
             return HumanReadableDuration.valueOf(value).toJavaDuration();

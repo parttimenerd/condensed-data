@@ -51,7 +51,7 @@ public class Benchmark {
         }
         int exp = (int) (Math.log(bytes) / Math.log(1024));
         return String.format(
-                "%.0" + decimals + "f %sB", bytes / Math.pow(1024, exp), "KMGTPE".charAt(exp - 1));
+                "%.0" + decimals + "f%sb", bytes / Math.pow(1024, exp), "kmgt".charAt(exp - 1));
     }
 
     public record TableColumnDescription<T>(String label, String format, Function<T, ?> getter) {

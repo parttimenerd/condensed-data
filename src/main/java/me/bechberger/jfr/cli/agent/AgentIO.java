@@ -1,12 +1,15 @@
-package me.bechberger.jfr.cli;
+package me.bechberger.jfr.cli.agent;
 
 import static java.nio.file.StandardOpenOption.APPEND;
 import static java.nio.file.StandardOpenOption.CREATE;
 
 import java.io.IOException;
+import java.io.OutputStream;
+import java.io.PrintStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.logging.*;
+import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
 /**
@@ -37,15 +40,49 @@ public class AgentIO {
     private static final Logger LOGGER = Logger.getLogger(AgentIO.class.getName());
     private final String agentIdentifier;
     private final long pid;
-    private Level level = Level.WARNING;
+    private final boolean logToFile;
+    private final LogLevel logLevel;
 
-    public AgentIO(String agentIdentifier, long pid) {
+    public AgentIO(String agentIdentifier, long pid, boolean logToFile, LogLevel logLevel) {
         this.agentIdentifier = agentIdentifier;
         this.pid = pid;
+        this.logToFile = logToFile;
+        this.logLevel = logLevel;
     }
 
-    public AgentIO(long pid) {
-        this(AGENT_IDENTIFIER, pid);
+    public AgentIO(long pid, boolean logToFile, LogLevel logLevel) {
+        this(AGENT_IDENTIFIER, pid, logToFile, logLevel);
+    }
+
+    enum LogLevel {
+        SEVERE,
+        WARNING,
+        ALL
+    }
+
+    private static boolean defaultLogToFile = false;
+    private static LogLevel defaultLogLevel = LogLevel.WARNING;
+    private static AgentIO instance = null;
+
+    public static void setLogToFile(boolean logToFile) {
+        defaultLogToFile = logToFile;
+    }
+
+    public void setLogLevel(LogLevel level) {
+        defaultLogLevel = level;
+    }
+
+    /** Get instance, assuming that this is called in the agent */
+    public static AgentIO getAgentInstance() {
+        if (instance == null) {
+            instance =
+                    new AgentIO(
+                            AGENT_IDENTIFIER,
+                            ProcessHandle.current().pid(),
+                            defaultLogToFile,
+                            defaultLogLevel);
+        }
+        return instance;
     }
 
     private Path getTmpFileName(String name) {
@@ -65,47 +102,51 @@ public class AgentIO {
         return getTmpFileName("is.closed");
     }
 
-    public void setLogLevel(Level level) {
-        this.level = level;
+    public void writeSevereError(String message) {
+        println("Severe Error: " + message);
     }
 
-    /** Returns a logger with the given name that writes to the output file */
-    public Logger getLogger(String name) {
-        var logger = Logger.getLogger(name);
-        // remove all previous handlers
-        for (var handler : logger.getHandlers()) {
-            logger.removeHandler(handler);
+    public void writeInfo(String message) {
+        if (logLevel == LogLevel.ALL) {
+            println("Info: " + message);
         }
-        logger.setLevel(level);
-        logger.setUseParentHandlers(false);
-        var consoleHandler = new ConsoleHandler();
-        consoleHandler.setFormatter(new SingleLineFormatter());
-        logger.addHandler(consoleHandler);
-        var fileHandler =
-                new Handler() {
-                    @Override
-                    public void publish(java.util.logging.LogRecord record) {
-                        writeOutput(consoleHandler.getFormatter().format(record));
-                    }
-
-                    @Override
-                    public void flush() {}
-
-                    @Override
-                    public void close() {}
-                };
-        logger.addHandler(fileHandler);
-        return logger;
     }
 
     /** Write the output of the agent */
     public void writeOutput(String output) {
+        if (!logToFile) {
+            System.out.print(output);
+            return;
+        }
         try {
             Files.writeString(getOutputFile(), output, APPEND, CREATE);
             Files.deleteIfExists(getIsClosedFile());
         } catch (IOException e) {
             throw new RuntimeException("Could not write output", e);
         }
+    }
+
+    public void println(String output) {
+        writeOutput(output + System.lineSeparator());
+    }
+
+    public void printf(String format, Object... args) {
+        writeOutput(String.format(format, args));
+    }
+
+    public PrintStream createPrintStream() {
+        return new PrintStream(
+                new OutputStream() {
+                    @Override
+                    public void write(int b) throws IOException {
+                        writeOutput(String.valueOf((char) b));
+                    }
+
+                    @Override
+                    public void write(byte @NotNull [] b, int off, int len) throws IOException {
+                        writeOutput(new String(b, off, len));
+                    }
+                });
     }
 
     /** Read the available output from the agent and advance the byte counter in the file */

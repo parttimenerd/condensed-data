@@ -30,6 +30,7 @@ import me.bechberger.jfr.cli.CLIUtils.ConfigurationIterable;
 import me.bechberger.jfr.cli.JFRView.JFRViewConfig;
 import me.bechberger.jfr.cli.JFRView.PrintConfig;
 import me.bechberger.jfr.cli.JFRView.TruncateMode;
+import me.bechberger.jfr.cli.agent.AgentIO;
 import me.bechberger.util.TimeUtil;
 import picocli.CommandLine.*;
 import picocli.CommandLine.Model.CommandSpec;
@@ -275,7 +276,7 @@ public class JFRCLI implements Runnable {
                 return -1;
             }
             if (options.equals("read")) {
-                AgentIO agentIO = new AgentIO(pid);
+                AgentIO agentIO = AgentIO.getAgentInstance();
                 while (Files.exists(agentIO.getOutputFile())) {
                     var out = agentIO.readOutput();
                     if (out != null) {
@@ -288,7 +289,7 @@ public class JFRCLI implements Runnable {
                 VirtualMachine jvm = VirtualMachine.attach(pid + "");
                 jvm.loadAgent(ownJAR().toString(), options);
                 jvm.detach();
-                AgentIO agentIO = new AgentIO(pid);
+                AgentIO agentIO = AgentIO.getAgentInstance();
                 String out;
                 while ((out = agentIO.readOutput()) != null) {
                     Thread.sleep(50);
