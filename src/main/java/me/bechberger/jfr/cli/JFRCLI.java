@@ -287,9 +287,9 @@ public class JFRCLI implements Runnable {
             }
             try {
                 VirtualMachine jvm = VirtualMachine.attach(pid + "");
-                jvm.loadAgent(ownJAR().toString(), options);
+                jvm.loadAgent(ownJAR().toString(), addLogToFileOption(options));
                 jvm.detach();
-                AgentIO agentIO = AgentIO.getAgentInstance();
+                AgentIO agentIO = AgentIO.getAgentInstance(pid);
                 String out;
                 while ((out = agentIO.readOutput()) != null) {
                     Thread.sleep(50);
@@ -308,6 +308,13 @@ public class JFRCLI implements Runnable {
                 return 1;
             }
             return 0;
+        }
+
+        private String addLogToFileOption(String options) {
+            if (options.contains("logToFile")) {
+                return options;
+            }
+            return options + (options.isEmpty() ? "" : ",") + "logToFile";
         }
     }
 

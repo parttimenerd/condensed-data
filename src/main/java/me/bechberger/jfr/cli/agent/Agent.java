@@ -3,12 +3,14 @@ package me.bechberger.jfr.cli.agent;
 import java.time.Duration;
 import java.util.*;
 import java.util.concurrent.Callable;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.stream.Stream;
 import me.bechberger.jfr.Configuration;
 import me.bechberger.jfr.cli.CLIUtils.ByteSizeConverter;
 import me.bechberger.jfr.cli.CLIUtils.ConfigurationConverter;
 import me.bechberger.jfr.cli.CLIUtils.ConfigurationIterable;
 import me.bechberger.jfr.cli.CLIUtils.DurationConverter;
+import me.bechberger.jfr.cli.agent.AgentIO.LogLevel;
 import picocli.CommandLine;
 import picocli.CommandLine.*;
 import picocli.CommandLine.Model.CommandSpec;
@@ -34,9 +36,6 @@ public class Agent implements Runnable {
     private static final Object syncObject = new Object();
     private static RecordingThread currentRecordingThread;
     private static String agentArgs;
-
-    @Option(names = "logToFile", description = "Log to stdout or a file", defaultValue = "false")
-    boolean logToFile;
 
     @Command(name = "start", description = "Start the recording", mixinStandardHelpOptions = true)
     static class StartCommand implements Callable<Integer> {
@@ -89,12 +88,13 @@ public class Agent implements Runnable {
         @Override
         public Integer call() throws Exception {
             if (currentRecordingThread != null) {
-                System.err.println("Recording already running, please stop it first");
+                AgentIO.getAgentInstance()
+                        .writeSevereError("Recording already running, please stop it first");
                 return 1;
             }
             if (rotating) {
                 if (dynSettings.maxFiles < 1) {
-                    System.err.println("max-files must be at least 1");
+                    AgentIO.getAgentInstance().writeSevereError("max-files must be at least 1");
                     return 1;
                 }
                 if (!RotatingRecordingThread.containsPlaceholder(path)) {
@@ -142,7 +142,7 @@ public class Agent implements Runnable {
         public Integer call() throws Exception {
             synchronized (syncObject) {
                 if (currentRecordingThread == null) {
-                    System.err.println("No recording running");
+                    AgentIO.getAgentInstance().writeSevereError("No recording running");
                     return 1;
                 }
                 currentRecordingThread.stop();
@@ -161,7 +161,7 @@ public class Agent implements Runnable {
         public Integer call() throws Exception {
             synchronized (syncObject) {
                 if (currentRecordingThread == null) {
-                    System.err.println("No recording running");
+                    AgentIO.getAgentInstance().writeSevereError("No recording running");
                 } else {
                     AgentIO.getAgentInstance().println("Recording running");
                     var status = currentRecordingThread.getStatus();
@@ -196,7 +196,7 @@ public class Agent implements Runnable {
         @Override
         public void run() {
             if (currentRecordingThread == null) {
-                System.err.println("No recording running");
+                AgentIO.getAgentInstance().writeSevereError("No recording running");
                 return;
             }
             currentRecordingThread.setMaxSize(maxSize);
@@ -217,7 +217,7 @@ public class Agent implements Runnable {
         @Override
         public void run() {
             if (currentRecordingThread == null) {
-                System.err.println("No recording running");
+                AgentIO.getAgentInstance().writeSevereError("No recording running");
                 return;
             }
             currentRecordingThread.setMaxDuration(maxDuration);
@@ -236,7 +236,7 @@ public class Agent implements Runnable {
         @Override
         public void run() {
             if (currentRecordingThread == null) {
-                System.err.println("No recording running");
+                AgentIO.getAgentInstance().writeSevereError("No recording running");
                 return;
             }
             currentRecordingThread.setMaxFiles(maxFiles);
@@ -261,32 +261,40 @@ public class Agent implements Runnable {
 
     public static void premain(String agentArgs) {
         Agent.agentArgs = agentArgs;
-        try {
-            new CommandLine(new Agent()).execute(preprocessArgs());
-        } catch (Exception e) {
-            AgentIO.getAgentInstance().writeSevereError("Could not start agent: " + e.getMessage());
-            e.printStackTrace(AgentIO.getAgentInstance().createPrintStream());
-        }
+        var preprocResult = preprocessArgs(agentArgs);
+        AgentIO.withLogToFile(preprocResult.logToFile, () -> {
+            try {
+                new CommandLine(new Agent()).execute(preprocResult.args);
+            } catch (Exception e) {
+                AgentIO.getAgentInstance().writeSevereError("Could not start agent: " + e.getMessage());
+                e.printStackTrace(AgentIO.getAgentInstance().createPrintStream());
+            }
+        });
     }
 
-    static String[] preprocessArgs() {
-        return Arrays.stream((agentArgs == null ? "" : agentArgs).split(","))
+    record PreprocResult(String[] args, boolean logToFile) {}
+
+    static PreprocResult preprocessArgs(String agentArgs) {
+        AtomicBoolean logToFile = new AtomicBoolean(false);
+        // this works as long as we don't log anything while no agent command is running
+        var args = Arrays.stream((agentArgs == null ? "" : agentArgs).split(","))
                 .flatMap(
                         a -> {
                             if (a.contains("=")) {
                                 var parts = a.split("=", 2);
                                 return Stream.of("--" + parts[0], parts[1]);
                             }
-                            if (a.equals("help") || a.equals("verbose")) {
+                            if (a.equals("verbose")) {
                                 return Stream.of("--" + a);
                             }
                             if (a.equals("logToFile")) {
-                                AgentIO.setLogToFile(true);
-                                return Stream.of("--logToFile");
+                                logToFile.set(true);
+                                return Stream.of();
                             }
                             return Stream.of(a);
                         })
                 .toArray(String[]::new);
+        return new PreprocResult(args, logToFile.get());
     }
 
     static String getAgentArgs() {

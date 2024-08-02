@@ -23,7 +23,7 @@ import org.jetbrains.annotations.Nullable;
  */
 public class AgentIO {
 
-    class SingleLineFormatter extends Formatter {
+    static class SingleLineFormatter extends Formatter {
         @Override
         public String format(LogRecord record) {
             var classParts = record.getSourceClassName().split("[$.]");
@@ -40,21 +40,21 @@ public class AgentIO {
     private static final Logger LOGGER = Logger.getLogger(AgentIO.class.getName());
     private final String agentIdentifier;
     private final long pid;
-    private final boolean logToFile;
+    private boolean logToFile;
     private final LogLevel logLevel;
 
-    public AgentIO(String agentIdentifier, long pid, boolean logToFile, LogLevel logLevel) {
+    AgentIO(String agentIdentifier, long pid, boolean logToFile, LogLevel logLevel) {
         this.agentIdentifier = agentIdentifier;
         this.pid = pid;
         this.logToFile = logToFile;
         this.logLevel = logLevel;
     }
 
-    public AgentIO(long pid, boolean logToFile, LogLevel logLevel) {
+    AgentIO(long pid, boolean logToFile, LogLevel logLevel) {
         this(AGENT_IDENTIFIER, pid, logToFile, logLevel);
     }
 
-    enum LogLevel {
+    public enum LogLevel {
         SEVERE,
         WARNING,
         ALL
@@ -64,8 +64,22 @@ public class AgentIO {
     private static LogLevel defaultLogLevel = LogLevel.WARNING;
     private static AgentIO instance = null;
 
-    public static void setLogToFile(boolean logToFile) {
+    private static void setLogToFile(boolean logToFile) {
         defaultLogToFile = logToFile;
+        if (instance != null) {
+            instance.logToFile = logToFile;
+        }
+    }
+
+    public static void withLogToFile(boolean logToFile, Runnable r) {
+        boolean oldDefaultLogToFile = defaultLogToFile;
+        boolean oldInstanceLogToFile = instance != null && instance.logToFile;
+        setLogToFile(logToFile);
+        r.run();
+        setLogToFile(oldDefaultLogToFile);
+        if (instance != null) {
+            instance.logToFile = oldInstanceLogToFile;
+        }
     }
 
     public void setLogLevel(LogLevel level) {
@@ -83,6 +97,11 @@ public class AgentIO {
                             defaultLogLevel);
         }
         return instance;
+    }
+
+    /** Create an instance of the agent IO for an agent attached to a JVM with the given pid */
+    public static AgentIO getAgentInstance(long pid) {
+        return new AgentIO(AGENT_IDENTIFIER, pid, defaultLogToFile, defaultLogLevel);
     }
 
     private Path getTmpFileName(String name) {
