@@ -6,9 +6,6 @@ import me.bechberger.condensed.CondensedInputStream;
 import me.bechberger.condensed.CondensedOutputStream;
 
 /** A floating point type */
-// TODO: fix, as Float16 isn't useful for Memory yet, as largest normal number is 65504.0, use
-// bfloat16 instead
-// TODO: define own float16 and float8 type, and maybe varfloat16 (like varint but based on floats)
 public class FloatType extends CondensedType<Float, Float> {
 
     public enum Type {

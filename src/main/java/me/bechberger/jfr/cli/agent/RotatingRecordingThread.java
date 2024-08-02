@@ -2,18 +2,18 @@ package me.bechberger.jfr.cli.agent;
 
 import static java.nio.file.StandardOpenOption.CREATE;
 import static me.bechberger.util.MemoryUtil.formatMemory;
+import static me.bechberger.util.TimeUtil.formatInstant;
 
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.text.ParseException;
+import java.time.Duration;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Map.Entry;
-import java.util.concurrent.atomic.AtomicInteger;
-import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Function;
 import jdk.jfr.consumer.RecordedEvent;
 import me.bechberger.condensed.Compression;
@@ -22,23 +22,20 @@ import me.bechberger.condensed.Message.StartMessage;
 import me.bechberger.jfr.BasicJFRWriter;
 import me.bechberger.jfr.Configuration;
 import me.bechberger.jfr.cli.Constants;
-import org.jetbrains.annotations.Nullable;
 
 /** Record to multiple files */
 public class RotatingRecordingThread extends RecordingThread {
 
     private final String pathTemplate;
     private Path currentPath;
-    private AtomicReference<@Nullable State> state = new AtomicReference<>(null);
+    private volatile State state = null;
     private final List<Path> currentlyStoredFiles;
+    private final List<Instant> currentlyStoredStarts;
     private int overallWrittenFileCount = 0;
 
-    record State(
-            BasicJFRWriter jfrWriter,
-            Path filePath,
-            AtomicInteger currentlyRunningOnEventOperations) {
+    record State(BasicJFRWriter jfrWriter, Path filePath, Instant start) {
         State(BasicJFRWriter jfrWriter, Path filePath) {
-            this(jfrWriter, filePath, new AtomicInteger(0));
+            this(jfrWriter, filePath, Instant.now());
         }
     }
 
@@ -54,6 +51,7 @@ public class RotatingRecordingThread extends RecordingThread {
         super(configuration, verbose, jfrConfig, miscJfrConfig, onRecordingStopped, dynSettings);
         this.pathTemplate = pathTemplate;
         this.currentlyStoredFiles = new ArrayList<>();
+        this.currentlyStoredStarts = new ArrayList<>();
         initNewFile();
         agentIO.writeOutput("Condensed recording to " + pathTemplate + " started");
     }
@@ -66,6 +64,7 @@ public class RotatingRecordingThread extends RecordingThread {
     private void deleteOldestFileIfNeeded() {
         if (currentlyStoredFiles.size() >= getMaxFiles()) {
             var fileToDelete = currentlyStoredFiles.remove(0);
+            currentlyStoredStarts.remove(0);
             try {
                 Files.delete(fileToDelete);
             } catch (IOException e) {
@@ -74,12 +73,16 @@ public class RotatingRecordingThread extends RecordingThread {
         }
     }
 
-    /** Initialize a new file and start a new jfrWriter */
+    /** Initialize a new file and start a new jfrWriter, is called in the same thread as onEvent */
     private void initNewFile() throws IOException {
         deleteOldestFileIfNeeded();
         var newPath = createNewPath();
+        currentlyStoredFiles.add(newPath);
         overallWrittenFileCount++;
         Files.createDirectories(newPath.toAbsolutePath().getParent());
+        if (state != null) {
+            closeState(state);
+        }
         var out =
                 new CondensedOutputStream(
                         Files.newOutputStream(newPath, CREATE),
@@ -91,70 +94,68 @@ public class RotatingRecordingThread extends RecordingThread {
                                 Compression.DEFAULT));
         var newWriter = new BasicJFRWriter(out);
         var newState = new State(newWriter, newPath);
-        State oldState = state.get();
+        currentlyStoredStarts.add(newState.start);
         currentPath = newPath;
-        // cas loop to set state
-        while (!state.compareAndSet(oldState, newState)) {
-            oldState = state.get();
-        }
-        if (oldState != null) {
-            closeState(oldState);
-        }
+        state = newState;
     }
 
     /** close the state, closing the writer and more */
     private void closeState(State state) {
-        while (!state.currentlyRunningOnEventOperations.compareAndSet(0, -10000))
-            Thread.onSpinWait();
         state.jfrWriter.close();
     }
 
     @Override
     void onEvent(RecordedEvent event) {
-        var currentState = state.get();
-        if (currentState == null
-                || currentState.currentlyRunningOnEventOperations.incrementAndGet() < 0) {
-            return;
-        }
         try {
-            var state = this.state.get();
+            var state = this.state;
             if (state == null) {
                 return;
             }
-            if (shouldEndFile(state.jfrWriter)) {
-                synchronized (Agent.getSyncObject()) {
-                    closeState(state);
-                    initNewFile();
-                }
+            if (shouldEndFile()) {
+                initNewFile();
             }
-            currentState.jfrWriter.processEvent(event);
+            state = this.state;
+            if (state == null) {
+                return;
+            }
+            state.jfrWriter.processEvent(event);
         } catch (IOException e) {
             agentIO.writeSevereError("Error while processing event: " + e.getMessage() + " " + e);
-        } finally {
-            currentState.currentlyRunningOnEventOperations.decrementAndGet();
         }
+    }
+
+    private boolean shouldEndFile() {
+        return (getMaxDuration().toNanos() > 0
+                        && Duration.between(this.state.start, Instant.now())
+                                        .compareTo(getMaxDuration())
+                                > 0)
+                || (getMaxSize() > 0
+                        && state.jfrWriter != null
+                        && state.jfrWriter.estimateSize() > getMaxSize());
     }
 
     @Override
     void close() {
-        var currentState = state.get();
-        if (currentState != null) {
-            closeState(currentState);
+        if (state != null) {
+            closeState(state);
         }
     }
 
     @Override
     List<Entry<String, String>> getMiscStatus() {
-        var state = this.state.get();
+        var state = this.state;
         if (state == null || state.jfrWriter == null) {
             return new ArrayList<>();
         }
         return List.of(
+                Map.entry("mode", "rotating"),
                 Map.entry("current-size-on-drive", formatMemory(state.jfrWriter.estimateSize(), 3)),
                 Map.entry(
                         "current-size-uncompressed",
                         formatMemory(state.jfrWriter.getUncompressedStatistic().getBytes(), 3)),
-                Map.entry("path", currentPath.toAbsolutePath().toString()));
+                Map.entry("path", currentPath.toAbsolutePath().toString()),
+                Map.entry("current-file-start", formatInstant(state.start)),
+                Map.entry("stored-start", formatInstant(currentlyStoredStarts.get(0))));
     }
 
     private static final Map<String, Function<Integer, String>> rotatingFileNamePlaceholder =
@@ -165,7 +166,7 @@ public class RotatingRecordingThread extends RecordingThread {
                         return date.toString().replace(":", "-").replace("T", "");
                     },
                     "$index",
-                    i -> "_" + i);
+                    i -> i + "");
 
     public static boolean containsPlaceholder(String path) {
         return rotatingFileNamePlaceholder.keySet().stream().anyMatch(path::contains);

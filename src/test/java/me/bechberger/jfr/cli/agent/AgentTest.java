@@ -16,6 +16,7 @@ import java.util.function.Consumer;
 import java.util.stream.Stream;
 import one.profiler.AsyncProfilerLoader;
 import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.Arguments;
 import org.junit.jupiter.params.provider.MethodSource;
@@ -91,10 +92,7 @@ public class AgentTest {
         System.out.println(status);
         // check that the current-size-uncompressed property is memory and larger than 1000 bytes
         assertThat(status).contains("current-size-uncompressed: ");
-        // TODO: fix parsing and memory formatting
-        var bytes = parseMemory(
-                                status.split("current-size-uncompressed: ")[1]
-                                        .split("\n")[0]);
+        var bytes = parseMemory(status.split("current-size-uncompressed: ")[1].split("\n")[0]);
         assertThat(bytes).isGreaterThan(1000);
 
         output = runAgent("stop", runMode);
@@ -110,6 +108,46 @@ public class AgentTest {
                                         throw new RuntimeException(e);
                                     }
                                 });
+    }
+
+    /**
+     * Run the agent and rotate the file after 1 second
+     *
+     * <ul>
+     *   <li>Starts the recording with a max duration of 1 second
+     *   <li>Checks the status
+     *   <li>Sets the max size to 1MB
+     *   <li>Checks that the status reflects the change
+     *   <li>Stops the recording
+     *   <li>Checks that the files are created and that the second one is larger than 1000 bytes
+     * </ul>
+     */
+    @Test
+    public void testRotate() throws InterruptedException, IOException {
+        var output =
+                runAgent(
+                        "start,test-dir/recording.cjfr,rotating,max-duration=1s",
+                        AgentRunMode.JATTACH);
+        assertThat(output).startsWith("Condensed recording to ");
+        System.out.println(output);
+
+        Thread.sleep(1000);
+        output = runAgent("status", AgentRunMode.JATTACH);
+        assertThat(output).contains("rotating");
+
+        Thread.sleep(1000);
+        // set max-size
+        output = runAgent("set-max-size,1m", AgentRunMode.JATTACH);
+        // check that status contains the new max-size
+        output = runAgent("status", AgentRunMode.JATTACH);
+        assertThat(output).contains("max-size: 1.00MB");
+
+        runAgent("stop", AgentRunMode.JATTACH);
+
+        assertThat(Path.of("test-dir/recording_0.cjfr")).exists();
+        assertThat(Path.of("test-dir/recording_1.cjfr")).exists();
+        // check that the file is larger than 1000 bytes
+        assertThat(Files.size(Path.of("test-dir/recording_1.cjfr"))).isGreaterThan(1000);
     }
 
     String runAgent(String args, AgentRunMode runMode) throws IOException, InterruptedException {

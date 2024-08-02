@@ -96,6 +96,12 @@ public class Agent implements Runnable {
                     AgentIO.getAgentInstance().writeSevereError("max-files must be at least 1");
                     return 1;
                 }
+                if (dynSettings.maxSize == 0 && dynSettings.maxDuration == Duration.ZERO) {
+                    AgentIO.getAgentInstance()
+                            .writeSevereError(
+                                    "max-size or max-duration required when rotating files");
+                    return 1;
+                }
                 if (!RotatingRecordingThread.containsPlaceholder(path)) {
                     path = path.replace(".cjfr", "_$index.cjfr");
                 }
@@ -285,7 +291,7 @@ public class Agent implements Runnable {
                                 a -> {
                                     if (a.contains("=")) {
                                         var parts = a.split("=", 2);
-                                        return Stream.of("--" + parts[0], parts[1]);
+                                        return Stream.of(a);
                                     }
                                     if (a.equals("verbose")) {
                                         return Stream.of("--" + a);

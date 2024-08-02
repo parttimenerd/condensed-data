@@ -1,13 +1,13 @@
 package me.bechberger.jfr.cli;
 
+import static me.bechberger.util.MemoryUtil.parseMemory;
+import static me.bechberger.util.TimeUtil.parseDuration;
+
 import java.time.Duration;
 import java.util.Iterator;
 import me.bechberger.jfr.Configuration;
 import org.jetbrains.annotations.NotNull;
 import picocli.CommandLine.ITypeConverter;
-
-import static me.bechberger.util.MemoryUtil.parseMemory;
-import static me.bechberger.util.TimeUtil.parseDuration;
 
 public class CLIUtils {
     public static class ConfigurationIterable implements Iterable<String> {

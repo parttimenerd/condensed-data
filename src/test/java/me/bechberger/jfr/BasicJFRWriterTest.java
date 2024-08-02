@@ -65,7 +65,6 @@ public class BasicJFRWriterTest {
             assertNotNull(stackTraceField, "stackTrace field not found");
         }
         byte[] data = outputStream.toByteArray();
-        System.out.println(recordedEvent.get());
         try (var in = new CondensedInputStream(data)) {
             var instance = in.readNextInstance();
             assertNotNull(instance);

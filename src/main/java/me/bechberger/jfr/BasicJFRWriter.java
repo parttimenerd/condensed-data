@@ -169,6 +169,7 @@ public class BasicJFRWriter {
     private CondensedType<Universe, Universe> universeType;
     private final JFREventCombiner eventCombiner;
     private final EventDeduplication deduplication;
+    private volatile boolean closed = false;
 
     /** field types that are not yet added, but their creation code is running + id */
     private final Map<TypeIdent, Integer> fieldTypesCurrentlyAdding;
@@ -724,8 +725,13 @@ public class BasicJFRWriter {
     }
 
     public void close() {
+        closed = true;
         eventCombiner.close();
         out.close();
+    }
+
+    public boolean isClosed() {
+        return closed;
     }
 
     public int estimateSize() {

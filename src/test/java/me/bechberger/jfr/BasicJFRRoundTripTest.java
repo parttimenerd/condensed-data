@@ -137,7 +137,6 @@ public class BasicJFRRoundTripTest {
             for (var pair : Util.zip(recordedEvents, events)) {
                 var recordedEvent = pair.left;
                 var event = pair.right;
-                System.out.println(event);
 
                 // Check type and number
                 assertEquals("TestEvent", event.getEventType().getName());
@@ -269,7 +268,6 @@ public class BasicJFRRoundTripTest {
             for (var pair : Util.zip(recordedEvents, events)) {
                 var recordedEvent = pair.left;
                 var event = pair.right;
-                System.out.println(event);
 
                 // Check type and number
                 assertEquals("TestEvent", event.getEventType().getName());
@@ -319,7 +317,6 @@ public class BasicJFRRoundTripTest {
                 rs.onEvent(
                         "jdk.PromoteObjectInNewPLAB",
                         event -> {
-                            System.out.println(event);
                             basicJFRWriter.processEvent(event);
                             recordedInNewPlabEvents.add(event);
                         });
@@ -327,7 +324,6 @@ public class BasicJFRRoundTripTest {
                 rs.onEvent(
                         "jdk.ObjectAllocationSample",
                         event -> {
-                            System.out.println(event);
                             basicJFRWriter.processEvent(event);
                             recordedObjectAllocationEvents.add(event);
                         });
@@ -361,8 +357,6 @@ public class BasicJFRRoundTripTest {
 
             var message = in.readNextInstance();
             while (message != null) {
-                System.out.println("Got message: " + message + " of type " + message.type());
-
                 if (message.type().getName().equals("jdk.combined.PromoteObjectInNewPLAB")) {
                     var combined = (ReadStruct) message.value();
                     var map = (ReadList<ReadStruct>) combined.get("objectClass");
@@ -422,7 +416,6 @@ public class BasicJFRRoundTripTest {
                 rs.onEvent(
                         "jdk.TenuringDistribution",
                         event -> {
-                            System.out.println(event);
                             basicJFRWriter.processEvent(event);
                             var gcId = event.getLong("gcId");
                             var age = event.getLong("age");
@@ -459,7 +452,6 @@ public class BasicJFRRoundTripTest {
             boolean hadTenuringDistributionEvent = false;
             var message = in.readNextInstance();
             while (message != null) {
-                System.out.println("Got message: " + message + " of type " + message.type());
                 if (message.type().getName().equals("jdk.combined.TenuringDistribution")) {
                     var combined = (ReadStruct) message.value();
                     var map = (ReadList<ReadStruct>) combined.get("age");
@@ -521,7 +513,6 @@ public class BasicJFRRoundTripTest {
                 rs.onEvent(
                         "jdk.GCPhasePauseLevel1",
                         event -> {
-                            System.out.println(event);
                             basicJFRWriter.processEvent(event);
                             var gcId = event.getLong("gcId");
                             var name = event.getString("name");
@@ -555,7 +546,6 @@ public class BasicJFRRoundTripTest {
             boolean hadGCPhasePauseLevel1Event = false;
             var message = in.readNextInstance();
             while (message != null) {
-                System.out.println("Got message: " + message + " of type " + message.type());
                 if (message.type().getName().equals("jdk.combined.GCPhasePauseLevel1")) {
                     var combined = (ReadStruct) message.value();
                     var map = (ReadList<ReadStruct>) combined.get("name");

@@ -1,5 +1,8 @@
 package me.bechberger.jfr.cli.agent;
 
+import static me.bechberger.util.MemoryUtil.formatMemory;
+import static me.bechberger.util.TimeUtil.*;
+
 import java.io.IOException;
 import java.text.ParseException;
 import java.time.Duration;
@@ -13,13 +16,8 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.stream.Collectors;
 import jdk.jfr.consumer.RecordedEvent;
 import jdk.jfr.consumer.RecordingStream;
-import me.bechberger.jfr.BasicJFRWriter;
 import me.bechberger.jfr.Configuration;
 import me.bechberger.jfr.cli.agent.AgentIO.LogLevel;
-import org.jetbrains.annotations.Nullable;
-
-import static me.bechberger.util.MemoryUtil.formatMemory;
-import static me.bechberger.util.TimeUtil.*;
 
 public abstract class RecordingThread implements Runnable {
 
@@ -119,8 +117,7 @@ public abstract class RecordingThread implements Runnable {
         status.add(Map.entry("jfr-config", jfrConfig));
         status.add(Map.entry("misc-jfr-config", miscJfrConfig));
         status.add(Map.entry("start", formatInstant(start)));
-        status.add(
-                Map.entry("duration", formatDuration(Duration.between(start, Instant.now()))));
+        status.add(Map.entry("duration", formatDuration(Duration.between(start, Instant.now()))));
         status.add(Map.entry("max-duration", formatDuration(getMaxDuration())));
         status.add(Map.entry("max-size", formatMemory(getMaxSize())));
         status.addAll(getMiscStatus());
@@ -148,15 +145,6 @@ public abstract class RecordingThread implements Runnable {
     }
 
     abstract void close();
-
-    boolean shouldEndFile(@Nullable BasicJFRWriter jfrWriter) {
-        return (getMaxDuration().toNanos() > 0
-                        && Duration.between(this.start, Instant.now()).compareTo(getMaxDuration())
-                                > 0)
-                || (getMaxSize() > 0
-                        && jfrWriter != null
-                        && jfrWriter.estimateSize() > getMaxSize());
-    }
 
     public void setMaxSize(long maxSize) {
         dynSettings.maxSize = maxSize;

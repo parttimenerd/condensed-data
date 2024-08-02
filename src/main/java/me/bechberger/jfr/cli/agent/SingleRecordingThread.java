@@ -7,6 +7,8 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.text.ParseException;
+import java.time.Duration;
+import java.time.Instant;
 import java.util.List;
 import java.util.Map;
 import java.util.Map.Entry;
@@ -51,7 +53,7 @@ public class SingleRecordingThread extends RecordingThread {
 
     @Override
     void onEvent(RecordedEvent event) {
-        if (shouldEndFile(jfrWriter)) {
+        if (shouldEndFile()) {
             synchronized (Agent.getSyncObject()) {
                 close();
             }
@@ -72,10 +74,20 @@ public class SingleRecordingThread extends RecordingThread {
     @Override
     List<Entry<String, String>> getMiscStatus() {
         return List.of(
+                Map.entry("mode", "single file"),
                 Map.entry("current-size-on-drive", formatMemory(jfrWriter.estimateSize(), 3)),
                 Map.entry(
                         "current-size-uncompressed",
                         formatMemory(jfrWriter.getUncompressedStatistic().getBytes(), 3)),
                 Map.entry("path", Path.of(path).toAbsolutePath().toString()));
+    }
+
+    private boolean shouldEndFile() {
+        return (getMaxDuration().toNanos() > 0
+                        && Duration.between(this.start, Instant.now()).compareTo(getMaxDuration())
+                                > 0)
+                || (getMaxSize() > 0
+                        && jfrWriter != null
+                        && jfrWriter.estimateSize() > getMaxSize());
     }
 }

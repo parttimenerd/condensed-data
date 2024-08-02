@@ -8,14 +8,12 @@ import java.time.format.DateTimeFormatter;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
-/**
- * Utility class for formatting time durations and instant objects, and parsing the same format
- */
+/** Utility class for formatting time durations and instant objects, and parsing the same format */
 public class TimeUtil {
     /**
      * Convert a duration to a human-readable format
      *
-     * Based on <a href="https://stackoverflow.com/a/40487511/19040822">stackoverflow.com</a>
+     * <p>Based on <a href="https://stackoverflow.com/a/40487511/19040822">stackoverflow.com</a>
      */
     public static String formatDuration(Duration duration) {
         return duration.toString().substring(2).replaceAll("(\\d[HMS])(?!$)", "$1 ").toLowerCase();
