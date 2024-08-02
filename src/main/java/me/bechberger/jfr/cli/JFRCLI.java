@@ -350,11 +350,11 @@ public class JFRCLI implements Runnable {
                                         ? "(default)"
                                         : summary.generatorConfiguration()));
                 System.out.println(" Compression: " + summary.compression());
-                System.out.println(" Start: " + TimeUtil.humanReadableFormat(summary.start()));
-                System.out.println(" End: " + TimeUtil.humanReadableFormat(summary.end()));
+                System.out.println(" Start: " + TimeUtil.formatInstant(summary.start()));
+                System.out.println(" End: " + TimeUtil.formatInstant(summary.end()));
                 System.out.println(
                         " Duration: "
-                                + TimeUtil.humanReadableFormat(
+                                + TimeUtil.formatDuration(
                                         summary.duration().truncatedTo(ChronoUnit.MILLIS)));
                 System.out.println(" Events: " + summary.eventCount());
                 if (!shortSummary) {

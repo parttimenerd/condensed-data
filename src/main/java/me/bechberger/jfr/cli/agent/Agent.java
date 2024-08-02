@@ -10,7 +10,6 @@ import me.bechberger.jfr.cli.CLIUtils.ByteSizeConverter;
 import me.bechberger.jfr.cli.CLIUtils.ConfigurationConverter;
 import me.bechberger.jfr.cli.CLIUtils.ConfigurationIterable;
 import me.bechberger.jfr.cli.CLIUtils.DurationConverter;
-import me.bechberger.jfr.cli.agent.AgentIO.LogLevel;
 import picocli.CommandLine;
 import picocli.CommandLine.*;
 import picocli.CommandLine.Model.CommandSpec;
@@ -262,14 +261,17 @@ public class Agent implements Runnable {
     public static void premain(String agentArgs) {
         Agent.agentArgs = agentArgs;
         var preprocResult = preprocessArgs(agentArgs);
-        AgentIO.withLogToFile(preprocResult.logToFile, () -> {
-            try {
-                new CommandLine(new Agent()).execute(preprocResult.args);
-            } catch (Exception e) {
-                AgentIO.getAgentInstance().writeSevereError("Could not start agent: " + e.getMessage());
-                e.printStackTrace(AgentIO.getAgentInstance().createPrintStream());
-            }
-        });
+        AgentIO.withLogToFile(
+                preprocResult.logToFile,
+                () -> {
+                    try {
+                        new CommandLine(new Agent()).execute(preprocResult.args);
+                    } catch (Exception e) {
+                        AgentIO.getAgentInstance()
+                                .writeSevereError("Could not start agent: " + e.getMessage());
+                        e.printStackTrace(AgentIO.getAgentInstance().createPrintStream());
+                    }
+                });
     }
 
     record PreprocResult(String[] args, boolean logToFile) {}
@@ -277,23 +279,24 @@ public class Agent implements Runnable {
     static PreprocResult preprocessArgs(String agentArgs) {
         AtomicBoolean logToFile = new AtomicBoolean(false);
         // this works as long as we don't log anything while no agent command is running
-        var args = Arrays.stream((agentArgs == null ? "" : agentArgs).split(","))
-                .flatMap(
-                        a -> {
-                            if (a.contains("=")) {
-                                var parts = a.split("=", 2);
-                                return Stream.of("--" + parts[0], parts[1]);
-                            }
-                            if (a.equals("verbose")) {
-                                return Stream.of("--" + a);
-                            }
-                            if (a.equals("logToFile")) {
-                                logToFile.set(true);
-                                return Stream.of();
-                            }
-                            return Stream.of(a);
-                        })
-                .toArray(String[]::new);
+        var args =
+                Arrays.stream((agentArgs == null ? "" : agentArgs).split(","))
+                        .flatMap(
+                                a -> {
+                                    if (a.contains("=")) {
+                                        var parts = a.split("=", 2);
+                                        return Stream.of("--" + parts[0], parts[1]);
+                                    }
+                                    if (a.equals("verbose")) {
+                                        return Stream.of("--" + a);
+                                    }
+                                    if (a.equals("logToFile")) {
+                                        logToFile.set(true);
+                                        return Stream.of();
+                                    }
+                                    return Stream.of(a);
+                                })
+                        .toArray(String[]::new);
         return new PreprocResult(args, logToFile.get());
     }
 

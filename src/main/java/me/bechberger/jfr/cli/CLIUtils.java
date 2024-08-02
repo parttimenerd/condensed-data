@@ -1,12 +1,13 @@
 package me.bechberger.jfr.cli;
 
-import com.palantir.humanreadabletypes.HumanReadableByteCount;
-import com.palantir.humanreadabletypes.HumanReadableDuration;
 import java.time.Duration;
 import java.util.Iterator;
 import me.bechberger.jfr.Configuration;
 import org.jetbrains.annotations.NotNull;
 import picocli.CommandLine.ITypeConverter;
+
+import static me.bechberger.util.MemoryUtil.parseMemory;
+import static me.bechberger.util.TimeUtil.parseDuration;
 
 public class CLIUtils {
     public static class ConfigurationIterable implements Iterable<String> {
@@ -39,14 +40,14 @@ public class CLIUtils {
     public static class ByteSizeConverter implements ITypeConverter<Long> {
         @Override
         public Long convert(String value) {
-            return HumanReadableByteCount.valueOf(value).toBytes();
+            return parseMemory(value);
         }
     }
 
     public static class DurationConverter implements ITypeConverter<Duration> {
         @Override
         public Duration convert(String value) {
-            return HumanReadableDuration.valueOf(value).toJavaDuration();
+            return parseDuration(value);
         }
     }
 }

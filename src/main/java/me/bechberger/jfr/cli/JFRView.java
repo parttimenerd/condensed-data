@@ -1,6 +1,7 @@
 package me.bechberger.jfr.cli;
 
-import static me.bechberger.util.TimeUtil.humanReadableFormat;
+import static me.bechberger.util.MemoryUtil.formatMemory;
+import static me.bechberger.util.TimeUtil.formatDuration;
 
 import java.time.Duration;
 import java.time.Instant;
@@ -13,7 +14,6 @@ import me.bechberger.condensed.ReadStruct;
 import me.bechberger.condensed.types.CondensedType;
 import me.bechberger.condensed.types.StructType;
 import me.bechberger.condensed.types.StructType.Field;
-import me.bechberger.jfr.Benchmark;
 
 /** Tabular view for JFR events */
 public class JFRView {
@@ -68,7 +68,7 @@ public class JFRView {
 
         @Override
         public List<String> format(ReadStruct event, int rows) {
-            return List.of(humanReadableFormat(Duration.ofNanos((long) event.get(property))));
+            return List.of(formatDuration(Duration.ofNanos((long) event.get(property))));
         }
 
         @Override
@@ -150,7 +150,7 @@ public class JFRView {
         public List<String> format(ReadStruct event, int rows) {
             var prop = event.get(property);
             var value = prop instanceof Long ? (long) prop : (long) (float) prop;
-            return List.of(Benchmark.formatMemory((long) value, 1));
+            return List.of(formatMemory((long) value, 1));
         }
 
         @Override

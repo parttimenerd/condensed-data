@@ -1,8 +1,5 @@
 package me.bechberger.jfr.cli.agent;
 
-import static me.bechberger.util.TimeUtil.humanReadableFormat;
-
-import com.palantir.humanreadabletypes.HumanReadableByteCount;
 import java.io.IOException;
 import java.text.ParseException;
 import java.time.Duration;
@@ -20,6 +17,9 @@ import me.bechberger.jfr.BasicJFRWriter;
 import me.bechberger.jfr.Configuration;
 import me.bechberger.jfr.cli.agent.AgentIO.LogLevel;
 import org.jetbrains.annotations.Nullable;
+
+import static me.bechberger.util.MemoryUtil.formatMemory;
+import static me.bechberger.util.TimeUtil.*;
 
 public abstract class RecordingThread implements Runnable {
 
@@ -118,11 +118,11 @@ public abstract class RecordingThread implements Runnable {
         status.add(Map.entry("generator-configuration", configuration.name()));
         status.add(Map.entry("jfr-config", jfrConfig));
         status.add(Map.entry("misc-jfr-config", miscJfrConfig));
-        status.add(Map.entry("start", humanReadableFormat(start)));
+        status.add(Map.entry("start", formatInstant(start)));
         status.add(
-                Map.entry("duration", humanReadableFormat(Duration.between(start, Instant.now()))));
-        status.add(Map.entry("max-duration", humanReadableFormat(getMaxDuration())));
-        status.add(Map.entry("max-size", HumanReadableByteCount.bytes(getMaxSize()).toString()));
+                Map.entry("duration", formatDuration(Duration.between(start, Instant.now()))));
+        status.add(Map.entry("max-duration", formatDuration(getMaxDuration())));
+        status.add(Map.entry("max-size", formatMemory(getMaxSize())));
         status.addAll(getMiscStatus());
         return status;
     }

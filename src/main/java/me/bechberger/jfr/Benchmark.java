@@ -12,6 +12,7 @@ import me.bechberger.condensed.Compression;
 import me.bechberger.condensed.CondensedInputStream;
 import me.bechberger.condensed.CondensedOutputStream;
 import me.bechberger.condensed.Message.StartMessage;
+import me.bechberger.util.MemoryUtil;
 
 /**
  * Runs the condenser on the JFR files from the <code>benchmark</code> folder and outputs a table on
@@ -45,15 +46,6 @@ public class Benchmark {
         }
     }
 
-    public static String formatMemory(long bytes, int decimals) {
-        if (bytes < 1024) {
-            return bytes + " B";
-        }
-        int exp = (int) (Math.log(bytes) / Math.log(1024));
-        return String.format(
-                "%.0" + decimals + "f%sb", bytes / Math.pow(1024, exp), "kmgt".charAt(exp - 1));
-    }
-
     public record TableColumnDescription<T>(String label, String format, Function<T, ?> getter) {
 
         static <T> TableColumnDescription<T> ofMemory(
@@ -62,7 +54,7 @@ public class Benchmark {
                 return new TableColumnDescription<>(label, "%d", getter);
             }
             return new TableColumnDescription<>(
-                    label, "%s", (T row) -> formatMemory(getter.apply(row), decimals));
+                    label, "%s", (T row) -> MemoryUtil.formatMemory(getter.apply(row), decimals));
         }
 
         public String getStringForRow(T row) {

@@ -1,7 +1,7 @@
 package me.bechberger.jfr.cli.agent;
 
 import static java.nio.file.StandardOpenOption.CREATE;
-import static me.bechberger.jfr.Benchmark.formatMemory;
+import static me.bechberger.util.MemoryUtil.formatMemory;
 
 import java.io.IOException;
 import java.nio.file.Files;

@@ -1,9 +1,9 @@
 package me.bechberger.jfr.cli.agent;
 
+import static me.bechberger.util.MemoryUtil.parseMemory;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 
-import com.palantir.humanreadabletypes.HumanReadableByteCount;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.PrintStream;
@@ -92,13 +92,9 @@ public class AgentTest {
         // check that the current-size-uncompressed property is memory and larger than 1000 bytes
         assertThat(status).contains("current-size-uncompressed: ");
         // TODO: fix parsing and memory formatting
-        var bytes =
-                HumanReadableByteCount.valueOf(
+        var bytes = parseMemory(
                                 status.split("current-size-uncompressed: ")[1]
-                                        .split("\n")[0]
-                                        .toLowerCase()
-                                        .replaceAll(",[0-9]+", ""))
-                        .toBytes();
+                                        .split("\n")[0]);
         assertThat(bytes).isGreaterThan(1000);
 
         output = runAgent("stop", runMode);
