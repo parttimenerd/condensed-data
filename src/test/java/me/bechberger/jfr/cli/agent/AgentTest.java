@@ -58,6 +58,7 @@ public class AgentTest {
     @MethodSource("runModes")
     public void testHelp(AgentRunMode runMode) throws IOException, InterruptedException {
         var output = runAgent("help", runMode);
+        System.out.println(output);
         assertThat(output).contains("Usage: ");
     }
 

@@ -12,10 +12,11 @@ import java.util.*;
 import java.util.function.Consumer;
 import jdk.jfr.consumer.RecordedEvent;
 import jdk.jfr.consumer.RecordingFile;
+import me.bechberger.JFRReader;
 import me.bechberger.condensed.ReadList;
 import me.bechberger.condensed.ReadStruct;
 import me.bechberger.condensed.types.*;
-import me.bechberger.jfr.JFREventCombiner.JFREventReconstitutor;
+import me.bechberger.jfr.JFREventCombiner.JFREventTypedValuedReconstitutor;
 import org.jetbrains.annotations.Nullable;
 import org.openjdk.jmc.flightrecorder.writer.*;
 import org.openjdk.jmc.flightrecorder.writer.api.*;
@@ -25,16 +26,17 @@ import org.openjdk.jmc.flightrecorder.writer.api.Types.Predefined;
 
 public class WritingJFRReader {
 
-    private final BasicJFRReader reader;
+    private final JFRReader reader;
     private final OutputStream outputStream;
     private RecordingImpl recording;
     private final Map<CondensedType<?, ?>, Predefined> typeMap = new IdentityHashMap<>();
     private final Map<CondensedType<?, ?>, Type> realTypeMap = new IdentityHashMap<>();
-    private final JFREventReconstitutor reconstitutor = new JFREventReconstitutor(this);
+    private final JFREventTypedValuedReconstitutor reconstitutor =
+            new JFREventTypedValuedReconstitutor(this);
     private final Queue<TypedValue> eventsToEmit = new ArrayDeque<>();
     private final Map<String, Integer> combinedEventCount = new HashMap<>();
 
-    public WritingJFRReader(BasicJFRReader reader, OutputStream outputStream) {
+    public WritingJFRReader(JFRReader reader, OutputStream outputStream) {
         this.reader = reader;
         this.outputStream = outputStream;
     }
@@ -43,11 +45,11 @@ public class WritingJFRReader {
         this(reader, new ByteArrayOutputStream());
     }
 
-    public JFREventReconstitutor getReconstitutor() {
+    public JFREventTypedValuedReconstitutor getReconstitutor() {
         return reconstitutor;
     }
 
-    void initRecording(Universe universe) {
+    void initRecording() {
         this.recording =
                 (RecordingImpl)
                         Recordings.newRecording(
@@ -67,7 +69,7 @@ public class WritingJFRReader {
             return null;
         }
         if (recording == null) {
-            initRecording(reader.getUniverse());
+            initRecording();
         }
         if (reconstitutor.isCombinedEvent(event)) {
             combinedEventCount.put(
@@ -364,7 +366,7 @@ public class WritingJFRReader {
         }
     }
 
-    public static void toJFRFile(BasicJFRReader reader, Path output) {
+    public static void toJFRFile(JFRReader reader, Path output) {
         Path path = toJFRFile(reader);
         try {
             Files.move(path, output);
@@ -373,7 +375,7 @@ public class WritingJFRReader {
         }
     }
 
-    public static Path toJFRFile(BasicJFRReader reader) {
+    public static Path toJFRFile(JFRReader reader) {
         try {
             Path tmp = Files.createTempFile("recording", ".jfr");
             WritingJFRReader writingJFRReader =

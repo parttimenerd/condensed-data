@@ -9,10 +9,12 @@ import java.util.function.BiFunction;
 import java.util.function.Function;
 import java.util.function.Supplier;
 import java.util.logging.Logger;
+import java.util.stream.Collectors;
 import java.util.stream.Stream;
 import jdk.jfr.EventType;
 import jdk.jfr.consumer.RecordedClass;
 import jdk.jfr.consumer.RecordedEvent;
+import me.bechberger.condensed.CondensedInputStream;
 import me.bechberger.condensed.CondensedOutputStream;
 import me.bechberger.condensed.CondensedOutputStream.OverflowMode;
 import me.bechberger.condensed.ReadList;
@@ -20,7 +22,6 @@ import me.bechberger.condensed.ReadStruct;
 import me.bechberger.condensed.types.*;
 import me.bechberger.condensed.types.ArrayType.WrappedArrayType;
 import me.bechberger.condensed.types.StructType.Field;
-import me.bechberger.jfr.EventCombiner.Combiner;
 import me.bechberger.jfr.EventReconstitutor.Reconstitutor;
 import me.bechberger.jfr.JFREventCombiner.MapEntry.ArrayValue;
 import me.bechberger.jfr.JFREventCombiner.MapEntry.MapValue;
@@ -29,11 +30,7 @@ import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 import org.openjdk.jmc.flightrecorder.writer.api.TypedValue;
 
-/**
- * Contains combiners for JFR events to reduce the amount of data written to the stream
- *
- * <p>TODO: implement reconstitution
- */
+/** Contains combiners for JFR events to reduce the amount of data written to the stream */
 public class JFREventCombiner extends EventCombiner {
 
     private static final Logger LOGGER = Logger.getLogger(JFREventCombiner.class.getName());
@@ -416,22 +413,154 @@ public class JFREventCombiner extends EventCombiner {
         }
     }
 
+    /** Construct a typed valued event from it's fields */
+    public abstract static class EventBuilder<E, S extends EventBuilder<E, S>> {
+        private final ReadStruct combinedReadEvent;
+        private final String eventTypeName;
+        private final Map<String, Object> map;
+
+        public EventBuilder(ReadStruct combinedReadEvent, String eventTypeName) {
+            this.eventTypeName = eventTypeName;
+            this.combinedReadEvent = combinedReadEvent;
+            this.map = new HashMap<>();
+            this.map.put("startTime", combinedReadEvent.get("startTime"));
+        }
+
+        @SuppressWarnings("unchecked")
+        private S thisBuilder() {
+            return (S) this;
+        }
+
+        public S put(String field, Object value) {
+            map.put(field, normalize(value));
+            return thisBuilder();
+        }
+
+        public S put(String keyField, String valueField, Map.Entry<?, ?> value) {
+            put(keyField, value.getKey());
+            put(valueField, value.getValue());
+            return thisBuilder();
+        }
+
+        public S put(String field1, Object value1, String field2, Object value2) {
+            put(field1, value1);
+            put(field2, value2);
+            return thisBuilder();
+        }
+
+        public S put(
+                String field1,
+                Object value1,
+                String field2,
+                Object value2,
+                String field3,
+                Object value3) {
+            put(field1, value1);
+            put(field2, value2);
+            put(field3, value3);
+            return thisBuilder();
+        }
+
+        public S put(
+                String field1,
+                Object value1,
+                String field2,
+                Object value2,
+                String field3,
+                Object value3,
+                String field4,
+                Object value4) {
+            put(field1, value1);
+            put(field2, value2);
+            put(field3, value3);
+            put(field4, value4);
+            return thisBuilder();
+        }
+
+        /**
+         * Put a value from the combined event into the map
+         *
+         * @param field field name in both the combined event and the result event
+         */
+        public S put(String field) {
+            put(field, combinedReadEvent.get(field));
+            return thisBuilder();
+        }
+
+        /**
+         * Add standard fields (duration, stackTrace and eventThread) if they are missing and are
+         * present in the result event type. If the combined event does not contain one of the
+         * fields, then set its value to 0/null
+         */
+        public S addStandardFieldsIfNeeded() {
+            for (var fieldName : List.of("duration", "stackTrace", "eventThread")) {
+                if (!map.containsKey(fieldName)) {
+                    if (combinedReadEvent.hasField(fieldName)) {
+                        map.put(fieldName, combinedReadEvent.get(fieldName));
+                    } else if (fieldName.equals("duration")) {
+                        map.put(fieldName, 0L);
+                    } else {
+                        map.put(fieldName, null);
+                    }
+                }
+            }
+            return thisBuilder();
+        }
+
+        public abstract E build();
+
+        public String getEventTypeName() {
+            return eventTypeName;
+        }
+
+        Map<String, Object> getMap() {
+            return map;
+        }
+
+        @SuppressWarnings("unchecked")
+        StructType<?, ReadStruct> checkType(CondensedType<?, ?> condensedType) {
+            if (condensedType == null) {
+                throw new IllegalArgumentException("Type " + eventTypeName + " not found");
+            }
+            var missingFields =
+                    ((StructType<?, ?>) condensedType)
+                            .getFields().stream()
+                                    .map(Field::name)
+                                    .filter(f -> !getMap().containsKey(f))
+                                    .toList();
+            if (!missingFields.isEmpty()) {
+                if (missingFields.contains("duration")
+                        || missingFields.contains("stackTrace")
+                        || missingFields.contains("eventThread")) {
+                    throw new IllegalArgumentException(
+                            "Fields "
+                                    + missingFields
+                                    + " are missing in reconstitued event "
+                                    + eventTypeName
+                                    + " maybe call addStandardFieldsIfNeeded() before build()");
+                }
+                throw new IllegalArgumentException(
+                        "Fields "
+                                + missingFields
+                                + " are missing in reconstitued event "
+                                + eventTypeName);
+            }
+            return (StructType<?, ReadStruct>) condensedType;
+        }
+    }
+
     /** A reconstitutor of JFR events, the inverse of {@link JFREventCombiner.AbstractCombiner} */
-    public abstract static class AbstractReconstitutor<C extends AbstractCombiner<?, ?>>
-            implements Reconstitutor<C, TypedValue> {
+    public abstract static class AbstractReconstitutor<C extends AbstractCombiner<?, ?>> {
 
         private final String eventTypeName;
-        private final WritingJFRReader jfrWriter;
 
         /**
          * Creates a new instance
          *
          * @param eventTypeName type name of the resulting event
-         * @param jfrWriter writer to use for reconstitution
          */
-        public AbstractReconstitutor(String eventTypeName, WritingJFRReader jfrWriter) {
+        public AbstractReconstitutor(String eventTypeName) {
             this.eventTypeName = eventTypeName;
-            this.jfrWriter = jfrWriter;
             if (eventTypeName.contains(".combined.")) {
                 throw new AssertionError(
                         "Don't use the combined event type name here, try "
@@ -439,149 +568,97 @@ public class JFREventCombiner extends EventCombiner {
             }
         }
 
-        @Override
         public String getEventTypeName() {
             return eventTypeName;
         }
 
-        @Override
-        public List<TypedValue> reconstitute(
-                StructType<?, ?> resultEventType, ReadStruct combinedReadEvent) {
-            return reconstitute(
-                    resultEventType,
-                    combinedReadEvent,
-                    new TypedValueEventBuilder(this, combinedReadEvent));
+        public Reconstitutor<C, TypedValue> createTypedValueReconstitutor(
+                WritingJFRReader jfrWriter) {
+            return new Reconstitutor<>() {
+                @Override
+                public String getEventTypeName() {
+                    return eventTypeName;
+                }
+
+                @Override
+                public List<TypedValue> reconstitute(
+                        StructType<?, ?> resultEventType, ReadStruct combinedReadEvent) {
+                    return AbstractReconstitutor.this.reconstitute(
+                            resultEventType,
+                            combinedReadEvent,
+                            new TypedValueEventBuilder(
+                                    combinedReadEvent, eventTypeName, jfrWriter));
+                }
+            };
         }
 
-        public List<TypedValue> reconstitute(
+        public Reconstitutor<C, ReadStruct> createReadStructReconstitutor(
+                TypeCollection typeCollection) {
+            return new Reconstitutor<>() {
+                @Override
+                public String getEventTypeName() {
+                    return eventTypeName;
+                }
+
+                @Override
+                public List<ReadStruct> reconstitute(
+                        StructType<?, ?> resultEventType, ReadStruct combinedReadEvent) {
+                    return AbstractReconstitutor.this.reconstitute(
+                            resultEventType,
+                            combinedReadEvent,
+                            new ReadStructEventBuilder(
+                                    combinedReadEvent, eventTypeName, typeCollection));
+                }
+            };
+        }
+
+        public <E> List<E> reconstitute(
                 StructType<?, ?> resultEventType,
                 ReadStruct combinedReadEvent,
-                TypedValueEventBuilder builder) {
+                EventBuilder<E, ?> builder) {
             return List.of();
         }
 
         /** Construct a typed valued event from it's fields */
-        public static class TypedValueEventBuilder {
-            private final AbstractReconstitutor<?> reconstitutor;
-            private final ReadStruct combinedReadEvent;
-            private final Map<String, Object> map;
+        public static class TypedValueEventBuilder
+                extends EventBuilder<TypedValue, TypedValueEventBuilder> {
+
+            private final WritingJFRReader jfrWriter;
 
             public TypedValueEventBuilder(
-                    AbstractReconstitutor<?> reconstitutor, ReadStruct combinedReadEvent) {
-                this.reconstitutor = reconstitutor;
-                this.combinedReadEvent = combinedReadEvent;
-                this.map = new HashMap<>();
-                this.map.put("startTime", combinedReadEvent.get("startTime"));
+                    ReadStruct combinedReadEvent,
+                    String eventTypeName,
+                    WritingJFRReader jfrWriter) {
+                super(combinedReadEvent, eventTypeName);
+                this.jfrWriter = jfrWriter;
             }
 
-            public TypedValueEventBuilder put(String field, Object value) {
-                map.put(field, normalize(value));
-                return this;
-            }
-
-            public TypedValueEventBuilder put(
-                    String keyField, String valueField, Map.Entry<?, ?> value) {
-                put(keyField, value.getKey());
-                put(valueField, value.getValue());
-                return this;
-            }
-
-            public TypedValueEventBuilder put(
-                    String field1, Object value1, String field2, Object value2) {
-                put(field1, value1);
-                put(field2, value2);
-                return this;
-            }
-
-            public TypedValueEventBuilder put(
-                    String field1,
-                    Object value1,
-                    String field2,
-                    Object value2,
-                    String field3,
-                    Object value3) {
-                put(field1, value1);
-                put(field2, value2);
-                put(field3, value3);
-                return this;
-            }
-
-            public TypedValueEventBuilder put(
-                    String field1,
-                    Object value1,
-                    String field2,
-                    Object value2,
-                    String field3,
-                    Object value3,
-                    String field4,
-                    Object value4) {
-                put(field1, value1);
-                put(field2, value2);
-                put(field3, value3);
-                put(field4, value4);
-                return this;
-            }
-
-            /**
-             * Put a value from the combined event into the map
-             *
-             * @param field field name in both the combined event and the result event
-             */
-            public TypedValueEventBuilder put(String field) {
-                put(field, combinedReadEvent.get(field));
-                return this;
-            }
-
-            /**
-             * Add standard fields (duration, stackTrace and eventThread) if they are missing and
-             * are present in the result event type. If the combined event does not contain one of
-             * the fields, then set its value to 0/null
-             */
-            public TypedValueEventBuilder addStandardFieldsIfNeeded() {
-                for (var fieldName : List.of("duration", "stackTrace", "eventThread")) {
-                    if (!map.containsKey(fieldName)) {
-                        if (combinedReadEvent.hasField(fieldName)) {
-                            map.put(fieldName, combinedReadEvent.get(fieldName));
-                        } else if (fieldName.equals("duration")) {
-                            map.put(fieldName, 0L);
-                        } else {
-                            map.put(fieldName, null);
-                        }
-                    }
-                }
-                return this;
-            }
-
-            @SuppressWarnings("unchecked")
+            @Override
             public TypedValue build() {
-                var condensedType =
-                        reconstitutor.jfrWriter.getCondensedType(reconstitutor.getEventTypeName());
-                var missingFields =
-                        ((StructType<?, ?>) condensedType)
-                                .getFields().stream()
-                                        .map(Field::name)
-                                        .filter(f -> !map.containsKey(f))
-                                        .toList();
-                if (!missingFields.isEmpty()) {
-                    if (missingFields.contains("duration")
-                            || missingFields.contains("stackTrace")
-                            || missingFields.contains("eventThread")) {
-                        throw new IllegalArgumentException(
-                                "Fields "
-                                        + missingFields
-                                        + " are missing in reconstitued event "
-                                        + reconstitutor.eventTypeName
-                                        + " maybe call addStandardFieldsIfNeeded() before build()");
-                    }
-                    throw new IllegalArgumentException(
-                            "Fields "
-                                    + missingFields
-                                    + " are missing in reconstitued event "
-                                    + reconstitutor.eventTypeName);
-                }
-                ReadStruct reconstructed =
-                        new ReadStruct((StructType<?, ReadStruct>) condensedType, map);
-                return reconstitutor.jfrWriter.fromReadStruct(reconstructed);
+                var condensedType = jfrWriter.getCondensedType(getEventTypeName());
+                ReadStruct reconstructed = new ReadStruct(checkType(condensedType), getMap());
+                return jfrWriter.fromReadStruct(reconstructed);
+            }
+        }
+
+        /** Construct a typed valued event from it's fields */
+        public static class ReadStructEventBuilder
+                extends EventBuilder<ReadStruct, ReadStructEventBuilder> {
+
+            private final TypeCollection typeCollection;
+
+            public ReadStructEventBuilder(
+                    ReadStruct combinedReadEvent,
+                    String eventTypeName,
+                    TypeCollection typeCollection) {
+                super(combinedReadEvent, eventTypeName);
+                this.typeCollection = typeCollection;
+            }
+
+            @Override
+            public ReadStruct build() {
+                var condensedType = typeCollection.getTypeOrNull(getEventTypeName());
+                return new ReadStruct(checkType(condensedType), getMap());
             }
         }
     }
@@ -703,17 +780,16 @@ public class JFREventCombiner extends EventCombiner {
 
     static class PromoteObjectReconstitutor extends AbstractReconstitutor<PromoteObjectCombiner> {
 
-        public PromoteObjectReconstitutor(
-                String combinedEventTypeName, WritingJFRReader jfrWriter) {
-            super(combinedEventTypeName, jfrWriter);
+        public PromoteObjectReconstitutor(String combinedEventTypeName) {
+            super(combinedEventTypeName);
         }
 
         @Override
         @SuppressWarnings("unchecked")
-        public List<TypedValue> reconstitute(
+        public <E> List<E> reconstitute(
                 StructType<?, ?> resultEventType,
                 ReadStruct combinedReadEvent,
-                TypedValueEventBuilder builder) {
+                EventBuilder<E, ?> builder) {
             builder.addStandardFieldsIfNeeded().put("gcId");
             if (resultEventType.hasField("plabSize")) {
                 builder.put("plabSize", -1L);
@@ -800,15 +876,15 @@ public class JFREventCombiner extends EventCombiner {
     static class TenuringDistributionReconstitutor
             extends AbstractReconstitutor<TenuringDistributionCombiner> {
 
-        public TenuringDistributionReconstitutor(WritingJFRReader jfrWriter) {
-            super("jdk.TenuringDistribution", jfrWriter);
+        public TenuringDistributionReconstitutor() {
+            super("jdk.TenuringDistribution");
         }
 
         @Override
-        public List<TypedValue> reconstitute(
+        public <E> List<E> reconstitute(
                 StructType<?, ?> resultEventType,
                 ReadStruct combinedReadEvent,
-                TypedValueEventBuilder builder) {
+                EventBuilder<E, ?> builder) {
             builder.put("gcId").addStandardFieldsIfNeeded();
             return combinedReadEvent.asMapEntryList("age").stream()
                     .map(e -> builder.put("age", "size", e).build())
@@ -865,15 +941,15 @@ public class JFREventCombiner extends EventCombiner {
 
     static class GCPhasePauseLevelReconstitutor
             extends AbstractReconstitutor<GCPhasePauseLevelCombiner> {
-        public GCPhasePauseLevelReconstitutor(String eventTypeName, WritingJFRReader jfrWriter) {
-            super(eventTypeName, jfrWriter);
+        public GCPhasePauseLevelReconstitutor(String eventTypeName) {
+            super(eventTypeName);
         }
 
         @Override
-        public List<TypedValue> reconstitute(
+        public <E> List<E> reconstitute(
                 StructType<?, ?> resultEventType,
                 ReadStruct combinedReadEvent,
-                TypedValueEventBuilder builder) {
+                EventBuilder<E, ?> builder) {
             builder.put("gcId").addStandardFieldsIfNeeded();
             return combinedReadEvent.asMapEntryList("name").stream()
                     .map(e -> builder.put("name", "duration", e).build())
@@ -1036,20 +1112,15 @@ public class JFREventCombiner extends EventCombiner {
     static class ObjectAllocationSampleReconstitutor
             extends AbstractReconstitutor<ObjectAllocationSampleCombiner> {
 
-        /**
-         * Creates a new instance
-         *
-         * @param jfrWriter writer to use for reconstitution
-         */
-        public ObjectAllocationSampleReconstitutor(WritingJFRReader jfrWriter) {
-            super("jdk.ObjectAllocationSample", jfrWriter);
+        public ObjectAllocationSampleReconstitutor() {
+            super("jdk.ObjectAllocationSample");
         }
 
         @Override
-        public List<TypedValue> reconstitute(
+        public <E> List<E> reconstitute(
                 StructType<?, ?> resultEventType,
                 ReadStruct combinedReadEvent,
-                TypedValueEventBuilder builder) {
+                EventBuilder<E, ?> builder) {
             builder.put("endTime").addStandardFieldsIfNeeded();
             return combinedReadEvent.asMapEntryList("objectClass").stream()
                     .map(e -> builder.put("objectClass", "weight", e).build())
@@ -1189,35 +1260,58 @@ public class JFREventCombiner extends EventCombiner {
         }
     }
 
-    public static class JFREventReconstitutor extends EventReconstitutor<TypedValue> {
+    private static final Map<String, AbstractReconstitutor<? extends AbstractCombiner<?, ?>>>
+            recons =
+                    new HashMap<>(
+                            Map.ofEntries(
+                                    Map.entry(
+                                            "jdk.combined.ObjectAllocationSample",
+                                            new ObjectAllocationSampleReconstitutor()),
+                                    Map.entry(
+                                            "jdk.combined.PromoteObjectInNewPLAB",
+                                            new PromoteObjectReconstitutor(
+                                                    "jdk.PromoteObjectInNewPLAB")),
+                                    Map.entry(
+                                            "jdk.combined.PromoteObjectOutsidePLAB",
+                                            new PromoteObjectReconstitutor(
+                                                    "jdk.PromoteObjectOutsidePLAB")),
+                                    Map.entry(
+                                            "jdk.combined.GCPhasePauseLevel1",
+                                            new GCPhasePauseLevelReconstitutor(
+                                                    "jdk.GCPhasePauseLevel2")),
+                                    Map.entry(
+                                            "jdk.combined.GCPhasePauseLevel2",
+                                            new GCPhasePauseLevelReconstitutor(
+                                                    "jdk.GCPhasePauseLevel2"))));
 
-        public JFREventReconstitutor(WritingJFRReader jfrWriter) {
-            super(createReconstitutors(jfrWriter));
+    public static class JFREventTypedValuedReconstitutor extends EventReconstitutor<TypedValue> {
+
+        public JFREventTypedValuedReconstitutor(WritingJFRReader jfrWriter) {
+            super(
+                    recons.entrySet().stream()
+                            .collect(
+                                    Collectors.toMap(
+                                            Map.Entry::getKey,
+                                            e ->
+                                                    e.getValue()
+                                                            .createTypedValueReconstitutor(
+                                                                    jfrWriter))));
         }
+    }
 
-        private static Map<String, Reconstitutor<?, TypedValue>> createReconstitutors(
-                WritingJFRReader jfrWriter) {
-            return new HashMap<>(
-                    Map.ofEntries(
-                            Map.entry(
-                                    "jdk.combined.ObjectAllocationSample",
-                                    new ObjectAllocationSampleReconstitutor(jfrWriter)),
-                            Map.entry(
-                                    "jdk.combined.PromoteObjectInNewPLAB",
-                                    new PromoteObjectReconstitutor(
-                                            "jdk.PromoteObjectInNewPLAB", jfrWriter)),
-                            Map.entry(
-                                    "jdk.combined.PromoteObjectOutsidePLAB",
-                                    new PromoteObjectReconstitutor(
-                                            "jdk.PromoteObjectOutsidePLAB", jfrWriter)),
-                            Map.entry(
-                                    "jdk.combined.GCPhasePauseLevel1",
-                                    new GCPhasePauseLevelReconstitutor(
-                                            "jdk.GCPhasePauseLevel2", jfrWriter)),
-                            Map.entry(
-                                    "jdk.combined.GCPhasePauseLevel2",
-                                    new GCPhasePauseLevelReconstitutor(
-                                            "jdk.GCPhasePauseLevel2", jfrWriter))));
+    public static class JFREventReadStructReconstitutor extends EventReconstitutor<ReadStruct> {
+
+        public JFREventReadStructReconstitutor(CondensedInputStream inputStream) {
+            super(
+                    recons.entrySet().stream()
+                            .collect(
+                                    Collectors.toMap(
+                                            Map.Entry::getKey,
+                                            e ->
+                                                    e.getValue()
+                                                            .createReadStructReconstitutor(
+                                                                    inputStream
+                                                                            .getTypeCollection()))));
         }
     }
 }

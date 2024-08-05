@@ -18,8 +18,8 @@ import java.util.List;
 import java.util.Map;
 import java.util.concurrent.Callable;
 import jdk.jfr.consumer.RecordingFile;
+import me.bechberger.JFRReader;
 import me.bechberger.condensed.Compression;
-import me.bechberger.condensed.CondensedInputStream;
 import me.bechberger.condensed.CondensedOutputStream;
 import me.bechberger.condensed.Message.StartMessage;
 import me.bechberger.condensed.ReadStruct;
@@ -27,6 +27,7 @@ import me.bechberger.jfr.*;
 import me.bechberger.jfr.Benchmark.TableConfig;
 import me.bechberger.jfr.cli.CLIUtils.ConfigurationConverter;
 import me.bechberger.jfr.cli.CLIUtils.ConfigurationIterable;
+import me.bechberger.jfr.cli.EventFilter.EventFilterOptionMixin;
 import me.bechberger.jfr.cli.JFRView.JFRViewConfig;
 import me.bechberger.jfr.cli.JFRView.PrintConfig;
 import me.bechberger.jfr.cli.JFRView.TruncateMode;
@@ -144,26 +145,48 @@ public class JFRCLI implements Runnable {
 
     @Command(name = "inflate", description = "Inflate a condensed JFR file into JFR format")
     public static class InflateJFRCommand implements Callable<Integer> {
-        @Parameters(index = "0", description = "The input file")
-        private Path inputFile;
 
-        @Parameters(index = "1", description = "The output file", defaultValue = "")
+        @Parameters(index = "0", description = "The output file", defaultValue = "")
         private Path outputFile;
+
+        @Parameters(index = "1..*", description = "The input .cjfr files, can be folders, or zips")
+        private List<Path> inputFiles;
+
+        @Mixin EventFilterOptionMixin eventFilterOptionMixin;
+
+        @Spec CommandSpec spec;
 
         private Path getOutputFile() {
             if (outputFile.toString().isEmpty()) {
+                if (inputFiles.size() != 1) {
+                    throw new ParameterException(
+                            spec.commandLine(),
+                            "Only one input file is allowed if no output file given");
+                }
+                var inputFile = inputFiles.get(0);
+                if (!Files.exists(inputFile)) {
+                    System.err.println("Input file does not exist: " + inputFile);
+                    return null;
+                }
+                if (inputFile.endsWith(".cjfr")) {
+                    System.err.println(
+                            "Input file is not a condensed JFR file: "
+                                    + inputFile
+                                    + " please state an output file");
+                    return null;
+                }
                 return inputFile.resolveSibling(inputFile.getFileName() + ".inflated.jfr");
             }
             return outputFile;
         }
 
         public Integer call() {
-            if (!Files.exists(inputFile)) {
-                System.err.println("Input file does not exist: " + inputFile);
-                return 1;
-            }
-            try (var inputStream = Files.newInputStream(inputFile)) {
-                var jfrReader = new BasicJFRReader(new CondensedInputStream(inputStream));
+            try {
+                var jfrReader =
+                        CombiningJFRReader.fromPaths(
+                                inputFiles,
+                                eventFilterOptionMixin.createFilter(),
+                                eventFilterOptionMixin.noReconstitution);
                 WritingJFRReader.toJFRFile(jfrReader, getOutputFile());
             } catch (Exception e) {
                 e.printStackTrace();
@@ -203,13 +226,13 @@ public class JFRCLI implements Runnable {
         private String regexp = ".*";
 
         @Option(
-                names = {"-c", "--configuratiosn"},
+                names = {"-c", "--configuration"},
                 description =
                         "The generatorConfiguration to use, possible values:"
                                 + " ${COMPLETION-CANDIDATES}",
                 completionCandidates = ConfigurationIterable.class,
                 converter = ConfigurationConverter.class,
-                arity = "1..")
+                arity = "1..*")
         private List<Configuration> configurations =
                 Configuration.configurations.values().stream().sorted().toList();
 
@@ -323,8 +346,8 @@ public class JFRCLI implements Runnable {
             description = "Print a summary of the condensed JFR file",
             mixinStandardHelpOptions = true)
     public static class SummaryCommand implements Callable<Integer> {
-        @Parameters(index = "0", description = "The input file")
-        private Path inputFile;
+        @Parameters(index = "0..*", description = "The input .cjfr files, can be folders, or zips")
+        private List<Path> inputFiles;
 
         @Option(
                 names = {"-s", "--short"},
@@ -332,13 +355,21 @@ public class JFRCLI implements Runnable {
                 defaultValue = "false")
         private boolean shortSummary;
 
+        @Mixin private EventFilterOptionMixin eventFilterOptionMixin;
+
         public Integer call() {
-            if (!Files.exists(inputFile)) {
-                System.err.println("Input file does not exist: " + inputFile);
-                return 1;
+            for (var inputFile : inputFiles) {
+                if (!Files.exists(inputFile)) {
+                    System.err.println("Input file does not exist: " + inputFile);
+                    return 1;
+                }
             }
-            try (var inputStream = Files.newInputStream(inputFile)) {
-                var jfrReader = new BasicJFRReader(new CondensedInputStream(inputStream));
+            try {
+                var jfrReader =
+                        CombiningJFRReader.fromPaths(
+                                inputFiles,
+                                eventFilterOptionMixin.createFilter(),
+                                eventFilterOptionMixin.noReconstitution);
                 var summary = computeSummary(jfrReader);
                 System.out.println();
                 System.out.println(" Format Version: " + summary.version());
@@ -388,23 +419,23 @@ public class JFRCLI implements Runnable {
             Instant end,
             Map<String, Integer> eventCounts) {}
 
-    static Summary computeSummary(BasicJFRReader reader) {
+    static Summary computeSummary(JFRReader reader) {
         Map<String, Integer> eventCounts = new HashMap<>();
         ReadStruct struct;
         while ((struct = reader.readNextEvent()) != null) {
             eventCounts.merge(struct.getType().getName(), 1, Integer::sum);
         }
-        var startMessage = reader.getInputStream().getUniverse().getStartMessage();
+        var startMessage = reader.getStartMessage();
         return new Summary(
                 eventCounts.values().stream().mapToInt(Integer::intValue).sum(),
-                reader.getUniverse().getDuration(),
+                reader.getDuration(),
                 startMessage.version(),
                 startMessage.generatorName(),
                 startMessage.generatorVersion(),
                 startMessage.generatorConfiguration(),
                 startMessage.compression(),
-                Instant.ofEpochMilli(reader.getUniverse().getStartTimeNanos() / 1000_000),
-                Instant.ofEpochMilli(reader.getUniverse().getLastStartTimeNanos() / 1000_000),
+                reader.getStartTime(),
+                reader.getEndTime(),
                 eventCounts);
     }
 
@@ -416,8 +447,8 @@ public class JFRCLI implements Runnable {
         @Parameters(index = "0", description = "The event name", paramLabel = "EVENT_NAME")
         private String eventName;
 
-        @Parameters(index = "1", description = "The input file", paramLabel = "INPUT_FILE")
-        private Path inputFile;
+        @Parameters(index = "1..*", description = "The input .cjfr files, can be folders, or zips")
+        private List<Path> inputFiles;
 
         @Option(names = "--width", description = "Width of the table")
         private int width = 160;
@@ -436,14 +467,16 @@ public class JFRCLI implements Runnable {
                         "Limit the number of events of the given type to print, or -1 for no limit")
         private int limit = -1;
 
+        @Mixin private EventFilterOptionMixin eventFilterOptionMixin;
+
         @Override
         public Integer call() {
-            if (!Files.exists(inputFile)) {
-                System.err.println("Input file does not exist: " + inputFile);
-                return 1;
-            }
-            try (var inputStream = Files.newInputStream(inputFile)) {
-                var jfrReader = new BasicJFRReader(new CondensedInputStream(inputStream));
+            try {
+                var jfrReader =
+                        CombiningJFRReader.fromPaths(
+                                inputFiles,
+                                eventFilterOptionMixin.createFilter(),
+                                eventFilterOptionMixin.noReconstitution);
                 var struct = jfrReader.readNextEvent();
                 JFRView view = null;
                 int count = 0;

@@ -1,26 +1,41 @@
 package me.bechberger.jfr;
 
-import java.util.ArrayList;
-import java.util.List;
+import java.time.Instant;
+import java.util.*;
+import me.bechberger.JFRReader;
 import me.bechberger.condensed.CondensedInputStream;
 import me.bechberger.condensed.Message.ReadInstance;
+import me.bechberger.condensed.Message.StartMessage;
 import me.bechberger.condensed.ReadStruct;
 import me.bechberger.condensed.types.Reductions;
+import me.bechberger.jfr.JFREventCombiner.JFREventReadStructReconstitutor;
 import org.jetbrains.annotations.Nullable;
 
 /** Read JFR data from a {@link CondensedInputStream} which was written by {@link BasicJFRWriter} */
-public class BasicJFRReader {
+public class BasicJFRReader implements JFRReader {
 
     private final CondensedInputStream in;
     private Configuration configuration = Configuration.DEFAULT;
     private final Universe universe = new Universe();
+    private final @Nullable JFREventReadStructReconstitutor reconstitutor;
+    private final Queue<ReadStruct> eventsToEmit = new ArrayDeque<>();
+    private final Map<String, Integer> combinedEventCount = new HashMap<>();
     private boolean closed = false;
 
     public BasicJFRReader(CondensedInputStream in) {
-        this.in = in;
+        this(in, true);
     }
 
+    public BasicJFRReader(CondensedInputStream in, boolean reconstitute) {
+        this.in = in;
+        this.reconstitutor = reconstitute ? new JFREventReadStructReconstitutor(in) : null;
+    }
+
+    @Override
     public @Nullable ReadStruct readNextEvent() {
+        if (!eventsToEmit.isEmpty()) {
+            return eventsToEmit.poll();
+        }
         if (closed) {
             return null;
         }
@@ -44,13 +59,24 @@ public class BasicJFRReader {
                 return null;
             }
         }
-        if (configuration == null || universe == null) {
+        if (configuration == null) {
             throw new IllegalStateException(
                     "Configuration and Universe must be read before events");
         }
         var event = (ReadStruct) msg.value();
         event.ensureRecursivelyComplete();
+        if (reconstitutor != null && reconstitutor.isCombinedEvent(event)) {
+            combinedEventCount.put(
+                    event.getType().getName(),
+                    combinedEventCount.getOrDefault(event.getType().getName(), 0) + 1);
+            eventsToEmit.addAll(reconstitutor.reconstitute(getInputStream(), event));
+            return readNextEvent(); // comes in handy when the combined events
+        }
         return event;
+    }
+
+    public Map<String, Integer> getCombinedEventCount() {
+        return Collections.unmodifiableMap(combinedEventCount);
     }
 
     public Configuration getConfiguration() {
@@ -80,16 +106,23 @@ public class BasicJFRReader {
         return universe;
     }
 
+    @Override
     public CondensedInputStream getInputStream() {
         return in;
     }
 
-    public List<ReadStruct> readAll() {
-        var result = new ArrayList<ReadStruct>();
-        ReadStruct event;
-        while ((event = readNextEvent()) != null) {
-            result.add(event);
-        }
-        return result;
+    @Override
+    public StartMessage getStartMessage() {
+        return getInputStream().getUniverse().getStartMessage();
+    }
+
+    @Override
+    public Instant getStartTime() {
+        return Instant.ofEpochSecond(0, getUniverse().getStartTimeNanos());
+    }
+
+    @Override
+    public Instant getEndTime() {
+        return Instant.ofEpochSecond(0, getUniverse().getLastStartTimeNanos());
     }
 }

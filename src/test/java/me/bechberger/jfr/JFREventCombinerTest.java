@@ -115,15 +115,15 @@ public class JFREventCombinerTest {
     static class TestCombineArrayReconstitutor
             extends AbstractReconstitutor<TestCombineToArrayCombiner> {
 
-        public TestCombineArrayReconstitutor(WritingJFRReader jfrWriter) {
-            super("TestCombineToArrayEvent", jfrWriter);
+        public TestCombineArrayReconstitutor() {
+            super("TestCombineToArrayEvent");
         }
 
         @Override
-        public List<TypedValue> reconstitute(
+        public <E> List<E> reconstitute(
                 StructType<?, ?> resultEventType,
                 ReadStruct combinedReadEvent,
-                TypedValueEventBuilder builder) {
+                EventBuilder<E, ?> builder) {
             builder.put("state").addStandardFieldsIfNeeded();
             return combinedReadEvent.getList("val").stream()
                     .map(v -> builder.put("val", v).build())
@@ -149,7 +149,7 @@ public class JFREventCombinerTest {
                                                 new TestCombineToArrayCombiner(
                                                         Configuration.DEFAULT, w),
                                         "jdk.combined.TestCombineToArray",
-                                        TestCombineArrayReconstitutor::new)),
+                                        new TestCombineArrayReconstitutor())),
                         () -> {
                             TestCombineToArrayEvent.create(1, 2);
                             TestCombineToArrayEvent.create(1, 3);
@@ -257,15 +257,15 @@ public class JFREventCombinerTest {
     static class TestCombineArrayAndSumReconstitutor
             extends AbstractReconstitutor<TestCombineToArrayAndSumEventCombiner> {
 
-        public TestCombineArrayAndSumReconstitutor(WritingJFRReader jfrWriter) {
-            super("TestCombineToArrayAndSumEvent", jfrWriter);
+        public TestCombineArrayAndSumReconstitutor() {
+            super("TestCombineToArrayAndSumEvent");
         }
 
         @Override
-        public List<TypedValue> reconstitute(
+        public <E> List<E> reconstitute(
                 StructType<?, ?> resultEventType,
                 ReadStruct combinedReadEvent,
-                TypedValueEventBuilder builder) {
+                EventBuilder<E, ?> builder) {
             builder.put("state").addStandardFieldsIfNeeded();
             return combinedReadEvent.asMapEntryList("state2").stream()
                     .map(v -> builder.put("state2", v.getKey(), "val", v.getValue()).build())
@@ -290,7 +290,7 @@ public class JFREventCombinerTest {
                                                 new TestCombineToArrayAndSumEventCombiner(
                                                         Configuration.DEFAULT, w),
                                         "jdk.combined.TestCombineToArrayAndSum",
-                                        TestCombineArrayAndSumReconstitutor::new)),
+                                        new TestCombineArrayAndSumReconstitutor())),
                         () -> {
                             TestCombineToArrayAndSumEvent.create(1, 2, 3);
                             TestCombineToArrayAndSumEvent.create(1, 2, 4);
@@ -379,7 +379,7 @@ public class JFREventCombinerTest {
         Map<String, Map<Long, Long>> reconSizePerAgePerClass = new HashMap<>();
         for (var event : res.readEvents) {
             var objClass = (TypedValue) TypedValueUtil.getNonScalar(event, "objectClass");
-            var className = TypedValueUtil.get(objClass, "name").toString();
+            var className = TypedValueUtil.get(objClass, "name").toString().replace('.', '/');
             var age = (long) (int) TypedValueUtil.get(event, "tenuringAge");
             var perAge = reconSizePerAgePerClass.computeIfAbsent(className, k -> new HashMap<>());
             perAge.put(
@@ -460,7 +460,7 @@ public class JFREventCombinerTest {
             reconDurationPerPhase.put(
                     name, reconDurationPerPhase.getOrDefault(name, 0L) + duration);
         }
-        // assertMapEquals(durationPerPhase, reconDurationPerPhase, (age, size) -> false); // TODO
+        assertMapEquals(durationPerPhase, reconDurationPerPhase, (age, size) -> false);
     }
 
     private static <T, V> void assertMapEquals(Map<T, V> expected, Map<T, V> actual) {
@@ -498,7 +498,7 @@ public class JFREventCombinerTest {
     record CombinerAndReconstitutor(
             @Nullable Function<BasicJFRWriter, ? extends Combiner<?, ?>> combiner,
             String combinedEvent,
-            @Nullable Function<WritingJFRReader, AbstractReconstitutor<?>> reconstitutor) {
+            @Nullable AbstractReconstitutor<?> reconstitutor) {
         CombinerAndReconstitutor(String combinedEvent) {
             this(null, combinedEvent, null);
         }
@@ -553,11 +553,13 @@ public class JFREventCombinerTest {
             basicJFRWriter.close();
         }
         try (var in = new CondensedInputStream(outputStream.toByteArray())) {
-            WritingJFRReader reader = new WritingJFRReader(new BasicJFRReader(in));
+            WritingJFRReader reader = new WritingJFRReader(new BasicJFRReader(in, false));
             for (var combiner : combiners.values()) {
                 if (combiner.reconstitutor != null) {
                     reader.getReconstitutor()
-                            .put(combiner.combinedEvent, combiner.reconstitutor.apply(reader));
+                            .put(
+                                    combiner.combinedEvent,
+                                    combiner.reconstitutor.createTypedValueReconstitutor(reader));
                 }
             }
             var readEvents = reader.readAllJFREvents();

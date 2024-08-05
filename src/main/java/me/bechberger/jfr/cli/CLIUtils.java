@@ -2,8 +2,10 @@ package me.bechberger.jfr.cli;
 
 import static me.bechberger.util.MemoryUtil.parseMemory;
 import static me.bechberger.util.TimeUtil.parseDuration;
+import static me.bechberger.util.TimeUtil.parseInstant;
 
 import java.time.Duration;
+import java.time.Instant;
 import java.util.Iterator;
 import me.bechberger.jfr.Configuration;
 import org.jetbrains.annotations.NotNull;
@@ -48,6 +50,13 @@ public class CLIUtils {
         @Override
         public Duration convert(String value) {
             return parseDuration(value);
+        }
+    }
+
+    public static class InstantConverter implements ITypeConverter<Instant> {
+        @Override
+        public Instant convert(String value) {
+            return parseInstant(value);
         }
     }
 }

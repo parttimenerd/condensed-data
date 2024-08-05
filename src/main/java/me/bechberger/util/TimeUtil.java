@@ -26,7 +26,14 @@ public class TimeUtil {
     }
 
     public static Instant parseInstant(String time) {
-        DateTimeFormatter formatter = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
+        if (time.matches("\\d{1,2}:\\d{1,2}:\\d{1,2}")) { // parse HH:mm:ss
+            time = LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyy-MM-dd " + time));
+        } else if (time.matches("\\d{1,2}:\\d{1,2}")) { // parse HH:mm
+            time =
+                    LocalDateTime.now()
+                            .format(DateTimeFormatter.ofPattern("yyyy-MM-dd " + time + ":00"));
+        }
+        DateTimeFormatter formatter = DateTimeFormatter.ofPattern("yyyy-MM-dd H:m:s");
         LocalDateTime dateTime = LocalDateTime.parse(time, formatter);
         return dateTime.atZone(ZoneId.systemDefault()).toInstant();
     }

@@ -531,7 +531,7 @@ public class JFRView {
         this.columnWidths = view.computeColumnWidths(config.width() - view.columns.size() + 1);
     }
 
-    record PrintConfig(int width, int cellHeight, TruncateMode truncateMode) {
+    public record PrintConfig(int width, int cellHeight, TruncateMode truncateMode) {
         public PrintConfig() {
             this(160, 1, TruncateMode.END);
         }

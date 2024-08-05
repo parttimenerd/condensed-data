@@ -4,6 +4,8 @@ import static me.bechberger.util.TimeUtil.formatInstant;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 
 import java.time.Instant;
+import java.time.LocalDateTime;
+import java.time.format.DateTimeFormatter;
 import net.jqwik.api.ForAll;
 import net.jqwik.api.Property;
 import net.jqwik.api.constraints.LongRange;
@@ -23,6 +25,30 @@ public class TimeUtilTest {
                 instant,
                 parsed,
                 "Instant roundtrip failed: initial=" + instant + ", formatted=" + formatted);
+    }
+
+    @Test
+    public void testWithoutDate() {
+        var instant = TimeUtil.parseInstant("12:34:56");
+        assertEquals(
+                LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyy-MM-dd 12:34:56")),
+                TimeUtil.formatInstant(instant));
+    }
+
+    @Test
+    public void testWithoutDateAndSeconds() {
+        var instant = TimeUtil.parseInstant("12:34");
+        assertEquals(
+                LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyy-MM-dd 12:34:00")),
+                TimeUtil.formatInstant(instant));
+    }
+
+    @Test
+    public void testWithoutDateAndSeconds2() {
+        var instant = TimeUtil.parseInstant("2:34");
+        assertEquals(
+                LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyy-MM-dd 02:34:00")),
+                TimeUtil.formatInstant(instant));
     }
 
     @Property
