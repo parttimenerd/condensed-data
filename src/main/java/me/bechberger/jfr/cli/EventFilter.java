@@ -1,60 +1,146 @@
 package me.bechberger.jfr.cli;
 
+import static me.bechberger.condensed.Util.toNanoSeconds;
+
 import java.time.Duration;
 import java.time.Instant;
-import java.util.List;
+import java.util.*;
+import java.util.logging.Logger;
+import java.util.stream.Collectors;
+import java.util.stream.Stream;
+
 import me.bechberger.condensed.ReadStruct;
 import me.bechberger.jfr.cli.CLIUtils.DurationConverter;
 import me.bechberger.jfr.cli.CLIUtils.InstantConverter;
+import me.bechberger.util.TimeUtil;
+import org.checkerframework.checker.units.qual.A;
+import org.jetbrains.annotations.Nullable;
 import picocli.CommandLine.Model.CommandSpec;
 import picocli.CommandLine.Option;
 import picocli.CommandLine.ParameterException;
 import picocli.CommandLine.Spec;
 
-import static me.bechberger.jfr.cli.EventFilter.TwoPhaseEventFilter.Phase.INFORMATION_GATHERING;
+public interface EventFilter<C> {
 
-@FunctionalInterface
-public interface EventFilter {
+    Logger LOGGER = Logger.getLogger(EventFilter.class.getName());
+
     /**
      * Checks if the filter matches the event.
      *
      * @param struct event to check
      * @return matched filter?
      */
-    boolean test(ReadStruct struct);
+    boolean test(ReadStruct struct, C context);
 
-    /**
-     * Stateful event filter that first gathers information about the events and then filters them.
-     */
-    abstract class TwoPhaseEventFilter implements EventFilter {
+    void analyze(ReadStruct struct, C context);
 
-        enum Phase {
-            INFORMATION_GATHERING,
-            FILTERING
+    boolean isInformationGathering();
+
+    C createContext();
+
+    interface EventFilterInstance {
+        boolean test(ReadStruct struct);
+    }
+
+    default EventFilterInstance createAnalyzeFilter(C context) {
+        return struct -> {
+            EventFilter.this.analyze(struct, context);
+            return false;
+        };
+    }
+
+    default EventFilterInstance createTestFilter(C context) {
+        return struct -> EventFilter.this.test(struct, context);
+    }
+
+    interface SinglePhaseEventFilter<C> extends EventFilter<C> {
+        @Override
+        default void analyze(ReadStruct struct, C context) {
+            analyze(struct);
         }
 
-        private Phase phase = INFORMATION_GATHERING;
+        default void analyze(ReadStruct struct) {
 
-        void setPhase(Phase phase) {
-            this.phase = phase;
+        }
+
+        default C createContext() {
+            return null;
         }
 
         @Override
-        public boolean test(ReadStruct struct) {
-            return switch (phase) {
-                case INFORMATION_GATHERING -> {
-                    analyze(struct);
-                    yield false;
-                }
-                case FILTERING -> properTest(struct);
-            };
+        default boolean isInformationGathering() {
+            return false;
+        }
+    }
+
+    interface TwoPhaseEventFilter<C> extends EventFilter<C> {
+        @Override
+        default boolean isInformationGathering() {
+            return true;
+        }
+    }
+
+    default CombinedFilter and(EventFilter<?> other) {
+        return new CombinedFilter(CombinedFilter.Operator.AND, this, other);
+    }
+
+    default CombinedFilter or(EventFilter<?> other) {
+        return new CombinedFilter(CombinedFilter.Operator.OR, this, other);
+    }
+
+    /** Combines multiple filters with an operator */
+    class CombinedFilter implements EventFilter<List<?>> {
+
+        public enum Operator {
+            AND,
+            OR
         }
 
-        /** Analyze the event to gather information for the filter */
-        abstract void analyze(ReadStruct struct);
+        private final Operator operator;
+        private final EventFilter<?>[] filters;
 
-        /** Check if the event matches the filter */
-        abstract boolean properTest(ReadStruct struct);
+        public CombinedFilter(Operator operator, EventFilter<?>... filters) {
+            this.operator = operator;
+            this.filters = filters;
+        }
+
+        @Override
+        @SuppressWarnings({"unchecked", "rawtypes"})
+        public boolean test(ReadStruct struct, List<?> context) {
+            for (int i = 0; i < filters.length; i++) {
+                var testResult = ((EventFilter)filters[i]).test(struct, context.get(i));
+                if (operator == Operator.AND && !testResult) {
+                    return false;
+                }
+                if (operator == Operator.OR && testResult) {
+                    return true;
+                }
+            }
+            return operator == Operator.AND;
+        }
+
+        @Override
+        @SuppressWarnings({"unchecked", "rawtypes"})
+        public void analyze(ReadStruct struct, List<?> context) {
+            for (int i = 0; i < filters.length; i++) {
+                ((EventFilter)filters[i]).analyze(struct, context.get(i));
+            }
+        }
+
+        @Override
+        public boolean isInformationGathering() {
+            for (EventFilter<?> filter : filters) {
+                if (filter.isInformationGathering()) {
+                    return true;
+                }
+            }
+            return false;
+        }
+
+        @Override
+        public List<?> createContext() {
+            return Stream.of(filters).map(EventFilter::createContext).collect(Collectors.toList());
+        }
     }
 
     class EventFilterOptionMixin {
@@ -87,19 +173,30 @@ public interface EventFilter {
                 description = "Don't reconstitute the events, just read the combined events")
         boolean noReconstitution;
 
+        @Option(
+                names = "--gc-percentile",
+                description = "Filter out events that happened in the seconds before and after the GC's with >= n-th percentile duration, e.g. --gc-percentile 90 gives you all events before, during and after the longest 10% of GC's"
+        )
+        int gcPercentile = 0;
+
+        @Option(
+                names = "--gc-percentile-context",
+                description = "The context to use for the GC percentile filter, e.g. --gc-percentile-context 1m",
+                converter = DurationConverter.class,
+                defaultValue = "1m"
+        )
+        Duration gcPercentileContext;
+
         @Spec CommandSpec spec;
 
-        /** Create an event filter from the options */
-        EventFilter createFilter() {
+        /** Create a basic event filter that checks a time window and the event types */
+        static @Nullable SinglePhaseEventFilter<Void> createBasicFilter(Instant start, Instant end, Duration duration, List<String> eventTypes) {
             if (start == null && end == null && duration == null && eventTypes == null) {
-                return event -> true;
+                return null;
             }
             if (start != null && end != null && duration != null) {
-                throw new ParameterException(
-                        spec.commandLine(), "Only pass start and end or duration, not all");
+                throw new IllegalArgumentException("Both start, end and duration are set, ignoring duration");
             }
-            Instant start = this.start;
-            Instant end = this.end;
             if (start == null) {
                 if (end == null) {
                     start = Instant.MIN;
@@ -114,10 +211,7 @@ public interface EventFilter {
             }
             Instant fixedStart = start;
             Instant fixedEnd = end;
-            return event -> {
-                if (event == null) {
-                    return false;
-                }
+            return (event, context) -> {
                 if (fixedStart != null || fixedEnd != null) {
                     var startTime = event.get("startTime", Instant.class);
                     if (fixedStart != null) { // startTime should be present for almost all events
@@ -134,6 +228,103 @@ public interface EventFilter {
                 }
                 return eventTypes == null || eventTypes.contains(event.getType().getName());
             };
+        }
+
+        static class GCPercentileContext {
+            record GCInfo(int id, long startTimeNanos, long endTimeNanos) {
+            }
+
+            private final int percentile;
+            private final List<GCInfo> gcInfos;
+
+            // start time and end time of the longest GCs
+            private TreeSet<Long> percentileStartTimeNanos;
+            private TreeSet<Long> percentileEndTimeNanos;
+
+            GCPercentileContext(int percentile) {
+                this.percentile = percentile;
+                gcInfos = new ArrayList<>();
+            }
+
+            void add(ReadStruct struct) {
+                if (struct.getType().getName().equals("jdk.GarbageCollection")) {
+                    gcInfos.add(new GCInfo(
+                            struct.get("id", int.class),
+                            toNanoSeconds(struct.get("startTime", Instant.class)),
+                            toNanoSeconds(struct.get("endTime", Instant.class)))
+                    );
+                }
+            }
+
+            void calculatePercentileIfNeeded() {
+                if (percentileStartTimeNanos != null) {
+                    return;
+                }
+                int percentileIndex = (int) Math.ceil(gcInfos.size() * (1 - percentile / 100.0));
+                gcInfos.sort(Comparator.comparingLong(GCInfo::startTimeNanos));
+                percentileStartTimeNanos = gcInfos.subList(percentileIndex, gcInfos.size()).stream()
+                        .map(GCInfo::startTimeNanos)
+                        .collect(Collectors.toCollection(TreeSet::new));
+                percentileEndTimeNanos = gcInfos.subList(0, percentileIndex).stream()
+                        .map(GCInfo::endTimeNanos)
+                        .collect(Collectors.toCollection(TreeSet::new));
+                if (percentileStartTimeNanos.isEmpty() || percentileEndTimeNanos.isEmpty()) {
+                    throw new IllegalStateException("No jdk.GarbageCollection events found");
+                }
+            }
+
+            long getTimeDiffToLongGC(long startTimeNanos, long endTimeNanos) {
+                calculatePercentileIfNeeded();
+                long startDiff = Objects.requireNonNull(percentileStartTimeNanos.floor(startTimeNanos)) - startTimeNanos;
+                long endDiff = endTimeNanos - Objects.requireNonNull(percentileEndTimeNanos.ceiling(endTimeNanos));
+                return Math.min(startDiff, endDiff);
+            }
+        }
+
+        /**
+         * Creates a filter that filters out events that happened in the seconds before and after the GC's with >= n-th percentile duration
+         */
+        static @Nullable TwoPhaseEventFilter<GCPercentileContext> createGCPercentileFilter(int gcPercentile, Duration gcPercentileContext) {
+            if (gcPercentile == 0) {
+                return null;
+            }
+            return new TwoPhaseEventFilter<>() {
+                @Override
+                public boolean test(ReadStruct struct, GCPercentileContext context) {
+                    var startTimeNanos = toNanoSeconds(struct.get("startTime", Instant.class));
+                    var endTimeNanos = struct.containsKey("endTime") ? toNanoSeconds(struct.get("endTime", Instant.class)) : startTimeNanos;
+                    return context.getTimeDiffToLongGC(startTimeNanos, endTimeNanos) <= gcPercentileContext.toNanos();
+                }
+
+                @Override
+                public void analyze(ReadStruct struct, GCPercentileContext context) {
+                    context.add(struct);
+                }
+
+                @Override
+                public GCPercentileContext createContext() {
+                    return new GCPercentileContext(gcPercentile);
+                }
+            };
+        }
+
+        private EventFilter<?> combine(@Nullable EventFilter<?>... filters) {
+            List<EventFilter<?>> nonNull = Stream.of(filters).filter(Objects::nonNull).toList();
+            if (nonNull.isEmpty()) {
+                return null;
+            }
+            if (nonNull.size() == 1) {
+                return nonNull.get(0);
+            }
+            return new CombinedFilter(CombinedFilter.Operator.AND, nonNull.toArray(new EventFilter<?>[0]));
+        }
+
+        /**
+         * Create a filter from the options
+         */
+        public EventFilter<?> createFilter() {
+            return combine(createBasicFilter(start, end, duration, eventTypes),
+                    createGCPercentileFilter(gcPercentile, gcPercentileContext));
         }
     }
 }

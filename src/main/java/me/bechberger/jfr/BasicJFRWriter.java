@@ -1,5 +1,6 @@
 package me.bechberger.jfr;
 
+import static me.bechberger.condensed.Util.toNanoSeconds;
 import static me.bechberger.condensed.types.TypeCollection.normalize;
 
 import java.io.IOException;
@@ -24,6 +25,7 @@ import me.bechberger.condensed.types.*;
 import me.bechberger.condensed.types.FloatType.Type;
 import me.bechberger.condensed.types.StructType.Field;
 import me.bechberger.jfr.JFRReduction.ReducedStackTrace;
+import me.bechberger.util.TimeUtil;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 import org.json.JSONArray;
@@ -675,9 +677,7 @@ public class BasicJFRWriter {
         if (!wroteConfiguration) {
             writeConfiguration();
             wroteConfiguration = true;
-            universe.setStartTimeNanos(
-                    event.getStartTime().getEpochSecond() * 1_000_000_000
-                            + event.getStartTime().getNano());
+            universe.setStartTimeNanos(toNanoSeconds(event.getStartTime()));
             universe.setLastStartTimeNanos(universe.getStartTimeNanos());
             writeUniverse();
         }

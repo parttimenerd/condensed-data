@@ -7,6 +7,7 @@ import java.nio.file.Path;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.*;
+import java.util.function.Function;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipInputStream;
 import me.bechberger.JFRReader;
@@ -15,6 +16,8 @@ import me.bechberger.condensed.CondensedInputStream;
 import me.bechberger.condensed.Message.StartMessage;
 import me.bechberger.condensed.ReadStruct;
 import me.bechberger.jfr.cli.EventFilter;
+import me.bechberger.jfr.cli.EventFilter.EventFilterInstance;
+import org.jetbrains.annotations.Nullable;
 
 /** Combines non-overlapping condensed JFR files */
 public class CombiningJFRReader implements JFRReader {
@@ -23,21 +26,40 @@ public class CombiningJFRReader implements JFRReader {
             BasicJFRReader reader, StartMessage startMessage, List<ReadStruct> alreadyReadEvents) {}
 
     private final List<ReaderAndReadEvents> readers;
-    private final EventFilter filter;
+    private final EventFilterInstance filter;
     private final StartMessage startMessage;
     private int currentReaderIndex = 0;
     private ReaderAndReadEvents currentReader;
     private int currentEventIndex = 0;
     private ReadStruct lastReadEvent;
 
-    private CombiningJFRReader(List<ReaderAndReadEvents> orderedReaders, EventFilter filter) {
+    private CombiningJFRReader(List<ReaderAndReadEvents> orderedReaders, EventFilterInstance filter) {
         this.readers = orderedReaders;
         this.filter = filter;
         this.startMessage = createCombinedStartMessage(orderedReaders);
     }
 
     public static CombiningJFRReader fromPaths(List<Path> paths) {
-        return fromPaths(paths, e -> true, true);
+        return fromPaths(paths, (EventFilterInstance) null, true);
+    }
+
+    /**
+     * Creates a reader for the {@code .cjfr} files in the given paths. This works with nested
+     * folders and zip files.
+     * <p>
+     * Reads the events in two phases if needed for the filtering
+     */
+    public static <C> CombiningJFRReader fromPaths(
+            List<Path> paths, @Nullable EventFilter<C> filter, boolean reconstitute) {
+        if (filter == null) {
+            return fromPaths(paths, (EventFilterInstance) null, reconstitute);
+        }
+        C context = filter.createContext();
+        if (filter.isInformationGathering()) {
+            var reader = fromPaths(paths, filter.createTestFilter(context), reconstitute);
+            while (reader.readNextEvent() != null);
+        }
+        return fromPaths(paths, filter.createTestFilter(context), reconstitute);
     }
 
     /**
@@ -45,7 +67,7 @@ public class CombiningJFRReader implements JFRReader {
      * folders and zip files.
      */
     public static CombiningJFRReader fromPaths(
-            List<Path> paths, EventFilter filter, boolean reconstitute) {
+            List<Path> paths, EventFilterInstance filter, boolean reconstitute) {
         return new CombiningJFRReader(
                 orderedReader(
                         paths.stream()
@@ -127,14 +149,14 @@ public class CombiningJFRReader implements JFRReader {
                     currentReaderIndex++;
                     continue;
                 }
-                if (!filter.test(event)) {
+                if (filter != null && !filter.test(event)) {
                     continue;
                 }
                 lastReadEvent = event;
                 return event;
             }
             var event = currentReader.alreadyReadEvents.get(currentEventIndex++);
-            if (!filter.test(event)) {
+            if (filter != null && !filter.test(event)) {
                 continue;
             }
             lastReadEvent = event;
