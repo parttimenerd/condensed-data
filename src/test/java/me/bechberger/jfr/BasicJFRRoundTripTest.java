@@ -556,14 +556,6 @@ public class BasicJFRRoundTripTest {
                     for (var entry : map) {
                         var name = (String) entry.get("key");
                         var duration = Duration.ofNanos((Long) entry.get("value"));
-                        System.out.println(
-                                gcId
-                                        + ": "
-                                        + name
-                                        + ": "
-                                        + duration
-                                        + " expected "
-                                        + nameToDuration.get(name));
                         Asserters.assertEquals(
                                 nameToDuration.get(name),
                                 duration,
