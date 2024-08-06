@@ -44,6 +44,8 @@ jobs:
     runs-on: ubuntu-22.04
     needs: build
     timeout-minutes: 10
+    permissions:
+      checks: write
     steps:
       - uses: actions/checkout@v4
 
