@@ -1,6 +1,7 @@
 package me.bechberger.jfr;
 
 import static me.bechberger.condensed.types.TypeCollection.normalize;
+import static me.bechberger.util.TimeUtil.clamp;
 
 import java.time.Instant;
 import java.util.*;
@@ -925,7 +926,7 @@ public class JFREventCombiner extends EventCombiner {
                             new MapPartValue<>(
                                     "duration",
                                     durationCreator,
-                                    e -> basicJFRWriter.getDurationValue(e, "duration"))),
+                                    e -> clamp(e.getDuration("duration")).toNanos())),
                     map ->
                             configuration.ignoreTooShortGCPauses()
                                     ? map.entrySet().stream()
@@ -940,7 +941,7 @@ public class JFREventCombiner extends EventCombiner {
     }
 
     static class GCPhasePauseLevelReconstitutor
-            extends AbstractReconstitutor<GCPhasePauseLevelCombiner> {
+            extends AbstractReconstitutor<JFREventCombiner.GCPhasePauseLevelCombiner> {
         public GCPhasePauseLevelReconstitutor(String eventTypeName) {
             super(eventTypeName);
         }

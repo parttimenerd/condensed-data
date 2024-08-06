@@ -1,7 +1,9 @@
 package me.bechberger.jfr;
 
 import static me.bechberger.condensed.Util.toNanoSeconds;
+import static me.bechberger.util.TimeUtil.clamp;
 
+import java.time.Duration;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
@@ -21,7 +23,7 @@ public enum JFRReduction {
     NONE(
             Object.class,
             Object.class,
-            new ReductionFunction<Object, Object>() {
+            new ReductionFunction<>() {
                 @Override
                 public Object reduce(Configuration configuration, Universe universe, Object value) {
                     return value;
@@ -36,7 +38,7 @@ public enum JFRReduction {
     TIMESTAMP_REDUCTION(
             Instant.class,
             Long.class,
-            new ReductionFunction<Long, Instant>() {
+            new ReductionFunction<>() {
                 @Override
                 public Long reduce(Configuration configuration, Universe universe, Instant value) {
                     long l = toNanoSeconds(value);
@@ -64,6 +66,21 @@ public enum JFRReduction {
                     nanoSeconds += universe.getLastStartTimeNanos();
                     universe.setLastStartTimeNanos(nanoSeconds);
                     return Instant.ofEpochSecond(0, nanoSeconds);
+                }
+            }),
+    TIMESPAN_REDUCTION(
+            Duration.class,
+            Long.class,
+            new ReductionFunction<>() {
+                @Override
+                public Long reduce(Configuration configuration, Universe universe, Duration value) {
+                    return clamp(value).toNanos();
+                }
+
+                @Override
+                public Duration inflate(
+                        Configuration configuration, Universe universe, Long reduced) {
+                    return Duration.ofNanos(reduced);
                 }
             });
 

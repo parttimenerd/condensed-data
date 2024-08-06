@@ -68,7 +68,7 @@ public class JFRView {
 
         @Override
         public List<String> format(ReadStruct event, int rows) {
-            return List.of(formatDuration(Duration.ofNanos((long) event.get(property))));
+            return List.of(formatDuration(event.get(property, Duration.class)));
         }
 
         @Override

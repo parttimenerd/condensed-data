@@ -25,7 +25,6 @@ import me.bechberger.condensed.types.*;
 import me.bechberger.condensed.types.FloatType.Type;
 import me.bechberger.condensed.types.StructType.Field;
 import me.bechberger.jfr.JFRReduction.ReducedStackTrace;
-import me.bechberger.util.TimeUtil;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 import org.json.JSONArray;
@@ -153,9 +152,6 @@ public class BasicJFRWriter {
             return Objects.hash(typeName, contentType, annotations, isArray);
         }
     }
-
-    /** all durations with more than 1 year are stored as 1 year, same with negative durations */
-    private static final long MAX_DURATION_SECONDS = 60 * 60 * 24 * 365;
 
     private final CondensedOutputStream out;
     private final Configuration configuration;
@@ -544,20 +540,13 @@ public class BasicJFRWriter {
                                 ? configuration.timeStampTicksPerSecond()
                                 : configuration.durationTicksPerSecond());
         return new GetterAndCachedType(
-                event -> {
-                    var duration = event.getDuration(field.getName());
-                    if (duration.getSeconds() < -MAX_DURATION_SECONDS) {
-                        return -MAX_DURATION_SECONDS * ticksPerSec;
-                    } else if (duration.getSeconds() > MAX_DURATION_SECONDS) {
-                        return MAX_DURATION_SECONDS * ticksPerSec;
-                    }
-                    return duration.toNanos();
-                },
-                getCachedTimespanType(1_000_000_000 / ticksPerSec));
+                event -> event.getDuration(field.getName()),
+                getCachedTimespanType(1_000_000_000 / ticksPerSec),
+                JFRReduction.TIMESPAN_REDUCTION);
     }
 
     VarIntType getDurationType() {
-        long ticksPerSec = configuration.durationTicksPerSecond();
+        long ticksPerSec = configuration.timeStampTicksPerSecond();
         return getCachedTimespanType(1_000_000_000 / ticksPerSec);
     }
 
@@ -565,17 +554,6 @@ public class BasicJFRWriter {
         long ticksPerSec = configuration.durationTicksPerSecond();
         long multiplier = 1_000_000_000 / ticksPerSec;
         return ticks < multiplier && ticks > -multiplier;
-    }
-
-    Long getDurationValue(RecordedEvent event, String field) {
-        long ticksPerSec = configuration.durationTicksPerSecond();
-        var duration = event.getDuration(field);
-        if (duration.getSeconds() < -MAX_DURATION_SECONDS) {
-            return -MAX_DURATION_SECONDS * ticksPerSec;
-        } else if (duration.getSeconds() > MAX_DURATION_SECONDS) {
-            return MAX_DURATION_SECONDS * ticksPerSec;
-        }
-        return duration.toNanos();
     }
 
     private static long getSpecifiedTicksPerSec(ValueDescriptor field) {

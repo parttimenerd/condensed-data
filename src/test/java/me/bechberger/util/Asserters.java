@@ -49,7 +49,20 @@ public class Asserters {
         var diff = Math.abs(expected - actual);
         var maxDiff =
                 Math.max(NANOSECONDS_PER_SECOND / ticksPerSecond, ALLOWED_NANOSECOND_DIFFERENCE);
-        assertTrue(diff <= maxDiff, message);
+        assertTrue(
+                diff <= maxDiff,
+                message
+                        + " ("
+                        + diff
+                        + " > "
+                        + maxDiff
+                        + ", expectedns = "
+                        + expected
+                        + ", actualns = "
+                        + actual
+                        + ", tickPerSecond = "
+                        + ticksPerSecond
+                        + ")");
     }
 
     public static void assertEqualsJFRNanos(long expected, long actual, long ticksPerSecond) {

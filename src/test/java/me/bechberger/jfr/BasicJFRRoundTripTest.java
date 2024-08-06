@@ -504,6 +504,7 @@ public class BasicJFRRoundTripTest {
                         .withCombineObjectAllocationSampleEvents(true)
                         .withCombineEventsWithoutDataLoss(true)
                         .withDurationTicksPerSecond(durationTicksPerSecond)
+                        .withTimeStampTicksPerSecond(durationTicksPerSecond)
                         .withIgnoreTooShortGCPauses(ignoreTooShortGCPauses);
         try (CondensedOutputStream out =
                 new CondensedOutputStream(outputStream, StartMessage.DEFAULT)) {
@@ -555,11 +556,29 @@ public class BasicJFRRoundTripTest {
                     for (var entry : map) {
                         var name = (String) entry.get("key");
                         var duration = Duration.ofNanos((Long) entry.get("value"));
+                        System.out.println(
+                                gcId
+                                        + ": "
+                                        + name
+                                        + ": "
+                                        + duration
+                                        + " expected "
+                                        + nameToDuration.get(name));
                         Asserters.assertEquals(
                                 nameToDuration.get(name),
                                 duration,
-                                config.durationTicksPerSecond(),
-                                "Duration for name " + name + " does not match");
+                                config.timeStampTicksPerSecond(),
+                                "Duration for name "
+                                        + name
+                                        + " does not match (ticks = "
+                                        + config.timeStampTicksPerSecond()
+                                        + ", ignore short = "
+                                        + ignoreTooShortGCPauses
+                                        + ")"
+                                        + " vs "
+                                        + nameToDuration.get(name)
+                                        + " vs "
+                                        + duration);
                     }
 
                     if (ignoreTooShortGCPauses) {

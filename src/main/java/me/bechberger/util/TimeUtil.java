@@ -50,4 +50,21 @@ public class TimeUtil {
             throw new IllegalArgumentException("Invalid duration format: " + duration);
         }
     }
+
+    /** all durations with more than 1 year are stored as 1 year, same with negative durations */
+    public static final long MAX_DURATION_SECONDS = 60 * 60 * 24 * 365;
+
+    /**
+     * Clamp the duration to the range (-{@link #MAX_DURATION_SECONDS}, {@link
+     * #MAX_DURATION_SECONDS})
+     */
+    public static Duration clamp(Duration duration) {
+        if (duration.getSeconds() > MAX_DURATION_SECONDS) {
+            return Duration.ofSeconds(MAX_DURATION_SECONDS);
+        } else if (duration.getSeconds() < -MAX_DURATION_SECONDS) {
+            return Duration.ofSeconds(-MAX_DURATION_SECONDS);
+        } else {
+            return duration;
+        }
+    }
 }

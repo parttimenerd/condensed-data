@@ -7,7 +7,6 @@ import java.nio.file.Path;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.*;
-import java.util.function.Function;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipInputStream;
 import me.bechberger.JFRReader;
@@ -33,7 +32,8 @@ public class CombiningJFRReader implements JFRReader {
     private int currentEventIndex = 0;
     private ReadStruct lastReadEvent;
 
-    private CombiningJFRReader(List<ReaderAndReadEvents> orderedReaders, EventFilterInstance filter) {
+    private CombiningJFRReader(
+            List<ReaderAndReadEvents> orderedReaders, EventFilterInstance filter) {
         this.readers = orderedReaders;
         this.filter = filter;
         this.startMessage = createCombinedStartMessage(orderedReaders);
@@ -46,8 +46,8 @@ public class CombiningJFRReader implements JFRReader {
     /**
      * Creates a reader for the {@code .cjfr} files in the given paths. This works with nested
      * folders and zip files.
-     * <p>
-     * Reads the events in two phases if needed for the filtering
+     *
+     * <p>Reads the events in two phases if needed for the filtering
      */
     public static <C> CombiningJFRReader fromPaths(
             List<Path> paths, @Nullable EventFilter<C> filter, boolean reconstitute) {
@@ -56,8 +56,9 @@ public class CombiningJFRReader implements JFRReader {
         }
         C context = filter.createContext();
         if (filter.isInformationGathering()) {
-            var reader = fromPaths(paths, filter.createTestFilter(context), reconstitute);
-            while (reader.readNextEvent() != null);
+            var reader = fromPaths(paths, filter.createAnalyzeFilter(context), reconstitute);
+            while (reader.readNextEvent() != null)
+                ;
         }
         return fromPaths(paths, filter.createTestFilter(context), reconstitute);
     }
@@ -107,12 +108,12 @@ public class CombiningJFRReader implements JFRReader {
 
     private static ReaderAndReadEvents readerForInputStream(InputStream is, boolean reconstitute) {
         var reader = new BasicJFRReader(new CondensedInputStream(is), reconstitute);
-        var startMessage = reader.getStartMessage();
         var alreadyReadEvents = new ArrayList<ReadStruct>();
         var event = reader.readNextEvent();
         if (event != null) {
             alreadyReadEvents.add(event);
         }
+        var startMessage = reader.getStartMessage();
         return new ReaderAndReadEvents(reader, startMessage, alreadyReadEvents);
     }
 

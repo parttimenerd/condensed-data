@@ -7,6 +7,7 @@ import java.io.IOException;
 import java.io.OutputStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.time.Duration;
 import java.time.Instant;
 import java.util.*;
 import java.util.function.Consumer;
@@ -235,10 +236,10 @@ public class WritingJFRReader {
         var type = field.getType();
         if (value instanceof Instant) {
             // improve
-            return field.getType()
-                    .asValue(
-                            ((Instant) value).getEpochSecond() * 1000_000_000
-                                    + ((Instant) value).getNano());
+            return field.getType().asValue(toNanoSeconds((Instant) value));
+        }
+        if (value instanceof Duration) {
+            return field.getType().asValue(((Duration) value).toNanos());
         }
         return switch (type.getTypeName()) {
             case "boolean" -> type.asValue((boolean) value);
@@ -334,11 +335,14 @@ public class WritingJFRReader {
                                             .equals("timestamp")) {
                                         if (value instanceof Instant) {
                                             value = toNanoSeconds((Instant) value);
+                                        } else if (value instanceof Duration) {
+                                            value = ((Duration) value).toNanos();
                                         } else if (value instanceof Long) {
                                             value = value;
                                         } else {
                                             throw new IllegalArgumentException(
-                                                    "Expected Instant or Long (nanoseconds) for "
+                                                    "Expected Instant, Duration or Long"
+                                                            + " (nanoseconds) for "
                                                             + field.getName()
                                                             + ", got: "
                                                             + value);

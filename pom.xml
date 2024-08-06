@@ -305,25 +305,30 @@
             </plugin>
             <!-- the agent tests require the agent to be packaged -->
             <plugin>
-                <groupId>org.apache.maven.plugins</groupId>
-                <artifactId>maven-antrun-plugin</artifactId>
-                <version>1.8</version>
+                <!-- run mvn package -DskipTests via exec plugin -->
+                <groupId>org.codehaus.mojo</groupId>
+                <artifactId>exec-maven-plugin</artifactId>
+                <version>3.0.0</version>
                 <executions>
                     <execution>
-                        <phase>pre-integration-test</phase>
+                        <id>mvn-package-for-agent-tests</id>
+                        <phase>process-test-resources</phase>
                         <goals>
-                            <goal>run</goal>
+                            <goal>exec</goal>
                         </goals>
                         <configuration>
-                            <tasks>
-                                <exec executable="mvn">
-                                    <arg value="package"/>
-                                    <arg value="-DskipTests"/>
-                                </exec>
-                            </tasks>
+                            <executable>mvn</executable>
+                            <arguments>
+                                <argument>package</argument>
+                                <argument>-DskipTests</argument>
+                            </arguments>
                         </configuration>
                     </execution>
                 </executions>
+                <!-- skip if -DskipTests is passed -->
+                <configuration>
+                    <skip>${skipTests}</skip>
+                </configuration>
             </plugin>
         </plugins>
     </build>
