@@ -373,7 +373,7 @@ public class WritingJFRReader {
     public static void toJFRFile(JFRReader reader, Path output) {
         Path path = toJFRFile(reader);
         try {
-            Files.move(path, output);
+            Files.move(path, output, java.nio.file.StandardCopyOption.REPLACE_EXISTING);
         } catch (IOException e) {
             throw new RuntimeException(e);
         }

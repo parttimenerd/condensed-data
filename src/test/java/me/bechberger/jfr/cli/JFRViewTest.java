@@ -101,7 +101,7 @@ public class JFRViewTest {
         }
         assertEquals(
                 """
-                TestEvent                                                                          \s
+                TestEvent
 
                 Start Time Duration   Event Thread    Stack Trace                                       Number     Memory     String                                          \s
                 ---------- ---------- --------------- ------------------------------------------------- ---------- ---------- -------------------------------------------------

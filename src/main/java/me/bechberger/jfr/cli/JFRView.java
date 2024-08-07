@@ -68,7 +68,11 @@ public class JFRView {
 
         @Override
         public List<String> format(ReadStruct event, int rows) {
-            return List.of(formatDuration(event.get(property, Duration.class)));
+            var val = event.get(property, Duration.class);
+            if (val == null) {
+                return List.of("-");
+            }
+            return List.of(formatDuration(val));
         }
 
         @Override
@@ -93,6 +97,9 @@ public class JFRView {
         @Override
         public List<String> format(ReadStruct event, int rows) {
             var value = event.get(property, Instant.class);
+            if (value == null) {
+                return List.of("-");
+            }
             return List.of(
                     formatter.format(LocalDateTime.ofInstant(value, ZoneId.systemDefault())));
         }
@@ -122,6 +129,9 @@ public class JFRView {
         @Override
         public List<String> format(ReadStruct event, int rows) {
             var value = event.getStruct(property);
+            if (value == null) {
+                return List.of("-");
+            }
             var name = value.get("javaName", String.class);
             if (name == null) {
                 name = value.get("osName", String.class);
@@ -261,6 +271,9 @@ public class JFRView {
         @Override
         public List<String> format(ReadStruct event, int rows) {
             var klass = event.getStruct(property);
+            if (klass == null) {
+                return List.of("-");
+            }
             var pkg = event.get("package", String.class);
             var klassName = klass.get("name", String.class).replace('/', '.');
             if (pkg == null) {
@@ -290,6 +303,9 @@ public class JFRView {
         @Override
         public List<String> format(ReadStruct event, int rows) {
             var cl = event.getStruct(property);
+            if (cl == null) {
+                return List.of("-");
+            }
             return List.of(cl.get("name", String.class));
         }
 
@@ -315,6 +331,9 @@ public class JFRView {
         @Override
         public List<String> format(ReadStruct event, int rows) {
             var method = event.getStruct(property);
+            if (method == null) {
+                return List.of("-");
+            }
             return List.of(
                     CLASS_COLUMN.format(method, 1).get(0) + "." + method.get("name", String.class));
         }
@@ -345,12 +364,17 @@ public class JFRView {
 
         @Override
         public int rows(ReadStruct event) {
-            return event.getStruct(property).size();
+            var val = event.getStruct(property);
+            return val == null ? 1 : val.size();
         }
 
         @Override
         public List<String> format(ReadStruct event, int rows) {
-            var frames = event.getStruct(property).<ReadStruct>getList("frames");
+            var val = event.getStruct(property);
+            if (val == null) {
+                return List.of("-");
+            }
+            var frames = val.<ReadStruct>getList("frames");
             return frames.stream()
                     .map(f -> METHOD_COLUMN.format(f, 1).get(0) + ":" + f.get("lineNumber"))
                     .limit(rows)
@@ -385,7 +409,11 @@ public class JFRView {
 
                     @Override
                     public List<String> format(ReadStruct event, int rows) {
-                        return List.of(event.get(property).toString());
+                        var val = event.get(property);
+                        if (val == null) {
+                            return List.of("-");
+                        }
+                        return List.of(val.toString());
                     }
 
                     @Override
@@ -414,6 +442,9 @@ public class JFRView {
         @Override
         public List<String> format(ReadStruct event, int rows) {
             var struct = event.getStruct(property);
+            if (struct == null) {
+                return List.of("-");
+            }
             if (rows == 1) {
                 return parts.get(0).format(struct, rows);
             }
@@ -540,9 +571,6 @@ public class JFRView {
     public List<String> header() {
         // print name centered
         var name = view.name;
-        var padding = (config.width - name.length()) / 2;
-        List<String> header =
-                new ArrayList<>(List.of("", " ".repeat(padding) + name + " ".repeat(padding), ""));
         var headerLine = new StringBuilder();
         var sepLine = new StringBuilder();
         for (int i = 0; i < view.columns.size(); i++) {
@@ -558,6 +586,8 @@ public class JFRView {
                 sepLine.append(" ");
             }
         }
+        var padding = (headerLine.length() - name.length()) / 2;
+        List<String> header = new ArrayList<>(List.of("", " ".repeat(padding) + name, ""));
         header.add(headerLine.toString());
         header.add(sepLine.toString());
         return header;

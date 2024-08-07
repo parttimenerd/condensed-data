@@ -157,25 +157,17 @@ public class JFRCLI implements Runnable {
         @Spec CommandSpec spec;
 
         private Path getOutputFile() {
-            if (outputFile.toString().isEmpty()) {
-                if (inputFiles.size() != 1) {
+            if (outputFile.endsWith(".cjfr")) {
+                if (!inputFiles.isEmpty()) {
                     throw new ParameterException(
-                            spec.commandLine(),
-                            "Only one input file is allowed if no output file given");
+                            spec.commandLine(), "Only one file is allowed if no output file given");
                 }
-                var inputFile = inputFiles.get(0);
-                if (!Files.exists(inputFile)) {
-                    System.err.println("Input file does not exist: " + inputFile);
+                if (!Files.exists(outputFile)) {
+                    System.err.println("Input file does not exist: " + outputFile);
                     return null;
                 }
-                if (inputFile.endsWith(".cjfr")) {
-                    System.err.println(
-                            "Input file is not a condensed JFR file: "
-                                    + inputFile
-                                    + " please state an output file");
-                    return null;
-                }
-                return inputFile.resolveSibling(inputFile.getFileName() + ".inflated.jfr");
+                return outputFile.resolveSibling(
+                        outputFile.getFileName().toString().replace(".cjfr", ".inflated.jfr"));
             }
             return outputFile;
         }
@@ -444,7 +436,11 @@ public class JFRCLI implements Runnable {
             description = "View a specific event of a condensed JFR file as a table",
             mixinStandardHelpOptions = true)
     public static class ViewCommand implements Callable<Integer> {
-        @Parameters(index = "0", description = "The event name", paramLabel = "EVENT_NAME")
+        @Parameters(
+                index = "0",
+                description = "The event name",
+                paramLabel = "EVENT_NAME",
+                arity = "1")
         private String eventName;
 
         @Parameters(index = "1..*", description = "The input .cjfr files, can be folders, or zips")
@@ -517,8 +513,11 @@ public class JFRCLI implements Runnable {
         throw new ParameterException(spec.commandLine(), "Missing required subcommand");
     }
 
+    public static int execute(String[] args) {
+        return new picocli.CommandLine(new JFRCLI()).execute(args);
+    }
+
     public static void main(String[] args) {
-        int exitCode = new picocli.CommandLine(new JFRCLI()).execute(args);
-        System.exit(exitCode);
+        System.exit(execute(args));
     }
 }

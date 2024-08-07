@@ -4,9 +4,9 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.time.Duration;
 import java.time.Instant;
 import java.util.*;
+import java.util.logging.Logger;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipInputStream;
 import me.bechberger.JFRReader;
@@ -16,10 +16,13 @@ import me.bechberger.condensed.Message.StartMessage;
 import me.bechberger.condensed.ReadStruct;
 import me.bechberger.jfr.cli.EventFilter;
 import me.bechberger.jfr.cli.EventFilter.EventFilterInstance;
+import org.checkerframework.checker.units.qual.C;
 import org.jetbrains.annotations.Nullable;
 
 /** Combines non-overlapping condensed JFR files */
 public class CombiningJFRReader implements JFRReader {
+
+    private static final Logger LOGGER = Logger.getLogger(CombiningJFRReader.class.getName());
 
     private record ReaderAndReadEvents(
             BasicJFRReader reader, StartMessage startMessage, List<ReadStruct> alreadyReadEvents) {}
@@ -36,6 +39,9 @@ public class CombiningJFRReader implements JFRReader {
             List<ReaderAndReadEvents> orderedReaders, EventFilterInstance filter) {
         this.readers = orderedReaders;
         this.filter = filter;
+        if (orderedReaders.isEmpty()) {
+            throw new IllegalArgumentException("No cjfr files given");
+        }
         this.startMessage = createCombinedStartMessage(orderedReaders);
     }
 
@@ -70,17 +76,32 @@ public class CombiningJFRReader implements JFRReader {
     public static CombiningJFRReader fromPaths(
             List<Path> paths, EventFilterInstance filter, boolean reconstitute) {
         return new CombiningJFRReader(
-                orderedReader(
+                orderedUniqueReaders(
                         paths.stream()
                                 .flatMap(p -> readersForPath(p, reconstitute).stream())
                                 .toList()),
                 filter);
     }
 
-    private static List<ReaderAndReadEvents> orderedReader(List<ReaderAndReadEvents> readers) {
-        return readers.stream()
-                .sorted(Comparator.comparingLong(a -> a.reader().getUniverse().getStartTimeNanos()))
-                .toList();
+    private static List<ReaderAndReadEvents> orderedUniqueReaders(
+            List<ReaderAndReadEvents> readers) {
+        var sorted =
+                readers.stream()
+                        .sorted(
+                                Comparator.comparingLong(
+                                        a -> a.reader().getUniverse().getStartTimeNanos()))
+                        .toList();
+        // remove all readers that have the same start time and log a warning
+        var startTimes = new HashSet<Long>();
+        var uniqueReaders = new ArrayList<ReaderAndReadEvents>();
+        for (var reader : sorted) {
+            if (startTimes.add(reader.reader().getUniverse().getStartTimeNanos())) {
+                uniqueReaders.add(reader);
+            } else {
+                LOGGER.warning("Multiple files with the same start time, only using the first one");
+            }
+        }
+        return uniqueReaders;
     }
 
     private static List<ReaderAndReadEvents> readersForPath(Path path, boolean reconstitute) {
@@ -100,8 +121,8 @@ public class CombiningJFRReader implements JFRReader {
             }
         }
         // check if file is zip or tar.gz file
-        if (isZipOrTarGz(path)) {
-            return readersForZipOrTarGz(path, reconstitute);
+        if (isZip(path)) {
+            return readersForZip(path, reconstitute);
         }
         return List.of();
     }
@@ -117,8 +138,7 @@ public class CombiningJFRReader implements JFRReader {
         return new ReaderAndReadEvents(reader, startMessage, alreadyReadEvents);
     }
 
-    private static List<ReaderAndReadEvents> readersForZipOrTarGz(Path path, boolean reconstitute) {
-        // Read all files in the ZIP or GZIP file
+    private static List<ReaderAndReadEvents> readersForZip(Path path, boolean reconstitute) {
         try (var is = Files.newInputStream(path)) {
             var zipReader = new ZipInputStream(is);
             var readers = new ArrayList<ReaderAndReadEvents>();
@@ -148,6 +168,7 @@ public class CombiningJFRReader implements JFRReader {
                 if (event == null) {
                     currentReader = null;
                     currentReaderIndex++;
+                    currentEventIndex = 0;
                     continue;
                 }
                 if (filter != null && !filter.test(event)) {
@@ -185,7 +206,10 @@ public class CombiningJFRReader implements JFRReader {
         // check that versions and compressions only contain one entry
         if (versions.size() != 1 || compressions.size() != 1) {
             throw new IllegalStateException(
-                    "Versions and compressions must be the same for all readers");
+                    "Versions and compressions must be the same for all readers: "
+                            + versions
+                            + ", "
+                            + compressions);
         }
         return new StartMessage(
                 versions.iterator().next(),
@@ -198,19 +222,6 @@ public class CombiningJFRReader implements JFRReader {
     @Override
     public StartMessage getStartMessage() {
         return startMessage;
-    }
-
-    @Override
-    public Duration getDuration() {
-        var startTime = readers.get(0).reader().getUniverse().getStartTimeNanos();
-        if (startTime == -1 || lastReadEvent == null) {
-            return Duration.ZERO;
-        }
-        var lastEventTime = lastReadEvent.get("startTime", Instant.class);
-        return Duration.ofNanos(
-                lastEventTime.getEpochSecond()
-                        + 1_000_000_000L * lastEventTime.getNano()
-                        - startTime);
     }
 
     @Override
@@ -235,7 +246,7 @@ public class CombiningJFRReader implements JFRReader {
     /**
      * Check if the file is a readable ZIP or GZIP file, based only on the first 4 bytes of the file
      */
-    private static boolean isZipOrTarGz(Path path) {
+    private static boolean isZip(Path path) {
         try (InputStream is = Files.newInputStream(path)) {
             byte[] signature = new byte[4];
             if (is.read(signature) != 4) {
@@ -246,10 +257,6 @@ public class CombiningJFRReader implements JFRReader {
                     && signature[1] == 0x4B
                     && signature[2] == 0x03
                     && signature[3] == 0x04) {
-                return true;
-            }
-            // Check for GZIP file signature
-            if (signature[0] == 0x1F && signature[1] == (byte) 0x8B) {
                 return true;
             }
         } catch (IOException e) {
