@@ -7,6 +7,7 @@ import jdk.jfr.EventType;
 import jdk.jfr.consumer.RecordedEvent;
 import me.bechberger.condensed.CondensedOutputStream;
 import me.bechberger.condensed.types.StructType;
+import me.bechberger.util.Cache;
 
 /**
  * Idea: Allows to combine multiple events into one to reduce the amount of data written to the
@@ -88,7 +89,7 @@ public abstract class EventCombiner {
         }
 
         private void write() {
-            statePerToken.removeAll();
+            statePerToken.clear();
         }
 
         private void processEvent(RecordedEvent event) {

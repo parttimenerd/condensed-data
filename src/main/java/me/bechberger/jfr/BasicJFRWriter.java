@@ -324,7 +324,7 @@ public class BasicJFRWriter {
                 TypeIdent.of(field), f -> createTypeAndRegister(field, field.isArray()));
     }
 
-    private String getDescription(ValueDescriptor field) {
+    public String getDescription(ValueDescriptor field) {
         // encode all important info in the description
         JSONArray arr = new JSONArray();
         arr.put(field.getTypeName());
@@ -380,7 +380,7 @@ public class BasicJFRWriter {
     }
 
     @SuppressWarnings("unchecked")
-    private <T extends RecordedObject> Field<T, ?, ?> eventFieldToField(
+    public <T extends RecordedObject> Field<T, ?, ?> eventFieldToField(
             ValueDescriptor field, boolean topLevel) {
         String description = getDescription(field);
         EmbeddingType embedding = JFRHashConfig.getEmbeddingType(field);
@@ -726,5 +726,9 @@ public class BasicJFRWriter {
 
     public Statistic getUncompressedStatistic() {
         return out.getStatistic();
+    }
+
+    public CondensedOutputStream getOutputStream() {
+        return out;
     }
 }

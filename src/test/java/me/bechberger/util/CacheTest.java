@@ -94,4 +94,28 @@ public class CacheTest {
         assertTrue(cache.containsKey("a"));
         assertTrue(cache.containsKey("b"));
     }
+
+    @Test
+    public void testOnRemoveKeysAndValue() {
+        List<Map.Entry<Integer, Integer>> removed = new ArrayList<>();
+        Cache<Integer, Integer> cache =
+                new Cache<>(2) {
+                    @Override
+                    public void onRemove(Integer key, Integer value) {
+                        removed.add(Map.entry(key, value));
+                    }
+                };
+        cache.put(2, 3);
+        cache.put(4, 5);
+        assertEquals(3, cache.get(2));
+        assertEquals(0, removed.size());
+        cache.put(6, 7);
+        assertEquals(1, removed.size());
+        assertEquals(Map.entry(2, 3), removed.get(0));
+        cache.clear();
+        assertEquals(3, removed.size());
+        assertEquals(Map.entry(2, 3), removed.get(0));
+        assertEquals(Map.entry(4, 5), removed.get(1));
+        assertEquals(Map.entry(6, 7), removed.get(2));
+    }
 }

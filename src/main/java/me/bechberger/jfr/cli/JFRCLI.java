@@ -12,10 +12,7 @@ import java.nio.file.Path;
 import java.time.Duration;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
-import java.util.Comparator;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
+import java.util.*;
 import java.util.concurrent.Callable;
 import jdk.jfr.consumer.RecordingFile;
 import me.bechberger.JFRReader;
@@ -33,7 +30,9 @@ import me.bechberger.jfr.cli.JFRView.PrintConfig;
 import me.bechberger.jfr.cli.JFRView.TruncateMode;
 import me.bechberger.jfr.cli.agent.AgentIO;
 import me.bechberger.util.TimeUtil;
+import org.checkerframework.checker.units.qual.A;
 import picocli.CommandLine.*;
+import picocli.CommandLine.Help.Visibility;
 import picocli.CommandLine.Model.CommandSpec;
 
 /** A CLI for writing JFR (and more) based on {@link BasicJFRWriter} */
@@ -80,12 +79,13 @@ public class JFRCLI implements Runnable {
         @Option(
                 names = {"-c", "--generatorConfiguration"},
                 description =
-                        "The generatorConfiguration to use, possible values:"
+                        "The configuration to use, possible values:"
                                 + " ${COMPLETION-CANDIDATES}",
                 completionCandidates = ConfigurationIterable.class,
                 defaultValue = "default",
+                showDefaultValue = Visibility.ALWAYS,
                 converter = ConfigurationConverter.class)
-        private Configuration configuration = Configuration.DEFAULT;
+        private Configuration configuration;
 
         private Path getOutputFile() {
             if (outputFile.toString().isEmpty()) {
@@ -149,8 +149,8 @@ public class JFRCLI implements Runnable {
         @Parameters(index = "0", description = "The output file", defaultValue = "")
         private Path outputFile;
 
-        @Parameters(index = "1..*", description = "The input .cjfr files, can be folders, or zips")
-        private List<Path> inputFiles;
+        @Parameters(index = "1..*", description = "The input .cjfr files, can be folders, or zips", arity = "1..*")
+        private List<Path> inputFiles = new ArrayList<>();
 
         @Mixin EventFilterOptionMixin eventFilterOptionMixin;
 
