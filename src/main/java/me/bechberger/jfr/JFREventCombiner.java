@@ -976,7 +976,17 @@ public class JFREventCombiner extends EventCombiner {
                 BasicJFRWriter basicJFRWriter, Configuration configuration) {
 
             // name -> (GC Thread + worker identifier + duration)
-
+            // spotless:off
+            var gcWorkerDuration = new MapPartValue<RecordedEvent, RecordedEvent>(
+                    "gcworkerDuration",
+                    (out, eventType) -> (CondensedType) basicJFRWriter.getOutputStream().writeAndStoreType(id -> {
+                        return new StructType<RecordedEvent, ReadStruct>(id, "GCWorker", List.of(
+                                basicJFRWriter.eventFieldToField(eventType.getField("eventThread"), true),
+                                basicJFRWriter.eventFieldToField(eventType.getField("gcWorkerId"), true),
+                                basicJFRWriter.eventFieldToField(eventType.getField("duration"), true)));
+                    }),
+                    e -> e);
+            // spotless:on
             return new MapValue<>(
                     new MapPartValue<>(
                             "name",
@@ -985,41 +995,7 @@ public class JFREventCombiner extends EventCombiner {
                                             basicJFRWriter.getTypeCached(
                                                     eventType.getField("name")),
                             e -> e.getString("name")),
-                    new SingleValue<>(
-                            new MapPartValue<RecordedEvent, RecordedEvent>(
-                                    "gcworkerDuration",
-                                    (out, eventType) ->
-                                            (CondensedType)
-                                                    basicJFRWriter
-                                                            .getOutputStream()
-                                                            .writeAndStoreType(
-                                                                    id -> {
-                                                                        return new StructType<
-                                                                                RecordedEvent,
-                                                                                ReadStruct>(
-                                                                                id,
-                                                                                "GCWorker",
-                                                                                List.of(
-                                                                                        basicJFRWriter
-                                                                                                .eventFieldToField(
-                                                                                                        eventType
-                                                                                                                .getField(
-                                                                                                                        "eventThread"),
-                                                                                                        true),
-                                                                                        basicJFRWriter
-                                                                                                .eventFieldToField(
-                                                                                                        eventType
-                                                                                                                .getField(
-                                                                                                                        "gcWorkerId"),
-                                                                                                        true),
-                                                                                        basicJFRWriter
-                                                                                                .eventFieldToField(
-                                                                                                        eventType
-                                                                                                                .getField(
-                                                                                                                        "duration"),
-                                                                                                        true)));
-                                                                    }),
-                                    e -> e)),
+                    new SingleValue<>(gcWorkerDuration),
                     map -> new ArrayList<>(map.entrySet()));
         }
     }
