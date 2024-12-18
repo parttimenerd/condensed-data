@@ -30,7 +30,7 @@ import me.bechberger.jfr.cli.JFRView.PrintConfig;
 import me.bechberger.jfr.cli.JFRView.TruncateMode;
 import me.bechberger.jfr.cli.agent.AgentIO;
 import me.bechberger.util.TimeUtil;
-import org.checkerframework.checker.units.qual.A;
+import picocli.AutoComplete.GenerateCompletion;
 import picocli.CommandLine.*;
 import picocli.CommandLine.Help.Visibility;
 import picocli.CommandLine.Model.CommandSpec;
@@ -38,14 +38,15 @@ import picocli.CommandLine.Model.CommandSpec;
 /** A CLI for writing JFR (and more) based on {@link BasicJFRWriter} */
 @Command(
         name = "cjfr",
-        description = "CLI for condensed JFR files",
+        description = "CLI for the JFR condenser project",
         subcommands = {
             JFRCLI.WriteJFRCommand.class,
             JFRCLI.InflateJFRCommand.class,
             JFRCLI.BenchmarkCommand.class,
             JFRCLI.AgentCommand.class,
             JFRCLI.SummaryCommand.class,
-            JFRCLI.ViewCommand.class
+            JFRCLI.ViewCommand.class,
+            GenerateCompletion.class
         },
         mixinStandardHelpOptions = true)
 public class JFRCLI implements Runnable {

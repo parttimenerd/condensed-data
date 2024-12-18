@@ -1,0 +1,4 @@
+#!/bin/sh
+# get the directory of this script without BASH_SOURCE
+DIR="$( cd "$( dirname "$0" )" && pwd )"
+java -jar $DIR/target/condensed-data.jar $@
