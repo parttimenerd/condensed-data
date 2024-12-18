@@ -1,6 +1,9 @@
 package me.bechberger.condensed.types;
 
-import java.util.*;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.List;
+import java.util.Objects;
 import java.util.function.Function;
 import org.jetbrains.annotations.Nullable;
 

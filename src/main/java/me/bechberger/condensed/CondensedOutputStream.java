@@ -1,6 +1,9 @@
 package me.bechberger.condensed;
 
-import java.io.*;
+import java.io.ByteArrayOutputStream;
+import java.io.IOException;
+import java.io.OutputStream;
+import java.io.UnsupportedEncodingException;
 import java.util.function.Consumer;
 import java.util.function.Function;
 import me.bechberger.condensed.Compression.CompressionLevel;

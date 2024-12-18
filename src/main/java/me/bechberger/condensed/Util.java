@@ -1,7 +1,10 @@
 package me.bechberger.condensed;
 
+import java.io.IOException;
+import java.io.InputStream;
 import java.time.Instant;
 import java.util.List;
+import java.util.Properties;
 import java.util.stream.IntStream;
 import org.openjdk.jmc.common.util.Pair;
 
@@ -138,5 +141,17 @@ public class Util {
 
     public static long toNanoSeconds(Instant instant) {
         return instant.getEpochSecond() * 1_000_000_000 + instant.getNano();
+    }
+
+    public static String getLibraryVersion() {
+        Properties properties = new Properties();
+        try (InputStream input = Util.class.getClassLoader().getResourceAsStream("version")) {
+            if (input == null) {
+                throw new RuntimeException("Could not find version");
+            }
+            return new String(input.readAllBytes()).strip();
+        } catch (IOException ex) {
+            throw new RuntimeException("Could not read version.properties", ex);
+        }
     }
 }

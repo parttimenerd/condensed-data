@@ -1,6 +1,9 @@
 package me.bechberger.jfr;
 
-import java.util.*;
+import java.util.HashMap;
+import java.util.HashSet;
+import java.util.Map;
+import java.util.Set;
 import java.util.function.BiConsumer;
 import java.util.function.Supplier;
 import jdk.jfr.EventType;

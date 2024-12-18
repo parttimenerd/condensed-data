@@ -1,7 +1,7 @@
 package me.bechberger.jfr.cli.agent;
 
 import java.time.Duration;
-import java.util.*;
+import java.util.Arrays;
 import java.util.concurrent.Callable;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.stream.Stream;

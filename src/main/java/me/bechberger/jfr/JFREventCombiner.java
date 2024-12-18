@@ -3,7 +3,6 @@ package me.bechberger.jfr;
 import static me.bechberger.condensed.types.TypeCollection.normalize;
 import static me.bechberger.util.TimeUtil.clamp;
 
-import java.sql.Struct;
 import java.time.Instant;
 import java.util.*;
 import java.util.Map.Entry;
@@ -384,7 +383,8 @@ public class JFREventCombiner extends EventCombiner {
                             List.of(
                                     new Field<>(
                                             "startTime",
-                                            basicJFRWriter.getDescription(eventType.getField("startTime")),
+                                            basicJFRWriter.getDescription(
+                                                    eventType.getField("startTime")),
                                             (CondensedType<Instant, Instant>)
                                                     basicJFRWriter.getTypeCached(
                                                             eventType.getField("startTime")),
@@ -395,7 +395,8 @@ public class JFREventCombiner extends EventCombiner {
                                                             getStartTimestamp(s))),
                                     new Field<S, Object, Object>(
                                             topLevelFieldName,
-                                            basicJFRWriter.getDescription(eventType.getField(topLevelFieldName)),
+                                            basicJFRWriter.getDescription(
+                                                    eventType.getField(topLevelFieldName)),
                                             (CondensedType)
                                                     valueDefinition.createType(out, eventType),
                                             JFRObjectState::map)));
@@ -665,8 +666,7 @@ public class JFREventCombiner extends EventCombiner {
         }
     }
 
-    record GCIdToken(long gcId) {
-    }
+    record GCIdToken(long gcId) {}
 
     record GCIdState(Instant startTime, long gcId, JFREventCombiner.DefinedMap<RecordedEvent> map)
             implements JFREventCombiner.JFRObjectState {}
@@ -988,12 +988,37 @@ public class JFREventCombiner extends EventCombiner {
                     new SingleValue<>(
                             new MapPartValue<RecordedEvent, RecordedEvent>(
                                     "gcworkerDuration",
-                                    (out, eventType) -> (CondensedType) basicJFRWriter.getOutputStream().writeAndStoreType(id -> {
-                                        return new StructType<RecordedEvent, ReadStruct>(id, "GCWorker", List.of(
-                                                basicJFRWriter.eventFieldToField(eventType.getField("eventThread"), true),
-                                                basicJFRWriter.eventFieldToField(eventType.getField("gcWorkerId"), true),
-                                                basicJFRWriter.eventFieldToField(eventType.getField("duration"), true)));
-                                    }),
+                                    (out, eventType) ->
+                                            (CondensedType)
+                                                    basicJFRWriter
+                                                            .getOutputStream()
+                                                            .writeAndStoreType(
+                                                                    id -> {
+                                                                        return new StructType<
+                                                                                RecordedEvent,
+                                                                                ReadStruct>(
+                                                                                id,
+                                                                                "GCWorker",
+                                                                                List.of(
+                                                                                        basicJFRWriter
+                                                                                                .eventFieldToField(
+                                                                                                        eventType
+                                                                                                                .getField(
+                                                                                                                        "eventThread"),
+                                                                                                        true),
+                                                                                        basicJFRWriter
+                                                                                                .eventFieldToField(
+                                                                                                        eventType
+                                                                                                                .getField(
+                                                                                                                        "gcWorkerId"),
+                                                                                                        true),
+                                                                                        basicJFRWriter
+                                                                                                .eventFieldToField(
+                                                                                                        eventType
+                                                                                                                .getField(
+                                                                                                                        "duration"),
+                                                                                                        true)));
+                                                                    }),
                                     e -> e)),
                     map -> new ArrayList<>(map.entrySet()));
         }
@@ -1012,13 +1037,15 @@ public class JFREventCombiner extends EventCombiner {
                 EventBuilder<E, ?> builder) {
             builder.put("gcId").addStandardFieldsIfNeeded();
             return combinedReadEvent.asMapEntryList("name").stream()
-                    .map(e -> {
-                        ReadStruct struct = (ReadStruct) e.getValue();
-                        return builder.put("name", e.getKey())
-                                .put("eventThread", struct.get("eventThread"))
-                                .put("gcWorkerId", struct.get("gcWorkerId"))
-                                .put("duration", struct.get("duration")).build();
-                    })
+                    .map(
+                            e -> {
+                                ReadStruct struct = (ReadStruct) e.getValue();
+                                return builder.put("name", e.getKey())
+                                        .put("eventThread", struct.get("eventThread"))
+                                        .put("gcWorkerId", struct.get("gcWorkerId"))
+                                        .put("duration", struct.get("duration"))
+                                        .build();
+                            })
                     .toList();
         }
     }
@@ -1326,7 +1353,8 @@ public class JFREventCombiner extends EventCombiner {
             if (eventType.getName().equals("jdk.GCPhaseParallel")) {
                 put(
                         eventType,
-                        new JFREventCombiner.GCPhaseParallelCombiner(configuration, basicJFRWriter));
+                        new JFREventCombiner.GCPhaseParallelCombiner(
+                                configuration, basicJFRWriter));
             }
         }
     }
@@ -1357,7 +1385,8 @@ public class JFREventCombiner extends EventCombiner {
                                     Map.entry(
                                             "jdk.combined.TenuringDistribution",
                                             new TenuringDistributionReconstitutor()),
-                                    Map.entry("jdk.combined.GCPhaseParallel",
+                                    Map.entry(
+                                            "jdk.combined.GCPhaseParallel",
                                             new GCPhaseParallelReconstitutor())));
 
     public static class JFREventTypedValuedReconstitutor extends EventReconstitutor<TypedValue> {

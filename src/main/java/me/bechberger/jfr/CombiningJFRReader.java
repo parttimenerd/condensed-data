@@ -16,7 +16,6 @@ import me.bechberger.condensed.Message.StartMessage;
 import me.bechberger.condensed.ReadStruct;
 import me.bechberger.jfr.cli.EventFilter;
 import me.bechberger.jfr.cli.EventFilter.EventFilterInstance;
-import org.checkerframework.checker.units.qual.C;
 import org.jetbrains.annotations.Nullable;
 
 /** Combines non-overlapping condensed JFR files */

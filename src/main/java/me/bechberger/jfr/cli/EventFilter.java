@@ -339,5 +339,9 @@ public interface EventFilter<C> {
                     createBasicFilter(start, end, duration, eventTypes),
                     createGCPercentileFilter(gcPercentile, gcPercentileContext));
         }
+
+        public boolean noReconstitution() {
+            return noReconstitution;
+        }
     }
 }

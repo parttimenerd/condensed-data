@@ -14,10 +14,10 @@ import me.bechberger.jfr.BasicJFRReader;
 import me.bechberger.jfr.BasicJFRWriter;
 import me.bechberger.jfr.cli.JFRView.JFRViewConfig;
 import me.bechberger.jfr.cli.JFRView.PrintConfig;
-import me.bechberger.jfr.cli.JFRView.TruncateMode;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
 
+/** Tests the underlying JFRView works */
 public class JFRViewTest {
 
     @Name("TestEvent")

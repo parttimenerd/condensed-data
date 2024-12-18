@@ -1,7 +1,8 @@
 package me.bechberger.jfr.cli.agent;
 
 import static me.bechberger.util.MemoryUtil.formatMemory;
-import static me.bechberger.util.TimeUtil.*;
+import static me.bechberger.util.TimeUtil.formatDuration;
+import static me.bechberger.util.TimeUtil.formatInstant;
 
 import java.io.IOException;
 import java.text.ParseException;

@@ -547,11 +547,6 @@ public class JFRView {
         }
     }
 
-    static enum TruncateMode {
-        BEGIN,
-        END
-    }
-
     private final JFRViewConfig view;
     private final PrintConfig config;
     private final List<Integer> columnWidths;

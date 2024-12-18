@@ -11,7 +11,6 @@ import me.bechberger.condensed.CondensedInputStream;
 import me.bechberger.condensed.CondensedOutputStream;
 import me.bechberger.condensed.ReadList;
 import me.bechberger.condensed.Universe.EmbeddingType;
-import me.bechberger.condensed.types.SpecifiedType.NoSuchDefaultTypeException;
 
 /**
  * A type that represents an array of values of another type
