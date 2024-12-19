@@ -55,7 +55,7 @@ public record Configuration(
 
     /** with conservative lossy compression */
     public static final Configuration REASONABLE_DEFAULT =
-            DEFAULT.withName("reasonable default")
+            DEFAULT.withName("reasonable-default")
                     .withMemoryAsBFloat16(true)
                     .withTimeStampTicksPerSecond(1_000)
                     .withDurationTicksPerSecond(1_000_000)
@@ -65,7 +65,7 @@ public record Configuration(
 
     public static final Configuration REDUCED_DEFAULT =
             REASONABLE_DEFAULT
-                    .withName("reduced default")
+                    .withName("reduced-default")
                     .withCombinePLABPromotionEvents(true)
                     .withCombineObjectAllocationSampleEvents(true)
                     .withSumObjectSizes(true);

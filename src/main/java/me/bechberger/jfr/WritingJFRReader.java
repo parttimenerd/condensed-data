@@ -342,9 +342,7 @@ public class WritingJFRReader {
                                             value = toNanoSeconds((Instant) value);
                                         } else if (value instanceof Duration) {
                                             value = ((Duration) value).toNanos();
-                                        } else if (value instanceof Long) {
-                                            value = value;
-                                        } else {
+                                        } else if (!(value instanceof Long)) {
                                             throw new IllegalArgumentException(
                                                     "Expected Instant, Duration or Long"
                                                             + " (nanoseconds) for "

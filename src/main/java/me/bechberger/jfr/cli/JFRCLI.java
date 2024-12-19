@@ -17,8 +17,8 @@ import picocli.CommandLine.Spec;
         name = "cjfr",
         description = "CLI for the JFR condenser project",
         subcommands = {
-            CondenseJFRCommand.class,
-            InflateJFRCommand.class,
+            CondenseCommand.class,
+            InflateCommand.class,
             BenchmarkCommand.class,
             AgentCommand.class,
             SummaryCommand.class,
@@ -38,7 +38,7 @@ public class JFRCLI implements Runnable {
 
     @Spec CommandSpec spec;
 
-    @Command(name = "help", description = "Print help information", mixinStandardHelpOptions = true)
+    @Command(name = "help", description = "Print help information")
     public void help() {
         spec.commandLine().usage(System.out);
     }
@@ -49,7 +49,19 @@ public class JFRCLI implements Runnable {
     }
 
     public static CommandLine createCommandLine() {
-        return new CommandLine(new JFRCLI());
+        var cli = new CommandLine(new JFRCLI());
+        for (var sub : cli.getSubcommands().values()) {
+            sub.getCommandSpec().args().stream()
+                    .filter(
+                            a ->
+                                    a.isOption()
+                                            && ((CommandLine.Model.OptionSpec) a)
+                                                    .longestName()
+                                                    .equals("--version"))
+                    .findFirst()
+                    .ifPresent(a -> sub.getCommandSpec().remove(a));
+        }
+        return cli;
     }
 
     public static int execute(String[] args) {

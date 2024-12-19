@@ -36,7 +36,7 @@ public class Agent implements Runnable {
     private static RecordingThread currentRecordingThread;
     private static String agentArgs;
 
-    @Command(name = "start", description = "Start the recording", mixinStandardHelpOptions = true)
+    @Command(name = "start", description = "Start the recording", helpCommand = true)
     static class StartCommand implements Callable<Integer> {
 
         @Option(

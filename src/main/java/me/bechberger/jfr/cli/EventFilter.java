@@ -172,7 +172,7 @@ public interface EventFilter<C> {
                 description =
                         "Filter out events that happened in the seconds before and after the GC's"
                             + " with >= n-th percentile duration, e.g. --gc-percentile 90 gives you"
-                            + " all events before, during and after the longest 10% of GC's")
+                            + " all events before, during and after the longest 10%% of GC's")
         int gcPercentile = 0;
 
         @Option(

@@ -11,8 +11,11 @@ import me.bechberger.jfr.cli.EventFilter.EventFilterOptionMixin;
 import picocli.CommandLine.*;
 import picocli.CommandLine.Model.CommandSpec;
 
-@Command(name = "inflate", description = "Inflate a condensed JFR file into JFR format")
-public class InflateJFRCommand implements Callable<Integer> {
+@Command(
+        name = "inflate",
+        description = "Inflate a condensed JFR file into JFR format",
+        mixinStandardHelpOptions = true)
+public class InflateCommand implements Callable<Integer> {
 
     @Parameters(index = "0", description = "The output file", defaultValue = "")
     private Path outputFile;

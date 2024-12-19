@@ -12,26 +12,37 @@ import me.bechberger.jfr.Configuration;
 import me.bechberger.jfr.cli.CLIUtils.ConfigurationConverter;
 import me.bechberger.jfr.cli.CLIUtils.ConfigurationIterable;
 import me.bechberger.jfr.cli.Constants;
+import me.bechberger.jfr.cli.FileOptionConverters.CJFRFileConverter;
+import me.bechberger.jfr.cli.FileOptionConverters.ExistingJFRFileConverter;
+import me.bechberger.jfr.cli.FileOptionConverters.ExistingJFRFileParameterConsumer;
 import picocli.CommandLine.Command;
 import picocli.CommandLine.Help.Visibility;
 import picocli.CommandLine.Option;
 import picocli.CommandLine.Parameters;
 
 @Command(name = "condense", description = "Condense a JFR file", mixinStandardHelpOptions = true)
-public class CondenseJFRCommand implements Callable<Integer> {
+public class CondenseCommand implements Callable<Integer> {
 
     // optional out path, compress flag, statistics flag
 
-    @Parameters(index = "0", description = "The input file")
+    @Parameters(
+            index = "0",
+            description = "The input file",
+            converter = ExistingJFRFileConverter.class,
+            parameterConsumer = ExistingJFRFileParameterConsumer.class)
     private Path inputFile;
 
-    @Parameters(index = "1", description = "The output file", defaultValue = "")
+    @Parameters(
+            index = "1",
+            description = "The output file, default is the inputFile with the ending *.cjfc",
+            defaultValue = "",
+            converter = CJFRFileConverter.class)
     private Path outputFile;
 
     @Option(
-            names = {"--compress"},
-            description = "Compress the output file")
-    private boolean compress = true;
+            names = {"--no-compression"},
+            description = "Don't compress the output file")
+    private boolean noCompression = false;
 
     @Option(
             names = {"-s", "--statistics"},
@@ -50,16 +61,13 @@ public class CondenseJFRCommand implements Callable<Integer> {
 
     private Path getOutputFile() {
         if (outputFile.toString().isEmpty()) {
-            return inputFile.resolveSibling(inputFile.getFileName() + ".cjfr");
+            return inputFile.resolveSibling(
+                    inputFile.getFileName().toString().replace(".jfr", ".cjfr"));
         }
         return outputFile;
     }
 
     public Integer call() {
-        if (!Files.exists(inputFile)) {
-            System.err.println("Input file does not exist: " + inputFile);
-            return 1;
-        }
         try (var out =
                 new CondensedOutputStream(
                         Files.newOutputStream(getOutputFile()),
@@ -68,7 +76,7 @@ public class CondenseJFRCommand implements Callable<Integer> {
                                 "condensed jfr cli",
                                 Constants.VERSION,
                                 configuration.name(),
-                                Compression.DEFAULT))) {
+                                noCompression ? Compression.NONE : Compression.DEFAULT))) {
             var basicJFRWriter = new BasicJFRWriter(out, configuration);
             try (RecordingFile r = new RecordingFile(inputFile)) {
                 while (r.hasMoreEvents()) {

@@ -1,5 +1,8 @@
 package me.bechberger.jfr.cli.commands;
 
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.junit.jupiter.api.Assertions.assertAll;
+
 import com.github.stefanbirkner.systemlambda.SystemLambda;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -8,13 +11,31 @@ import java.util.List;
 import java.util.Map;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
-import java.util.function.Consumer;
 import java.util.stream.Collectors;
 import me.bechberger.jfr.cli.JFRCLI;
 
 /** Run a command with the given files in a temporary folder and check all files in the folder */
 public class CommandExecuter {
-    public record CommandResult(int exitCode, String output, String error) {}
+
+    @FunctionalInterface
+    public interface ConsumerWithException<T> {
+        void accept(T t) throws Exception;
+    }
+
+    @FunctionalInterface
+    public interface BiConsumerWithException<S, T> {
+        void accept(S s, T t) throws Exception;
+    }
+
+    public record CommandResult(int exitCode, String output, String error) {
+
+        public void assertNoErrorOrOutput() {
+            assertAll(
+                    () -> assertThat(exitCode).isEqualTo(0),
+                    () -> assertThat(error).isEmpty(),
+                    () -> assertThat(output).isEmpty());
+        }
+    }
 
     /**
      * Run a command with the given files in a temporary folder and check all files in the folder
@@ -22,7 +43,7 @@ public class CommandExecuter {
     public static CommandResult run(
             List<String> args,
             Map<Path, String> copiedInFiles,
-            Consumer<Map<String, Path>> checkFilesInTemp)
+            BiConsumerWithException<CommandResult, Map<String, Path>> checkFilesInTemp)
             throws Exception {
         Path tempFolder = Files.createTempDirectory("jfr-cli-test");
         for (var entry : copiedInFiles.entrySet()) {
@@ -30,6 +51,7 @@ public class CommandExecuter {
         }
         AtomicInteger exitCode = new AtomicInteger();
         AtomicReference<String> err = new AtomicReference<>();
+        var modifiedArgs = args.stream().map(s -> s.replace("T/", tempFolder.toString() + "/"));
         String out =
                 SystemLambda.tapSystemOut(
                         () ->
@@ -38,10 +60,12 @@ public class CommandExecuter {
                                                 () -> {
                                                     exitCode.set(
                                                             JFRCLI.execute(
-                                                                    args.toArray(String[]::new)));
+                                                                    modifiedArgs.toArray(
+                                                                            String[]::new)));
                                                 })));
         try (var stream = Files.list(tempFolder)) {
             checkFilesInTemp.accept(
+                    new CommandResult(exitCode.get(), out, err.get()),
                     stream.collect(Collectors.toMap(p -> p.getFileName().toString(), p -> p)));
         }
         return new CommandResult(exitCode.get(), out, err.get());
@@ -49,7 +73,8 @@ public class CommandExecuter {
 
     private final List<String> args;
     private Map<Path, String> copiedInFiles = new HashMap<>();
-    private Consumer<Map<String, Path>> checkFilesInTemp = m -> {};
+    private BiConsumerWithException<CommandResult, Map<String, Path>> checkFilesInTemp =
+            (r, m) -> {};
 
     public CommandExecuter(String... jfrCLIArgs) {
         this.args = List.of(jfrCLIArgs);
@@ -67,7 +92,12 @@ public class CommandExecuter {
                         .collect(Collectors.toMap(p -> p, p -> p.getFileName().toString())));
     }
 
-    public CommandExecuter checkFiles(Consumer<Map<String, Path>> checkFilesInTemp) {
+    public CommandExecuter withFiles(Path... copiedInFiles) {
+        return withFiles(List.of(copiedInFiles));
+    }
+
+    public CommandExecuter check(
+            BiConsumerWithException<CommandResult, Map<String, Path>> checkFilesInTemp) {
         this.checkFilesInTemp = checkFilesInTemp;
         return this;
     }

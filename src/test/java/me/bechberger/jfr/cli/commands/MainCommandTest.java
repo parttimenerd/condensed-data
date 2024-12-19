@@ -3,7 +3,12 @@ package me.bechberger.jfr.cli.commands;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.junit.jupiter.api.Assertions.assertAll;
 
+import java.util.stream.Stream;
+import me.bechberger.jfr.cli.JFRCLI;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.Arguments;
+import org.junit.jupiter.params.provider.MethodSource;
 
 /**
  * Tests that the main {@code cjfr} command works (has help and everything, exits as expected)
@@ -67,5 +72,39 @@ public class MainCommandTest {
                 () -> assertThat(result.exitCode()).isEqualTo(0),
                 () -> assertThat(result.output()).contains("bash"),
                 () -> assertThat(result.error()).isEmpty());
+    }
+
+    private static Stream<Arguments> subCommands() {
+        return JFRCLI.createCommandLine().getSubcommands().keySet().stream().map(Arguments::of);
+    }
+
+    @ParameterizedTest
+    @MethodSource("subCommands")
+    public void testSubCommandHelp(String subCommand) throws Exception {
+        var result = new CommandExecuter(subCommand, "--help").run();
+        if (subCommand.equals("help")) {
+            assertAll(
+                    () -> assertThat(result.exitCode()).isEqualTo(2),
+                    () -> assertThat(result.error()).isNotEmpty());
+        } else {
+            assertAll(
+                    () -> assertThat(result.exitCode()).isEqualTo(0),
+                    () ->
+                            assertThat(result.output())
+                                    .containsIgnoringNewLines("Usage: cjfr " + subCommand),
+                    () -> assertThat(result.error()).isEmpty());
+        }
+    }
+
+    @ParameterizedTest
+    @MethodSource("subCommands")
+    public void testSubCommandsHaveNoVersion(String subCommand) throws Exception {
+        var result = new CommandExecuter(subCommand, "--version").run();
+        if (subCommand.equals("generate-completion")) {
+            return;
+        }
+        assertAll(
+                () -> assertThat(result.exitCode()).isEqualTo(2),
+                () -> assertThat(result.error()).isNotEmpty());
     }
 }
