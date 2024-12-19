@@ -4,7 +4,6 @@ import me.bechberger.condensed.Util;
 import me.bechberger.jfr.BasicJFRWriter;
 import me.bechberger.jfr.cli.JFRCLI.VersionProvider;
 import me.bechberger.jfr.cli.commands.*;
-import picocli.AutoComplete.GenerateCompletion;
 import picocli.CommandLine;
 import picocli.CommandLine.Command;
 import picocli.CommandLine.IVersionProvider;
@@ -23,7 +22,7 @@ import picocli.CommandLine.Spec;
             AgentCommand.class,
             SummaryCommand.class,
             ViewCommand.class,
-            GenerateCompletion.class
+            GenerateCompletionCommand.class
         },
         mixinStandardHelpOptions = true,
         versionProvider = VersionProvider.class)
@@ -50,6 +49,7 @@ public class JFRCLI implements Runnable {
 
     public static CommandLine createCommandLine() {
         var cli = new CommandLine(new JFRCLI());
+        picocli.AutoComplete.bash("cjfr", cli);
         for (var sub : cli.getSubcommands().values()) {
             sub.getCommandSpec().args().stream()
                     .filter(

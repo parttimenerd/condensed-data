@@ -2,6 +2,8 @@ package me.bechberger.jfr.cli;
 
 import java.io.File;
 import java.io.IOException;
+import java.lang.annotation.Retention;
+import java.lang.annotation.Target;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
@@ -15,6 +17,12 @@ import picocli.CommandLine.ParameterException;
 
 /** Utility class for handling file options in a command-line interface using picocli. */
 public class FileOptionConverters {
+
+    @Retention(java.lang.annotation.RetentionPolicy.RUNTIME)
+    @Target(java.lang.annotation.ElementType.TYPE)
+    public @interface FileEndingAnnotation {
+        String ending() default "";
+    }
 
     /** Converter that ensures the file exists and has the specified extension. */
     public static class ExistingFileWithExtensionConverter implements ITypeConverter<Path> {
@@ -136,12 +144,14 @@ public class FileOptionConverters {
         }
     }
 
+    @FileEndingAnnotation(ending = ".jfr")
     public static class ExistingJFRFileConverter extends ExistingFileWithExtensionConverter {
         public ExistingJFRFileConverter() {
             super(".jfr", true);
         }
     }
 
+    @FileEndingAnnotation(ending = ".cjfr")
     public static class ExistingCJFRFileConverter extends ExistingFileWithExtensionConverter {
         public ExistingCJFRFileConverter() {
             super(".cjfr", true);
@@ -164,8 +174,8 @@ public class FileOptionConverters {
 
         private final String extension;
 
-        public FileWithExtensionConverter(String extension) {
-            this.extension = extension;
+        public FileWithExtensionConverter() {
+            this.extension = getFileEndingAnnotation(getClass());
         }
 
         @Override
@@ -181,15 +191,17 @@ public class FileOptionConverters {
         }
     }
 
-    public static class JFRFileConverter extends FileWithExtensionConverter {
-        public JFRFileConverter() {
-            super(".jfr");
-        }
-    }
+    @FileEndingAnnotation(ending = ".jfr")
+    public static class JFRFileConverter extends FileWithExtensionConverter {}
 
-    public static class CJFRFileConverter extends FileWithExtensionConverter {
-        public CJFRFileConverter() {
-            super(".cjfr");
+    @FileEndingAnnotation(ending = ".cjfr")
+    public static class CJFRFileConverter extends FileWithExtensionConverter {}
+
+    public static @Nullable String getFileEndingAnnotation(Class<?> converterClass) {
+        FileEndingAnnotation annotation = converterClass.getAnnotation(FileEndingAnnotation.class);
+        if (annotation == null || annotation.ending().isEmpty()) {
+            return null;
         }
+        return annotation.ending();
     }
 }
