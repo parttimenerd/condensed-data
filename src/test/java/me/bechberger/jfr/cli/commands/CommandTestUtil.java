@@ -6,6 +6,7 @@ import java.nio.file.Path;
 import java.text.ParseException;
 import jdk.jfr.*;
 import jdk.jfr.consumer.RecordingStream;
+import me.bechberger.jfr.cli.JFRCLI;
 
 public class CommandTestUtil {
 
@@ -41,11 +42,9 @@ public class CommandTestUtil {
 
     private static final int SAMPLE_JFR_FILE_DURATION = 2;
 
-    private static final Path SAMPLE_JFR_FILE = TEMP_FOLDER.resolve("sample.jfr");
-
     private static int counter = 0;
 
-    private static void recordSampleJFRFile() throws IOException, ParseException {
+    private static void recordSampleJFRFile(Path jfrFile) throws IOException, ParseException {
         int start = (int) System.currentTimeMillis();
 
         try (RecordingStream rs = new RecordingStream(Configuration.getConfiguration("profile"))) {
@@ -68,26 +67,64 @@ public class CommandTestUtil {
                     waste += Math.sqrt(i);
                 }
             }
-            rs.dump(SAMPLE_JFR_FILE);
+            rs.dump(jfrFile);
         }
+    }
+
+    public static Path getSampleJFRFile() {
+        return getSampleJFRFile(0);
     }
 
     /**
      * Returns a sample JFR file with two instances of the {@link TestEvent} (one with number 0 and
      * one with number 1)
      */
-    public static Path getSampleJFRFile() {
-        if (!Files.exists(SAMPLE_JFR_FILE)) {
+    public static Path getSampleJFRFile(int number) {
+        var file = TEMP_FOLDER.resolve(number == 0 ? "sample.jfr" : "sample_" + number + ".jfr");
+        if (!Files.exists(file)) {
             try {
-                recordSampleJFRFile();
+                recordSampleJFRFile(file);
             } catch (IOException | ParseException e) {
                 throw new RuntimeException(e);
             }
         }
-        return SAMPLE_JFR_FILE;
+        return file;
     }
 
     public static String getSampleJFRFileName() {
         return getSampleJFRFile().getFileName().toString();
+    }
+
+    public static String getSampleJFRFileName(int number) {
+        return getSampleJFRFile(number).getFileName().toString();
+    }
+
+    public static Path getSampleCJFRFile() {
+        return getSampleCJFRFile(0);
+    }
+
+    /**
+     * Returns a sample CJFR file with two instances of the {@link TestEvent} (one with number 0 and
+     * one with number 1)
+     */
+    public static Path getSampleCJFRFile(int number) {
+        var file = TEMP_FOLDER.resolve(number == 0 ? "sample.cjfr" : "sample_" + number + ".cjfr");
+        if (!Files.exists(file)) {
+            try {
+                var jfrFile = getSampleJFRFile(number);
+                JFRCLI.execute(new String[] {"condense", jfrFile.toString(), file.toString()});
+            } catch (Exception e) {
+                throw new RuntimeException(e);
+            }
+        }
+        return file;
+    }
+
+    public static String getSampleCJFRFileName(int number) {
+        return getSampleCJFRFile(number).getFileName().toString();
+    }
+
+    public static String getSampleCJFRFileName() {
+        return getSampleCJFRFile().getFileName().toString();
     }
 }

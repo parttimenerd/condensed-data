@@ -389,13 +389,6 @@ public class WritingJFRReader {
                     new WritingJFRReader(reader, Files.newOutputStream(tmp));
             while (true) {
                 var event = writingJFRReader.readNextJFREvent();
-                if (event != null && event.getType().toString().contains("Parallel")) {
-                    System.out.println(
-                            event.getFieldValues().stream()
-                                    .filter(f -> f.getField().getName().equals("gcId"))
-                                    .map(f -> f.getValue().getValue())
-                                    .findFirst());
-                }
                 if (event == null) {
                     break;
                 }

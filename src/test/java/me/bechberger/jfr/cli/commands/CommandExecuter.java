@@ -43,6 +43,8 @@ public class CommandExecuter {
     public static CommandResult run(
             List<String> args,
             Map<Path, String> copiedInFiles,
+            boolean checkNoError,
+            boolean checkNoOutput,
             BiConsumerWithException<CommandResult, Map<String, Path>> checkFilesInTemp)
             throws Exception {
         Path tempFolder = Files.createTempDirectory("jfr-cli-test");
@@ -63,6 +65,14 @@ public class CommandExecuter {
                                                                     modifiedArgs.toArray(
                                                                             String[]::new)));
                                                 })));
+        if (checkNoError) {
+            assertAll(
+                    () -> assertThat(exitCode.get()).isEqualTo(0),
+                    () -> assertThat(err.get()).isEmpty());
+        }
+        if (checkNoOutput) {
+            assertThat(out).isEmpty();
+        }
         try (var stream = Files.list(tempFolder)) {
             checkFilesInTemp.accept(
                     new CommandResult(exitCode.get(), out, err.get()),
@@ -73,6 +83,8 @@ public class CommandExecuter {
 
     private final List<String> args;
     private Map<Path, String> copiedInFiles = new HashMap<>();
+    private boolean checkNoError = false;
+    private boolean checkNoOutput = false;
     private BiConsumerWithException<CommandResult, Map<String, Path>> checkFilesInTemp =
             (r, m) -> {};
 
@@ -102,7 +114,19 @@ public class CommandExecuter {
         return this;
     }
 
+    /** Check that the command did not produce any error output and that the exit code is zero */
+    public CommandExecuter checkNoError() {
+        this.checkNoError = true;
+        return this;
+    }
+
+    /** Check that the command did not produce any output on standard out */
+    public CommandExecuter checkNoOutput() {
+        this.checkNoOutput = true;
+        return this;
+    }
+
     public CommandResult run() throws Exception {
-        return run(args, copiedInFiles, checkFilesInTemp);
+        return run(args, copiedInFiles, checkNoError, checkNoOutput, checkFilesInTemp);
     }
 }

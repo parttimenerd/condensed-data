@@ -106,11 +106,12 @@ public class JFRMultiFileTest {
     public void testZip() throws IOException {
         var zip = testFileFolder.resolve("test.zip");
         // create zip of all files in Java
-        var zos = new ZipOutputStream(Files.newOutputStream(zip));
-        for (var file : testFiles) {
-            zos.putNextEntry(new ZipEntry(file.getFileName().toString()));
-            Files.copy(file, zos);
-            zos.closeEntry();
+        try (var zos = new ZipOutputStream(Files.newOutputStream(zip))) {
+            for (var file : testFiles) {
+                zos.putNextEntry(new ZipEntry(file.getFileName().toString()));
+                Files.copy(file, zos);
+                zos.closeEntry();
+            }
         }
         assertAll(() -> check(List.of(zip)), () -> check(List.of(testFileFolder)));
     }
@@ -124,10 +125,16 @@ public class JFRMultiFileTest {
 
     private void check(List<Path> paths) {
         var args = paths.stream().map(Path::toString).toList();
+        var properArgs = new ArrayList<String>();
+        properArgs.add(args.get(0));
+        for (int i = 1; i < args.size(); i++) {
+            properArgs.add("-i");
+            properArgs.add(args.get(i));
+        }
         assertAll(
                 () -> checkSummaryResult(captureStdout("summary", args)),
                 () -> checkViewResult(captureStdout("view", combine("TestEvent", args))),
-                () -> checkInflateResult(args));
+                () -> checkInflateResult(properArgs));
     }
 
     private List<String> combine(String val, List<String> args) {
@@ -192,7 +199,10 @@ public class JFRMultiFileTest {
 
     private void checkInflateResult(List<String> args) throws IOException {
         Path tmpJfrFile = Files.createTempFile("jfr-cli-test", ".jfr");
-        JFRCLI.execute(combine("inflate", tmpJfrFile.toString(), args).toArray(String[]::new));
+        args = new ArrayList<>(args);
+        args.addAll(1, List.of(tmpJfrFile.toString()));
+        args.add(0, "inflate");
+        JFRCLI.execute(args.toArray(String[]::new));
         var events = RecordingFile.readAllEvents(tmpJfrFile);
         for (int i = 0; i < 4; i++) {
             assertThat(events.get(i).getStartTime().getEpochSecond()).isNotEqualTo(0);

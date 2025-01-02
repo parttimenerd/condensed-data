@@ -32,7 +32,9 @@ public class GenerateCompletionCommand implements Runnable {
 
     @Spec CommandSpec spec;
 
-    private Map<String, List<@Nullable String>> getFileEndingsOfPositionalsPerCommand() {
+    record FileEnding(String ending, boolean isZipAllowed) {}
+
+    private Map<String, List<@Nullable FileEnding>> getFileEndingsOfPositionalsPerCommand() {
         return spec.commandLine().getParent().getSubcommands().entrySet().stream()
                 .collect(
                         Collectors.toMap(
@@ -57,10 +59,13 @@ public class GenerateCompletionCommand implements Runnable {
                                                                         .getFileEndingAnnotation(
                                                                                 converter
                                                                                         .getClass());
+                                                        var isZipAllowed =
+                                                                FileOptionConverters.isZipAllowed(
+                                                                        converter.getClass());
                                                         if (ending == null) {
                                                             return null;
                                                         }
-                                                        return ending;
+                                                        return new FileEnding(ending, isZipAllowed);
                                                     })
                                             .toList();
                                 }));
@@ -80,7 +85,7 @@ public class GenerateCompletionCommand implements Runnable {
         String currentCommand = null;
         var fileEndings = getFileEndingsOfPositionalsPerCommand();
         List<String> results = new ArrayList<>();
-        List<@Nullable String> currentPositionals = List.of();
+        List<@Nullable FileEnding> currentPositionals = List.of();
         int currentPositionalIndex = 0;
         for (var line : script.lines().toList()) {
             var commandName = extractCommandName(line);
@@ -101,12 +106,21 @@ public class GenerateCompletionCommand implements Runnable {
             if (line.strip().equals("positionals=$( compgen -f -- \"${curr_word}\" ) # files")) {
                 var ending = currentPositionals.get(currentPositionalIndex);
                 if (ending != null) {
+                    var misc =
+                            ending.isZipAllowed
+                                    ? "; find . -type f -name \"*.zip\" -exec sh -c 'unzip -l"
+                                            + " \"{}\" | grep -q \"\\"
+                                            + ending
+                                            + "$\" && echo \"{}\"' \\; | grep \"^${curr_word}\""
+                                    : "";
                     results.add(
                             line.replace(
                                     "positionals=$( compgen -f -- \"${curr_word}\" ) # files",
                                     "positionals=$( compgen -f -- \"${curr_word}\" | grep -E '\\"
-                                            + ending
-                                            + "$' ) # files"));
+                                            + ending.ending
+                                            + "$'; compgen -d -- \"${curr_word}\""
+                                            + misc
+                                            + ") # files"));
                 } else {
                     results.add(line);
                 }

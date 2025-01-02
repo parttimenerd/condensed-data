@@ -138,19 +138,38 @@ public class CombiningJFRReader implements JFRReader {
     }
 
     private static List<ReaderAndReadEvents> readersForZip(Path path, boolean reconstitute) {
+        // unpack all .cjfr files to the folder
+        // reading directly from the zip file is not possible because the individual files are not
+        // read in order
+        var cjfrFiles = new ArrayList<Path>();
         try (var is = Files.newInputStream(path)) {
+            var tmpFolder = Files.createTempDirectory("jfr-cli");
+            Runtime.getRuntime()
+                    .addShutdownHook(
+                            new Thread(
+                                    () -> {
+                                        try {
+                                            for (var cjfrFile : cjfrFiles) {
+                                                Files.delete(cjfrFile);
+                                            }
+                                            Files.delete(tmpFolder);
+                                        } catch (IOException e) {
+                                            throw new RuntimeException(e);
+                                        }
+                                    }));
             var zipReader = new ZipInputStream(is);
-            var readers = new ArrayList<ReaderAndReadEvents>();
             ZipEntry entry;
             while ((entry = zipReader.getNextEntry()) != null) {
                 if (entry.getName().endsWith(".cjfr")) {
-                    readers.add(readerForInputStream(zipReader, reconstitute));
+                    var tmpFile = tmpFolder.resolve(entry.getName());
+                    Files.copy(zipReader, tmpFile);
+                    cjfrFiles.add(tmpFile);
                 }
             }
-            return readers;
         } catch (IOException e) {
             throw new RuntimeException(e);
         }
+        return cjfrFiles.stream().flatMap(p -> readersForPath(p, reconstitute).stream()).toList();
     }
 
     @Override
