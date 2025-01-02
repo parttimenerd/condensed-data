@@ -13,7 +13,8 @@ import picocli.CommandLine.Option;
 @Command(
         name = "benchmark",
         description = "Run the benchmarks on all files in the benchmark folder (for development)",
-        mixinStandardHelpOptions = true)
+        mixinStandardHelpOptions = true,
+        hidden = true)
 public class BenchmarkCommand implements Callable<Integer> {
     @Option(
             names = {"-k", "--keep-condensed-file"},
