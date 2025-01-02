@@ -123,7 +123,7 @@ public class SummaryCommandTest {
                  Compression: $COMPRESSION
                  Start: .*
                  End: .*
-                 Duration: [0-9](\\.[0-9]*)?s
+                 Duration: [0-9]+(\\.[0-9]*)?s
                  Events: .*
                 """
                         .replace("$VERSION", Constants.FORMAT_VERSION + "")
@@ -144,7 +144,7 @@ public class SummaryCommandTest {
                  Compression: $COMPRESSION
                  Start: .*
                  End: .*
-                 Duration: [0-9](\\.[0-9]*)?s
+                 Duration: [0-9]+(\\.[0-9]*)?s
                  Events: .*
 
                  Event Type                                Count

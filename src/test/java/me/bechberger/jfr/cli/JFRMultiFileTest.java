@@ -155,7 +155,7 @@ public class JFRMultiFileTest {
                  Compression: $COMPRESSION
                  Start: .*
                  End: .*
-                 Duration: [0-9](\\.[0-9]*)?s
+                 Duration: [0-9]+(\\.[0-9]*)?s
                  Events: 4
 
                  Event Type                                Count
