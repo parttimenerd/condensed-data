@@ -1,20 +1,18 @@
 package me.bechberger.jfr.cli.commands;
 
-import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
-import java.util.Comparator;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
+import java.util.*;
 import java.util.concurrent.Callable;
 import me.bechberger.JFRReader;
 import me.bechberger.condensed.Compression;
 import me.bechberger.condensed.ReadStruct;
 import me.bechberger.jfr.CombiningJFRReader;
 import me.bechberger.jfr.cli.EventFilter.EventFilterOptionMixin;
+import me.bechberger.jfr.cli.FileOptionConverters.ExistingCJFRFileOrZipOrFolderConverter;
+import me.bechberger.jfr.cli.FileOptionConverters.ExistingCJFRFileOrZipOrFolderParameterConsumer;
 import me.bechberger.util.TimeUtil;
 import picocli.CommandLine.Command;
 import picocli.CommandLine.Mixin;
@@ -27,8 +25,18 @@ import picocli.CommandLine.Parameters;
         mixinStandardHelpOptions = true)
 public class SummaryCommand implements Callable<Integer> {
 
-    @Parameters(index = "0..*", description = "The input .cjfr files, can be folders, or zips")
-    private List<Path> inputFiles;
+    @Parameters(
+            index = "0",
+            description = "The input .cjfr file, can be a folder, or a zip",
+            converter = ExistingCJFRFileOrZipOrFolderConverter.class,
+            parameterConsumer = ExistingCJFRFileOrZipOrFolderParameterConsumer.class)
+    private Path inputFile;
+
+    @Option(
+            names = {"-i", "--inputs"},
+            description = "Additional input files",
+            converter = ExistingCJFRFileOrZipOrFolderConverter.class)
+    private List<Path> inputFiles = new ArrayList<>();
 
     @Option(
             names = {"-s", "--short"},
@@ -39,12 +47,7 @@ public class SummaryCommand implements Callable<Integer> {
     @Mixin private EventFilterOptionMixin eventFilterOptionMixin;
 
     public Integer call() {
-        for (var inputFile : inputFiles) {
-            if (!Files.exists(inputFile)) {
-                System.err.println("Input file does not exist: " + inputFile);
-                return 1;
-            }
-        }
+        inputFiles.add(0, inputFile);
         try {
             var jfrReader =
                     CombiningJFRReader.fromPaths(

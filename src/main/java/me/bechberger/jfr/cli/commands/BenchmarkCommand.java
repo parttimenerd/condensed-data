@@ -12,7 +12,7 @@ import picocli.CommandLine.Option;
 
 @Command(
         name = "benchmark",
-        description = "Run the benchmarks on all files in the benchmark folder",
+        description = "Run the benchmarks on all files in the benchmark folder (for development)",
         mixinStandardHelpOptions = true)
 public class BenchmarkCommand implements Callable<Integer> {
     @Option(

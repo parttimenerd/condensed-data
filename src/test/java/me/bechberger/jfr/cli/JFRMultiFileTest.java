@@ -132,7 +132,7 @@ public class JFRMultiFileTest {
             properArgs.add(args.get(i));
         }
         assertAll(
-                () -> checkSummaryResult(captureStdout("summary", args)),
+                () -> checkSummaryResult(captureStdout("summary", properArgs)),
                 () -> checkViewResult(captureStdout("view", combine("TestEvent", args))),
                 () -> checkInflateResult(properArgs));
     }
@@ -140,14 +140,6 @@ public class JFRMultiFileTest {
     private List<String> combine(String val, List<String> args) {
         var combined = new ArrayList<String>();
         combined.add(val);
-        combined.addAll(args);
-        return combined;
-    }
-
-    private List<String> combine(String val, String val2, List<String> args) {
-        var combined = new ArrayList<String>();
-        combined.add(val);
-        combined.add(val2);
         combined.addAll(args);
         return combined;
     }
