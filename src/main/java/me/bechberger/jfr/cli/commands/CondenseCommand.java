@@ -2,6 +2,8 @@ package me.bechberger.jfr.cli.commands;
 
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.concurrent.Callable;
 import jdk.jfr.consumer.RecordingFile;
 import me.bechberger.condensed.Compression;
@@ -12,9 +14,7 @@ import me.bechberger.jfr.Configuration;
 import me.bechberger.jfr.cli.CLIUtils.ConfigurationConverter;
 import me.bechberger.jfr.cli.CLIUtils.ConfigurationIterable;
 import me.bechberger.jfr.cli.Constants;
-import me.bechberger.jfr.cli.FileOptionConverters.CJFRFileConverter;
-import me.bechberger.jfr.cli.FileOptionConverters.ExistingJFRFileConverter;
-import me.bechberger.jfr.cli.FileOptionConverters.ExistingJFRFileParameterConsumer;
+import me.bechberger.jfr.cli.FileOptionConverters.*;
 import picocli.CommandLine.Command;
 import picocli.CommandLine.Help.Visibility;
 import picocli.CommandLine.Option;
@@ -40,6 +40,13 @@ public class CondenseCommand implements Callable<Integer> {
     private Path outputFile;
 
     @Option(
+            names = {"-i", "--inputs"},
+            description = "Additional input files",
+            converter = ExistingJFRFileConverter.class,
+            parameterConsumer = ExistingJFRFilesConsumer.class)
+    private List<Path> inputFiles = new ArrayList<>();
+
+    @Option(
             names = {"--no-compression"},
             description = "Don't compress the output file")
     private boolean noCompression = false;
@@ -61,6 +68,10 @@ public class CondenseCommand implements Callable<Integer> {
 
     private Path getOutputFile() {
         if (outputFile.toString().isEmpty()) {
+            if (!inputFiles.isEmpty()) {
+                throw new IllegalArgumentException(
+                        "Only one file is allowed if no output file given");
+            }
             return inputFile.resolveSibling(
                     inputFile.getFileName().toString().replace(".jfr", ".cjfr"));
         }
@@ -77,10 +88,15 @@ public class CondenseCommand implements Callable<Integer> {
                                 Constants.VERSION,
                                 configuration.name(),
                                 noCompression ? Compression.NONE : Compression.DEFAULT))) {
+            var inputs = new ArrayList<Path>();
+            inputs.add(inputFile);
+            inputs.addAll(inputFiles);
             var basicJFRWriter = new BasicJFRWriter(out, configuration);
-            try (RecordingFile r = new RecordingFile(inputFile)) {
-                while (r.hasMoreEvents()) {
-                    basicJFRWriter.processEvent(r.readEvent());
+            for (var input : inputs) {
+                try (RecordingFile r = new RecordingFile(input)) {
+                    while (r.hasMoreEvents()) {
+                        basicJFRWriter.processEvent(r.readEvent());
+                    }
                 }
             }
             if (statistics) {

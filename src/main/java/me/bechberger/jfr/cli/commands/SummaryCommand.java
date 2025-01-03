@@ -13,6 +13,7 @@ import me.bechberger.jfr.CombiningJFRReader;
 import me.bechberger.jfr.cli.EventFilter.EventFilterOptionMixin;
 import me.bechberger.jfr.cli.FileOptionConverters.ExistingCJFRFileOrZipOrFolderConverter;
 import me.bechberger.jfr.cli.FileOptionConverters.ExistingCJFRFileOrZipOrFolderParameterConsumer;
+import me.bechberger.jfr.cli.FileOptionConverters.ExistingCJFRFilesOrZipOrFolderConsumer;
 import me.bechberger.util.TimeUtil;
 import picocli.CommandLine.Command;
 import picocli.CommandLine.Mixin;
@@ -35,7 +36,8 @@ public class SummaryCommand implements Callable<Integer> {
     @Option(
             names = {"-i", "--inputs"},
             description = "Additional input files",
-            converter = ExistingCJFRFileOrZipOrFolderConverter.class)
+            converter = ExistingCJFRFileOrZipOrFolderConverter.class,
+            parameterConsumer = ExistingCJFRFilesOrZipOrFolderConsumer.class)
     private List<Path> inputFiles = new ArrayList<>();
 
     @Option(

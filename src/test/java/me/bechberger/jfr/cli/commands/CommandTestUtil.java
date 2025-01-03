@@ -40,6 +40,12 @@ public class CommandTestUtil {
         }
     }
 
+    @Name("AnotherEvent")
+    @Label("Label")
+    @Description("Description")
+    @StackTrace
+    static class AnotherEvent extends Event {}
+
     private static final int SAMPLE_JFR_FILE_DURATION = 2;
 
     private static int counter = 0;
@@ -58,6 +64,8 @@ public class CommandTestUtil {
             System.gc();
 
             new TestEvent(1).commit();
+
+            new AnotherEvent().commit();
 
             // waste some CPU
 

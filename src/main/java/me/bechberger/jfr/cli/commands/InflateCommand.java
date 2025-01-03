@@ -10,6 +10,7 @@ import me.bechberger.jfr.cli.EventFilter.EventFilterOptionMixin;
 import me.bechberger.jfr.cli.FileOptionConverters;
 import me.bechberger.jfr.cli.FileOptionConverters.ExistingCJFRFileOrZipOrFolderConverter;
 import me.bechberger.jfr.cli.FileOptionConverters.ExistingCJFRFileOrZipOrFolderParameterConsumer;
+import me.bechberger.jfr.cli.FileOptionConverters.ExistingCJFRFilesOrZipOrFolderConsumer;
 import picocli.CommandLine.*;
 import picocli.CommandLine.Model.CommandSpec;
 
@@ -36,7 +37,8 @@ public class InflateCommand implements Callable<Integer> {
     @Option(
             names = {"-i", "--inputs"},
             description = "Additional input files",
-            converter = ExistingCJFRFileOrZipOrFolderConverter.class)
+            converter = ExistingCJFRFileOrZipOrFolderConverter.class,
+            parameterConsumer = ExistingCJFRFilesOrZipOrFolderConsumer.class)
     private List<Path> inputFiles = new ArrayList<>();
 
     @Mixin EventFilterOptionMixin eventFilterOptionMixin;

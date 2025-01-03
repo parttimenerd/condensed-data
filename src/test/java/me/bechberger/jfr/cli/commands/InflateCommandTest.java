@@ -189,6 +189,37 @@ public class InflateCommandTest {
     }
 
     @Test
+    public void testWithThreeInputFiles() throws Exception {
+        var cjfrZero = CommandTestUtil.getSampleCJFRFileName();
+        var cjfrOne = CommandTestUtil.getSampleCJFRFileName(1);
+        var cjfrTwo = CommandTestUtil.getSampleCJFRFileName(2);
+        new CommandExecuter(
+                        "inflate",
+                        "T/" + cjfrZero,
+                        "T/out.jfr",
+                        "--inputs",
+                        "T/" + cjfrOne,
+                        "--inputs",
+                        "T/" + cjfrTwo)
+                .withFiles(
+                        CommandTestUtil.getSampleCJFRFile(),
+                        CommandTestUtil.getSampleCJFRFile(1),
+                        CommandTestUtil.getSampleCJFRFile(2))
+                .checkNoError()
+                .checkNoOutput()
+                .check(
+                        (result, map) -> {
+                            checkSampleFile(
+                                    map.get("out.jfr"),
+                                    List.of(
+                                            CommandTestUtil.getSampleJFRFile(),
+                                            CommandTestUtil.getSampleJFRFile(1),
+                                            CommandTestUtil.getSampleJFRFile(2)));
+                        })
+                .run();
+    }
+
+    @Test
     public void testWithMultipleInputFilesThatAreTheSameFails() throws Exception {
         var cjfrZero = CommandTestUtil.getSampleCJFRFile(0);
         new CommandExecuter("inflate", "T/" + cjfrZero, "T/out.jfr", "--inputs", "T/" + cjfrZero)

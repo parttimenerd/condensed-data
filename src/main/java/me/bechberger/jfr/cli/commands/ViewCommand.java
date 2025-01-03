@@ -1,29 +1,50 @@
 package me.bechberger.jfr.cli.commands;
 
 import java.nio.file.Path;
+import java.util.ArrayList;
 import java.util.List;
+import java.util.Stack;
 import java.util.concurrent.Callable;
 import me.bechberger.jfr.CombiningJFRReader;
+import me.bechberger.jfr.cli.EventCompletionCandidates;
 import me.bechberger.jfr.cli.EventFilter.EventFilterOptionMixin;
+import me.bechberger.jfr.cli.FileOptionConverters.ExistingCJFRFileOrZipOrFolderConverter;
+import me.bechberger.jfr.cli.FileOptionConverters.ExistingCJFRFileOrZipOrFolderParameterConsumer;
+import me.bechberger.jfr.cli.FileOptionConverters.ExistingCJFRFilesOrZipOrFolderConsumer;
 import me.bechberger.jfr.cli.JFRView;
 import me.bechberger.jfr.cli.JFRView.JFRViewConfig;
 import me.bechberger.jfr.cli.JFRView.PrintConfig;
 import me.bechberger.jfr.cli.TruncateMode;
-import picocli.CommandLine.Command;
-import picocli.CommandLine.Mixin;
-import picocli.CommandLine.Option;
-import picocli.CommandLine.Parameters;
+import picocli.CommandLine;
+import picocli.CommandLine.*;
 
 @Command(
         name = "view",
         description = "View a specific event of a condensed JFR file as a table",
         mixinStandardHelpOptions = true)
 public class ViewCommand implements Callable<Integer> {
-    @Parameters(index = "0", description = "The event name", paramLabel = "EVENT_NAME", arity = "1")
-    private String eventName;
 
-    @Parameters(index = "1..*", description = "The input .cjfr files, can be folders, or zips")
-    private List<Path> inputFiles;
+    @Parameters(
+            index = "0",
+            description = "The input .cjfr file, can be a folder, or a zip",
+            converter = ExistingCJFRFileOrZipOrFolderConverter.class,
+            parameterConsumer = ExistingCJFRFileOrZipOrFolderParameterConsumer.class)
+    private Path inputFile;
+
+    @Option(
+            names = {"-i", "--inputs"},
+            description = "Additional input files",
+            converter = ExistingCJFRFileOrZipOrFolderConverter.class,
+            parameterConsumer = ExistingCJFRFilesOrZipOrFolderConsumer.class)
+    private List<Path> inputFiles = new ArrayList<>();
+
+    @Parameters(
+            index = "1",
+            description = "The event name",
+            paramLabel = "EVENT_NAME",
+            arity = "1",
+            completionCandidates = EventCompletionCandidates.class)
+    private String eventName;
 
     @Option(names = "--width", description = "Width of the table")
     private int width = 160;
@@ -47,6 +68,7 @@ public class ViewCommand implements Callable<Integer> {
     @Override
     public Integer call() {
         try {
+            inputFiles.add(0, inputFile);
             var jfrReader =
                     CombiningJFRReader.fromPaths(
                             inputFiles,

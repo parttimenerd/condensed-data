@@ -159,7 +159,9 @@ public interface EventFilter<C> {
 
         @Option(
                 names = {"--events"},
-                description = "The event types to include")
+                description = "The event types to include",
+                split = ",",
+                completionCandidates = EventCompletionCandidates.class)
         List<String> eventTypes;
 
         @Option(

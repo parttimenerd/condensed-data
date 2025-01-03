@@ -1,11 +1,14 @@
 package me.bechberger.jfr.cli;
 
+import static me.bechberger.jfr.cli.CLIUtils.editDistance;
+
 import java.io.File;
 import java.io.IOException;
 import java.lang.annotation.Retention;
 import java.lang.annotation.Target;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Stack;
@@ -15,6 +18,7 @@ import org.jetbrains.annotations.Nullable;
 import picocli.CommandLine;
 import picocli.CommandLine.IParameterConsumer;
 import picocli.CommandLine.ITypeConverter;
+import picocli.CommandLine.Model.OptionSpec;
 import picocli.CommandLine.ParameterException;
 
 /** Utility class for handling file options in a command-line interface using picocli. */
@@ -118,7 +122,11 @@ public class FileOptionConverters {
                             ? checkAllowFolderOrZIP(file, extension)
                             : check(file, extension);
             if (check != null) {
-                try (var fs = Files.list(file.getParent())) {
+                var parent = file.getParent();
+                if (parent == null) {
+                    throw new ParameterException(commandSpec.commandLine(), check);
+                }
+                try (var fs = Files.list(parent)) {
                     List<String> suggestions =
                             fs.map(Path::toFile)
                                     .filter(
@@ -180,26 +188,6 @@ public class FileOptionConverters {
                 }
             }
             argSpec.setValue(file);
-        }
-
-        private int editDistance(String a, String b) {
-            int[][] dp = new int[a.length() + 1][b.length() + 1];
-            for (int i = 0; i <= a.length(); i++) {
-                for (int j = 0; j <= b.length(); j++) {
-                    if (i == 0) {
-                        dp[i][j] = j;
-                    } else if (j == 0) {
-                        dp[i][j] = i;
-                    } else {
-                        dp[i][j] =
-                                Math.min(
-                                        dp[i - 1][j - 1]
-                                                + (a.charAt(i - 1) == b.charAt(j - 1) ? 0 : 1),
-                                        Math.min(dp[i - 1][j] + 1, dp[i][j - 1] + 1));
-                    }
-                }
-            }
-            return dp[a.length()][b.length()];
         }
     }
 
@@ -381,6 +369,51 @@ public class FileOptionConverters {
             extends SuggestionFileParameterConsumer {
         public ExistingCJFRFileOrZipOrFolderParameterConsumer() {
             super(".cjfr", true, true);
+        }
+    }
+
+    /** For options only */
+    public static class PathListConsumer implements IParameterConsumer {
+
+        private final IParameterConsumer delegate;
+
+        public PathListConsumer(IParameterConsumer delegate) {
+            this.delegate = delegate;
+        }
+
+        @Override
+        @SuppressWarnings("unchecked")
+        public void consumeParameters(
+                Stack<String> args,
+                CommandLine.Model.ArgSpec argSpec,
+                CommandLine.Model.CommandSpec commandSpec) {
+            if (args.isEmpty() || args.peek().isEmpty()) {
+                argSpec.setValue(new ArrayList<>());
+                return;
+            }
+            var stack = new Stack<String>();
+            stack.push(args.pop());
+            var newArgSpec = OptionSpec.builder(((OptionSpec) argSpec).names()).build();
+            delegate.consumeParameters(stack, newArgSpec, commandSpec);
+            ((List<Path>) argSpec.getValue()).add(newArgSpec.getValue());
+        }
+    }
+
+    public static class ExistingJFRFilesConsumer extends PathListConsumer {
+        public ExistingJFRFilesConsumer() {
+            super(new ExistingJFRFileParameterConsumer());
+        }
+    }
+
+    public static class ExistingCJFRFilesConsumer extends PathListConsumer {
+        public ExistingCJFRFilesConsumer() {
+            super(new ExistingCJFRFileParameterConsumer());
+        }
+    }
+
+    public static class ExistingCJFRFilesOrZipOrFolderConsumer extends PathListConsumer {
+        public ExistingCJFRFilesOrZipOrFolderConsumer() {
+            super(new ExistingCJFRFileOrZipOrFolderParameterConsumer());
         }
     }
 }
