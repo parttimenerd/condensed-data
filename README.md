@@ -64,6 +64,57 @@ Start the recording
       verbose              Be verbose
 ```
 
+TODO:
+- add auto completion and document it
+  - https://picocli.info/autocomplete.html
+  - document it
+- multi file consumer
+- event names suggestor
+  - multi event name suggestor
+  - based on file content
+  - also for bash auto completion, cache data in local .condensed-data-completion-cache (close to the jar) or in local cache data
+  - checkout ap-loader for how to use local cache
+- already tested commands
+  - main
+  - help
+  - generate-completion
+  - condense
+  - inflate, summary
+    - without filters
+- summary
+  - accept globs as arguments
+- test all CLI commands
+- look at each subcommand and check what needs to be done
+  - benchmark (not important)
+  - agent
+  - view
+    - handle empty argument
+    - picocli warning without arguments
+    - handle first argument is file not event
+      - display a list of all possible events + help
+    - handle missing files
+    - handle non-existing files
+    - check if file is a JFR file and handle that somehow
+    - handle non-existing events
+      - be helpful and offer the closest match
+        - `Did you mean 'GC' instead of 'Gc'?`
+  - javaagent
+    - same commands as agent, e.g. `-javaagent:target/condensed-data.jar="start --help"`
+    - terminate on help command
+      - use isUsageHelpRequested() to check if help was requested
+      - test this
+    - allow supplying the args via an env variable
+    - check what happens if any error is thrown somewhere deep down in the agent
+- logging (don't log anything in default warning mode)
+  - seems to be missing new lines
+    ```
+      ➜  condensed-data git:(main) ✗ java  -javaagent:target/condensed-data.jar=start,profiling -jar benchmark/renaissance-gpl-0.15.0.jar all
+      Condensed recording to profiling startedBenchmark 'db-shootout' excluded: requires JVM version >=11 and <=18 (found 22).
+      ====== scrabble (functional) [default], iteration 0 started ======52046/  renaissance-gpl-0.15.0.jar                                                                                 
+      GC bef
+    ```
+- add examples to the README
+
 Requirements
 ------------
 JDK 17+

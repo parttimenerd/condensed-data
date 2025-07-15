@@ -1,5 +1,7 @@
 package me.bechberger.jfr.cli.commands;
 
+import static me.bechberger.jfr.cli.CLIUtils.combineArgs;
+
 import com.sun.tools.attach.AgentInitializationException;
 import com.sun.tools.attach.AgentLoadException;
 import com.sun.tools.attach.AttachNotSupportedException;
@@ -9,40 +11,57 @@ import java.io.IOException;
 import java.net.URISyntaxException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.List;
 import java.util.concurrent.Callable;
 import me.bechberger.jfr.cli.agent.AgentIO;
+import me.bechberger.jfr.cli.agent.commands.*;
+import me.bechberger.jfr.cli.commands.AgentCommand.ReadCommand;
+import picocli.CommandLine;
 import picocli.CommandLine.Command;
+import picocli.CommandLine.HelpCommand;
 import picocli.CommandLine.Parameters;
+import picocli.CommandLine.ParseResult;
 
 @Command(
         name = "agent",
         description = "Use the included Java agent on a specific JVM process",
-        mixinStandardHelpOptions = true)
+        mixinStandardHelpOptions = true,
+        subcommands = {
+            SetMaxDurationCommand.class,
+            SetMaxFilesCommand.class,
+            SetMaxSizeCommand.class,
+            StartCommand.class,
+            StatusCommand.class,
+            StopCommand.class,
+            ReadCommand.class,
+            HelpCommand.class
+        })
 public class AgentCommand implements Callable<Integer> {
+
+    @Command(
+            name = "read",
+            description = "Read the output of the agent",
+            mixinStandardHelpOptions = true)
+    public static class ReadCommand implements Callable<Integer> {
+        @Override
+        public Integer call() {
+            AgentIO agentIO = AgentIO.getAgentInstance();
+            while (Files.exists(agentIO.getOutputFile())) {
+                var out = agentIO.readOutput();
+                if (out != null) {
+                    System.out.print(out);
+                }
+            }
+            return 0;
+        }
+    }
+
     @Parameters(
             index = "0",
             paramLabel = "PID",
             description = "The PID of the JVM process",
             defaultValue = "-1")
-    private int pid;
-
-    @Parameters(
-            index = "1",
-            paramLabel = "OPTIONS",
-            description = "Options for the agent or 'read' to read the output continuously")
-    private String options;
-
-    private static Path ownJAR() throws URISyntaxException {
-        return Path.of(
-                        new File(
-                                        AgentCommand.class
-                                                .getProtectionDomain()
-                                                .getCodeSource()
-                                                .getLocation()
-                                                .toURI())
-                                .getPath())
-                .toAbsolutePath();
-    }
+    private int pid = -1;
 
     private static void listVMs() {
         System.out.println("You have to parse the process id of a JVM");
@@ -62,25 +81,73 @@ public class AgentCommand implements Callable<Integer> {
             listVMs();
             return -1;
         }
-        if (options.equals("read")) {
-            AgentIO agentIO = AgentIO.getAgentInstance();
-            while (Files.exists(agentIO.getOutputFile())) {
-                var out = agentIO.readOutput();
-                if (out != null) {
-                    System.out.print(out);
-                }
-            }
+        return 0;
+    }
+
+    private static String addLogToFileOption(String options) {
+        if (options.contains("--logToFile")) {
+            return options;
+        }
+        return options + (options.isEmpty() ? "" : " ") + "--logToFile";
+    }
+
+    public static int execute(List<String> args, CommandLine subCommandCommandLine) {
+        var subCommandArgs = args.subList(1, args.size());
+        // we have to prevent sub commands from being executed
+        ParseResult parseResult =
+                new CommandLine(new AgentCommand())
+                        .parseArgs(subCommandArgs.toArray(new String[0]));
+        if (parseResult.hasSubcommand()) {
+            return handleSubCommand(parseResult, subCommandArgs);
+        }
+        if (subCommandArgs.isEmpty()) {
+            listVMs();
             return 0;
         }
+        if (subCommandArgs.contains("--help")) {
+            subCommandCommandLine.usage(System.out);
+            return 0;
+        }
+        subCommandCommandLine.usage(System.out);
+        return 2;
+    }
+
+    public static Path ownJAR() throws URISyntaxException {
+        var path =
+                Path.of(
+                                new File(
+                                                AgentCommand.class
+                                                        .getProtectionDomain()
+                                                        .getCodeSource()
+                                                        .getLocation()
+                                                        .toURI())
+                                        .getPath())
+                        .toAbsolutePath();
+        if (path.endsWith(".jar")) {
+            return path;
+        }
+        // we are running in the IDE, so return the condensed-data.jar from the folder
+        return path.getParent().resolve("condensed-data.jar");
+    }
+
+    private static int handleSubCommand(ParseResult parseResult, List<String> subCommandArgs) {
+        int pid = Integer.parseInt(subCommandArgs.get(0));
+        List<String> agentArgs = subCommandArgs.subList(1, subCommandArgs.size());
         try {
             VirtualMachine jvm = VirtualMachine.attach(pid + "");
-            jvm.loadAgent(ownJAR().toString(), addLogToFileOption(options));
+            jvm.loadAgent(ownJAR().toString(), addLogToFileOption(combineArgs(agentArgs)));
             jvm.detach();
             AgentIO agentIO = AgentIO.getAgentInstance(pid);
             String out;
+            boolean first = true;
             while ((out = agentIO.readOutput()) != null) {
                 Thread.sleep(50);
-                System.out.print(out);
+                if (first && out.strip().startsWith("Usage: -javaagent:condensed-agent.jar")) {
+                    System.out.println("Usage: ./cjfr agent " + pid + " [COMMAND]");
+                } else {
+                    System.out.print(out);
+                }
+                first = false;
             }
         } catch (URISyntaxException ex) {
             System.err.println("Can't find the current JAR file");
@@ -95,12 +162,5 @@ public class AgentCommand implements Callable<Integer> {
             return 1;
         }
         return 0;
-    }
-
-    private String addLogToFileOption(String options) {
-        if (options.contains("logToFile")) {
-            return options;
-        }
-        return options + (options.isEmpty() ? "" : ",") + "logToFile";
     }
 }

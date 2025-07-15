@@ -15,6 +15,7 @@ import me.bechberger.jfr.cli.FileOptionConverters.ExistingCJFRFileOrZipOrFolderC
 import me.bechberger.jfr.cli.FileOptionConverters.ExistingCJFRFileOrZipOrFolderParameterConsumer;
 import me.bechberger.jfr.cli.FileOptionConverters.ExistingCJFRFilesOrZipOrFolderConsumer;
 import me.bechberger.util.TimeUtil;
+import org.json.JSONObject;
 import picocli.CommandLine.Command;
 import picocli.CommandLine.Mixin;
 import picocli.CommandLine.Option;
@@ -46,6 +47,9 @@ public class SummaryCommand implements Callable<Integer> {
             defaultValue = "false")
     private boolean shortSummary;
 
+    @Option(names = "--json", description = "Output as JSON", defaultValue = "false")
+    private boolean json;
+
     @Mixin private EventFilterOptionMixin eventFilterOptionMixin;
 
     public Integer call() {
@@ -57,33 +61,10 @@ public class SummaryCommand implements Callable<Integer> {
                             eventFilterOptionMixin.createFilter(),
                             eventFilterOptionMixin.noReconstitution());
             var summary = computeSummary(jfrReader);
-            System.out.println();
-            System.out.println(" Format Version: " + summary.version());
-            System.out.println(" Generator: " + summary.generatorName());
-            System.out.println(" Generator Version: " + summary.generatorVersion());
-            System.out.println(
-                    " Generator Configuration: "
-                            + (summary.generatorConfiguration().isEmpty()
-                                    ? "(default)"
-                                    : summary.generatorConfiguration()));
-            System.out.println(" Compression: " + summary.compression());
-            System.out.println(" Start: " + TimeUtil.formatInstant(summary.start()));
-            System.out.println(" End: " + TimeUtil.formatInstant(summary.end()));
-            System.out.println(
-                    " Duration: "
-                            + TimeUtil.formatDuration(
-                                    summary.duration().truncatedTo(ChronoUnit.MILLIS)));
-            System.out.println(" Events: " + summary.eventCount());
-            if (!shortSummary) {
-                System.out.println();
-                System.out.println(" Event Type                                Count");
-                System.out.println("=================================================");
-                for (var entry :
-                        summary.eventCounts().entrySet().stream()
-                                .sorted(Comparator.comparing(e -> -e.getValue()))
-                                .toList()) {
-                    System.out.printf(" %-40s %6d%n", entry.getKey(), entry.getValue());
-                }
+            if (json) {
+                System.out.println(summary.toJSON(shortSummary).toString(2));
+            } else {
+                System.out.println(summary.toString(shortSummary));
             }
         } catch (Exception e) {
             e.printStackTrace();
@@ -102,7 +83,73 @@ public class SummaryCommand implements Callable<Integer> {
             Compression compression,
             Instant start,
             Instant end,
-            Map<String, Integer> eventCounts) {}
+            Map<String, Integer> eventCounts) {
+
+        public String toString(boolean shortSummary) {
+            StringBuilder sb = new StringBuilder();
+            sb.append("\n");
+            sb.append(" Format Version: ").append(version()).append("\n");
+            sb.append(" Generator: ").append(generatorName()).append("\n");
+            sb.append(" Generator Version: ").append(this.generatorVersion()).append("\n");
+            sb.append(" Generator Configuration: ")
+                    .append(
+                            this.generatorConfiguration().isEmpty()
+                                    ? "(default)"
+                                    : this.generatorConfiguration())
+                    .append("\n");
+            sb.append(" Compression: ").append(this.compression()).append("\n");
+            sb.append(" Start: ").append(TimeUtil.formatInstant(this.start())).append("\n");
+            sb.append(" End: ").append(TimeUtil.formatInstant(this.end())).append("\n");
+            sb.append(" Duration: ")
+                    .append(TimeUtil.formatDuration(this.duration().truncatedTo(ChronoUnit.MILLIS)))
+                    .append("\n");
+            sb.append(" Events: ").append(this.eventCount()).append("\n");
+            if (!shortSummary) {
+                sb.append("\n");
+                sb.append(" Event Type                                Count\n");
+                sb.append("=================================================\n");
+                for (var entry :
+                        this.eventCounts().entrySet().stream()
+                                .sorted(Comparator.comparing(e -> -e.getValue()))
+                                .toList()) {
+                    sb.append(String.format(" %-40s %6d%n", entry.getKey(), entry.getValue()));
+                }
+            }
+            return sb.toString();
+        }
+
+        public JSONObject toJSON(boolean shortSummary) {
+            JSONObject json = new JSONObject();
+            json.put("format version", version());
+            json.put("generator", generatorName());
+            json.put("generator version", generatorVersion());
+            json.put(
+                    "generator configuration",
+                    generatorConfiguration().isEmpty() ? "(default)" : generatorConfiguration());
+            json.put("compression", compression().toString());
+            json.put("start", TimeUtil.formatInstant(start()));
+            json.put("start-epoch", start().toEpochMilli());
+            json.put("end", TimeUtil.formatInstant(end()));
+            json.put("end-epoch", end().toEpochMilli());
+            json.put(
+                    "duration", TimeUtil.formatDuration(duration().truncatedTo(ChronoUnit.MILLIS)));
+            json.put("duration-millis", duration().toMillis());
+            json.put("count", eventCount());
+
+            if (!shortSummary) {
+                JSONObject events = new JSONObject();
+                for (var entry :
+                        eventCounts().entrySet().stream()
+                                .sorted(Comparator.comparing(e -> -e.getValue()))
+                                .toList()) {
+                    events.put(entry.getKey(), entry.getValue());
+                }
+                json.put("events", events);
+            }
+
+            return json;
+        }
+    }
 
     static Summary computeSummary(JFRReader reader) {
         Map<String, Integer> eventCounts = new HashMap<>();

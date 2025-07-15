@@ -25,6 +25,8 @@ public class SingleRecordingThread extends RecordingThread {
 
     private final String path;
     private final BasicJFRWriter jfrWriter;
+    // triggered stop already
+    private boolean triggeredStop = false;
 
     public SingleRecordingThread(
             String path,
@@ -48,27 +50,45 @@ public class SingleRecordingThread extends RecordingThread {
                                 Agent.getAgentArgs(),
                                 Compression.DEFAULT));
         this.jfrWriter = new BasicJFRWriter(out);
-        agentIO.writeOutput("Condensed recording to " + path + " started");
+        agentIO.writeOutput("Condensed recording to " + path + " started\n");
     }
 
     @Override
     void onEvent(RecordedEvent event) {
+        if (triggeredStop) {
+            return;
+        }
         if (shouldEndFile()) {
-            synchronized (Agent.getSyncObject()) {
-                close();
+            if (!triggeredStop) {
+                // we're currently stuck in JFR code, so we need to stop the recording
+                // from a different thread so we don't deadlock
+                new Thread(
+                                () -> {
+                                    synchronized (Agent.getSyncObject()) {
+                                        stop();
+                                    }
+                                })
+                        .start();
+                triggeredStop = true;
             }
             return;
         }
         try {
             jfrWriter.processEvent(event);
         } catch (RuntimeException e) {
-            agentIO.writeSevereError(e.getMessage() + " while processing event " + event);
+            agentIO.writeSevereError(
+                    e.getMessage()
+                            + " while processing event "
+                            + event
+                            + " shou "
+                            + shouldEndFile());
         }
     }
 
     @Override
     void close() {
         jfrWriter.close();
+        agentIO.writeOutput("Condensed recording to " + path + " finished\n");
     }
 
     @Override
@@ -83,11 +103,13 @@ public class SingleRecordingThread extends RecordingThread {
     }
 
     private boolean shouldEndFile() {
-        return (getMaxDuration().toNanos() > 0
-                        && Duration.between(this.start, Instant.now()).compareTo(getMaxDuration())
-                                > 0)
-                || (getMaxSize() > 0
-                        && jfrWriter != null
-                        && jfrWriter.estimateSize() > getMaxSize());
+        boolean maxDurationCheck = getMaxDuration().toNanos() > 0;
+        boolean isDurationExceeded =
+                Duration.between(this.start, Instant.now()).compareTo(getMaxDuration()) > 0;
+        boolean maxSizeCheck = getMaxSize() > 0;
+        boolean jfrWriterCheck = jfrWriter != null;
+        boolean sizeComparison = jfrWriter != null && jfrWriter.estimateSize() > getMaxSize();
+        return (maxDurationCheck && isDurationExceeded)
+                || (maxSizeCheck && jfrWriterCheck && sizeComparison);
     }
 }

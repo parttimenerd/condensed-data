@@ -11,6 +11,7 @@ import java.util.regex.Pattern;
 import jdk.jfr.consumer.RecordingFile;
 import me.bechberger.condensed.Compression;
 import me.bechberger.jfr.cli.Constants;
+import org.json.JSONObject;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
@@ -159,5 +160,30 @@ public class SummaryCommandTest {
         assertTrue(pattern.matcher(result.strip()).find());
         assertTrue(
                 result.contains("TestEvent                                     " + testEventCount));
+    }
+
+    @Test
+    public void testPrintJSON() throws Exception {
+        new CommandExecuter("summary", "T/" + CommandTestUtil.getSampleCJFRFileName(), "--json")
+                .withFiles(CommandTestUtil.getSampleCJFRFile())
+                .checkNoError()
+                .check(
+                        (result, files) -> {
+                            var json = new JSONObject(result.output());
+                            var keys = json.keySet();
+                            assertAll(
+                                    () -> assertThat(keys).contains("format version"),
+                                    () -> assertThat(keys).contains("generator"),
+                                    () -> assertThat(keys).contains("generator version"),
+                                    () -> assertThat(keys).contains("generator configuration"),
+                                    () -> assertThat(keys).contains("compression"),
+                                    () -> assertThat(keys).contains("start"),
+                                    () -> assertThat(keys).contains("start-epoch"),
+                                    () -> assertThat(keys).contains("end"),
+                                    () -> assertThat(keys).contains("end-epoch"),
+                                    () -> assertThat(keys).contains("duration"),
+                                    () -> assertThat(keys).contains("events"));
+                        })
+                .run();
     }
 }

@@ -57,20 +57,24 @@ public class CondensedInputStream extends InputStream {
      * @return returns the read message
      */
     public @Nullable Message readNextMessageAndProcess() {
-        if (!startStringRead) {
-            readAndProcessStartString();
-        }
-        int typeId = (int) readUnsignedVarintOrEnd();
-        if (typeId == -1) {
+        try {
+            if (!startStringRead) {
+                readAndProcessStartString();
+            }
+            int typeId = (int) readUnsignedVarintOrEnd();
+            if (typeId == -1) {
+                return null;
+            }
+            if (TypeCollection.isSpecifiedType(typeId)) {
+                return readAndProcessSpecifiedTypeMessage(typeId);
+            }
+            if (typeCollection.hasType(typeId)) {
+                return readAndProcessInstanceMessage(typeId);
+            }
+            throw new TypeCollection.NoSuchTypeException(typeId);
+        } catch (RIOException e) {
             return null;
         }
-        if (TypeCollection.isSpecifiedType(typeId)) {
-            return readAndProcessSpecifiedTypeMessage(typeId);
-        }
-        if (typeCollection.hasType(typeId)) {
-            return readAndProcessInstanceMessage(typeId);
-        }
-        throw new TypeCollection.NoSuchTypeException(typeId);
     }
 
     /**

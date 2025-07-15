@@ -9,24 +9,24 @@ import picocli.CommandLine.Option;
 public class DynamicallyChangeableSettings {
 
     @Option(
-            names = "max-duration",
+            names = "--max-duration",
             description = "The maximum duration of the recording",
             defaultValue = "0s",
             converter = DurationConverter.class)
-    volatile Duration maxDuration;
+    public volatile Duration maxDuration;
 
     @Option(
-            names = "max-size",
+            names = "--max-size",
             description =
                     "The maximum size of the recording file (or the individual files when"
                             + " rotating files)",
             defaultValue = "0B",
             converter = ByteSizeConverter.class)
-    volatile long maxSize;
+    public volatile long maxSize;
 
     @Option(
-            names = "max-files",
+            names = "--max-files",
             description = "The maximum number of files to keep, when rotating files",
             defaultValue = "10")
-    volatile int maxFiles;
+    public volatile int maxFiles;
 }

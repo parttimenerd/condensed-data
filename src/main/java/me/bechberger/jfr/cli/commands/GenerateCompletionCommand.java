@@ -155,7 +155,7 @@ public class GenerateCompletionCommand implements Runnable {
                         .map(EventType::getName)
                         .toList();
 
-        String currentCommand = null;
+        String currentCommand;
         var fileEndings = getFileEndingsOfPositionalsPerCommand();
         List<String> results = new ArrayList<>();
         FileEndingList currentEndingList = new FileEndingList(List.of(), new HashMap<>());

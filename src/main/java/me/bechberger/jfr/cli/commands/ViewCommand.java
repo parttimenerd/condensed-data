@@ -3,7 +3,6 @@ package me.bechberger.jfr.cli.commands;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Stack;
 import java.util.concurrent.Callable;
 import me.bechberger.jfr.CombiningJFRReader;
 import me.bechberger.jfr.cli.EventCompletionCandidates;
@@ -15,7 +14,6 @@ import me.bechberger.jfr.cli.JFRView;
 import me.bechberger.jfr.cli.JFRView.JFRViewConfig;
 import me.bechberger.jfr.cli.JFRView.PrintConfig;
 import me.bechberger.jfr.cli.TruncateMode;
-import picocli.CommandLine;
 import picocli.CommandLine.*;
 
 @Command(

@@ -84,6 +84,9 @@ public abstract class RecordingThread implements Runnable {
                 this.stop();
             }
         } catch (RuntimeException e) {
+            if (e.getMessage().startsWith("The stream is already closed while processing event")) {
+                return; // TODO improve, this happens when the JVM is shutdown
+            }
             agentIO.writeSevereError("Error: " + e.getMessage());
         } catch (InterruptedException e) {
             throw new RuntimeException(e);

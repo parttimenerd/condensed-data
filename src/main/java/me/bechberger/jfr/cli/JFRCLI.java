@@ -1,5 +1,8 @@
 package me.bechberger.jfr.cli;
 
+import static me.bechberger.jfr.cli.CLIUtils.removeVersionOptionFromSubCommands;
+
+import java.util.List;
 import me.bechberger.condensed.Util;
 import me.bechberger.jfr.BasicJFRWriter;
 import me.bechberger.jfr.cli.JFRCLI.VersionProvider;
@@ -50,23 +53,16 @@ public class JFRCLI implements Runnable {
 
     public static CommandLine createCommandLine() {
         var cli = new CommandLine(new JFRCLI());
-        picocli.AutoComplete.bash("cjfr", cli);
-        for (var sub : cli.getSubcommands().values()) {
-            sub.getCommandSpec().args().stream()
-                    .filter(
-                            a ->
-                                    a.isOption()
-                                            && ((CommandLine.Model.OptionSpec) a)
-                                                    .longestName()
-                                                    .equals("--version"))
-                    .findFirst()
-                    .ifPresent(a -> sub.getCommandSpec().remove(a));
-        }
+        removeVersionOptionFromSubCommands(cli);
         return cli;
     }
 
     public static int execute(String[] args) {
-        return createCommandLine().execute(args);
+        var cli = createCommandLine();
+        if (args.length >= 1 && args[0].equals("agent")) {
+            return AgentCommand.execute(List.of(args), cli.getSubcommands().get("agent"));
+        }
+        return cli.execute(args);
     }
 
     public static void main(String[] args) {

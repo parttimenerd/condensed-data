@@ -133,7 +133,14 @@ public class JFRMultiFileTest {
         }
         assertAll(
                 () -> checkSummaryResult(captureStdout("summary", properArgs)),
-                () -> checkViewResult(captureStdout("view", combine(args.get(0), "TestEvent", properArgs.subList(1, properArgs.size())))),
+                () ->
+                        checkViewResult(
+                                captureStdout(
+                                        "view",
+                                        combine(
+                                                args.get(0),
+                                                "TestEvent",
+                                                properArgs.subList(1, properArgs.size())))),
                 () -> checkInflateResult(properArgs));
     }
 
