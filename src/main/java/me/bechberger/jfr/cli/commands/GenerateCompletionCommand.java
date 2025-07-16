@@ -9,6 +9,7 @@ import java.util.stream.Collectors;
 import jdk.jfr.EventType;
 import jdk.jfr.FlightRecorder;
 import me.bechberger.jfr.cli.FileOptionConverters;
+import me.bechberger.jfr.cli.JFRCLI;
 import org.jetbrains.annotations.Nullable;
 import picocli.AutoComplete;
 import picocli.CommandLine.Command;
@@ -68,7 +69,7 @@ public class GenerateCompletionCommand implements Runnable {
                     }
                     return new FileEnding(ending, isZipAllowed);
                 };
-        return spec.commandLine().getParent().getSubcommands().entrySet().stream()
+        return JFRCLI.getCommands().entrySet().stream()
                 .collect(
                         Collectors.toMap(
                                 Map.Entry::getKey,
@@ -215,9 +216,9 @@ public class GenerateCompletionCommand implements Runnable {
                 // format: -[-a-zA-Z0-9]+(|-[-a-zA-Z0-9]+)+\)
                 String optionName = null;
                 for (int i = results.size() - 1; i >= Math.max(0, results.size() - 4); i--) {
-                    var l = results.get(i);
-                    if (l.strip().startsWith("-")) {
-                        optionName = l.strip().substring(0, l.strip().length() - 1);
+                    var l = results.get(i).strip().replace("'", "");
+                    if (l.startsWith("-")) {
+                        optionName = l.substring(0, l.strip().length() - 1);
                         break;
                     }
                 }

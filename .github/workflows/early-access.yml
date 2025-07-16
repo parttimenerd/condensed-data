@@ -5,8 +5,8 @@ on:
     branches: [ main ]
 
 env:
-  JAVA_VERSION: '17'
-  JAVA_DISTRO: 'adopt'
+  JAVA_VERSION: '21'
+  JAVA_DISTRO: 'sapmachine'
 
 jobs:
   precheck:

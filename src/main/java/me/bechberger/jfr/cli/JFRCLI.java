@@ -3,6 +3,8 @@ package me.bechberger.jfr.cli;
 import static me.bechberger.jfr.cli.CLIUtils.removeVersionOptionFromSubCommands;
 
 import java.util.List;
+import java.util.Map;
+import java.util.stream.Collectors;
 import me.bechberger.condensed.Util;
 import me.bechberger.jfr.BasicJFRWriter;
 import me.bechberger.jfr.cli.JFRCLI.VersionProvider;
@@ -63,6 +65,16 @@ public class JFRCLI implements Runnable {
             return AgentCommand.execute(List.of(args), cli.getSubcommands().get("agent"));
         }
         return cli.execute(args);
+    }
+
+    public static Map<String, CommandLine> getCommands() {
+        return createCommandLine().getSubcommands();
+    }
+
+    public static Map<String, CommandLine> getVisibleCommands() {
+        return createCommandLine().getSubcommands().entrySet().stream()
+                .filter(e -> !e.getValue().getCommandSpec().usageMessage().hidden())
+                .collect(Collectors.toMap(Map.Entry::getKey, Map.Entry::getValue));
     }
 
     public static void main(String[] args) {
