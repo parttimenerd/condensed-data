@@ -20,7 +20,7 @@ public class TimeUtil {
     }
 
     public static String formatInstant(Instant instant) {
-        LocalDateTime dateTime = LocalDateTime.ofInstant(instant, ZoneId.systemDefault());
+        LocalDateTime dateTime = LocalDateTime.ofInstant(instant, ZoneId.of("UTC"));
         DateTimeFormatter formatter = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
         return dateTime.format(formatter);
     }
@@ -35,7 +35,7 @@ public class TimeUtil {
         }
         DateTimeFormatter formatter = DateTimeFormatter.ofPattern("yyyy-MM-dd H:m:s");
         LocalDateTime dateTime = LocalDateTime.parse(time, formatter);
-        return dateTime.atZone(ZoneId.systemDefault()).toInstant();
+        return dateTime.atZone(ZoneId.of("UTC")).toInstant();
     }
 
     public static Duration parseDuration(String duration) {

@@ -64,16 +64,13 @@ Start the recording
       verbose              Be verbose
 ```
 
+Autocompletion:
+
+```
+. <(./cjfr generate-completion)
+```
+
 TODO:
-- add auto completion and document it
-  - https://picocli.info/autocomplete.html
-  - document it
-- multi file consumer
-- event names suggestor
-  - multi event name suggestor
-  - based on file content
-  - also for bash auto completion, cache data in local .condensed-data-completion-cache (close to the jar) or in local cache data
-  - checkout ap-loader for how to use local cache
 - already tested commands
   - main
   - help
@@ -81,8 +78,6 @@ TODO:
   - condense
   - inflate, summary
     - without filters
-- summary
-  - accept globs as arguments
 - test all CLI commands
 - look at each subcommand and check what needs to be done
   - benchmark (not important)
