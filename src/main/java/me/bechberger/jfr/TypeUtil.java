@@ -32,7 +32,7 @@ public class TypeUtil {
      * Use reflection to create a struct type from a class, assumes that all fields have a primitive
      * type and ignores fields that start with an underscore
      */
-    @SuppressWarnings({"unchecked", "rawtypes"})
+    @SuppressWarnings({"rawtypes", "unchecked"})
     public static <T> StructType<T, T> createStructWithPrimitiveFields(
             TypeCollection collection, Class<T> clazz) {
         return collection.addType(

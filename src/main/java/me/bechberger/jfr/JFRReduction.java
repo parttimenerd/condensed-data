@@ -11,6 +11,7 @@ import jdk.jfr.consumer.RecordedFrame;
 import jdk.jfr.consumer.RecordedStackTrace;
 import me.bechberger.condensed.ReadStruct;
 import me.bechberger.condensed.types.Reductions;
+import org.jetbrains.annotations.Nullable;
 
 /**
  * Reductions for JFR types, used to reduce and inflate values for storage, based the {@link
@@ -126,7 +127,7 @@ public enum JFRReduction {
         }
 
         @Override
-        public boolean equals(Object obj) {
+        public boolean equals(@Nullable Object obj) {
             if (this == obj) {
                 return true;
             }
@@ -149,10 +150,10 @@ public enum JFRReduction {
         ReadStruct inflate(Configuration configuration, Universe universe, ReadStruct reduced);
     }
 
-    private final Class<?> valueClass;
-    private final Class<?> reducedClass;
-    private final ReductionFunction<?, ?> function;
-    private final StructReductionFunction<?, ?> structFunction;
+    private final @Nullable Class<?> valueClass;
+    private final @Nullable Class<?> reducedClass;
+    private final @Nullable ReductionFunction<?, ?> function;
+    private final @Nullable StructReductionFunction<?, ?> structFunction;
 
     record JFRReductions(Configuration configuration, Universe universe) implements Reductions {
 
@@ -181,7 +182,7 @@ public enum JFRReduction {
         JFRReductions.values.add(this);
     }
 
-    @SuppressWarnings("unchecked")
+    @SuppressWarnings({"unchecked", "unused"})
     <F, R> JFRReduction(StructReductionFunction<R, F> function) {
         this.valueClass = null;
         this.reducedClass = null;
@@ -190,8 +191,8 @@ public enum JFRReduction {
         JFRReductions.values.add(this);
     }
 
-    @SuppressWarnings({"unchecked", "rawtypes"})
-    public Object reduce(Configuration configuration, Universe universe, Object value) {
+    @SuppressWarnings({"rawtypes", "unchecked"})
+    public @Nullable Object reduce(Configuration configuration, Universe universe, Object value) {
         if (value == null) {
             return null;
         }
@@ -211,8 +212,9 @@ public enum JFRReduction {
                         + valueClass);
     }
 
-    @SuppressWarnings({"unchecked", "rawtypes"})
-    public Object inflate(Configuration configuration, Universe universe, Object reduced) {
+    @SuppressWarnings({"rawtypes", "unchecked"})
+    public @Nullable Object inflate(
+            Configuration configuration, Universe universe, Object reduced) {
         if (reduced == null) {
             return null;
         }

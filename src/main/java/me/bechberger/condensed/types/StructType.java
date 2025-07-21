@@ -348,7 +348,7 @@ public class StructType<T, R> extends CondensedType<T, R> {
                 }
 
                 @Override
-                @SuppressWarnings({"unchecked", "rawtypes"})
+                @SuppressWarnings({"rawtypes", "unchecked"})
                 public StructType<Map<String, Object>, Map<String, Object>>
                         readInnerTypeSpecification(
                                 CondensedInputStream in, int id, String name, String description) {

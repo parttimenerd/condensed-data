@@ -83,7 +83,7 @@ public abstract class EventCombiner {
                     };
         }
 
-        @SuppressWarnings({"unchecked", "rawtypes"})
+        @SuppressWarnings({"rawtypes", "unchecked"})
         private void write(S state) {
             if (combinedStateType == null) {
                 combinedStateType = combiner.createCombinedStateType(out, eventType);

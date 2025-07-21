@@ -27,8 +27,7 @@ import picocli.CommandLine.Spec;
             AgentCommand.class,
             SummaryCommand.class,
             ViewCommand.class,
-            GenerateCompletionCommand.class,
-            ListEventsForCompletion.class
+            GenerateCompletionCommand.class
         },
         mixinStandardHelpOptions = true,
         versionProvider = VersionProvider.class)

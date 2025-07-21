@@ -236,7 +236,7 @@ public class ArrayType<V, R> extends CondensedType<List<V>, List<R>> {
                     }
 
                     @Override
-                    @SuppressWarnings({"unchecked", "rawtypes"})
+                    @SuppressWarnings({"rawtypes", "unchecked"})
                     public void writeInnerTypeSpecification(
                             CondensedOutputStream out, WrappedArrayType<?, ?, ?> typeInstance) {
                         typeInstance

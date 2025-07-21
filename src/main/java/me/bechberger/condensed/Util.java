@@ -2,18 +2,23 @@ package me.bechberger.condensed;
 
 import java.io.IOException;
 import java.io.InputStream;
+import java.nio.charset.StandardCharsets;
 import java.time.Instant;
 import java.util.List;
-import java.util.Properties;
 import java.util.stream.IntStream;
 import org.openjdk.jmc.common.util.Pair;
 
-public class Util {
+public final class Util {
+
+    private Util() {
+        // Prevent instantiation
+    }
 
     /**
      * Convert a float to a half precision float, copied from <a
      * href="https://github.com/Craigacp/onnxruntime/blob/291e6e8cbbfd288752c493afb60cf2415c54b698/java/src/main/java/ai/onnxruntime/OrtUtil.java">onnxruntime/OrtUtil</a>
      */
+    @SuppressWarnings("UnnecessaryFinal")
     static short floatToFp16(float input) {
         // Port of MLAS_Float2Half from onnxruntime/core/mlas/inc/mlas_float16.h
         int bits = Float.floatToIntBits(input);
@@ -54,15 +59,14 @@ public class Util {
         }
 
         // Add the sign back in
-        output = (short) (output | ((short) (sign >> 16)));
-
-        return output;
+        return (short) (output | ((short) (sign >> 16)));
     }
 
     /**
      * Convert a half precision float to a float, copied from <a
      * href="https://github.com/Craigacp/onnxruntime/blob/291e6e8cbbfd288752c493afb60cf2415c54b698/java/src/main/java/ai/onnxruntime/OrtUtil.java">onnxruntime/OrtUtil</a>
      */
+    @SuppressWarnings("UnnecessaryFinal")
     static float fp16ToFloat(short input) {
         // Port of MLAS_Half2Float from onnxruntime/core/mlas/inc/mlas_float16.h
         final int MAGIC = 113 << 23;
@@ -144,12 +148,11 @@ public class Util {
     }
 
     public static String getLibraryVersion() {
-        Properties properties = new Properties();
         try (InputStream input = Util.class.getClassLoader().getResourceAsStream("version")) {
             if (input == null) {
                 throw new RuntimeException("Could not find version");
             }
-            return new String(input.readAllBytes()).strip();
+            return new String(input.readAllBytes(), StandardCharsets.UTF_8).strip();
         } catch (IOException ex) {
             throw new RuntimeException("Could not read version.properties", ex);
         }

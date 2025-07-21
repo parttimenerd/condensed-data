@@ -250,7 +250,7 @@ public class JFREventCombiner extends EventCombiner {
             insert(initial);
         }
 
-        @SuppressWarnings({"unchecked", "rawtypes"})
+        @SuppressWarnings({"rawtypes", "unchecked"})
         public void insert(O object) {
             valueDefinition.insert((Map) map, object);
         }
@@ -260,7 +260,7 @@ public class JFREventCombiner extends EventCombiner {
         }
 
         @Override
-        @SuppressWarnings({"unchecked", "rawtypes"})
+        @SuppressWarnings({"rawtypes", "unchecked"})
         public @NotNull Set<Entry<Object, Object>> entrySet() {
             return (Set<Entry<Object, Object>>) (Set) map.entrySet();
         }
@@ -285,7 +285,7 @@ public class JFREventCombiner extends EventCombiner {
             insert(initial);
         }
 
-        @SuppressWarnings({"unchecked", "rawtypes"})
+        @SuppressWarnings({"rawtypes", "unchecked"})
         @Override
         public void insert(O object) {
             valueDefinition.insert((List) list, object);
@@ -374,7 +374,7 @@ public class JFREventCombiner extends EventCombiner {
         }
 
         @Override
-        @SuppressWarnings({"unchecked", "rawtypes"})
+        @SuppressWarnings({"rawtypes", "unchecked"})
         public StructType<S, ?> createCombinedStateType(
                 CondensedOutputStream out, EventType eventType) {
 
@@ -722,7 +722,7 @@ public class JFREventCombiner extends EventCombiner {
                     createValueDefinition(basicJFRWriter, configuration));
         }
 
-        @SuppressWarnings({"unchecked", "rawtypes"})
+        @SuppressWarnings({"rawtypes", "unchecked"})
         private static MapValue<RecordedEvent, ?, ?> createValueDefinition(
                 BasicJFRWriter basicJFRWriter, Configuration configuration) {
 
@@ -1123,7 +1123,7 @@ public class JFREventCombiner extends EventCombiner {
                                             s.endTimestamp)));
         }
 
-        @SuppressWarnings({"unchecked", "rawtypes"})
+        @SuppressWarnings({"rawtypes", "unchecked"})
         private static MapValue<RecordedEvent, ?, ?> createValueDefinition(
                 BasicJFRWriter basicJFRWriter, Configuration configuration) {
 
@@ -1203,7 +1203,7 @@ public class JFREventCombiner extends EventCombiner {
     }
 
     private final Configuration configuration;
-    private final BasicJFRWriter basicJFRWriter;
+    private final @Nullable BasicJFRWriter basicJFRWriter;
     private final GCIdPerTimestamp gcIdPerTimestamp;
     private final Map<String, Boolean> hasEventGCField = new HashMap<>();
 
@@ -1246,7 +1246,7 @@ public class JFREventCombiner extends EventCombiner {
      * Emits the state wrapper header object message and then afterwards the state object message
      */
     @Override
-    @SuppressWarnings({"unchecked", "rawtypes"})
+    @SuppressWarnings({"rawtypes", "unchecked"})
     public void stateWriter(StructType<?, ?> type, Object state) {
         out.writeMessage((StructType) type, state);
     }

@@ -4,8 +4,8 @@ import me.bechberger.condensed.CondensedInputStream;
 import me.bechberger.condensed.CondensedOutputStream;
 
 /**
- * Abstract type which can read and write its specific type instances from and to a {@see
- * CondensedInputStream} and {@see CondensedOutputStream}
+ * Abstract type which can read and write its specific type instances from and to a {@link
+ * CondensedInputStream} and {@link CondensedOutputStream}
  */
 public interface SpecifiedType<T extends CondensedType<?, ?>> {
 
@@ -35,10 +35,8 @@ public interface SpecifiedType<T extends CondensedType<?, ?>> {
 
     /** Read the type specification from the stream (excluding the type) */
     default T readTypeSpecification(CondensedInputStream in) {
-        var t =
-                readInnerTypeSpecification(
-                        in, (int) in.readUnsignedVarint(), in.readString(), in.readString());
-        return t;
+        return readInnerTypeSpecification(
+                in, (int) in.readUnsignedVarint(), in.readString(), in.readString());
     }
 
     /**

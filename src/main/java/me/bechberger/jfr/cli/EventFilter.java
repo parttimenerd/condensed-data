@@ -99,7 +99,7 @@ public interface EventFilter<C> {
         }
 
         @Override
-        @SuppressWarnings({"unchecked", "rawtypes"})
+        @SuppressWarnings({"rawtypes", "unchecked"})
         public boolean test(ReadStruct struct, List<?> context) {
             for (int i = 0; i < filters.length; i++) {
                 var testResult = ((EventFilter) filters[i]).test(struct, context.get(i));
@@ -114,7 +114,7 @@ public interface EventFilter<C> {
         }
 
         @Override
-        @SuppressWarnings({"unchecked", "rawtypes"})
+        @SuppressWarnings({"rawtypes", "unchecked"})
         public void analyze(ReadStruct struct, List<?> context) {
             for (int i = 0; i < filters.length; i++) {
                 ((EventFilter) filters[i]).analyze(struct, context.get(i));

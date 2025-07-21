@@ -94,9 +94,25 @@ public class AgentCommand implements Callable<Integer> {
     public static int execute(List<String> args, CommandLine subCommandCommandLine) {
         var subCommandArgs = args.subList(1, args.size());
         // we have to prevent sub commands from being executed
-        ParseResult parseResult =
-                new CommandLine(new AgentCommand())
-                        .parseArgs(subCommandArgs.toArray(new String[0]));
+        ParseResult parseResult;
+        try {
+            parseResult =
+                    new CommandLine(new AgentCommand())
+                            .parseArgs(subCommandArgs.toArray(new String[0]));
+        } catch (CommandLine.UnmatchedArgumentException ex) {
+            // if the subCommandArgs has size 2 and the second argument has a space in it,
+            // augment the error message
+            if (subCommandArgs.size() == 2 && subCommandArgs.get(1).contains(" ")) {
+                throw new CommandLine.UnmatchedArgumentException(
+                        ex.getCommandLine(),
+                        ex.getMessage()
+                                + "\n"
+                                + "Did you mean to use quotes around the second argument? If you"
+                                + " want to use a sub command, please use the command 'cjfr agent"
+                                + " help'.");
+            }
+            throw ex;
+        }
         if (parseResult.hasSubcommand()) {
             return handleSubCommand(parseResult, subCommandArgs);
         }
@@ -108,7 +124,7 @@ public class AgentCommand implements Callable<Integer> {
             subCommandCommandLine.usage(System.out);
             return 0;
         }
-        subCommandCommandLine.usage(System.out);
+        subCommandCommandLine.usage(System.err);
         return 2;
     }
 

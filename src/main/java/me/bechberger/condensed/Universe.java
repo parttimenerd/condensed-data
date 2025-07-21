@@ -47,6 +47,7 @@ public class Universe {
     public interface HashAndEqualsWrapper<V> {
         V value();
 
+        @Override
         int hashCode();
     }
 
@@ -69,11 +70,7 @@ public class Universe {
         }
     }
 
-    /**
-     * Cache that stores values per value type and per embedding type
-     *
-     * @param <T>
-     */
+    /** Cache that stores values per value type and per embedding type */
     static class WritingCachePerTypePerEmbeddingType<T> {
         private final int size;
         private final Map<CondensedType<?, ?>, Map<T, Integer>> cache = new HashMap<>();
@@ -167,7 +164,7 @@ public class Universe {
         private final Map<String, Function<?, HashAndEqualsWrapper<?>>> wrapperFactories =
                 new HashMap<>();
 
-        @SuppressWarnings({"unchecked", "rawtypes"})
+        @SuppressWarnings({"rawtypes", "unchecked"})
         public <T> void put(String name, Function<T, HashAndEqualsWrapper<T>> factory) {
             wrapperFactories.put(name, (Function<?, HashAndEqualsWrapper<?>>) (Function) factory);
         }
@@ -177,7 +174,7 @@ public class Universe {
             put(type.getName(), factory);
         }
 
-        @SuppressWarnings({"unchecked", "rawtypes"})
+        @SuppressWarnings({"rawtypes", "unchecked"})
         public <T> Optional<Function<T, HashAndEqualsWrapper<T>>> getWrapperFactory(
                 CondensedType<T, ?> type) {
             return Optional.ofNullable(

@@ -305,7 +305,7 @@ public class BasicJFRWriter {
         return new ArrayType<>(id, name, "", createTypeAndRegister(field, false), embedding);
     }
 
-    @SuppressWarnings({"unchecked", "rawtypes"})
+    @SuppressWarnings({"rawtypes", "unchecked"})
     @NotNull
     private StructType<RecordedObject, Map<String, Object>> createStructType(
             ValueDescriptor field, Integer id) {
@@ -477,7 +477,7 @@ public class BasicJFRWriter {
                 reduction);
     }
 
-    @SuppressWarnings({"unchecked", "rawtypes"})
+    @SuppressWarnings({"rawtypes", "unchecked"})
     private StructType<?, ?> getReducedStackTraceType(ValueDescriptor field) {
         if (reducedStackTraceType == null) {
             var truncatedField =
@@ -592,7 +592,7 @@ public class BasicJFRWriter {
         return new ParsedEventDescription(arr.getString(0), arr.getString(1));
     }
 
-    @SuppressWarnings({"unchecked", "rawtypes"})
+    @SuppressWarnings({"rawtypes", "unchecked"})
     StructType<RecordedEvent, Map<String, Object>> createAndRegisterEventStructType(
             EventType eventType) {
         return out.writeAndStoreType(

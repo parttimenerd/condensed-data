@@ -53,7 +53,7 @@ public class CommandExecuter {
         }
         AtomicInteger exitCode = new AtomicInteger();
         AtomicReference<String> err = new AtomicReference<>();
-        var modifiedArgs = args.stream().map(s -> s.replace("T/", tempFolder.toString() + "/"));
+        var modifiedArgs = args.stream().map(s -> s.replaceAll("^T/", tempFolder.toString() + "/"));
         String out =
                 SystemLambda.tapSystemOut(
                         () ->

@@ -503,7 +503,7 @@ public class TypeSpecificationTest {
         return structType(Freqs.DEFAULT);
     }
 
-    @SuppressWarnings({"unchecked", "rawtypes"})
+    @SuppressWarnings({"rawtypes", "unchecked"})
     @NotNull
     private static TypeCreatorAndValue<
                     Map<String, Object>, StructType<Map<String, Object>, Map<String, Object>>>
