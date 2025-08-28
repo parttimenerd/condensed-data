@@ -2,6 +2,8 @@ package me.bechberger.jfr.cli.commands;
 
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.ArrayList;
+import java.util.List;
 
 /**
  * Runs a test programs that generates JFR events and simulates memory pressure and garbage
@@ -26,6 +28,8 @@ import java.nio.file.Path;
  * JFR events approximately every 50ms
  */
 public class WithRunningJVM implements AutoCloseable {
+
+    static final boolean DEBUG = false; // opens debug port 5006 for remote debugging
 
     static final String TEST_PROGRAM =
             """
@@ -101,7 +105,14 @@ public class WithRunningJVM implements AutoCloseable {
 
         var javaFile = tmpFolder.resolve("Test.java");
         Files.writeString(javaFile, TEST_PROGRAM);
-        var pb = new ProcessBuilder("java", "-XX:+EnableDynamicAgentLoading", javaFile.toString());
+        List<String> command = new ArrayList<>();
+        command.add("java");
+        if (DEBUG) {
+            command.add("-agentlib:jdwp=transport=dt_socket,server=y,suspend=y,address=5006");
+        }
+        command.add("-XX:+EnableDynamicAgentLoading");
+        command.add(javaFile.toString());
+        var pb = new ProcessBuilder(command);
         pb.inheritIO();
         process = pb.start();
     }

@@ -31,18 +31,41 @@ public class BasicJFRReader implements JFRReader {
         this.reconstitutor = reconstitute ? new JFREventReadStructReconstitutor(in) : null;
     }
 
+    private ReadInstance<?, ?> alreadReadNextInstance = null;
+
+    public void readTillFirstEvent() {
+        ReadInstance<?, ?> msg;
+        while ((msg = in.readNextInstance()) != null) {
+            if (isUniverseType(msg)) {
+                processUniverse(msg);
+            } else if (isConfigurationType(msg)) {
+                processConfiguration(msg);
+            } else {
+                // We reached the first event
+                in.setReductions(new JFRReduction.JFRReductions(configuration, universe));
+                alreadReadNextInstance = msg;
+                return;
+            }
+        }
+    }
+
     @Override
     public @Nullable ReadStruct readNextEvent() {
-        if (!eventsToEmit.isEmpty()) {
-            return eventsToEmit.poll();
-        }
-        if (closed) {
-            return null;
-        }
-        var msg = in.readNextInstance();
-        if (msg == null) {
-            closed = true;
-            return null;
+        ReadInstance<?, ?> msg = alreadReadNextInstance;
+        if (alreadReadNextInstance == null) {
+            if (!eventsToEmit.isEmpty()) {
+                return eventsToEmit.poll();
+            }
+            if (closed) {
+                return null;
+            }
+            msg = in.readNextInstance();
+            if (msg == null) {
+                closed = true;
+                return null;
+            }
+        } else {
+            alreadReadNextInstance = null; // reset for next call
         }
         while (isUniverseType(msg) || isConfigurationType(msg)) {
             if (isUniverseType(msg)) {

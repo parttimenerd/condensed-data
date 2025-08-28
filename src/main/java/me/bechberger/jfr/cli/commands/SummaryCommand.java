@@ -85,6 +85,25 @@ public class SummaryCommand implements Callable<Integer> {
             Instant end,
             Map<String, Integer> eventCounts) {
 
+       public Summary {
+             // check validity of inputs
+                    if (eventCount < 0) {
+                     throw new IllegalArgumentException("Event count must be non-negative");
+                 }
+             if (duration.isNegative() || duration.getSeconds() > 100L * 365 * 24 * 3600) {
+                     throw new IllegalArgumentException("Duration must be positive");
+                 }
+             if (version < 0) {
+                     throw new IllegalArgumentException("Version must be non-negative");
+                 }
+             if (start == null || end == null || start.isAfter(end)) {
+                     throw new IllegalArgumentException("Start time must be before end time");
+                 }
+             if (eventCounts == null) {
+                     throw new IllegalArgumentException("Event counts must not be null");
+                 }
+         }
+
         public String toString(boolean shortSummary) {
             StringBuilder sb = new StringBuilder();
             sb.append("\n");

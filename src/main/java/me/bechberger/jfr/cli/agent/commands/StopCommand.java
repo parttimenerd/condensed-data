@@ -12,7 +12,7 @@ public class StopCommand implements Callable<Integer> {
     public Integer call() throws Exception {
         synchronized (Agent.getSyncObject()) {
             if (Agent.getCurrentRecordingThread() == null) {
-                AgentIO.getAgentInstance().writeSevereError("No recording running");
+                AgentIO.getAgentInstance().println("No recording running");
                 return 1;
             }
             Agent.getCurrentRecordingThread().stop();

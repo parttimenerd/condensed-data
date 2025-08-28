@@ -22,7 +22,7 @@ public class SetMaxSizeCommand implements Runnable {
     @Override
     public void run() {
         if (Agent.getCurrentRecordingThread() == null) {
-            AgentIO.getAgentInstance().writeSevereError("No recording running");
+            AgentIO.getAgentInstance().println("No recording running");
             return;
         }
         Agent.getCurrentRecordingThread().setMaxSize(maxSize);

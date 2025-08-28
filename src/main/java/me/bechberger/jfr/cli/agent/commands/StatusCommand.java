@@ -15,7 +15,7 @@ public class StatusCommand implements Callable<Integer> {
     public Integer call() throws Exception {
         synchronized (Agent.getSyncObject()) {
             if (Agent.getCurrentRecordingThread() == null) {
-                AgentIO.getAgentInstance().writeSevereError("No recording running");
+                AgentIO.getAgentInstance().println("No recording running");
             } else {
                 AgentIO.getAgentInstance().println("Recording running");
                 var status = Agent.getCurrentRecordingThread().getStatus();

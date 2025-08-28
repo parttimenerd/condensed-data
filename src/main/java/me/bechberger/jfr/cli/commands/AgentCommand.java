@@ -155,15 +155,9 @@ public class AgentCommand implements Callable<Integer> {
             jvm.detach();
             AgentIO agentIO = AgentIO.getAgentInstance(pid);
             String out;
-            boolean first = true;
             while ((out = agentIO.readOutput()) != null) {
                 Thread.sleep(50);
-                if (first && out.strip().startsWith("Usage: -javaagent:condensed-agent.jar")) {
-                    System.out.println("Usage: ./cjfr agent " + pid + " [COMMAND]");
-                } else {
-                    System.out.print(out);
-                }
-                first = false;
+                System.out.println(out.replace("Usage: -javaagent:condensed-agent.jar [COMMAND]", "Usage: cjfr agent " + pid + " [COMMAND]"));
             }
         } catch (URISyntaxException ex) {
             System.err.println("Can't find the current JAR file");

@@ -212,7 +212,7 @@ public class AgentTest {
         var bas = new ByteArrayOutputStream();
         var processArgs = new ArrayList<String>();
         // get currently used JVM
-        var javaHome = Path.of(System.getenv("JAVA_HOME"));
+        var javaHome = Path.of(System.getProperty("java.home"));
         var javaBin = javaHome.resolve("bin").resolve("java").toString();
         processArgs.add(javaBin);
         if (DEBUG_CLI) {

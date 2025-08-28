@@ -94,6 +94,7 @@ public class CombiningJFRReader implements JFRReader {
         var startTimes = new HashSet<Long>();
         var uniqueReaders = new ArrayList<ReaderAndReadEvents>();
         for (var reader : sorted) {
+            reader.reader().readTillFirstEvent();
             if (startTimes.add(reader.reader().getUniverse().getStartTimeNanos())) {
                 uniqueReaders.add(reader);
             } else {
@@ -250,7 +251,7 @@ public class CombiningJFRReader implements JFRReader {
     @Override
     public Instant getEndTime() {
         if (lastReadEvent == null) {
-            return Instant.MIN;
+            return getStartTime();
         }
         var lastStartTime = lastReadEvent.get("startTime", Instant.class);
         return Instant.ofEpochSecond(lastStartTime.getEpochSecond(), lastStartTime.getNano());

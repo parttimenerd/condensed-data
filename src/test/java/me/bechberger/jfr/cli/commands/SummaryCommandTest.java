@@ -3,6 +3,7 @@ package me.bechberger.jfr.cli.commands;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.junit.jupiter.api.Assertions.assertAll;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.io.IOException;
 import java.nio.file.Path;
@@ -132,34 +133,31 @@ public class SummaryCommandTest {
                         .replace("$GENERATOR", "condensed jfr cli")
                         .replace("$COMPRESSION", Compression.DEFAULT.name())
                         .strip();
-        assertThat(result.strip()).matches(regexp);
+        assertThat(result.strip().split("\n\n")[0]).matches(regexp);
     }
 
     private void checkFullSummaryResult(String result, int testEventCount) {
         String regexp =
-                """
-                 Format Version: $VERSION
-                 Generator: $GENERATOR
-                 Generator Version: $GENERATOR_VERSION
-                 Generator Configuration: default
-                 Compression: $COMPRESSION
-                 Start: .*
-                 End: .*
-                 Duration: [0-9]+(\\.[0-9]*)?s
-                 Events: .*
+                 """
+                  Format Version: $VERSION
+                  Generator: $GENERATOR
+                  Generator Version: $GENERATOR_VERSION
+                  Generator Configuration: default
+                  Compression: $COMPRESSION
+                  Start: .*
+                  End: .*
+                  Duration: [0-9]+(\\.[0-9]*)?s
+                  Events: .*
 
-                 Event Type                                Count
-                =================================================
-                """
+                  Event Type                                Count
+                 """
                         .replace("$VERSION", Constants.FORMAT_VERSION + "")
                         .replace("$GENERATOR_VERSION", Constants.VERSION)
                         .replace("$GENERATOR", "condensed jfr cli")
                         .replace("$COMPRESSION", Compression.DEFAULT.name())
                         .strip();
-        Pattern pattern = Pattern.compile(regexp);
-        assertTrue(pattern.matcher(result.strip()).find());
-        assertTrue(
-                result.contains("TestEvent                                     " + testEventCount));
+        assertThat(result.strip().split("====")[0].strip()).matches(regexp);
+        assertThat(result).contains("TestEvent                                     " + testEventCount);
     }
 
     @Test

@@ -171,6 +171,7 @@ public class BasicJFRWriter {
     private final JFREventCombiner eventCombiner;
     private final EventDeduplication deduplication;
     private volatile boolean closed = false;
+    private long defaultStartTimeNanos = System.currentTimeMillis() * 1000000;
 
     /** field types that are not yet added, but their creation code is running + id */
     private final Map<TypeIdent, Integer> fieldTypesCurrentlyAdding;
@@ -651,17 +652,21 @@ public class BasicJFRWriter {
         return false;
     }
 
+    public void writeConfigurationAndUniverseIfNeeded(long startTimeNanos) {
+        if (!wroteConfiguration) {
+            writeConfiguration();
+            wroteConfiguration = true;
+            universe.setStartTimeNanos(startTimeNanos);
+            universe.setLastStartTimeNanos(universe.getStartTimeNanos());
+            writeUniverse();
+        }
+    }
+
     public void processEvent(RecordedEvent event) {
         if (ignoreEvent(event)) {
             return;
         }
-        if (!wroteConfiguration) {
-            writeConfiguration();
-            wroteConfiguration = true;
-            universe.setStartTimeNanos(toNanoSeconds(event.getStartTime()));
-            universe.setLastStartTimeNanos(universe.getStartTimeNanos());
-            writeUniverse();
-        }
+        writeConfigurationAndUniverseIfNeeded(toNanoSeconds(event.getStartTime()));
         if (out.isClosed()) {
             return;
         }
@@ -706,6 +711,7 @@ public class BasicJFRWriter {
     }
 
     public void close() {
+        writeConfigurationAndUniverseIfNeeded(defaultStartTimeNanos); // ensure universe is written
         closed = true;
         eventCombiner.close();
         out.close();

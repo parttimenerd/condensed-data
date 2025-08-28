@@ -95,7 +95,8 @@ public class CondenseCommand implements Callable<Integer> {
             for (var input : inputs) {
                 try (RecordingFile r = new RecordingFile(input)) {
                     while (r.hasMoreEvents()) {
-                        basicJFRWriter.processEvent(r.readEvent());
+                        var e = r.readEvent();
+                        basicJFRWriter.processEvent(e);
                     }
                 }
             }

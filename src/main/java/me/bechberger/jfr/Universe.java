@@ -1,7 +1,10 @@
 package me.bechberger.jfr;
 
 import java.time.Duration;
+import java.time.Instant;
 import java.time.temporal.ChronoUnit;
+import java.util.Date;
+
 import me.bechberger.condensed.types.StructType;
 import me.bechberger.condensed.types.TypeCollection;
 
@@ -34,6 +37,9 @@ public class Universe {
     }
 
     public long getStartTimeNanos() {
+        if (startTimeNanos == -1) {
+            throw new IllegalStateException("Start time is not set");
+        }
         return startTimeNanos;
     }
 

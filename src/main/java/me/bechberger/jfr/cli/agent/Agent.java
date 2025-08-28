@@ -8,6 +8,10 @@ import picocli.CommandLine;
 import picocli.CommandLine.*;
 import picocli.CommandLine.Model.CommandSpec;
 
+import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
+
 @Command(
         name = "-javaagent:condensed-agent.jar",
         description = "Agent for recording condensed JFR files",
@@ -17,7 +21,7 @@ import picocli.CommandLine.Model.CommandSpec;
             StatusCommand.class,
             SetMaxSizeCommand.class,
             SetMaxDurationCommand.class,
-            SetMaxFilesCommand.class
+            SetMaxFilesCommand.class,
         })
 /*
  * TODO: Test and test that everything from my side can crash without impacting the rest of the

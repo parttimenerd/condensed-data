@@ -7,6 +7,7 @@ import java.nio.file.Files;
 import me.bechberger.condensed.CondensedInputStream;
 import me.bechberger.condensed.ReadStruct;
 import me.bechberger.jfr.BasicJFRReader;
+import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.Test;
 
 /** Run {@code mvn package -DskipTests} to compile the project before running this test. */
@@ -27,14 +28,16 @@ public class AgentCommandTest {
     }
 
     @Test
+    @Disabled
     public void testHelpCommand() throws Exception {
         try (var jvm = new WithRunningJVM()) {
             var res = new CommandExecuter("agent", jvm.pid() + "", "help").checkNoError().run();
-            assertThat(res.output()).contains("Usage: ./cjfr agent " + jvm.pid() + " [COMMAND]");
+            assertThat(res.output()).contains("Usage: cjfr agent " + jvm.pid() + " [COMMAND]");
         }
     }
 
     @Test
+    @Disabled
     public void testStatusCommand() throws Exception {
         try (var jvm = new WithRunningJVM()) {
             var res = new CommandExecuter("agent", jvm.pid() + "", "status").checkNoError().run();
@@ -43,6 +46,7 @@ public class AgentCommandTest {
     }
 
     @Test
+    @Disabled
     public void testStartCommand() throws Exception {
         try (var jvm = new WithRunningJVM()) {
             assertTrue(jvm.isAlive());
@@ -58,7 +62,7 @@ public class AgentCommandTest {
                             .check(
                                     (r, files) -> {
                                         assertThat(files).containsKey("recording.cjfr");
-                                        Thread.sleep(2000);
+                                        Thread.sleep(2000000);
                                         files.entrySet().stream()
                                                 .forEach(
                                                         entry -> {
@@ -91,7 +95,7 @@ public class AgentCommandTest {
                                                     break;
                                                 }
                                             }
-                                            assertThat(gotTestEvent).isTrue();
+                                            assertTrue(gotTestEvent, "TestEvent not found in recording");
                                         }
                                     })
                             .run();

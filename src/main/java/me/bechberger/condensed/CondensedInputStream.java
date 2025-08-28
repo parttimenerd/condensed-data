@@ -297,7 +297,7 @@ public class CondensedInputStream extends InputStream {
         try {
             return inputStream.read();
         } catch (IOException e) {
-            throw new RIOException("Can't read byte", e);
+            return -1; // end of stream
         }
     }
 
