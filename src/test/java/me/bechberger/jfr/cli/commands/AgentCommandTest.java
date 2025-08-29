@@ -95,7 +95,9 @@ public class AgentCommandTest {
                                                     break;
                                                 }
                                             }
-                                            assertTrue(gotTestEvent, "TestEvent not found in recording");
+                                            assertTrue(
+                                                    gotTestEvent,
+                                                    "TestEvent not found in recording");
                                         }
                                     })
                             .run();

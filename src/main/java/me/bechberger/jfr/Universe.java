@@ -1,10 +1,7 @@
 package me.bechberger.jfr;
 
 import java.time.Duration;
-import java.time.Instant;
 import java.time.temporal.ChronoUnit;
-import java.util.Date;
-
 import me.bechberger.condensed.types.StructType;
 import me.bechberger.condensed.types.TypeCollection;
 

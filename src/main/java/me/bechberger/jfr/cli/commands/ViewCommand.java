@@ -2,9 +2,12 @@ package me.bechberger.jfr.cli.commands;
 
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
 import java.util.concurrent.Callable;
 import me.bechberger.jfr.CombiningJFRReader;
+import me.bechberger.jfr.cli.CLIUtils;
 import me.bechberger.jfr.cli.EventCompletionCandidates;
 import me.bechberger.jfr.cli.EventFilter.EventFilterOptionMixin;
 import me.bechberger.jfr.cli.FileOptionConverters.ExistingCJFRFileOrZipOrFolderConverter;
@@ -75,7 +78,9 @@ public class ViewCommand implements Callable<Integer> {
             var struct = jfrReader.readNextEvent();
             JFRView view = null;
             int count = 0;
+            Set<String> seenTypes = new HashSet<>();
             while (struct != null) {
+                seenTypes.add(struct.getType().getName());
                 if (struct.getType().getName().equals(eventName)) {
                     if (view == null) {
                         view =
@@ -98,6 +103,23 @@ public class ViewCommand implements Callable<Integer> {
                     }
                 }
                 struct = jfrReader.readNextEvent();
+            }
+            if (view == null) {
+                System.err.println("No event of type " + eventName + " found.");
+                if (seenTypes.isEmpty()) {
+                    System.err.println("No events found at all.");
+                } else {
+                    System.err.println("Did you mean one of these events:");
+                    seenTypes.stream().sorted((a, b) -> {
+                        int distA = CLIUtils.editDistance(a, eventName);
+                        int distB = CLIUtils.editDistance(b, eventName);
+                        if (distA != distB) {
+                            return Integer.compare(distA, distB);
+                        }
+                        return a.compareTo(b);
+                    }).limit(10).forEach(t -> System.err.println("  " + t));
+                }
+                return 1;
             }
         } catch (Exception e) {
             e.printStackTrace();

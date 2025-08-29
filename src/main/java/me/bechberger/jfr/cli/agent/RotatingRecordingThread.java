@@ -14,6 +14,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Map.Entry;
+import java.util.Optional;
 import java.util.function.Function;
 import jdk.jfr.consumer.RecordedEvent;
 import me.bechberger.condensed.Compression;
@@ -61,7 +62,7 @@ public class RotatingRecordingThread extends RecordingThread {
     }
 
     /** Delete files so that count is below max-files */
-    private void deleteOldestFileIfNeeded() {
+    private Optional<Path> deleteOldestFileIfNeeded() {
         if (currentlyStoredFiles.size() >= getMaxFiles()) {
             var fileToDelete = currentlyStoredFiles.remove(0);
             currentlyStoredStarts.remove(0);
@@ -70,13 +71,20 @@ public class RotatingRecordingThread extends RecordingThread {
             } catch (IOException e) {
                 agentIO.writeSevereError("Deleting oldest file failed: " + e.getMessage());
             }
+            return Optional.of(fileToDelete);
         }
+        return Optional.empty();
     }
 
     /** Initialize a new file and start a new jfrWriter, is called in the same thread as onEvent */
     private void initNewFile() throws IOException {
-        deleteOldestFileIfNeeded();
-        var newPath = createNewPath();
+        var delFile = deleteOldestFileIfNeeded();
+        Path newPath;
+        if (delFile.isPresent() && !useNewNames()) {
+            newPath = delFile.get();
+        } else {
+            newPath = createNewPath();
+        }
         currentlyStoredFiles.add(newPath);
         overallWrittenFileCount++;
         Files.createDirectories(newPath.toAbsolutePath().getParent());

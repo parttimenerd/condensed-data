@@ -7,6 +7,7 @@ import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
+import java.util.stream.IntStream;
 
 /** Utility class for formatting time durations and instant objects, and parsing the same format */
 public class TimeUtil {
@@ -39,13 +40,32 @@ public class TimeUtil {
     }
 
     public static Duration parseDuration(String duration) {
-        Pattern pattern = Pattern.compile("(?:(\\d+)h)?\\s*(?:(\\d+)m)?\\s*(?:(\\d+)s)?");
+        Pattern pattern =
+                Pattern.compile(
+                        "(?i)\\s*(?:(\\d+(?:\\.\\d+)?)h)?\\s*"
+                                + "(?:(\\d+(?:\\.\\d+)?)m)?\\s*"
+                                + "(?:(\\d+(?:\\.\\d+)?)s)?\\s*"
+                                + "(?:(\\d+(?:\\.\\d+)?)ms)?\\s*"
+                                + "(?:(\\d+(?:\\.\\d+)?)us)?\\s*"
+                                + "(?:(\\d+(?:\\.\\d+)?)ns)?\\s*");
         Matcher matcher = pattern.matcher(duration);
-        if (matcher.matches()) {
-            long hours = matcher.group(1) != null ? Long.parseLong(matcher.group(1)) : 0;
-            long minutes = matcher.group(2) != null ? Long.parseLong(matcher.group(2)) : 0;
-            long seconds = matcher.group(3) != null ? Long.parseLong(matcher.group(3)) : 0;
-            return Duration.ofHours(hours).plusMinutes(minutes).plusSeconds(seconds);
+        if (matcher.matches() && (IntStream.range(1, 7).anyMatch(i -> matcher.group(i) != null))) {
+            double hours = matcher.group(1) != null ? Double.parseDouble(matcher.group(1)) : 0;
+            double minutes = matcher.group(2) != null ? Double.parseDouble(matcher.group(2)) : 0;
+            double seconds = matcher.group(3) != null ? Double.parseDouble(matcher.group(3)) : 0;
+            double millis = matcher.group(4) != null ? Double.parseDouble(matcher.group(4)) : 0;
+            double micros = matcher.group(5) != null ? Double.parseDouble(matcher.group(5)) : 0;
+            double nanos = matcher.group(6) != null ? Double.parseDouble(matcher.group(6)) : 0;
+
+            long totalNanos = 0;
+            totalNanos += (long) (hours * 3_600_000_000_000L);
+            totalNanos += (long) (minutes * 60_000_000_000L);
+            totalNanos += (long) (seconds * 1_000_000_000L);
+            totalNanos += (long) (millis * 1_000_000L);
+            totalNanos += (long) (micros * 1_000L);
+            totalNanos += (long) (nanos);
+
+            return Duration.ofNanos(totalNanos);
         } else {
             throw new IllegalArgumentException("Invalid duration format: " + duration);
         }

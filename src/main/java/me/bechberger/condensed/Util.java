@@ -3,6 +3,10 @@ package me.bechberger.condensed;
 import java.io.IOException;
 import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.attribute.BasicFileAttributes;
+import java.nio.file.attribute.FileTime;
 import java.time.Instant;
 import java.util.List;
 import java.util.stream.IntStream;
@@ -155,6 +159,14 @@ public final class Util {
             return new String(input.readAllBytes(), StandardCharsets.UTF_8).strip();
         } catch (IOException ex) {
             throw new RuntimeException("Could not read version.properties", ex);
+        }
+    }
+
+    public static FileTime getCreationTimeOfFile(Path path) {
+        try {
+            return Files.readAttributes(path, BasicFileAttributes.class).creationTime();
+        } catch (IOException e) {
+            throw new RuntimeException(e);
         }
     }
 }

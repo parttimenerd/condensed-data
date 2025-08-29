@@ -17,4 +17,43 @@ public class ViewCommandTest {
                                 .contains("Missing required parameter"),
                 () -> assertThat(result.output()).isEmpty());
     }
+
+    @Test
+    public void testPrintHelpWithHelpArgument() throws Exception {
+        var result = new CommandExecuter("view", "--help").run();
+        assertAll(
+                () -> assertThat(result.exitCode()).isEqualTo(0),
+                () -> assertThat(result.output()).containsIgnoringNewLines("Usage: cjfr"),
+                () -> assertThat(result.error()).isEmpty());
+    }
+
+    @Test
+    public void testBasicView() throws Exception {
+        var result =
+                new CommandExecuter(
+                                "view", "T/" + CommandTestUtil.getSampleCJFRFileName(), "TestEvent")
+                        .withFiles(CommandTestUtil.getSampleCJFRFile())
+                        .checkNoError()
+                        .run();
+        assertThat(result.output())
+                .contains("TestEvent")
+                .contains(
+                        """
+                Start Time Duration   Event Thread    Stack Trace                                       Number     Memory     String                                          \s
+                ---------- ---------- --------------- ------------------------------------------------- ---------- ---------- -------------------------------------------------
+                """);
+    }
+
+    @Test
+    public void testTypoInEventName() throws Exception {
+        var result =
+                new CommandExecuter(
+                                "view", "T/" + CommandTestUtil.getSampleCJFRFileName(), "TstEvent")
+                        .withFiles(CommandTestUtil.getSampleCJFRFile())
+                        .run();
+        assertAll(
+                () -> assertThat(result.exitCode()).isEqualTo(1),
+                () -> assertThat(result.error()).contains("Did you mean one of these events:"),
+                () -> assertThat(result.error()).contains("TestEvent"));
+    }
 }

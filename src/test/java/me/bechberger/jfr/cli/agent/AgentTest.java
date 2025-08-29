@@ -16,6 +16,7 @@ import java.util.Comparator;
 import java.util.List;
 import java.util.function.Consumer;
 import java.util.stream.Stream;
+import me.bechberger.condensed.Util;
 import me.bechberger.jfr.cli.commands.WithRunningJVM;
 import one.profiler.AsyncProfilerLoader;
 import org.junit.jupiter.api.AfterEach;
@@ -175,6 +176,119 @@ public class AgentTest {
         assertThat(Path.of("test-dir/recording_1.cjfr")).exists();
         // check that the file is larger than 1000 bytes
         assertThat(Files.size(Path.of("test-dir/recording_1.cjfr"))).isGreaterThan(1000);
+    }
+
+    /**
+     * Tests that the rotation overrides files
+     *
+     * <ul>
+     *   <li>Starts the recording with a max duration of 1 second and max files of 3
+     *   <li>Waits for 5 seconds to ensure multiple rotations
+     *   <li>Stops the recording
+     *   <li>Checks that only three files exist
+     *   <li>Checks that both files are sensible
+     *   <li>Checks that the third file is older than the first one
+     * </ul>
+     */
+    @Test
+    public void testRotateWithMaxFiles() throws InterruptedException, IOException {
+        var output =
+                runAgent(
+                        AgentRunMode.JATTACH,
+                        "start test-dir/recording.cjfr --rotating --max-duration 1s --max-files 3");
+        assertThat(output).startsWith("Condensed recording to ").doesNotContain("Exception");
+        System.out.println(output);
+
+        Thread.sleep(5000);
+
+        runAgent(AgentRunMode.JATTACH, "stop");
+
+        var files = Files.list(Path.of("test-dir")).toList();
+        assertThat(files).hasSize(3);
+        // check that the files are named recording_0.cjfr, recording_1.cjfr, recording_2.cjfr
+        assertThat(files)
+                .map(Path::getFileName)
+                .map(Path::toString)
+                .containsOnly("recording_0.cjfr", "recording_1.cjfr", "recording_2.cjfr");
+        // sort files by name
+        for (var file : files) {
+            assertThat(Files.size(file)).isGreaterThan(1000);
+        }
+        var changeTimeFirstFile = Files.getLastModifiedTime(files.getFirst()).toMillis();
+        var changeTimeLastFile = Files.getLastModifiedTime(files.getLast()).toMillis();
+        var creationTimeFirstFile = Util.getCreationTimeOfFile(files.getFirst()).toMillis();
+        var creationTimeLastFile = Util.getCreationTimeOfFile(files.getLast()).toMillis();
+        // check that the first file is newer than the last file
+        // this is because the first file is overwritten last
+        assertThat(changeTimeFirstFile)
+                .withFailMessage(
+                        "The first file should be newer than the last file, as it was overwritten"
+                                + " last")
+                .isGreaterThan(changeTimeLastFile);
+        // also check that the modification and creation time of the last file less than 2 seconds
+        // apart
+        assertThat(changeTimeLastFile)
+                .withFailMessage(
+                        "Creation and modification time of the last file should be very close")
+                .isLessThan(
+                        creationTimeLastFile
+                                + 2000); // allow 2 seconds difference (because the file is flushed
+        // after stopping)
+        // the same for the first file, as we're deleting files
+        assertThat(changeTimeFirstFile)
+                .withFailMessage(
+                        "The modification time of the first file should be at least 2 seconds after"
+                                + " the creation time, as it was overwritten multiple times")
+                .isGreaterThan(creationTimeFirstFile + 1000);
+    }
+
+    /** Tests that the rotation uses new names when configured */
+    @Test
+    public void testRotateWithMaxFilesAndNewFiles() throws InterruptedException, IOException {
+        var output =
+                runAgent(
+                        AgentRunMode.JATTACH,
+                        "start test-dir/recording.cjfr --rotating --max-duration 300ms --max-files"
+                                + " 2 --new-names");
+        assertThat(output).startsWith("Condensed recording to ").doesNotContain("Exception");
+        System.out.println(output);
+
+        Thread.sleep(3000);
+
+        runAgent(AgentRunMode.JATTACH, "stop");
+
+        var files = Files.list(Path.of("test-dir")).toList();
+        assertThat(files).hasSize(2);
+        // check that the files are named recording_0.cjfr, recording_1.cjfr, recording_2.cjfr
+        assertThat(files)
+                .map(Path::getFileName)
+                .map(Path::toString)
+                .containsOnly("recording_2.cjfr", "recording_3.cjfr");
+        // sort files by name
+        for (var file : files) {
+            assertThat(Files.size(file)).isGreaterThan(1000);
+        }
+    }
+
+    @Test
+    public void testSetInvalidMaxSize() throws IOException, InterruptedException {
+        var output =
+                runAgent(
+                        AgentRunMode.JATTACH,
+                        "start test-dir/recording.cjfr --rotating --max-duration 1s --max-files 2");
+        assertThat(output).startsWith("Condensed recording to ");
+        System.out.println(output);
+
+        output = runAgent(AgentRunMode.JATTACH, "set-max-size 0b");
+        assertThat(output).contains("Max size must be at least 1KB");
+
+        output = runAgent(AgentRunMode.JATTACH, "set-max-size -1m");
+        assertThat(output).contains("Max size must be at least 1KB");
+
+        output = runAgent(AgentRunMode.JATTACH, "set-max-size 512");
+        assertThat(output).contains("Max size must be at least 1KB");
+
+        runAgent(AgentRunMode.JATTACH, "stop");
     }
 
     String runAgent(AgentRunMode runMode, String... args) throws IOException, InterruptedException {

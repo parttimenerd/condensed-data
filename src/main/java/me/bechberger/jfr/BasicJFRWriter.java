@@ -11,6 +11,8 @@ import java.util.*;
 import java.util.Map.Entry;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.Function;
+
+import com.sun.jdi.LongType;
 import jdk.jfr.AnnotationElement;
 import jdk.jfr.EventType;
 import jdk.jfr.Timespan;
@@ -164,6 +166,7 @@ public class BasicJFRWriter {
     private final Map<Long, VarIntType> timespanTypePerDivisor = new HashMap<>();
     private final VarIntType timeStampType;
     private final Map<String, FloatType> memoryFloatTypes = new HashMap<>();
+    private final Map<String, VarIntType> memoryVarIntTypes = new HashMap<>();
     private StructType<?, ?> reducedStackTraceType;
     Universe universe = new Universe();
     private boolean wroteConfiguration = false;
@@ -449,12 +452,47 @@ public class BasicJFRWriter {
         if (contentType != null && contentType.equals("jdk.jfr.Timespan")) {
             return getTimespanType(field, topLevel);
         }
-        if (field.getTypeName().equals("long") && configuration.memoryAsBFloat16()) {
+        if ((field.getTypeName().equals("long") || field.getTypeName().equals("int")) && configuration.memoryAsBFloat16()) {
             var dataAmount = getDataAmountAnnotationValue(field);
             if (dataAmount.isPresent()) {
-                return new GetterAndCachedType(
-                        event -> (float) event.getLong(field.getName()),
-                        getMemoryFloatType(dataAmount.get()));
+                switch (field.getTypeName()) {
+                    case "int" -> {
+                        return new GetterAndCachedType(
+                                event -> (float) event.getInt(field.getName()),
+                                getMemoryFloatType(dataAmount.get()));
+                    }
+                    case "long" -> {
+                        return new GetterAndCachedType(
+                                event -> (float) event.getLong(field.getName()),
+                                getMemoryFloatType(dataAmount.get()));
+                    }
+                }
+            }
+        } else {
+            var dataAmount = getDataAmountAnnotationValue(field);
+            if (dataAmount.isPresent()) {
+                switch (field.getTypeName()) {
+                    case "int" -> {
+                        return new GetterAndCachedType(
+                                event -> event.getInt(field.getName()),
+                                getMemoryVarIntType(dataAmount.get()));
+                    }
+                    case "short" -> {
+                        return new GetterAndCachedType(
+                                event -> (short) event.getInt(field.getName()),
+                                getMemoryVarIntType(dataAmount.get()));
+                    }
+                    case "byte" -> {
+                        return new GetterAndCachedType(
+                                event -> (byte) event.getInt(field.getName()),
+                                getMemoryVarIntType(dataAmount.get()));
+                    }
+                    case "long" -> {
+                        return new GetterAndCachedType(
+                                event -> event.getLong(field.getName()),
+                                getMemoryVarIntType(dataAmount.get()));
+                    }
+                }
             }
         }
         JFRReduction reduction = JFRReduction.NONE;
@@ -527,6 +565,14 @@ public class BasicJFRWriter {
                 k ->
                         out.writeAndStoreType(
                                 id -> new FloatType(id, "memory " + kind, "", Type.BFLOAT16)));
+    }
+
+    private VarIntType getMemoryVarIntType(String kind) {
+        return memoryVarIntTypes.computeIfAbsent(
+                kind,
+                k ->
+                        out.writeAndStoreType(
+                                id -> new VarIntType(id, "memory varint " + kind, "", true)));
     }
 
     private VarIntType getCachedTimespanType(long divisor) {

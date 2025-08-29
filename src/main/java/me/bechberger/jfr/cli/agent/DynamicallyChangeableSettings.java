@@ -29,4 +29,7 @@ public class DynamicallyChangeableSettings {
             description = "The maximum number of files to keep, when rotating files",
             defaultValue = "10")
     public volatile int maxFiles;
+
+    @Option(names = "--new-names", description = "When rotating files, use new names instead of reusing old ones", defaultValue = "false")
+    public volatile boolean newNames;
 }

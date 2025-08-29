@@ -124,6 +124,8 @@ public abstract class RecordingThread implements Runnable {
         status.add(Map.entry("duration", formatDuration(Duration.between(start, Instant.now()))));
         status.add(Map.entry("max-duration", formatDuration(getMaxDuration())));
         status.add(Map.entry("max-size", formatMemory(getMaxSize())));
+        status.add(Map.entry("max-files", Integer.toString(getMaxFiles())));
+        status.add(Map.entry("new-names", Boolean.toString(useNewNames())));
         status.addAll(getMiscStatus());
         return status;
     }
@@ -160,5 +162,13 @@ public abstract class RecordingThread implements Runnable {
 
     public void setMaxFiles(int maxFiles) {
         dynSettings.maxFiles = maxFiles;
+    }
+
+    public boolean useNewNames() {
+        return dynSettings.newNames;
+    }
+
+    public void useNewNames(boolean newNames) {
+        dynSettings.newNames = newNames;
     }
 }

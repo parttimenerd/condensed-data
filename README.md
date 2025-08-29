@@ -80,25 +80,11 @@ TODO:
     - without filters
 - test all CLI commands
 - look at each subcommand and check what needs to be done
-  - benchmark (not important)
   - agent
+    - rotating
   - view
-    - handle empty argument
-    - picocli warning without arguments
-    - handle first argument is file not event
-      - display a list of all possible events + help
-    - handle missing files
-    - handle non-existing files
-    - check if file is a JFR file and handle that somehow
-    - handle non-existing events
-      - be helpful and offer the closest match
-        - `Did you mean 'GC' instead of 'Gc'?`
+    - basic tests already done
   - javaagent
-    - same commands as agent, e.g. `-javaagent:target/condensed-data.jar="start --help"`
-    - terminate on help command
-      - use isUsageHelpRequested() to check if help was requested
-      - test this
-    - allow supplying the args via an env variable
     - check what happens if any error is thrown somewhere deep down in the agent
 - logging (don't log anything in default warning mode)
   - seems to be missing new lines

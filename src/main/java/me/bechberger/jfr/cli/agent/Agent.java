@@ -8,10 +8,6 @@ import picocli.CommandLine;
 import picocli.CommandLine.*;
 import picocli.CommandLine.Model.CommandSpec;
 
-import java.io.IOException;
-import java.nio.file.Files;
-import java.nio.file.Path;
-
 @Command(
         name = "-javaagent:condensed-agent.jar",
         description = "Agent for recording condensed JFR files",

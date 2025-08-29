@@ -5,16 +5,25 @@ import java.util.Locale;
 /** Utility class for formatting memory sizes and parsing the same format */
 public class MemoryUtil {
 
-    public static String formatMemory(long bytes, int decimals) {
+    public enum MemoryUnit {
+        BYTES,
+        BITS
+    }
+
+    public static String formatMemory(long bytes, int decimals, MemoryUnit unit) {
         if (bytes < 1024) {
             return bytes + "B";
         }
         int exp = (int) (Math.log(bytes) / Math.log(1024));
         return String.format(
                 Locale.ENGLISH,
-                "%.0" + decimals + "f%sB",
+                "%.0" + decimals + "f%s" + (unit == MemoryUnit.BITS ? "b" : "B"),
                 bytes / Math.pow(1024, exp),
                 "KMGT".charAt(exp - 1));
+    }
+
+    public static String formatMemory(long bytes, int decimals) {
+        return formatMemory(bytes, decimals, MemoryUnit.BYTES);
     }
 
     public static String formatMemory(long bytes) {

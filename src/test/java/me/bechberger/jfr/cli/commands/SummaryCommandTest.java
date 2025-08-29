@@ -2,13 +2,10 @@ package me.bechberger.jfr.cli.commands;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.junit.jupiter.api.Assertions.assertAll;
-import static org.junit.jupiter.api.Assertions.assertTrue;
-import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.io.IOException;
 import java.nio.file.Path;
 import java.util.List;
-import java.util.regex.Pattern;
 import jdk.jfr.consumer.RecordingFile;
 import me.bechberger.condensed.Compression;
 import me.bechberger.jfr.cli.Constants;
@@ -138,7 +135,7 @@ public class SummaryCommandTest {
 
     private void checkFullSummaryResult(String result, int testEventCount) {
         String regexp =
-                 """
+                """
                   Format Version: $VERSION
                   Generator: $GENERATOR
                   Generator Version: $GENERATOR_VERSION
@@ -157,7 +154,8 @@ public class SummaryCommandTest {
                         .replace("$COMPRESSION", Compression.DEFAULT.name())
                         .strip();
         assertThat(result.strip().split("====")[0].strip()).matches(regexp);
-        assertThat(result).contains("TestEvent                                     " + testEventCount);
+        assertThat(result)
+                .contains("TestEvent                                     " + testEventCount);
     }
 
     @Test

@@ -14,6 +14,7 @@ import me.bechberger.condensed.ReadStruct;
 import me.bechberger.condensed.types.CondensedType;
 import me.bechberger.condensed.types.StructType;
 import me.bechberger.condensed.types.StructType.Field;
+import me.bechberger.util.MemoryUtil;
 
 /** Tabular view for JFR events */
 public class JFRView {
@@ -145,10 +146,11 @@ public class JFRView {
         }
     }
 
-    record MemoryColumn(String header, String property) implements Column {
+    record MemoryColumn(String header, String property, MemoryUtil.MemoryUnit unit)
+            implements Column {
 
-        public MemoryColumn(String property) {
-            this(propertyToHeader(property), property);
+        public MemoryColumn(String property, MemoryUtil.MemoryUnit unit) {
+            this(propertyToHeader(property), property, unit);
         }
 
         @Override
@@ -476,7 +478,10 @@ public class JFRView {
             case "millis", "nanos", "tickspan", "microseconds", "timespan" ->
                     new JFRView.DurationColumn(field.name());
             case "timestamp" -> new JFRView.InstantColumn(field.name());
-            case "bytes", "memory BYTES" -> new JFRView.MemoryColumn(field.name());
+            case "bytes", "memory BYTES", "memory varint BYTES", "jdk.jfr.DataAmount" ->
+                    new JFRView.MemoryColumn(field.name(), MemoryUtil.MemoryUnit.BYTES);
+            case "memory BITS", "memory varint BITS" ->
+                    new JFRView.MemoryColumn(field.name(), MemoryUtil.MemoryUnit.BITS);
             case "java.lang.String" -> new JFRView.StringColumn(field.name());
             case "int", "jdk.jfr.Unsigned" -> new JFRView.IntegerColumn(field.name(), 10);
             case "float" -> new JFRView.FloatColumn(field.name(), 10, 2);
