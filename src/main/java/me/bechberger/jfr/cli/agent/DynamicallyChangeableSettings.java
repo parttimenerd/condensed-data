@@ -1,12 +1,26 @@
 package me.bechberger.jfr.cli.agent;
 
 import java.time.Duration;
+import java.util.ArrayList;
+import java.util.List;
+
 import me.bechberger.jfr.cli.CLIUtils.ByteSizeConverter;
 import me.bechberger.jfr.cli.CLIUtils.DurationConverter;
+import org.checkerframework.checker.units.qual.A;
 import picocli.CommandLine.Option;
 
 /** All these settings can be changed during the execution of the agent, via commands */
 public class DynamicallyChangeableSettings {
+
+    public static class ValidationException extends RuntimeException {
+        public ValidationException(String message) {
+            super(message);
+        }
+
+        public ValidationException(List<String> messages) {
+            super(String.join("\n ", messages));
+        }
+    }
 
     @Option(
             names = "--max-duration",
@@ -32,4 +46,27 @@ public class DynamicallyChangeableSettings {
 
     @Option(names = "--new-names", description = "When rotating files, use new names instead of reusing old ones", defaultValue = "false")
     public volatile boolean newNames;
+
+    /** Validate the current settings, throw {@link ValidationException} if invalid */
+    public void validate() {
+        List<String> errors = new ArrayList<>();
+        if (maxFiles < 0) {
+            errors.add("Max files must be at least 0");
+        }
+        if (maxSize < 0) {
+            errors.add("Max size must be at least 0");
+        }
+        if (maxDuration.toMillis() < 0) {
+            errors.add("Max duration must be at least 0ms");
+        }
+        if (maxSize > 0 && maxSize < 1024) {
+            errors.add("Max size must be at least 1kB or 0 (no limit)");
+        }
+        if (maxDuration.toMillis() > 0 && maxDuration.toMillis() < 1) {
+            errors.add("Max duration must be at least 1ms or 0 (no limit)");
+        }
+        if (!errors.isEmpty()) {
+            throw new ValidationException(errors);
+        }
+    }
 }

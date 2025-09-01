@@ -45,6 +45,7 @@ public abstract class RecordingThread implements Runnable {
         this.configuration = configuration;
         this.jfrConfig = jfrConfig;
         this.dynSettings = dynSettings;
+        dynSettings.validate();
         var parsedJfrConfig =
                 jfrConfig.isEmpty()
                         ? jdk.jfr.Configuration.getConfiguration("default")
@@ -152,15 +153,22 @@ public abstract class RecordingThread implements Runnable {
 
     abstract void close();
 
+    /** Must be at least 1kB or 0 (no max size) */
     public void setMaxSize(long maxSize) {
         dynSettings.maxSize = maxSize;
+        dynSettings.validate();
     }
 
+    /** Must be >= 1ms, 0 means no limit */
     public void setMaxDuration(Duration maxDuration) {
         dynSettings.maxDuration = maxDuration;
+        dynSettings.validate();
     }
 
     public void setMaxFiles(int maxFiles) {
+        if (maxFiles < 0) {
+            throw new IllegalArgumentException("Max files must be at least 0");
+        }
         dynSettings.maxFiles = maxFiles;
     }
 

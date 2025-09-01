@@ -15,7 +15,7 @@ public class SetMaxSizeCommand implements Runnable {
     @Parameters(
             description =
                     "The maximum size of the recording file (or the individual files when"
-                            + " rotating files)",
+                            + " rotating files), >= 1kB, 0 means unlimited",
             converter = ByteSizeConverter.class)
     private long maxSize;
 

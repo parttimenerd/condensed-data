@@ -60,13 +60,14 @@ public class AgentTest {
     }
 
     @AfterEach
-    public void tearDown() throws IOException {
+    public void tearDown() throws IOException, InterruptedException {
         // delete test-dir folder if it exists
         deleteTestDir();
         if (jvm != null) {
             jvm.close();
         }
         System.out.println("Test completed, cleaned up test directory.");
+        runAgent(AgentRunMode.JATTACH, "stop"); // just to be sure
     }
 
     public enum AgentRunMode {
@@ -279,16 +280,14 @@ public class AgentTest {
         assertThat(output).startsWith("Condensed recording to ");
         System.out.println(output);
 
-        output = runAgent(AgentRunMode.JATTACH, "set-max-size 0b");
-        assertThat(output).contains("Max size must be at least 1KB");
+        output = runAgent(AgentRunMode.JATTACH, "set-max-size 1b");
+        assertThat(output).contains("Max size must be at least 1kB or 0 (no limit)");
 
         output = runAgent(AgentRunMode.JATTACH, "set-max-size -1m");
-        assertThat(output).contains("Max size must be at least 1KB");
+        assertThat(output).contains("Missing required parameter"); // -1m is not parsed as a number, but as an option
 
         output = runAgent(AgentRunMode.JATTACH, "set-max-size 512");
-        assertThat(output).contains("Max size must be at least 1KB");
-
-        runAgent(AgentRunMode.JATTACH, "stop");
+        assertThat(output).contains("Severe Error: Max size must be at least 1kB or 0 (no limit)");
     }
 
     String runAgent(AgentRunMode runMode, String... args) throws IOException, InterruptedException {

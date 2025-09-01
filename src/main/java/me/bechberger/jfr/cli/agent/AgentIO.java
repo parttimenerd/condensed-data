@@ -124,7 +124,7 @@ public class AgentIO {
     }
 
     public void writeSevereError(String message) {
-        println("Severe Error2: " + message);
+        println("Severe Error: " + message);
     }
 
     public void writeInfo(String message) {

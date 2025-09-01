@@ -14,7 +14,7 @@ import picocli.CommandLine.Parameters;
 public class SetMaxDurationCommand implements Runnable {
 
     @Parameters(
-            description = "The maximum duration of the recording",
+            description = "The maximum duration of the recording (>= 1ms), 0 means unlimited",
             converter = DurationConverter.class)
     private Duration maxDuration;
 

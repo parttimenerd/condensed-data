@@ -65,6 +65,7 @@ public class StartCommand implements Callable<Integer> {
                     .writeSevereError("Recording already running, please stop it first");
             return 1;
         }
+        dynSettings.validate();
         if (rotating) {
             if (dynSettings.maxFiles < 1) {
                 AgentIO.getAgentInstance().writeSevereError("max-files must be at least 1");
