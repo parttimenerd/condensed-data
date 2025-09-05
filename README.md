@@ -74,14 +74,11 @@ TODO:
 - already tested commands
   - main
   - help
-  - generate-completion
   - condense
   - inflate, summary
     - without filters
 - test all CLI commands
 - look at each subcommand and check what needs to be done
-  - agent
-    - rotating
   - view
     - basic tests already done
   - javaagent
@@ -195,7 +192,6 @@ TODO
 - [x] test start, stop and status via CLI
 - [x] implement simple view
 - [ ] test agent
-- [ ] support file rotation
 - [ ] make all tools support multiple files and selection by query
 
 License

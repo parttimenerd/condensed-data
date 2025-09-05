@@ -3,10 +3,8 @@ package me.bechberger.jfr.cli.agent;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
-
 import me.bechberger.jfr.cli.CLIUtils.ByteSizeConverter;
 import me.bechberger.jfr.cli.CLIUtils.DurationConverter;
-import org.checkerframework.checker.units.qual.A;
 import picocli.CommandLine.Option;
 
 /** All these settings can be changed during the execution of the agent, via commands */
@@ -44,7 +42,10 @@ public class DynamicallyChangeableSettings {
             defaultValue = "10")
     public volatile int maxFiles;
 
-    @Option(names = "--new-names", description = "When rotating files, use new names instead of reusing old ones", defaultValue = "false")
+    @Option(
+            names = "--new-names",
+            description = "When rotating files, use new names instead of reusing old ones",
+            defaultValue = "false")
     public volatile boolean newNames;
 
     /** Validate the current settings, throw {@link ValidationException} if invalid */

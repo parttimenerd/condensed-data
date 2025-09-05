@@ -11,8 +11,6 @@ import java.util.*;
 import java.util.Map.Entry;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.Function;
-
-import com.sun.jdi.LongType;
 import jdk.jfr.AnnotationElement;
 import jdk.jfr.EventType;
 import jdk.jfr.Timespan;
@@ -452,7 +450,8 @@ public class BasicJFRWriter {
         if (contentType != null && contentType.equals("jdk.jfr.Timespan")) {
             return getTimespanType(field, topLevel);
         }
-        if ((field.getTypeName().equals("long") || field.getTypeName().equals("int")) && configuration.memoryAsBFloat16()) {
+        if ((field.getTypeName().equals("long") || field.getTypeName().equals("int"))
+                && configuration.memoryAsBFloat16()) {
             var dataAmount = getDataAmountAnnotationValue(field);
             if (dataAmount.isPresent()) {
                 switch (field.getTypeName()) {

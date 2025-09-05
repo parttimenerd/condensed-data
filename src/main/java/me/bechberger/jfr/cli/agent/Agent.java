@@ -54,27 +54,41 @@ public class Agent implements Runnable {
                     try {
                         var cli = new CommandLine(new Agent());
                         cli.setExecutionExceptionHandler(
-                                (ex, commandLine, parseResult) -> {
-                                    if (ex.getClass().getName().equals(DynamicallyChangeableSettings.ValidationException.class.getName())) {
-                                        AgentIO.getAgentInstance().writeSevereError(ex.getMessage());
-                                        return 1;
-                                    }
-                                    AgentIO.getAgentInstance()
-                                            .writeSevereError(ex.getMessage());
-                                    ex.printStackTrace(AgentIO.getAgentInstance().createPrintStream());
-                                    return 1;
-                                })
-                                .setParameterExceptionHandler((ex, commandLine) -> {
-                                    AgentIO.getAgentInstance().writeSevereError(ex.getMessage());
-                                    cli.getCommandSpec().commandLine().usage(AgentIO.getAgentInstance().createPrintStream());
-                                    return 1;
-                                });
+                                        (ex, commandLine, parseResult) -> {
+                                            if (ex.getClass()
+                                                    .getName()
+                                                    .equals(
+                                                            DynamicallyChangeableSettings
+                                                                    .ValidationException.class
+                                                                    .getName())) {
+                                                AgentIO.getAgentInstance()
+                                                        .writeSevereError(ex.getMessage());
+                                                return 1;
+                                            }
+                                            AgentIO.getAgentInstance()
+                                                    .writeSevereError(ex.getMessage());
+                                            ex.printStackTrace(
+                                                    AgentIO.getAgentInstance().createPrintStream());
+                                            return 1;
+                                        })
+                                .setParameterExceptionHandler(
+                                        (ex, commandLine) -> {
+                                            AgentIO.getAgentInstance()
+                                                    .writeSevereError(ex.getMessage());
+                                            cli.getCommandSpec()
+                                                    .commandLine()
+                                                    .usage(
+                                                            AgentIO.getAgentInstance()
+                                                                    .createPrintStream());
+                                            return 1;
+                                        });
                         removeVersionOptionFromSubCommands(cli);
                         try {
                             cli.execute(preprocResult.args);
                         } catch (RuntimeException e) {
                             AgentIO.getAgentInstance()
-                                    .writeSevereError("Could not execute command: " + e.getMessage());
+                                    .writeSevereError(
+                                            "Could not execute command: " + e.getMessage());
                             e.printStackTrace(AgentIO.getAgentInstance().createPrintStream());
                         }
                     } catch (Exception e) {

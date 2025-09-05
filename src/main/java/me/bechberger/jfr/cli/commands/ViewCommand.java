@@ -110,14 +110,18 @@ public class ViewCommand implements Callable<Integer> {
                     System.err.println("No events found at all.");
                 } else {
                     System.err.println("Did you mean one of these events:");
-                    seenTypes.stream().sorted((a, b) -> {
-                        int distA = CLIUtils.editDistance(a, eventName);
-                        int distB = CLIUtils.editDistance(b, eventName);
-                        if (distA != distB) {
-                            return Integer.compare(distA, distB);
-                        }
-                        return a.compareTo(b);
-                    }).limit(10).forEach(t -> System.err.println("  " + t));
+                    seenTypes.stream()
+                            .sorted(
+                                    (a, b) -> {
+                                        int distA = CLIUtils.editDistance(a, eventName);
+                                        int distB = CLIUtils.editDistance(b, eventName);
+                                        if (distA != distB) {
+                                            return Integer.compare(distA, distB);
+                                        }
+                                        return a.compareTo(b);
+                                    })
+                            .limit(10)
+                            .forEach(t -> System.err.println("  " + t));
                 }
                 return 1;
             }
