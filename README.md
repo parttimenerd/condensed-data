@@ -17,51 +17,68 @@ The tool can be used via its CLI:
 ```shell
 > java -jar target/condensed-data.jar -h
 Usage: cjfr [-hV] [COMMAND]
-CLI for condensed JFR files
+CLI for the JFR condenser project
   -h, --help      Show this help message and exit.
   -V, --version   Print version information and exit.
 Commands:
-  condense   Condense a JFR file
-  inflate    Inflate a condensed JFR file into JFR format
-  benchmark  Run the benchmarks on all files in the benchmark folder
-  agent      Use the included Java agent on a specific JVM process
-  summary    Print a summary of the condensed JFR file
-  view       View a specific event of a condensed JFR file as a table
-  help       Print help information
+  condense             Condense a JFR file
+  inflate              Inflate a condensed JFR file into JFR format
+  agent                Use the included Java agent on a specific JVM process
+  summary              Print a summary of the condensed JFR file
+  view                 View a specific event of a condensed JFR file as a table
+  generate-completion  Generate an auto-completion script for bash and zsh for
+                         cjfr
+  help                 Print help information
 ```
 But you can also use its built-in Java agent to directly record condensed JFR files:
 ```shell
 > java -javaagent:target/condensed-data.jar=help
-Usage: cjfr agent [-hV] [COMMAND]
+Usage: java -javaagent:condensed-agent.jar='[COMMAND]'
 Agent for recording condensed JFR files
-  -h, --help      Show this help message and exit.
-  -V, --version   Print version information and exit.
 Commands:
-  start   Start the recording
-  stop    Stop the recording
-  status  Get the status of the recording
-  help    Print help information
-> java -javaagent:target/condensed-data.jar=start,help
-
-Usage: cjfr agent start [-hV] [verbose] [condenser-config=<configuration>]
-                        [max-duration=<maxDuration>] [max-size=<maxSize>]
-                        [misc-jfr-config=<miscJfrConfig>] PATH JFR_CONFIG
+  start             Start the recording
+  stop              Stop the recording
+  status            Get the status of the recording
+  set-max-size      Set the max file size
+  set-max-duration  Set the max duration of each individual recording when
+                      rotating files
+  set-max-files     Set the max file count when rotating
+  set-duration      Set the duration of the overall recording
+  help              Print help information
+```
+```shell
+> java -javaagent:target/condensed-data.jar="start --help"
+Usage: -javaagent:condensed-agent.jar start [-h] [--new-names] [--rotating]
+       [--verbose] [-c=<jfrConfig>] [-d=<configuration>]
+       [--duration=<duration>] [-m=<miscJfrConfig>]
+       [--max-duration=<maxDuration>] [--max-files=<maxFiles>]
+       [--max-size=<maxSize>] [PATH]
 Start the recording
-      PATH                 Path to the recording file .cjfr file
-      JFR_CONFIG           The JFR generatorConfiguration to use.
-      condenser-config=<configuration>
-                           The condenser generatorConfiguration to use,
-                             possible values: default, reasonable default,
-                             reduced default
-  -h, --help               Show this help message and exit.
-      max-duration=<maxDuration>
-                           The maximum duration of the recording
-      max-size=<maxSize>   The maximum size of the recording file
-      misc-jfr-config=<miscJfrConfig>
-                           Additional JFR config, '|' separated, like 'jfr.
-                             ExecutionSample#interval=1s'
-  -V, --version            Print version information and exit.
-      verbose              Be verbose
+      [PATH]                 Path to the recording file .cjfr file
+  -c, --config=<jfrConfig>   The JFR generatorConfiguration to use.
+  -d, --condenser-config=<configuration>
+                             The condenser generatorConfiguration to use,
+                               possible values: default, reasonable-default,
+                               reduced-default
+      --duration=<duration>  The duration of the whole recording, 0 for
+                               unlimited
+  -h, --help                 Show this help message and exit.
+  -m, --misc-jfr-config=<miscJfrConfig>
+                             Additional JFR config, '|' separated, like 'jfr.
+                               ExecutionSample#interval=1s'
+      --max-duration=<maxDuration>
+                             The maximum duration of each individual recording,
+                               0 for unlimited, when rotating files
+      --max-files=<maxFiles> The maximum number of files to keep, when rotating
+                               files
+      --max-size=<maxSize>   The maximum size of the recording file (or the
+                               individual files when rotating files)
+      --new-names            When rotating files, use new names instead of
+                               reusing old ones
+      --rotating             Use rotating files and replace $date and $index in
+                               the file names, if no place holder is specified,
+                               replaces '.cjfr' with '_$index.cjfr'
+      --verbose              Be verbose
 ```
 
 Autocompletion:
@@ -118,6 +135,7 @@ Every commit is formatted via `mvn spotless:apply` in a pre-commit hook to ensur
 ```shell
 mvn install
 mvn package
+bin/update-help.py # updates the help messages in the README
 ```
 
 This pre-commit hook also runs the tests via `mvn test`.

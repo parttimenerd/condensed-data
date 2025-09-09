@@ -37,7 +37,14 @@ public class SingleRecordingThread extends RecordingThread {
             Runnable onRecordingStopped,
             DynamicallyChangeableSettings dynSettings)
             throws IOException, ParseException {
-        super(configuration, verbose, jfrConfig, miscJfrConfig, onRecordingStopped, dynSettings, false);
+        super(
+                configuration,
+                verbose,
+                jfrConfig,
+                miscJfrConfig,
+                onRecordingStopped,
+                dynSettings,
+                false);
         this.path = path;
         Files.createDirectories(Path.of(path).toAbsolutePath().getParent());
         var out =

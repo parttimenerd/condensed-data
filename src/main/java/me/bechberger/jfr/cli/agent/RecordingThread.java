@@ -143,7 +143,10 @@ public abstract class RecordingThread implements Runnable {
         return dynSettings.maxSize;
     }
 
-    /** Max duration for the individual recording when rotating, might change dynamically during the agents' execution */
+    /**
+     * Max duration for the individual recording when rotating, might change dynamically during the
+     * agents' execution
+     */
     Duration getMaxDuration() {
         return dynSettings.maxDuration;
     }

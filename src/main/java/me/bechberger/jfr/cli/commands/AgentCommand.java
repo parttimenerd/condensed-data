@@ -15,7 +15,6 @@ import java.util.List;
 import java.util.concurrent.Callable;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
-
 import me.bechberger.jfr.cli.agent.AgentIO;
 import me.bechberger.jfr.cli.agent.commands.*;
 import me.bechberger.jfr.cli.commands.AgentCommand.ReadCommand;

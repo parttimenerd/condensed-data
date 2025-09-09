@@ -29,7 +29,7 @@ import picocli.CommandLine.Spec;
  */
 @Command(
         name = "generate-completion",
-        description = "Generate an auto-completion script for bash and zsh for ./cjfr",
+        description = "Generate an auto-completion script for bash and zsh for cjfr",
         mixinStandardHelpOptions = true)
 public class GenerateCompletionCommand implements Runnable {
 

@@ -12,14 +12,15 @@ import picocli.CommandLine.Model.CommandSpec;
         name = "-javaagent:condensed-agent.jar",
         description = "Agent for recording condensed JFR files",
         subcommands = {
-                StartCommand.class,
-                StopCommand.class,
-                StatusCommand.class,
-                SetMaxSizeCommand.class,
-                SetMaxDurationCommand.class,
-                SetMaxFilesCommand.class,
-                SetDurationCommand.class
-        }, customSynopsis = "java -javaagent:condensed-agent.jar='[COMMAND]'")
+            StartCommand.class,
+            StopCommand.class,
+            StatusCommand.class,
+            SetMaxSizeCommand.class,
+            SetMaxDurationCommand.class,
+            SetMaxFilesCommand.class,
+            SetDurationCommand.class
+        },
+        customSynopsis = "java -javaagent:condensed-agent.jar='[COMMAND]'")
 /*
  * TODO: Test and test that everything from my side can crash without impacting the rest of the
  * system Maybe record an error state

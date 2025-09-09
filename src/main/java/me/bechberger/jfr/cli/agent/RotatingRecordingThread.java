@@ -51,7 +51,14 @@ public class RotatingRecordingThread extends RecordingThread {
             Runnable onRecordingStopped,
             DynamicallyChangeableSettings dynSettings)
             throws IOException, ParseException {
-        super(configuration, verbose, jfrConfig, miscJfrConfig, onRecordingStopped, dynSettings, true);
+        super(
+                configuration,
+                verbose,
+                jfrConfig,
+                miscJfrConfig,
+                onRecordingStopped,
+                dynSettings,
+                true);
         this.pathTemplate = pathTemplate;
         this.currentlyStoredFiles = new ArrayList<>();
         this.currentlyStoredStarts = new ArrayList<>();
@@ -125,11 +132,11 @@ public class RotatingRecordingThread extends RecordingThread {
                     // we're currently stuck in JFR code, so we need to stop the recording
                     // from a different thread so we don't deadlock
                     new Thread(
-                            () -> {
-                                synchronized (Agent.getSyncObject()) {
-                                    stop();
-                                }
-                            })
+                                    () -> {
+                                        synchronized (Agent.getSyncObject()) {
+                                            stop();
+                                        }
+                                    })
                             .start();
                     triggeredStop = true;
                 }

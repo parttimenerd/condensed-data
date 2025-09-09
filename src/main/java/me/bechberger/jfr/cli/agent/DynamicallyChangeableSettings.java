@@ -22,7 +22,9 @@ public class DynamicallyChangeableSettings {
 
     @Option(
             names = "--max-duration",
-            description = "The maximum duration of each individual recording, 0 for unlimited, when rotating files",
+            description =
+                    "The maximum duration of each individual recording, 0 for unlimited, when"
+                            + " rotating files",
             defaultValue = "0s",
             converter = DurationConverter.class)
     public volatile Duration maxDuration;
