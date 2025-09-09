@@ -22,7 +22,7 @@ public class DynamicallyChangeableSettings {
 
     @Option(
             names = "--max-duration",
-            description = "The maximum duration of the recording",
+            description = "The maximum duration of each individual recording, 0 for unlimited, when rotating files",
             defaultValue = "0s",
             converter = DurationConverter.class)
     public volatile Duration maxDuration;
@@ -48,8 +48,15 @@ public class DynamicallyChangeableSettings {
             defaultValue = "false")
     public volatile boolean newNames;
 
+    @Option(
+            names = "--duration",
+            description = "The duration of the whole recording, 0 for unlimited",
+            defaultValue = "0s",
+            converter = DurationConverter.class)
+    public volatile Duration duration;
+
     /** Validate the current settings, throw {@link ValidationException} if invalid */
-    public void validate() {
+    public void validate(boolean rotating) {
         List<String> errors = new ArrayList<>();
         if (maxFiles < 0) {
             errors.add("Max files must be at least 0");
@@ -65,6 +72,17 @@ public class DynamicallyChangeableSettings {
         }
         if (maxDuration.toMillis() > 0 && maxDuration.toMillis() < 1) {
             errors.add("Max duration must be at least 1ms or 0 (no limit)");
+        }
+        if (duration.toMillis() > 0 && duration.toMillis() < 1) {
+            errors.add("Duration must be at least 1ms or 0 (no limit)");
+        }
+        if (!rotating) {
+            if (maxDuration.toMillis() != 0) {
+                errors.add("Max duration can only be set when rotating files");
+            }
+            if (maxSize != 0) {
+                errors.add("Max size can only be set when rotating files");
+            }
         }
         if (!errors.isEmpty()) {
             throw new ValidationException(errors);

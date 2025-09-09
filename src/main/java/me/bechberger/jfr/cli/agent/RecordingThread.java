@@ -29,6 +29,7 @@ public abstract class RecordingThread implements Runnable {
     private final RecordingStream recordingStream;
     final AgentIO agentIO = AgentIO.getAgentInstance();
     private final DynamicallyChangeableSettings dynSettings;
+    private final boolean rotating;
 
     private final AtomicBoolean shouldStop = new AtomicBoolean(false);
     final Instant start = Instant.now();
@@ -39,13 +40,15 @@ public abstract class RecordingThread implements Runnable {
             String jfrConfig,
             String miscJfrConfig,
             Runnable removeFromParent,
-            DynamicallyChangeableSettings dynSettings)
+            DynamicallyChangeableSettings dynSettings,
+            boolean rotating)
             throws IOException, ParseException {
         this.agentIO.setLogLevel(verbose ? LogLevel.ALL : LogLevel.WARNING);
         this.configuration = configuration;
         this.jfrConfig = jfrConfig;
         this.dynSettings = dynSettings;
-        dynSettings.validate();
+        this.rotating = rotating;
+        dynSettings.validate(rotating);
         var parsedJfrConfig =
                 jfrConfig.isEmpty()
                         ? jdk.jfr.Configuration.getConfiguration("default")
@@ -127,6 +130,8 @@ public abstract class RecordingThread implements Runnable {
         status.add(Map.entry("max-size", formatMemory(getMaxSize())));
         status.add(Map.entry("max-files", Integer.toString(getMaxFiles())));
         status.add(Map.entry("new-names", Boolean.toString(useNewNames())));
+        status.add(Map.entry("duration", formatDuration(dynSettings.duration)));
+        status.add(Map.entry("running", Boolean.toString(!stopped)));
         status.addAll(getMiscStatus());
         return status;
     }
@@ -138,9 +143,13 @@ public abstract class RecordingThread implements Runnable {
         return dynSettings.maxSize;
     }
 
-    /** Max duration for a CJFR file, might change dynamically during the agents' execution */
+    /** Max duration for the individual recording when rotating, might change dynamically during the agents' execution */
     Duration getMaxDuration() {
         return dynSettings.maxDuration;
+    }
+
+    Duration getDuration() {
+        return dynSettings.duration;
     }
 
     /**
@@ -156,13 +165,18 @@ public abstract class RecordingThread implements Runnable {
     /** Must be at least 1kB or 0 (no max size) */
     public void setMaxSize(long maxSize) {
         dynSettings.maxSize = maxSize;
-        dynSettings.validate();
+        dynSettings.validate(rotating);
     }
 
     /** Must be >= 1ms, 0 means no limit */
     public void setMaxDuration(Duration maxDuration) {
         dynSettings.maxDuration = maxDuration;
-        dynSettings.validate();
+        dynSettings.validate(rotating);
+    }
+
+    public void setDuration(Duration duration) {
+        dynSettings.duration = duration;
+        dynSettings.validate(rotating);
     }
 
     public void setMaxFiles(int maxFiles) {
@@ -170,6 +184,7 @@ public abstract class RecordingThread implements Runnable {
             throw new IllegalArgumentException("Max files must be at least 0");
         }
         dynSettings.maxFiles = maxFiles;
+        dynSettings.validate(rotating);
     }
 
     public boolean useNewNames() {
@@ -178,5 +193,6 @@ public abstract class RecordingThread implements Runnable {
 
     public void useNewNames(boolean newNames) {
         dynSettings.newNames = newNames;
+        dynSettings.validate(rotating);
     }
 }

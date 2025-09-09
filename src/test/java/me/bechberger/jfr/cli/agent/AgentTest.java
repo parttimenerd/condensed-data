@@ -113,6 +113,7 @@ public class AgentTest {
         var status = runAgent(runMode, "status");
         var lines = status.split("\n");
         assertEquals(lines[0], "Recording running");
+        System.out.println("Status: " + status);
         for (int i = 1; i < lines.length; i++) {
             assertThat(lines[i]).contains(": ");
         }
@@ -196,11 +197,12 @@ public class AgentTest {
         var output =
                 runAgent(
                         AgentRunMode.JATTACH,
-                        "start test-dir/recording.cjfr --rotating --max-duration 1s --max-files 3");
-        assertThat(output); // .startsWith("Condensed recording to ").doesNotContain("Exception");
+                        "start test-dir/recording.cjfr --rotating --max-duration 2s --max-files 3"
+                                + " --duration 6s");
+        assertThat(output).startsWith("Condensed recording to ").doesNotContain("Exception");
         System.out.println(output);
 
-        Thread.sleep(6000);
+        Thread.sleep(7000);
 
         runAgent(AgentRunMode.JATTACH, "stop");
 
@@ -216,6 +218,16 @@ public class AgentTest {
             assertThat(Files.size(file)).isGreaterThan(1000);
         }
         System.out.println("Files: " + files);
+
+        // print creation and modification time of the files as a table
+        for (var file : files) {
+            var creationTime = Util.getCreationTimeOfFile(file).toMillis();
+            var modificationTime = Files.getLastModifiedTime(file).toMillis();
+            System.out.printf(
+                    "File: %s, Creation time: %d, Modification time: %d%n",
+                    file.getFileName(), creationTime, modificationTime);
+        }
+
         var changeTimeFirstFile = Files.getLastModifiedTime(files.getFirst()).toMillis();
         var changeTimeLastFile = Files.getLastModifiedTime(files.getLast()).toMillis();
         var creationTimeFirstFile = Util.getCreationTimeOfFile(files.getFirst()).toMillis();
@@ -295,6 +307,13 @@ public class AgentTest {
 
         output = runAgent(AgentRunMode.JATTACH, "set-max-size 512");
         assertThat(output).contains("Severe Error: Max size must be at least 1kB or 0 (no limit)");
+    }
+
+    @Test
+    public void testInvalidOption() throws IOException, InterruptedException {
+        var output =
+                runAgent(AgentRunMode.CLI_JAR, "start test-dir/recording.cjfr --unknown-option");
+        assertThat(output).contains("Unmatched argument at index 2");
     }
 
     String runAgent(AgentRunMode runMode, String... args) throws IOException, InterruptedException {

@@ -1,22 +1,23 @@
 package me.bechberger.jfr.cli.agent.commands;
 
-import java.time.Duration;
 import me.bechberger.jfr.cli.CLIUtils.DurationConverter;
 import me.bechberger.jfr.cli.agent.Agent;
 import me.bechberger.jfr.cli.agent.AgentIO;
 import picocli.CommandLine.Command;
 import picocli.CommandLine.Parameters;
 
+import java.time.Duration;
+
 @Command(
-        name = "set-max-duration",
-        description = "Set the max duration of each individual recording when rotating files",
+        name = "set-duration",
+        description = "Set the duration of the overall recording",
         mixinStandardHelpOptions = true)
-public class SetMaxDurationCommand implements Runnable {
+public class SetDurationCommand implements Runnable {
 
     @Parameters(
             description = "The maximum duration of the recording (>= 1ms), 0 means unlimited",
             converter = DurationConverter.class)
-    private Duration maxDuration;
+    private Duration duration;
 
     @Override
     public void run() {
@@ -24,6 +25,6 @@ public class SetMaxDurationCommand implements Runnable {
             AgentIO.getAgentInstance().println("No recording running");
             return;
         }
-        Agent.getCurrentRecordingThread().setMaxDuration(maxDuration);
+        Agent.getCurrentRecordingThread().setDuration(duration);
     }
 }

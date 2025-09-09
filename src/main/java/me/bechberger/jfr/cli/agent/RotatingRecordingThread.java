@@ -33,6 +33,8 @@ public class RotatingRecordingThread extends RecordingThread {
     private final List<Path> currentlyStoredFiles;
     private final List<Instant> currentlyStoredStarts;
     private int overallWrittenFileCount = 0;
+    // triggered stop already
+    private boolean triggeredStop = false;
 
     record State(BasicJFRWriter jfrWriter, Path filePath, Instant start) {
         State(BasicJFRWriter jfrWriter, Path filePath) {
@@ -49,7 +51,7 @@ public class RotatingRecordingThread extends RecordingThread {
             Runnable onRecordingStopped,
             DynamicallyChangeableSettings dynSettings)
             throws IOException, ParseException {
-        super(configuration, verbose, jfrConfig, miscJfrConfig, onRecordingStopped, dynSettings);
+        super(configuration, verbose, jfrConfig, miscJfrConfig, onRecordingStopped, dynSettings, true);
         this.pathTemplate = pathTemplate;
         this.currentlyStoredFiles = new ArrayList<>();
         this.currentlyStoredStarts = new ArrayList<>();
@@ -115,6 +117,24 @@ public class RotatingRecordingThread extends RecordingThread {
     @Override
     void onEvent(RecordedEvent event) {
         try {
+            if (triggeredStop) {
+                return;
+            }
+            if (shouldEndFile()) {
+                if (!triggeredStop) {
+                    // we're currently stuck in JFR code, so we need to stop the recording
+                    // from a different thread so we don't deadlock
+                    new Thread(
+                            () -> {
+                                synchronized (Agent.getSyncObject()) {
+                                    stop();
+                                }
+                            })
+                            .start();
+                    triggeredStop = true;
+                }
+                return;
+            }
             var state = this.state;
             if (state == null) {
                 return;
@@ -140,6 +160,13 @@ public class RotatingRecordingThread extends RecordingThread {
                 || (getMaxSize() > 0
                         && state.jfrWriter != null
                         && state.jfrWriter.estimateSize() > getMaxSize());
+    }
+
+    private boolean shouldEndRecording() {
+        boolean durationCheck = getDuration().toNanos() > 0;
+        boolean isDurationExceeded =
+                Duration.between(this.start, Instant.now()).compareTo(getDuration()) > 0;
+        return isDurationExceeded && durationCheck;
     }
 
     @Override

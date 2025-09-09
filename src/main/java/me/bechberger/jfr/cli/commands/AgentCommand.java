@@ -13,6 +13,9 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
 import java.util.concurrent.Callable;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
+
 import me.bechberger.jfr.cli.agent.AgentIO;
 import me.bechberger.jfr.cli.agent.commands.*;
 import me.bechberger.jfr.cli.commands.AgentCommand.ReadCommand;
@@ -34,7 +37,8 @@ import picocli.CommandLine.ParseResult;
             StatusCommand.class,
             StopCommand.class,
             ReadCommand.class,
-            HelpCommand.class
+            HelpCommand.class,
+            SetDurationCommand.class
         })
 public class AgentCommand implements Callable<Integer> {
 
@@ -100,18 +104,14 @@ public class AgentCommand implements Callable<Integer> {
                     new CommandLine(new AgentCommand())
                             .parseArgs(subCommandArgs.toArray(new String[0]));
         } catch (CommandLine.UnmatchedArgumentException ex) {
-            // if the subCommandArgs has size 2 and the second argument has a space in it,
-            // augment the error message
-            if (subCommandArgs.size() == 2 && subCommandArgs.get(1).contains(" ")) {
-                throw new CommandLine.UnmatchedArgumentException(
-                        ex.getCommandLine(),
-                        ex.getMessage()
-                                + "\n"
-                                + "Did you mean to use quotes around the second argument? If you"
-                                + " want to use a sub command, please use the command 'cjfr agent"
-                                + " help'.");
+            // replace "at index %d+:" with "at index " + (index +1)
+            Matcher m = Pattern.compile("(\\d+):").matcher(ex.getMessage());
+            if (!m.find()) {
+                throw ex;
             }
-            throw ex;
+            int index = Integer.parseInt(m.toMatchResult().group(0).replace(":", ""));
+            System.err.println(m.replaceFirst((index + 1) + ":"));
+            return 2;
         }
         if (parseResult.hasSubcommand()) {
             return handleSubCommand(parseResult, subCommandArgs);

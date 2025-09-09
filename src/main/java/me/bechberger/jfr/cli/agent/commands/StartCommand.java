@@ -11,8 +11,16 @@ import picocli.CommandLine.Mixin;
 import picocli.CommandLine.Option;
 import picocli.CommandLine.Parameters;
 
-@Command(name = "start", description = "Start the recording", helpCommand = true)
+@Command(name = "start", description = "Start the recording", mixinStandardHelpOptions = true)
 public class StartCommand implements Callable<Integer> {
+
+    @Parameters(
+            index = "0",
+            arity = "0..1",
+            paramLabel = "PATH",
+            description = "Path to the recording file .cjfr file",
+            defaultValue = "recording.cjfr")
+    private String path;
 
     @Option(
             names = {"-d", "--condenser-config"},
@@ -34,13 +42,6 @@ public class StartCommand implements Callable<Integer> {
 
     @Option(names = "--verbose", description = "Be verbose", defaultValue = "false")
     private boolean verbose;
-
-    @Parameters(
-            index = "0",
-            paramLabel = "PATH",
-            description = "Path to the recording file .cjfr file",
-            defaultValue = "recording.cjfr")
-    private String path;
 
     @Option(
             names = {"-c", "--config"},
@@ -65,7 +66,7 @@ public class StartCommand implements Callable<Integer> {
                     .writeSevereError("Recording already running, please stop it first");
             return 1;
         }
-        dynSettings.validate();
+        dynSettings.validate(rotating);
         if (rotating) {
             if (dynSettings.maxFiles < 1) {
                 AgentIO.getAgentInstance().writeSevereError("max-files must be at least 1");

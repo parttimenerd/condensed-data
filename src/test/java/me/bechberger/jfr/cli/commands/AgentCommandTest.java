@@ -56,7 +56,7 @@ public class AgentCommandTest {
                                     jvm.pid() + "",
                                     "start",
                                     "T/recording.cjfr",
-                                    "--max-duration",
+                                    "--duration",
                                     "1s")
                             .checkNoError()
                             .check(

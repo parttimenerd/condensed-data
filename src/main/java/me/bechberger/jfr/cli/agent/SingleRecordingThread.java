@@ -37,7 +37,7 @@ public class SingleRecordingThread extends RecordingThread {
             Runnable onRecordingStopped,
             DynamicallyChangeableSettings dynSettings)
             throws IOException, ParseException {
-        super(configuration, verbose, jfrConfig, miscJfrConfig, onRecordingStopped, dynSettings);
+        super(configuration, verbose, jfrConfig, miscJfrConfig, onRecordingStopped, dynSettings, false);
         this.path = path;
         Files.createDirectories(Path.of(path).toAbsolutePath().getParent());
         var out =
@@ -103,13 +103,13 @@ public class SingleRecordingThread extends RecordingThread {
     }
 
     private boolean shouldEndFile() {
-        boolean maxDurationCheck = getMaxDuration().toNanos() > 0;
+        boolean durationCheck = getDuration().toNanos() > 0;
         boolean isDurationExceeded =
-                Duration.between(this.start, Instant.now()).compareTo(getMaxDuration()) > 0;
+                Duration.between(this.start, Instant.now()).compareTo(getDuration()) > 0;
         boolean maxSizeCheck = getMaxSize() > 0;
         boolean jfrWriterCheck = jfrWriter != null;
         boolean sizeComparison = jfrWriter != null && jfrWriter.estimateSize() > getMaxSize();
-        return (maxDurationCheck && isDurationExceeded)
+        return (durationCheck && isDurationExceeded)
                 || (maxSizeCheck && jfrWriterCheck && sizeComparison);
     }
 }
