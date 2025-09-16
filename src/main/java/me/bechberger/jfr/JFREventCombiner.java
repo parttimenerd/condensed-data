@@ -337,16 +337,13 @@ public class JFREventCombiner extends EventCombiner {
         }
 
         private static String getDefaultFieldName(MapEntry<?, ?> valueDefinition) {
-            if (valueDefinition instanceof MapEntry.SingleValue<?, ?>) {
-                return ((SingleValue<?, ?>) valueDefinition).val.name;
-            } else if (valueDefinition instanceof MapEntry.ArrayValue<?, ?>) {
-                return ((ArrayValue<?, ?>) valueDefinition).val.name;
-            } else if (valueDefinition instanceof MapEntry.MapValue<?, ?, ?>) {
-                return ((MapValue<?, ?, ?>) valueDefinition).key.name;
-            } else {
-                throw new IllegalArgumentException(
+            return switch (valueDefinition) {
+                case MapEntry.SingleValue<?, ?> singleValue -> singleValue.val.name;
+                case MapEntry.ArrayValue<?, ?> arrayValue -> arrayValue.val.name;
+                case MapEntry.MapValue<?, ?, ?> mapValue -> mapValue.key.name;
+                case null, default -> throw new IllegalArgumentException(
                         "Unknown value definition type " + valueDefinition);
-            }
+            };
         }
 
         /**

@@ -37,8 +37,7 @@ public enum Compression {
                             switch (level) {
                                 case FAST -> Deflater.BEST_SPEED;
                                 case MEDIUM -> Deflater.DEFAULT_COMPRESSION;
-                                case HIGH_COMPRESSION -> Deflater.BEST_COMPRESSION;
-                                case MAX_COMPRESSION -> Deflater.BEST_COMPRESSION;
+                                case HIGH_COMPRESSION, MAX_COMPRESSION -> Deflater.BEST_COMPRESSION;
                             });
                 }
 
@@ -55,9 +54,7 @@ public enum Compression {
                     var compressor =
                             switch (level) {
                                 case FAST -> LZ4Factory.fastestInstance().fastCompressor();
-                                case MEDIUM -> LZ4Factory.fastestInstance().highCompressor();
-                                case HIGH_COMPRESSION ->
-                                        LZ4Factory.fastestInstance().highCompressor();
+                                case MEDIUM, HIGH_COMPRESSION -> LZ4Factory.fastestInstance().highCompressor();
                                 case MAX_COMPRESSION ->
                                         LZ4Factory.fastestInstance().highCompressor(17);
                             };

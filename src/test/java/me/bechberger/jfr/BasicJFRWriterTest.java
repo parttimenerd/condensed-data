@@ -25,12 +25,11 @@ public class BasicJFRWriterTest {
     @Name("TestEvent")
     @Label("Label")
     @Description("Description")
-    @StackTrace(true)
+    @StackTrace()
     static class TestEvent extends Event {}
 
     /** Test writing an instance of {@link TestEvent} */
     @Test
-    @SuppressWarnings("unchecked")
     public void testTestEvent() throws Exception {
         AtomicReference<RecordedEvent> recordedEvent = new AtomicReference<>();
         ByteArrayOutputStream outputStream = new ByteArrayOutputStream();
@@ -84,9 +83,7 @@ public class BasicJFRWriterTest {
             try (RecordingStream rs =
                     new RecordingStream(Configuration.getConfiguration("default"))) {
                 rs.onEvent(
-                        event -> {
-                            basicJFRWriter.processEvent(event);
-                        });
+                        basicJFRWriter::processEvent);
                 rs.startAsync();
                 Thread.sleep(100);
                 TestEvent testEvent = new TestEvent();

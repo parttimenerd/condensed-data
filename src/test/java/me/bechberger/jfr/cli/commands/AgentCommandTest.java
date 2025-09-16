@@ -63,7 +63,7 @@ public class AgentCommandTest {
                                     (r, files) -> {
                                         assertThat(files).containsKey("recording.cjfr");
                                         Thread.sleep(2000000);
-                                        files.entrySet().stream()
+                                        files.entrySet()
                                                 .forEach(
                                                         entry -> {
                                                             System.out.println(

@@ -515,7 +515,6 @@ public class BasicJFRWriter {
                 reduction);
     }
 
-    @SuppressWarnings({"rawtypes", "unchecked"})
     private StructType<?, ?> getReducedStackTraceType(ValueDescriptor field) {
         if (reducedStackTraceType == null) {
             var truncatedField =

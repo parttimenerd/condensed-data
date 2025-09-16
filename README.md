@@ -210,7 +210,7 @@ TODO
 - [x] test start, stop and status via CLI
 - [x] implement simple view
 - [ ] test agent
-- [ ] make all tools support multiple files and selection by query
+- [ ] make all tools support multiple files
 
 License
 -------

@@ -137,7 +137,7 @@ public class CLIUtils {
             } else if (c == '\\') {
                 escapeNext = true;
             } else if (c == ' ' && !inQuotes) {
-                if (!currentArg.isEmpty() || inQuotes) {
+                if (!currentArg.isEmpty()) {
                     args.add(currentArg.toString());
                     currentArg = new StringBuilder();
                 }

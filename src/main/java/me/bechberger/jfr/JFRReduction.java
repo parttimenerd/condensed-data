@@ -172,7 +172,6 @@ public enum JFRReduction {
         }
     }
 
-    @SuppressWarnings("unchecked")
     <F, R> JFRReduction(
             Class<F> valueClass, Class<R> reducedClass, ReductionFunction<R, F> function) {
         this.valueClass = valueClass;
@@ -182,7 +181,7 @@ public enum JFRReduction {
         JFRReductions.values.add(this);
     }
 
-    @SuppressWarnings({"unchecked", "unused"})
+    @SuppressWarnings({"unused"})
     <F, R> JFRReduction(StructReductionFunction<R, F> function) {
         this.valueClass = null;
         this.reducedClass = null;
@@ -228,7 +227,7 @@ public enum JFRReduction {
                                 + " is not a ReadStruct");
             }
             return ((StructReductionFunction) structFunction)
-                    .inflate(configuration, universe, (ReadStruct) reduced);
+                    .inflate(configuration, universe, reducedStruct);
         }
         if (reducedClass.isInstance(reduced)) {
             return ((ReductionFunction) function).inflate(configuration, universe, reduced);

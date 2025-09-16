@@ -127,7 +127,7 @@ public class RotatingRecordingThread extends RecordingThread {
             if (triggeredStop) {
                 return;
             }
-            if (shouldEndFile()) {
+            if (shouldEndRecording()) {
                 if (!triggeredStop) {
                     // we're currently stuck in JFR code, so we need to stop the recording
                     // from a different thread so we don't deadlock

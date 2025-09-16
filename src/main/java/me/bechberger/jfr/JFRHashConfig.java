@@ -107,8 +107,7 @@ public class JFRHashConfig extends HashAndEqualsConfig {
 
         @Override
         public boolean equals(Object obj) {
-            if (obj instanceof StackFrameWrapper) {
-                StackFrameWrapper other = (StackFrameWrapper) obj;
+            if (obj instanceof StackFrameWrapper other) {
                 if (other.value == value) {
                     return true;
                 }

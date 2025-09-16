@@ -10,7 +10,6 @@ public class GenerateCompletionCommandTest {
     /**
      * Fail if a file option doesn't have a specific ending
      *
-     * @throws Exception
      */
     @Test
     public void testNoFileOptionIsMissingEnding() throws Exception {

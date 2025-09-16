@@ -206,7 +206,6 @@ public class BasicJFRRoundTripTest {
      * <p>Used to find a nasty bug related to recursive data types
      *
      * @param maxDepth maximum stack depth
-     * @throws InterruptedException
      */
     @ParameterizedTest
     @CsvSource({

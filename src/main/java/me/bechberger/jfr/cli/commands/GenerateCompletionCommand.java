@@ -209,7 +209,6 @@ public class GenerateCompletionCommand implements Runnable {
                     results.add(line);
                 }
                 currentPositionalIndex++;
-                continue;
             } else if (line.strip()
                     .equals("COMPREPLY=( $( compgen -f -- \"${curr_word}\" ) ) # files")) {
                 // walk back at most 4 lines to find the option name

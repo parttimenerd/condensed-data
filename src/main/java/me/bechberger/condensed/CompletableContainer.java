@@ -23,7 +23,6 @@ public interface CompletableContainer<T> {
         return ensureRecursivelyComplete(new IdentityHashMap<>());
     }
 
-    @SuppressWarnings("unchecked")
     static <T> T ensureRecursivelyComplete(T t) {
         return ensureRecursivelyComplete(t, new IdentityHashMap<>());
     }

@@ -198,11 +198,11 @@ public class AgentTest {
                 runAgent(
                         AgentRunMode.JATTACH,
                         "start test-dir/recording.cjfr --rotating --max-duration 2s --max-files 3"
-                                + " --duration 6s");
+                                + " --duration 9s");
         assertThat(output).startsWith("Condensed recording to ").doesNotContain("Exception");
         System.out.println(output);
 
-        Thread.sleep(7000);
+        Thread.sleep(10000);
 
         runAgent(AgentRunMode.JATTACH, "stop");
 

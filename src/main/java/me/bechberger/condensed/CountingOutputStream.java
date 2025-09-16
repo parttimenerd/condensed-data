@@ -29,13 +29,13 @@ class CountingOutputStream extends OutputStream {
     }
 
     @Override
-    public void write(@NotNull byte @NotNull [] b) throws IOException {
+    public void write(byte @NotNull [] b) throws IOException {
         out.write(b);
         count += b.length;
     }
 
     @Override
-    public void write(@NotNull byte @NotNull [] b, int off, int len) throws IOException {
+    public void write(byte @NotNull [] b, int off, int len) throws IOException {
         out.write(b, off, len);
         count += len;
     }

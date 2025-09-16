@@ -116,7 +116,7 @@ public class WritingJFRReader {
         if (typeMap.containsKey(type)) {
             return typeMap.get(type);
         }
-        typeMap.put(type, () -> type.getName());
+        typeMap.put(type, type::getName);
         realTypeMap.put(type, createType(type, isEvent));
         return typeMap.get(type);
     }
@@ -290,7 +290,6 @@ public class WritingJFRReader {
         }
     }
 
-    @SuppressWarnings("unchecked")
     private TypedValue toTypedValue(ReadStruct struct, boolean isEvent, ReadStructPath visited) {
         getPredefType(struct.getType(), isEvent);
         if (visited.contains(struct, 1)) {

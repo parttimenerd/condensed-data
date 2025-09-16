@@ -140,7 +140,6 @@ public class ReadStruct implements Map<String, Object>, ReadContainer<ReadStruct
         return (List<T>) get(List.class, key);
     }
 
-    @SuppressWarnings({"rawtypes", "unchecked"})
     public <T, V> List<Map.Entry<T, V>> asMapEntryList(String key) {
         var val = getOrThrow(key);
         if (!(val instanceof ReadList)) {
