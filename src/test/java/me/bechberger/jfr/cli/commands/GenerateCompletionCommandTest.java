@@ -7,10 +7,7 @@ import org.junit.jupiter.api.Test;
 
 public class GenerateCompletionCommandTest {
 
-    /**
-     * Fail if a file option doesn't have a specific ending
-     *
-     */
+    /** Fail if a file option doesn't have a specific ending */
     @Test
     public void testNoFileOptionIsMissingEnding() throws Exception {
         new CommandExecuter("generate-completion", "--fail-on-missing").checkNoError().run();

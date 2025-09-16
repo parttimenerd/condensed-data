@@ -341,8 +341,9 @@ public class JFREventCombiner extends EventCombiner {
                 case MapEntry.SingleValue<?, ?> singleValue -> singleValue.val.name;
                 case MapEntry.ArrayValue<?, ?> arrayValue -> arrayValue.val.name;
                 case MapEntry.MapValue<?, ?, ?> mapValue -> mapValue.key.name;
-                case null, default -> throw new IllegalArgumentException(
-                        "Unknown value definition type " + valueDefinition);
+                case null, default ->
+                        throw new IllegalArgumentException(
+                                "Unknown value definition type " + valueDefinition);
             };
         }
 

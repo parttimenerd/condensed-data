@@ -1,70 +1,108 @@
 name: ci
+
 on:
   push:
-    branches: [ "main" ]
+    branches: [ main, develop ]
   pull_request:
-    branches: [ "main" ]
-
-concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
+    branches: [ main ]
 
 jobs:
-  build:
-    name: Build
-    runs-on: ubuntu-24.04
-    timeout-minutes: 10
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        java-version: [17, 21]
+
     steps:
-      - uses: actions/checkout@v4
+    - uses: actions/checkout@v4
 
-      - name: Setup Java
-        uses: actions/setup-java@v4
-        with:
-          java-version: '21'
-          distribution: 'sapmachine'
+    - name: Set up JDK ${{ matrix.java-version }}
+      uses: actions/setup-java@v4
+      with:
+        java-version: ${{ matrix.java-version }}
+        distribution: 'temurin'
+        cache: maven
 
-      - name: Cache Maven
-        uses: actions/cache@v4
-        with:
-          path: ~/.m2/repository
-          key: ${{ runner.os }}-m2-${{ hashFiles('**/pom.xml') }}
-          restore-keys: ${{ runner.os }}-m2
+    - name: Run tests
+      run: mvn clean test
 
-      - name: mvn package
-        run: mvn -ntp -B package -DskipTests
+    - name: Run spotless check
+      run: mvn spotless:check
 
-      - name: Check formatting
-        run: mvn -ntp -B spotless:check
+    - name: Build package
+      run: mvn package -DskipTests
 
-      - name: upload condensed-data.jar
-        uses: actions/upload-artifact@v4
-        with:
-          name: condensed-data.jar
-          path: target/condensed-data.jar
+  snapshot-release:
+    needs: test
+    runs-on: ubuntu-latest
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
 
-  vm-test:
-    name: Run tests
-    runs-on: ubuntu-24.04
-    needs: build
-    timeout-minutes: 10
-    permissions:
-      checks: write
     steps:
-      - uses: actions/checkout@v4
+    - uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
 
-      - name: Set up Java
-        uses: actions/setup-java@v4
-        with:
-          java-version: '21'
-          distribution: 'sapmachine'
+    - name: Set up JDK 17
+      uses: actions/setup-java@v4
+      with:
+        java-version: '17'
+        distribution: 'temurin'
+        cache: maven
 
-      - name: Test
-        run: |
-          mvn -ntp -B test
+    - name: Configure Git user
+      run: |
+        git config --global user.email "action@github.com"
+        git config --global user.name "GitHub Action"
 
-      - name: Publish Test Report
-        uses: mikepenz/action-junit-report@v4
-        if: always()
-        with:
-          check_name: 'Test Report'
-          report_paths: '**/build/test-results/test/TEST-*.xml'
+    - name: Generate snapshot version
+      id: version
+      run: |
+        # Get current version from pom.xml
+        CURRENT_VERSION=$(mvn help:evaluate -Dexpression=project.version -q -DforceStdout)
+        echo "Current version: $CURRENT_VERSION"
+        
+        # Generate timestamp-based snapshot version
+        TIMESTAMP=$(date -u +"%Y%m%d.%H%M%S")
+        COMMIT_SHA=$(git rev-parse --short HEAD)
+        
+        if [[ $CURRENT_VERSION == *-SNAPSHOT ]]; then
+          BASE_VERSION=${CURRENT_VERSION%-SNAPSHOT}
+          SNAPSHOT_VERSION="${BASE_VERSION}-${TIMESTAMP}.${COMMIT_SHA}-SNAPSHOT"
+        else
+          SNAPSHOT_VERSION="${CURRENT_VERSION}-${TIMESTAMP}.${COMMIT_SHA}-SNAPSHOT"
+        fi
+        
+        echo "snapshot_version=$SNAPSHOT_VERSION" >> $GITHUB_OUTPUT
+        echo "Generated snapshot version: $SNAPSHOT_VERSION"
+
+    - name: Set snapshot version
+      run: |
+        mvn versions:set -DnewVersion=${{ steps.version.outputs.snapshot_version }}
+        mvn versions:commit
+
+    - name: Create GitHub release
+      id: create_release
+      uses: softprops/action-gh-release@v2
+      with:
+        tag_name: v${{ steps.version.outputs.snapshot_version }}
+        name: Snapshot Release v${{ steps.version.outputs.snapshot_version }}
+        body: |
+          🚀 **Automated Snapshot Release**
+          
+          This is a development snapshot build from commit [`${{ github.sha }}`](${{ github.server_url }}/${{ github.repository }}/commit/${{ github.sha }}).
+          
+          **⚠️ Warning**: This is a pre-release snapshot and may be unstable.
+          
+          **Changes in this commit:**
+          ${{ github.event.head_commit.message }}
+          
+          **CLI Usage:**
+          Download the JAR file below and run:
+          ```bash
+          java -jar condensed-data-${{ steps.version.outputs.snapshot_version }}.jar --help
+          ```
+        draft: false
+        prerelease: true
+        files: |
+          target/condensed-data.jar
+        token: ${{ secrets.GITHUB_TOKEN }}

@@ -227,8 +227,7 @@ public class TypeCollection {
                     }
                     return (R) longs;
                 }
-                default -> {
-                }
+                default -> {}
             }
             return (R) Arrays.stream((T[]) value).map(TypeCollection::normalize).toList();
         }
@@ -256,12 +255,10 @@ public class TypeCollection {
                     case Byte b -> {
                         return (R) (Long) (long) (byte) value;
                     }
-                    default -> {
-                    }
+                    default -> {}
                 }
             }
-            default -> {
-            }
+            default -> {}
         }
         return (R) value;
     }

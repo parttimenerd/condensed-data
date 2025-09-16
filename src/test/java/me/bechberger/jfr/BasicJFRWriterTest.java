@@ -82,8 +82,7 @@ public class BasicJFRWriterTest {
             BasicJFRWriter basicJFRWriter = new BasicJFRWriter(out);
             try (RecordingStream rs =
                     new RecordingStream(Configuration.getConfiguration("default"))) {
-                rs.onEvent(
-                        basicJFRWriter::processEvent);
+                rs.onEvent(basicJFRWriter::processEvent);
                 rs.startAsync();
                 Thread.sleep(100);
                 TestEvent testEvent = new TestEvent();

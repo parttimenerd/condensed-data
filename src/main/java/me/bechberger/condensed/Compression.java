@@ -54,7 +54,8 @@ public enum Compression {
                     var compressor =
                             switch (level) {
                                 case FAST -> LZ4Factory.fastestInstance().fastCompressor();
-                                case MEDIUM, HIGH_COMPRESSION -> LZ4Factory.fastestInstance().highCompressor();
+                                case MEDIUM, HIGH_COMPRESSION ->
+                                        LZ4Factory.fastestInstance().highCompressor();
                                 case MAX_COMPRESSION ->
                                         LZ4Factory.fastestInstance().highCompressor(17);
                             };
