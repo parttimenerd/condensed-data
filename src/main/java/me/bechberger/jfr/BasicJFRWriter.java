@@ -31,6 +31,7 @@ import me.bechberger.jfr.JFRReduction.ReducedStackTrace;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 import org.json.JSONArray;
+import org.json.JSONException;
 
 /**
  * Writes JFR events to a {@link CondensedOutputStream} which can be read by {@link BasicJFRReader}
@@ -365,7 +366,7 @@ public class BasicJFRWriter {
         JSONArray arr;
         try {
             arr = new JSONArray(description);
-        } catch (Exception e) {
+        } catch (JSONException e) {
             throw new IllegalArgumentException("Invalid description: " + description, e);
         }
         return new ParsedFieldDescription(

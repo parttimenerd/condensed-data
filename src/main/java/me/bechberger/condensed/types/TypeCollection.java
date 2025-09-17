@@ -174,91 +174,79 @@ public class TypeCollection {
             return null;
         }
         if (value.getClass().isArray()) {
-            switch (value) {
-                case boolean[] booleans1 -> {
-                    List<Boolean> booleans = new ArrayList<>();
-                    for (boolean b : booleans1) {
-                        booleans.add(b);
-                    }
-                    return (R) booleans;
+            if (value instanceof boolean[]) {
+                List<Boolean> booleans = new ArrayList<>();
+                for (boolean b : (boolean[]) value) {
+                    booleans.add(b);
                 }
-                case byte[] bytes -> {
-                    List<Long> longs = new ArrayList<>();
-                    for (byte b : bytes) {
-                        longs.add((long) b);
-                    }
-                    return (R) longs;
+                return (R) booleans;
+            }
+            if (value instanceof byte[]) {
+                List<Long> longs = new ArrayList<>();
+                for (byte b : (byte[]) value) {
+                    longs.add((long) b);
                 }
-                case short[] shorts -> {
-                    List<Long> longs = new ArrayList<>();
-                    for (short s : shorts) {
-                        longs.add((long) s);
-                    }
-                    return (R) longs;
+                return (R) longs;
+            }
+            if (value instanceof short[]) {
+                List<Long> longs = new ArrayList<>();
+                for (short s : (short[]) value) {
+                    longs.add((long) s);
                 }
-                case int[] ints -> {
-                    List<Long> longs = new ArrayList<>();
-                    for (int i : ints) {
-                        longs.add((long) i);
-                    }
-                    return (R) longs;
+                return (R) longs;
+            }
+            if (value instanceof int[]) {
+                List<Long> longs = new ArrayList<>();
+                for (int i : (int[]) value) {
+                    longs.add((long) i);
                 }
-                case long[] longs1 -> {
-                    return (R) Arrays.stream(longs1).boxed().toList();
+                return (R) longs;
+            }
+            if (value instanceof long[]) {
+                return (R) Arrays.stream((long[]) value).boxed().toList();
+            }
+            if (value instanceof float[]) {
+                List<Float> floats = new ArrayList<>();
+                for (float f : (float[]) value) {
+                    floats.add(f);
                 }
-                case float[] floats1 -> {
-                    List<Float> floats = new ArrayList<>();
-                    for (float f : floats1) {
-                        floats.add(f);
-                    }
-                    return (R) floats;
+                return (R) floats;
+            }
+            if (value instanceof double[]) {
+                List<Float> floats = new ArrayList<>();
+                for (double d : (double[]) value) {
+                    floats.add((float) d);
                 }
-                case double[] doubles -> {
-                    List<Float> floats = new ArrayList<>();
-                    for (double d : doubles) {
-                        floats.add((float) d);
-                    }
-                    return (R) floats;
+                return (R) floats;
+            }
+            if (value instanceof char[]) {
+                List<Long> longs = new ArrayList<>();
+                for (char c : (char[]) value) {
+                    longs.add((long) c);
                 }
-                case char[] chars -> {
-                    List<Long> longs = new ArrayList<>();
-                    for (char c : chars) {
-                        longs.add((long) c);
-                    }
-                    return (R) longs;
-                }
-                default -> {}
+                return (R) longs;
             }
             return (R) Arrays.stream((T[]) value).map(TypeCollection::normalize).toList();
         }
-        switch (value) {
-            case Float v -> {
+        if (value instanceof Float) {
+            return (R) value;
+        }
+        if (value instanceof Double) {
+            return (R) (Float) (float) (double) value;
+        }
+        if (value instanceof Character) {
+            return (R) (Long) (long) (char) value;
+        }
+        if (value instanceof Number) {
+            if (value instanceof Long) {
                 return (R) value;
+            } else if (value instanceof Integer) {
+                return (R) (Long) (long) (int) value;
+            } else if (value instanceof Short) {
+                return (R) (Long) (long) (short) value;
+            } else if (value instanceof Byte) {
+                return (R) (Long) (long) (byte) value;
             }
-            case Double v -> {
-                return (R) (Float) (float) (double) value;
-            }
-            case Character c -> {
-                return (R) (Long) (long) (char) value;
-            }
-            case Number number -> {
-                switch (value) {
-                    case Long l -> {
-                        return (R) value;
-                    }
-                    case Integer i -> {
-                        return (R) (Long) (long) (int) value;
-                    }
-                    case Short i -> {
-                        return (R) (Long) (long) (short) value;
-                    }
-                    case Byte b -> {
-                        return (R) (Long) (long) (byte) value;
-                    }
-                    default -> {}
-                }
-            }
-            default -> {}
         }
         return (R) value;
     }
