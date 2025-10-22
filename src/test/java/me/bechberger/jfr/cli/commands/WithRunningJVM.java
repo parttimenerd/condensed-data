@@ -33,69 +33,69 @@ public class WithRunningJVM implements AutoCloseable {
 
     static final String TEST_PROGRAM =
             """
-                    import jdk.jfr.*;
+            import jdk.jfr.*;
 
-                    public class Test {
-                        @Name("TestEvent")
-                        @Label("Label")
-                        @Description("Description")
-                        @StackTrace()
-                        static class TestEvent extends Event {
-                            @Label("Label")
-                            int number;
+            public class Test {
+                @Name("TestEvent")
+                @Label("Label")
+                @Description("Description")
+                @StackTrace()
+                static class TestEvent extends Event {
+                    @Label("Label")
+                    int number;
 
-                            @Label("Memory")
-                            @DataAmount
-                            long memory = Runtime.getRuntime().freeMemory();
+                    @Label("Memory")
+                    @DataAmount
+                    long memory = Runtime.getRuntime().freeMemory();
 
-                            @Label("String")
-                            String string = "Hello" + memory;
+                    @Label("String")
+                    String string = "Hello" + memory;
 
-                            TestEvent(int number) {
-                                this.number = number;
+                    TestEvent(int number) {
+                        this.number = number;
+                    }
+                }
+
+                @Name("AnotherEvent")
+                @Label("Label")
+                @Description("Description")
+                @StackTrace
+                static class AnotherEvent extends Event {}
+
+                public static void main(String[] args) {
+                    int counter = 0;
+                    while (true) {
+                        long start = System.currentTimeMillis();
+
+                        counter += new byte[1024 * 1024 * 1024].length;
+                        System.gc();
+
+                        new TestEvent(0).commit();
+
+                        counter += new byte[1024 * 1024].length;
+                        System.gc();
+
+                        new TestEvent(1).commit();
+
+                        new AnotherEvent().commit();
+
+                        // waste some CPU
+
+                        double waste = 0.0;
+                        while (System.currentTimeMillis() - start < 30) {
+                            for (int i = 0; i < 1000000; i++) {
+                                waste += Math.sqrt(i);
                             }
                         }
-
-                        @Name("AnotherEvent")
-                        @Label("Label")
-                        @Description("Description")
-                        @StackTrace
-                        static class AnotherEvent extends Event {}
-
-                        public static void main(String[] args) {
-                            int counter = 0;
-                            while (true) {
-                                long start = System.currentTimeMillis();
-
-                                counter += new byte[1024 * 1024 * 1024].length;
-                                System.gc();
-
-                                new TestEvent(0).commit();
-
-                                counter += new byte[1024 * 1024].length;
-                                System.gc();
-
-                                new TestEvent(1).commit();
-
-                                new AnotherEvent().commit();
-
-                                // waste some CPU
-
-                                double waste = 0.0;
-                                while (System.currentTimeMillis() - start < 30) {
-                                    for (int i = 0; i < 1000000; i++) {
-                                        waste += Math.sqrt(i);
-                                    }
-                                }
-                                try {
-                                    Thread.sleep(20);
-                                } catch (InterruptedException e) {
-                                    e.printStackTrace();
-                                }
-                            }
+                        try {
+                            Thread.sleep(20);
+                        } catch (InterruptedException e) {
+                            e.printStackTrace();
                         }
                     }
-                    """;
+                }
+            }
+            """;
     private final Path tmpFolder;
     private final Process process;
 

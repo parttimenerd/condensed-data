@@ -1,6 +1,7 @@
 package me.bechberger.jfr;
 
 import java.util.IdentityHashMap;
+import java.util.Iterator;
 import java.util.Objects;
 import java.util.Set;
 import jdk.jfr.ValueDescriptor;
@@ -70,17 +71,18 @@ public class JFRHashConfig extends HashAndEqualsConfig {
 
     static class StackFrameWrapper implements HashAndEqualsWrapper<RecordedFrame> {
 
-        private IdentityHashMap<RecordedFrame, Integer> hashCodeCache;
         private RecordedFrame value;
         private final int maxCacheSize = 10000;
         private int hashCode;
 
         public StackFrameWrapper(
                 RecordedFrame value, IdentityHashMap<RecordedFrame, Integer> hashCodeCache) {
-            this.hashCodeCache = hashCodeCache;
             this.value = value;
             if (hashCodeCache.size() > maxCacheSize) {
-                hashCodeCache.clear();
+                while (hashCodeCache.size() > maxCacheSize / 2) {
+                    Iterator<RecordedFrame> it = hashCodeCache.keySet().iterator();
+                    hashCodeCache.remove(it.next());
+                }
             }
             this.hashCode =
                     hashCodeCache.computeIfAbsent(

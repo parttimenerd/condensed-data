@@ -136,18 +136,18 @@ public class SummaryCommandTest {
     private void checkFullSummaryResult(String result, int testEventCount) {
         String regexp =
                 """
-                  Format Version: $VERSION
-                  Generator: $GENERATOR
-                  Generator Version: $GENERATOR_VERSION
-                  Generator Configuration: default
-                  Compression: $COMPRESSION
-                  Start: .*
-                  End: .*
-                  Duration: [0-9]+(\\.[0-9]*)?s
-                  Events: .*
+                 Format Version: $VERSION
+                 Generator: $GENERATOR
+                 Generator Version: $GENERATOR_VERSION
+                 Generator Configuration: default
+                 Compression: $COMPRESSION
+                 Start: .*
+                 End: .*
+                 Duration: [0-9]+(\\.[0-9]*)?s
+                 Events: .*
 
-                  Event Type                                Count
-                 """
+                 Event Type                                Count
+                """
                         .replace("$VERSION", Constants.FORMAT_VERSION + "")
                         .replace("$GENERATOR_VERSION", Constants.VERSION)
                         .replace("$GENERATOR", "condensed jfr cli")

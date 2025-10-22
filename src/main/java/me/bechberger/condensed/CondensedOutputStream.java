@@ -92,11 +92,12 @@ public class CondensedOutputStream extends OutputStream implements AutoCloseable
             // is total, first row is header
             return String.format(
                     """
-                            %-10s %10s %10s %10s %10s %10s %10s %10s
-                            %-10s %10d %10d %10d %10d %10d %10d %10d
-                            %-10s %10d %10d %10d %10d %10d %10d %10d
-                            %-10s %10d %10d %10d %10d %10d %10d %10d
-                            %-10s %10d %10d %10d %10d %10d %10d %10d""",
+                    %-10s %10s %10s %10s %10s %10s %10s %10s
+                    %-10s %10d %10d %10d %10d %10d %10d %10d
+                    %-10s %10d %10d %10d %10d %10d %10d %10d
+                    %-10s %10d %10d %10d %10d %10d %10d %10d
+                    %-10s %10d %10d %10d %10d %10d %10d %10d\
+                    """,
                     "mode",
                     "count",
                     "bytes",

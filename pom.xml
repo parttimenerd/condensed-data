@@ -92,6 +92,8 @@
                         </path>
                     </annotationProcessorPaths>
                     <compilerArgs>
+                        <arg>-XDcompilePolicy=simple</arg>
+                        <arg>--should-stop=ifError=FLOW</arg>
                         <arg>
                             -Xplugin:ErrorProne
                             <!-- Add other Error Prone flags here. See
@@ -160,8 +162,6 @@
                             -Xep:InterfaceWithOnlyStatics:OFF
                             <!-- Unclear whether this is an improvement. -->
                             -Xep:Interruption:OFF
-                            <!-- We don't target JDK 7. -->
-                            -Xep:Java7ApiChecker:OFF
                             <!-- We don't target JDK 8. -->
                             -Xep:Java8ApiChecker:OFF
                             <!-- Suggests some controversial renames. -->
@@ -273,7 +273,7 @@
                     <java>
                         <toggleOffOn/>
                         <googleJavaFormat>
-                            <version>1.19.2</version>
+                            <version>1.27.0</version>
                             <style>AOSP</style>
                             <reflowLongStrings>true</reflowLongStrings>
                         </googleJavaFormat>
@@ -451,8 +451,8 @@
         <maven.compiler.release>17</maven.compiler.release>
         <jqwik.version>1.8.2</jqwik.version>
         <assertj.version>3.26.3</assertj.version>
-        <error-prone.version>2.26.1</error-prone.version>
-        <error-prone-support.version>0.16.1</error-prone-support.version>
+        <error-prone.version>2.42.0</error-prone.version>
+        <error-prone-support.version>0.25.0</error-prone-support.version>
     </properties>
 
     <repositories>

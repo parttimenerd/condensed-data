@@ -39,9 +39,9 @@ public class ViewCommandTest {
                 .contains("TestEvent")
                 .contains(
                         """
-                Start Time Duration   Event Thread    Stack Trace                                       Number     Memory     String                                          \s
-                ---------- ---------- --------------- ------------------------------------------------- ---------- ---------- -------------------------------------------------
-                """);
+                        Start Time Duration   Event Thread    Stack Trace                                       Number     Memory     String                                          \s
+                        ---------- ---------- --------------- ------------------------------------------------- ---------- ---------- -------------------------------------------------
+                        """);
     }
 
     @Test
