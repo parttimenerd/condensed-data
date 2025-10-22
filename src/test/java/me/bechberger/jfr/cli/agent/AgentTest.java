@@ -231,7 +231,8 @@ public class AgentTest {
         var changeTimeFirstFile = Files.getLastModifiedTime(files.get(0)).toMillis();
         var changeTimeLastFile = Files.getLastModifiedTime(files.get(files.size() - 1)).toMillis();
         var creationTimeFirstFile = Util.getCreationTimeOfFile(files.get(0)).toMillis();
-        var creationTimeLastFile = Util.getCreationTimeOfFile(files.get(files.size() - 1)).toMillis();
+        var creationTimeLastFile =
+                Util.getCreationTimeOfFile(files.get(files.size() - 1)).toMillis();
         // check that the first file is newer than the last file
         // this is because the first file is overwritten last
         assertThat(changeTimeFirstFile)
