@@ -34,9 +34,6 @@ public class Universe {
     }
 
     public long getStartTimeNanos() {
-        if (startTimeNanos == -1) {
-            throw new IllegalStateException("Start time is not set");
-        }
         return startTimeNanos;
     }
 

@@ -111,7 +111,7 @@ public abstract class RecordingThread implements Runnable {
         while (shouldStop.get()) { // wait till it properly stopped
             Thread.onSpinWait();
         }
-        this.close();
+        this.onClose();
         agentIO.writeInfo("closed");
         agentIO.close();
     }
