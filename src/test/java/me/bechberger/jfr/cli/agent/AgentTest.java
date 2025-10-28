@@ -14,10 +14,12 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Comparator;
 import java.util.List;
+import java.util.concurrent.TimeUnit;
 import java.util.function.Consumer;
 import java.util.stream.Stream;
 import me.bechberger.condensed.Util;
 import me.bechberger.jfr.cli.commands.WithRunningJVM;
+import me.bechberger.util.JavaUtil;
 import one.profiler.AsyncProfilerLoader;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -25,6 +27,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.Arguments;
 import org.junit.jupiter.params.provider.MethodSource;
+import org.junit.jupiter.params.provider.ValueSource;
 
 /** <b>Tests assume the condensed-data.jar to be built first</b> */
 public class AgentTest {
@@ -317,6 +320,62 @@ public class AgentTest {
         assertThat(output).contains("Unmatched argument at index 2");
     }
 
+    private static final String TEST_CLASS_CODE =
+            """
+            public class TestClass {
+                public static void main(String[] args) throws InterruptedException {
+                    for (int i = 0; i < 10; i++) {
+                        int[] a = new int[1000000]; // allocate some memory
+                        System.gc();
+                        long time = System.currentTimeMillis();
+                        while (System.currentTimeMillis() - time < 50) {
+                            // busy wait
+                        }
+                    }
+                    System.out.println("TestClass completed");
+                }
+            }
+            """;
+
+    @ParameterizedTest
+    @ValueSource(booleans = {false, true})
+    public void testThatJVMTerminates(boolean rotating) throws IOException, InterruptedException {
+        Path tmp = Files.createTempDirectory("agent-test-");
+        // put source code into folder
+        Path sourceFile = tmp.resolve("TestClass.java");
+        tmp.toFile().deleteOnExit();
+        Files.writeString(sourceFile, TEST_CLASS_CODE);
+        // compile
+        JavaUtil.compileIntoParentFolder(sourceFile);
+        // run the class in a new process with the agent attached
+        var javaBin = JavaUtil.getJavaBinary().toString();
+        var processArgs = new ArrayList<String>();
+        processArgs.add(javaBin);
+        if (DEBUG_CLI) {
+            processArgs.add("-agentlib:jdwp=transport=dt_socket,server=y,suspend=y,address=5005");
+        }
+        if (rotating) {
+            processArgs.add(
+                    "-javaagent:target/condensed-data.jar=start test-dir/recording.cjfr --rotating"
+                            + " --max-duration 500ms");
+        } else {
+            processArgs.add("-javaagent:target/condensed-data.jar=start recording.cjfr");
+        }
+        processArgs.addAll(List.of("-cp", tmp.toString(), "TestClass"));
+        var process = new ProcessBuilder(processArgs).inheritIO().start();
+        // wait for process to finish
+        if (DEBUG_CLI) {
+            process.waitFor();
+        } else {
+            boolean exited = process.waitFor(20, TimeUnit.SECONDS);
+            while (process.isAlive()) {
+                process.destroyForcibly();
+                Thread.sleep(10);
+            }
+            assertTrue(exited, "The JVM with the agent did not terminate in time");
+        }
+    }
+
     String runAgent(AgentRunMode runMode, String... args) throws IOException, InterruptedException {
         return switch (runMode) {
             case CLI_JAR -> runAgentViaCLI(args);
@@ -352,8 +411,7 @@ public class AgentTest {
         var bas = new ByteArrayOutputStream();
         var processArgs = new ArrayList<String>();
         // get currently used JVM
-        var javaHome = Path.of(System.getProperty("java.home"));
-        var javaBin = javaHome.resolve("bin").resolve("java").toString();
+        var javaBin = JavaUtil.getJavaBinary().toString();
         processArgs.add(javaBin);
         if (DEBUG_CLI) {
             System.out.println("Starting with debugger at port 5005");

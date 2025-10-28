@@ -81,8 +81,7 @@ public abstract class RecordingThread implements Runnable {
         try {
             recordingStream.onEvent(this::onEvent);
             agentIO.writeInfo("start");
-            recordingStream.startAsync();
-            recordingStream.awaitTermination();
+            recordingStream.start();
             agentIO.writeInfo("finished");
             if (!shouldStop.get()) {
                 this.stop();
@@ -92,8 +91,6 @@ public abstract class RecordingThread implements Runnable {
                 return; // TODO improve, this happens when the JVM is shutdown
             }
             agentIO.writeSevereError("Error: " + e.getMessage());
-        } catch (InterruptedException e) {
-            throw new RuntimeException(e);
         }
         agentIO.writeInfo("finished run");
         shouldStop.set(false);
@@ -163,7 +160,7 @@ public abstract class RecordingThread implements Runnable {
         return dynSettings.maxFiles;
     }
 
-    abstract void close();
+    public void onClose() {}
 
     /** Must be at least 1kB or 0 (no max size) */
     public void setMaxSize(long maxSize) {

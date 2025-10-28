@@ -177,13 +177,6 @@ public class RotatingRecordingThread extends RecordingThread {
     }
 
     @Override
-    void close() {
-        if (state != null) {
-            closeState(state);
-        }
-    }
-
-    @Override
     List<Entry<String, String>> getMiscStatus() {
         var state = this.state;
         if (state == null || state.jfrWriter == null) {

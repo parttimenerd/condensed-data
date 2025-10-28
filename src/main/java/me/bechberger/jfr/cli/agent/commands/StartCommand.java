@@ -110,7 +110,9 @@ public class StartCommand implements Callable<Integer> {
                                         }
                                     }
                                 }));
-        new Thread(Agent.getCurrentRecordingThread()).start();
+        Thread t = new Thread(Agent.getCurrentRecordingThread());
+        t.setDaemon(true);
+        t.start();
         return 0;
     }
 }
