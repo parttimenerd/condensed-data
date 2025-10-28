@@ -7,6 +7,7 @@ import java.io.IOException;
 import java.nio.file.Path;
 import java.time.Duration;
 import java.time.temporal.ChronoUnit;
+import java.util.Comparator;
 import java.util.List;
 import jdk.jfr.consumer.RecordingFile;
 import org.assertj.core.data.Percentage;
@@ -52,10 +53,12 @@ public class InflateCommandTest {
         var testEvents =
                 events.stream()
                         .filter(e -> e.getEventType().getName().equals("TestEvent"))
+                        .sorted(Comparator.comparingLong(e -> e.getStartTime().toEpochMilli()))
                         .toList();
         var origTestEvents =
                 origEvents.stream()
                         .filter(e -> e.getEventType().getName().equals("TestEvent"))
+                        .sorted(Comparator.comparingLong(e -> e.getStartTime().toEpochMilli()))
                         .toList();
         assertThat(testEvents).size().isEqualTo(origTestEvents.size());
 

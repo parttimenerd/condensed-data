@@ -126,8 +126,9 @@ public class AgentTest {
         // check that the current-size-uncompressed property is memory and larger than 1000 bytes
         assertThat(status).contains("current-size-uncompressed: ");
         var bytes = parseMemory(status.split("current-size-uncompressed: ")[1].split("\n")[0]);
+        long start = System.currentTimeMillis();
         assertThat(bytes).isGreaterThan(1000);
-
+        System.out.println("## Stop");
         output = runAgent(runMode, "stop");
         System.out.println(output);
         assertThat(Path.of("test-dir/recording.cjfr"))

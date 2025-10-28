@@ -111,7 +111,7 @@ public abstract class RecordingThread implements Runnable {
         while (shouldStop.get()) { // wait till it properly stopped
             Thread.onSpinWait();
         }
-        this.onClose();
+        this.close();
         agentIO.writeInfo("closed");
         agentIO.close();
     }
@@ -160,7 +160,8 @@ public abstract class RecordingThread implements Runnable {
         return dynSettings.maxFiles;
     }
 
-    public void onClose() {}
+    /** Close the current jfrWriter, only called once */
+    public abstract void close();
 
     /** Must be at least 1kB or 0 (no max size) */
     public void setMaxSize(long maxSize) {

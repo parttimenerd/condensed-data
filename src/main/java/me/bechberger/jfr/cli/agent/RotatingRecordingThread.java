@@ -122,6 +122,15 @@ public class RotatingRecordingThread extends RecordingThread {
     }
 
     @Override
+    public void close() {
+        agentIO.writeOutput("Condensed recording to " + pathTemplate + " finished");
+        var state = this.state;
+        if (state != null) {
+            closeState(state);
+        }
+    }
+
+    @Override
     void onEvent(RecordedEvent event) {
         try {
             if (triggeredStop) {

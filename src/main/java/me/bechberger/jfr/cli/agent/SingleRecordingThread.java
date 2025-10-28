@@ -93,8 +93,10 @@ public class SingleRecordingThread extends RecordingThread {
     }
 
     @Override
-    public void onClose() {
+    public void close() {
+        System.out.println("close");
         agentIO.writeOutput("Condensed recording to " + path + " finished\n");
+        jfrWriter.close();
     }
 
     @Override
