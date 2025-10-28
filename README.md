@@ -201,6 +201,8 @@ TODO
 - [x] implement simple view
 - [ ] test agent
 - [ ] make all tools support multiple files
+- [ ] add black box tests for the CLI tools
+- [ ] check empty files
 
 License
 -------

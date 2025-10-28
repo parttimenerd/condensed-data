@@ -152,7 +152,11 @@ public class BasicJFRRoundTripTest {
                 if (memoryAsFloatB16) {
                     assertTrue(
                             equalUnderBf16Conversion(
-                                    recordedEvent.getLong("memory"), event.getLong("memory")));
+                                    recordedEvent.getLong("memory"), event.getLong("memory")),
+                            "Memory fields are not equal under bfloat16 conversion: "
+                                    + recordedEvent.getLong("memory")
+                                    + " vs "
+                                    + event.getLong("memory"));
                 } else {
                     assertEquals(recordedEvent.getLong("memory"), event.getLong("memory"));
                 }
@@ -276,7 +280,7 @@ public class BasicJFRRoundTripTest {
                 var recordedStackTrace = recordedEvent.getStackTrace();
                 var stackTrace = event.getStackTrace();
                 if (recordedStackTrace.getFrames().size() > maxDepth) {
-                    assertTrue(stackTrace.isTruncated());
+                    assertTrue(stackTrace.isTruncated(), "Stack trace should be truncated");
                     assertEquals(maxDepth, stackTrace.getFrames().size());
                 } else {
                     assertEquals(recordedStackTrace.isTruncated(), stackTrace.isTruncated());

@@ -1,5 +1,6 @@
 package me.bechberger.util;
 
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.junit.jupiter.api.Assertions.*;
 
 import java.util.ArrayList;
@@ -50,9 +51,9 @@ public class CacheTest {
         assertEquals(2, cache.get("b"));
         assertEquals(List.of(), removed);
         assertEquals(2, cache.size());
-        assertTrue(cache.containsKey("a"));
-        assertTrue(cache.containsKey("b"));
-        assertFalse(cache.containsKey("c"));
+        assertTrue(cache.containsKey("a"), "a should be in cache");
+        assertTrue(cache.containsKey("b"), "b should be in cache");
+        assertFalse(cache.containsKey("c"), "c should not be in cache");
     }
 
     @Test
