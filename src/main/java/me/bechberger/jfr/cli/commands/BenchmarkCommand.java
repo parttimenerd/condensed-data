@@ -2,6 +2,7 @@ package me.bechberger.jfr.cli.commands;
 
 import java.util.List;
 import java.util.concurrent.Callable;
+import me.bechberger.condensed.Compression;
 import me.bechberger.jfr.Benchmark;
 import me.bechberger.jfr.Benchmark.TableConfig;
 import me.bechberger.jfr.Configuration;
@@ -41,6 +42,14 @@ public class BenchmarkCommand implements Callable<Integer> {
     private String regexp = ".*";
 
     @Option(
+            names = "--compression",
+            description =
+                    "Used compression for condensed files, possible values:"
+                            + " ${COMPLETION-CANDIDATES}",
+            defaultValue = "ZSTD")
+    private Compression compression = Compression.DEFAULT;
+
+    @Option(
             names = {"-c", "--configuration"},
             description =
                     "The generatorConfiguration to use, possible values:"
@@ -53,7 +62,7 @@ public class BenchmarkCommand implements Callable<Integer> {
 
     public Integer call() {
         var results =
-                new Benchmark(configurations, regexp)
+                new Benchmark(configurations, compression, regexp)
                         .runBenchmarks(keepCondensedFile, inflateCondensedFile, keepInflatedFile);
         if (csv) {
             System.out.println(results.toTable(new TableConfig(false, onlyPerHour)).toCSV());

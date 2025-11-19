@@ -204,6 +204,8 @@ TODO
 - [ ] add black box tests for the CLI tools
 - [ ] check empty files
 
+- [ ] move away from LZ4-java to a maintained library
+
 License
 -------
 MIT, Copyright 2024 SAP SE or an SAP affiliate company, Johannes Bechberger and contributors

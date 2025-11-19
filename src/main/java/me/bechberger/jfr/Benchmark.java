@@ -248,10 +248,13 @@ public class Benchmark {
         }
     }
 
+    private final Compression compression;
     private final List<JFRFile> jfrFiles;
 
-    public Benchmark(List<Configuration> configurations, String fileRegex) {
+    public Benchmark(
+            List<Configuration> configurations, Compression compression, String fileRegex) {
         this.configurations = configurations;
+        this.compression = compression;
         if (configurations.isEmpty()) {
             throw new IllegalArgumentException("No configurations provided");
         }
@@ -307,6 +310,7 @@ public class Benchmark {
     public static SingleResult benchmark(
             Configuration configuration,
             JFRFile jfrFile,
+            Compression compression,
             boolean keepCondensedFile,
             boolean inflateCondensedFile,
             boolean keepInflatedFile) {
@@ -318,7 +322,7 @@ public class Benchmark {
             try (var out =
                     new CondensedOutputStream(
                             Files.newOutputStream(cjfrFile),
-                            StartMessage.DEFAULT.compress(Compression.DEFAULT))) {
+                            StartMessage.DEFAULT.compress(compression))) {
                 start = System.nanoTime();
                 var basicJFRWriter = new BasicJFRWriter(out, configuration);
                 basicJFRWriter.processJFRFile(jfrFile.file);
@@ -370,6 +374,7 @@ public class Benchmark {
                                                                     benchmark(
                                                                             configuration,
                                                                             jfrFile,
+                                                                            compression,
                                                                             keepCondensedFile,
                                                                             inflateCondensedFile,
                                                                             keepInflatedFile))
