@@ -233,11 +233,11 @@
             <artifactId>json</artifactId>
             <version>20250517</version>
         </dependency>
-        <dependency>
+        <!--<dependency> // its fast (three times better than others), but is unmaintained
             <groupId>org.lz4</groupId>
             <artifactId>lz4-java</artifactId>
             <version>1.8.0</version>
-        </dependency>
+        </dependency>-->
         <dependency>
             <groupId>org.apache.commons</groupId>
             <artifactId>commons-compress</artifactId>

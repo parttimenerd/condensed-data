@@ -17,13 +17,9 @@ from datetime import datetime
 COMPRESSIONS = [
     "NONE",
     "GZIP",
-    "LZ4FRAMED",
-    "ZLIB",
     "XZ",
     "BZIP2",
-    "LZMA",
-    "ZSTD",
-    "SNAPPY"
+    "ZSTD"
 ]
 
 CONFIGURATION = "reasonable-default"
@@ -258,8 +254,8 @@ def main():
                         help='Regex pattern to filter benchmark files (e.g., "dotty.*" for smaller files)')
     parser.add_argument('--small', '-s', action='store_true',
                         help='Shortcut for --filter-regex "dotty.*" (smaller/faster files)')
-    parser.add_argument('--baseline', '-b', default='LZ4FRAMED',
-                        help='Baseline compression for relative comparison (default: LZ4FRAMED)')
+    parser.add_argument('--baseline', '-b', default='XZ',
+                        help='Baseline compression for relative comparison (default: XZ)')
 
     args = parser.parse_args()
 
@@ -288,7 +284,6 @@ def main():
         'compressions': {}
     }
 
-    # ...existing code for running benchmarks...
     for compression in COMPRESSIONS:
         print(f"\n{'='*60}")
         print(f"Benchmarking {compression}")

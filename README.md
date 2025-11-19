@@ -111,7 +111,7 @@ is designed to be
 
 - simple
 - self-describing (the type information is stored in the file)
-- compressed (supports GZIP and LZ4 compression natively)
+- compressed (supports the following compression algorithms natively: NONE, GZIP, XZ, BZIP2, ZSTD; default: XZ)
 - space efficient (e.g. by using varints and caches)
 - streamable
 - allows to reduce event data even further by using reducers and reconstitutors
@@ -203,8 +203,6 @@ TODO
 - [ ] make all tools support multiple files
 - [ ] add black box tests for the CLI tools
 - [ ] check empty files
-
-- [ ] move away from LZ4-java to a maintained library
 
 License
 -------

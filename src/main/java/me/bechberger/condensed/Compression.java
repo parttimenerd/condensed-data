@@ -6,22 +6,8 @@ import java.io.OutputStream;
 import java.util.zip.Deflater;
 import java.util.zip.GZIPInputStream;
 import java.util.zip.GZIPOutputStream;
-import net.jpountz.lz4.LZ4Factory;
-import net.jpountz.lz4.LZ4FrameInputStream;
-import net.jpountz.lz4.LZ4FrameOutputStream;
-import net.jpountz.lz4.LZ4FrameOutputStream.BLOCKSIZE;
-import net.jpountz.lz4.LZ4FrameOutputStream.FLG.Bits;
-import net.jpountz.xxhash.XXHashFactory;
 import org.apache.commons.compress.compressors.bzip2.BZip2CompressorInputStream;
 import org.apache.commons.compress.compressors.bzip2.BZip2CompressorOutputStream;
-import org.apache.commons.compress.compressors.deflate.DeflateCompressorInputStream;
-import org.apache.commons.compress.compressors.deflate.DeflateCompressorOutputStream;
-import org.apache.commons.compress.compressors.deflate.DeflateParameters;
-import org.apache.commons.compress.compressors.lzma.LZMACompressorInputStream;
-import org.apache.commons.compress.compressors.lzma.LZMACompressorOutputStream;
-import org.apache.commons.compress.compressors.snappy.FramedSnappyCompressorInputStream;
-import org.apache.commons.compress.compressors.snappy.FramedSnappyCompressorOutputStream;
-import org.apache.commons.compress.compressors.snappy.SnappyCompressorOutputStream;
 import org.apache.commons.compress.compressors.xz.XZCompressorInputStream;
 import org.apache.commons.compress.compressors.xz.XZCompressorOutputStream;
 import org.apache.commons.compress.compressors.zstandard.ZstdCompressorInputStream;
@@ -58,53 +44,6 @@ public enum Compression {
                 @Override
                 public InputStream wrap(InputStream in) throws IOException {
                     return new GZIPInputStream(in);
-                }
-            }),
-    LZ4FRAMED(
-            new CompressionFactory() {
-                @Override
-                public OutputStream wrap(OutputStream out, CompressionLevel level)
-                        throws IOException {
-                    var compressor =
-                            switch (level) {
-                                case FAST -> LZ4Factory.fastestInstance().fastCompressor();
-                                case MEDIUM, HIGH_COMPRESSION ->
-                                        LZ4Factory.fastestInstance().highCompressor();
-                                case MAX_COMPRESSION ->
-                                        LZ4Factory.fastestInstance().highCompressor(17);
-                            };
-                    return new LZ4FrameOutputStream(
-                            out,
-                            BLOCKSIZE.SIZE_4MB,
-                            -1,
-                            compressor,
-                            XXHashFactory.fastestInstance().hash32(),
-                            Bits.BLOCK_INDEPENDENCE);
-                }
-
-                @Override
-                public InputStream wrap(InputStream in) throws IOException {
-                    return new LZ4FrameInputStream(in);
-                }
-            }),
-    ZLIB(
-            new CompressionFactory() {
-                @Override
-                public OutputStream wrap(OutputStream out, CompressionLevel level)
-                        throws IOException {
-                    DeflateParameters params = new DeflateParameters();
-                    params.setCompressionLevel(
-                            switch (level) {
-                                case FAST -> Deflater.BEST_SPEED;
-                                case MEDIUM -> Deflater.DEFAULT_COMPRESSION;
-                                case HIGH_COMPRESSION, MAX_COMPRESSION -> Deflater.BEST_COMPRESSION;
-                            });
-                    return new DeflateCompressorOutputStream(out, params);
-                }
-
-                @Override
-                public InputStream wrap(InputStream in) throws IOException {
-                    return new DeflateCompressorInputStream(in);
                 }
             }),
     XZ(
@@ -147,19 +86,6 @@ public enum Compression {
                     return new BZip2CompressorInputStream(in);
                 }
             }),
-    LZMA(
-            new CompressionFactory() {
-                @Override
-                public OutputStream wrap(OutputStream out, CompressionLevel level)
-                        throws IOException {
-                    return new LZMACompressorOutputStream(out);
-                }
-
-                @Override
-                public InputStream wrap(InputStream in) throws IOException {
-                    return new LZMACompressorInputStream(in);
-                }
-            }),
     ZSTD(
             new CompressionFactory() {
                 @Override
@@ -181,26 +107,6 @@ public enum Compression {
                 @Override
                 public InputStream wrap(InputStream in) throws IOException {
                     return new ZstdCompressorInputStream(in);
-                }
-            }),
-    SNAPPY(
-            new CompressionFactory() {
-                @Override
-                public OutputStream wrap(OutputStream out, CompressionLevel level)
-                        throws IOException {
-                    var params = SnappyCompressorOutputStream.createParameterBuilder(32768);
-                    switch (level) {
-                        case FAST -> params.tunedForSpeed();
-                        case MEDIUM, HIGH_COMPRESSION, MAX_COMPRESSION ->
-                                params.tunedForCompressionRatio();
-                    }
-                    // Snappy doesn't support compression levels
-                    return new FramedSnappyCompressorOutputStream(out, params.build());
-                }
-
-                @Override
-                public InputStream wrap(InputStream in) throws IOException {
-                    return new FramedSnappyCompressorInputStream(in);
                 }
             });
 
@@ -224,7 +130,7 @@ public enum Compression {
         }
     }
 
-    public static final Compression DEFAULT = LZ4FRAMED;
+    public static final Compression DEFAULT = XZ;
 
     private final CompressionFactory factory;
 

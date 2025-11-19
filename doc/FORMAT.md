@@ -14,8 +14,9 @@ Each file starts with a header:
 - String: Generator name
 - String: Generator version
 - String: compression algorithm
-    - GZIP: zip compression
-    - LZ4FRAME: LZ4 compression (frame format), faster than GZIP and therefore the default
+    - Supported values: NONE, GZIP, XZ, BZIP2, ZSTD
+    - Default: XZ
+    - Note: specific implementations may add additional metadata; XZ and GZIP are natively supported by the tool.
 
 The following data is organized in messages:
 

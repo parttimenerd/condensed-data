@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 Visualize compression benchmark results.
-Creates bar plots showing duration and size relative to a baseline (default: LZ4FRAMED).
+Creates bar plots showing duration and size relative to a baseline (default: XZ).
 """
 
 import os
@@ -269,7 +269,7 @@ def create_grouped_benchmark_plots(aggregated, baseline, output_prefix, show_std
     plt.savefig(f'{output_prefix}_size_by_file.png', dpi=300, bbox_inches='tight')
     print(f"Saved size by file plot to {output_prefix}_size_by_file.png")
 
-def create_relative_plots(aggregated, baseline='LZ4FRAMED', output_prefix='compression_benchmark'):
+def create_relative_plots(aggregated, baseline='XZ', output_prefix='compression_benchmark'):
     """Create bar plots showing relative performance to baseline."""
 
     if baseline not in aggregated:
@@ -426,7 +426,7 @@ def main():
     parser = argparse.ArgumentParser(description='Visualize compression benchmark results')
     parser.add_argument('--input', '-i', default='compression_benchmark_results.json',
                         help='Input JSON file with benchmark results')
-    parser.add_argument('--baseline', '-b', default='LZ4FRAMED',
+    parser.add_argument('--baseline', '-b', default='XZ',
                         help='Baseline compression algorithm for comparison')
     parser.add_argument('--output', '-o', default='compression_benchmark',
                         help='Output file prefix for plots')
