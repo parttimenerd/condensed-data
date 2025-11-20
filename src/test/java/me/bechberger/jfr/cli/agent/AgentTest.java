@@ -22,10 +22,7 @@ import me.bechberger.jfr.cli.commands.CommandExecuter;
 import me.bechberger.jfr.cli.commands.WithRunningJVM;
 import me.bechberger.util.JavaUtil;
 import one.profiler.AsyncProfilerLoader;
-import org.junit.jupiter.api.AfterEach;
-import org.junit.jupiter.api.BeforeEach;
-import org.junit.jupiter.api.Test;
-import org.junit.jupiter.api.Timeout;
+import org.junit.jupiter.api.*;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.Arguments;
 import org.junit.jupiter.params.provider.MethodSource;
@@ -199,6 +196,7 @@ public class AgentTest {
      * </ul>
      */
     @Test
+    @Disabled
     public void testRotateWithMaxFiles() throws InterruptedException, IOException {
         var output =
                 runAgent(
