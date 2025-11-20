@@ -104,7 +104,7 @@ jobs:
           **CLI Usage:**
           Download the JAR file below and run:
           ```bash
-          java -jar condensed-data-${{ steps.version.outputs.snapshot_version }}.jar --help
+          java -jar condensed-data.jar --help
           ```
         draft: false
         prerelease: true

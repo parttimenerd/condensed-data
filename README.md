@@ -13,6 +13,8 @@ The main usage is to compress JFR files related to GC.
 Usage
 -----
 
+Build the tool or download it from the [GitHub Releases](https://github.com/parttimenerd/condensed-data/releases/latest).
+
 The tool can be used via its CLI:
 ```shell
 > java -jar target/condensed-data.jar -h
