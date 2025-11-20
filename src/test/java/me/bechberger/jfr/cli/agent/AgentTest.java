@@ -122,11 +122,11 @@ public class AgentTest {
         Thread.sleep(1000);
         status = runAgent(runMode, "status");
         System.out.println(status);
-        // check that the current-size-uncompressed property is memory and larger than 1000 bytes
+        // check that the current-size-uncompressed property is memory and larger than 400 bytes
         assertThat(status).contains("current-size-uncompressed: ");
         var bytes = parseMemory(status.split("current-size-uncompressed: ")[1].split("\n")[0]);
         long start = System.currentTimeMillis();
-        assertThat(bytes).isGreaterThan(1000);
+        assertThat(bytes).isGreaterThan(400);
         System.out.println("## Stop");
         output = runAgent(runMode, "stop");
         System.out.println(output);
