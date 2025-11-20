@@ -21,11 +21,18 @@ public class TimeUtil {
     }
 
     public static String formatInstant(Instant instant) {
-        LocalDateTime dateTime = LocalDateTime.ofInstant(instant, ZoneId.of("UTC"));
+        LocalDateTime dateTime = LocalDateTime.ofInstant(instant, ZoneId.systemDefault());
         DateTimeFormatter formatter = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
         return dateTime.format(formatter);
     }
 
+    /**
+     * Parse an instant from a string. If the string only contains time (HH:mm:ss or HH:mm), the
+     * current date is used. Interpreted as local time and converted to UTC.
+     *
+     * @param time
+     * @return
+     */
     public static Instant parseInstant(String time) {
         if (time.matches("\\d{1,2}:\\d{1,2}:\\d{1,2}")) { // parse HH:mm:ss
             time = LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyy-MM-dd " + time));
@@ -36,7 +43,7 @@ public class TimeUtil {
         }
         DateTimeFormatter formatter = DateTimeFormatter.ofPattern("yyyy-MM-dd H:m:s");
         LocalDateTime dateTime = LocalDateTime.parse(time, formatter);
-        return dateTime.atZone(ZoneId.of("UTC")).toInstant();
+        return dateTime.atZone(ZoneId.systemDefault()).toInstant();
     }
 
     public static Duration parseDuration(String duration) {

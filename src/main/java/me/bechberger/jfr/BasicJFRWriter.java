@@ -186,8 +186,6 @@ public class BasicJFRWriter {
         this.fieldTypesToAdd = new ArrayList<>();
         this.fieldTypesCurrentlyAdding = new HashMap<>();
         timeStampType = out.writeAndStoreType(id -> new VarIntType(id, "timestamp", "", false, 1));
-        // runtime shutdown hook to close the output stream
-        Runtime.getRuntime().addShutdownHook(new Thread(out::close));
         out.setReductions(new JFRReduction.JFRReductions(configuration, universe));
         out.setHashAndEqualsConfig(
                 configuration.useSpecificHashesAndRefs()

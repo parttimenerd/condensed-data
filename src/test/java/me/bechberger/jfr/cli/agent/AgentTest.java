@@ -18,12 +18,14 @@ import java.util.concurrent.TimeUnit;
 import java.util.function.Consumer;
 import java.util.stream.Stream;
 import me.bechberger.condensed.Util;
+import me.bechberger.jfr.cli.commands.CommandExecuter;
 import me.bechberger.jfr.cli.commands.WithRunningJVM;
 import me.bechberger.util.JavaUtil;
 import one.profiler.AsyncProfilerLoader;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.Timeout;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.Arguments;
 import org.junit.jupiter.params.provider.MethodSource;
@@ -357,10 +359,13 @@ public class AgentTest {
         }
         if (rotating) {
             processArgs.add(
-                    "-javaagent:target/condensed-data.jar=start test-dir/recording.cjfr --rotating"
+                    "-javaagent:target/condensed-data.jar=start "
+                            + tmp.resolve("recording.cjfr")
+                            + " --rotating"
                             + " --max-duration 500ms");
         } else {
-            processArgs.add("-javaagent:target/condensed-data.jar=start recording.cjfr");
+            processArgs.add(
+                    "-javaagent:target/condensed-data.jar=start " + tmp.resolve("recording.cjfr"));
         }
         processArgs.addAll(List.of("-cp", tmp.toString(), "TestClass"));
         var process = new ProcessBuilder(processArgs).inheritIO().start();
@@ -375,6 +380,73 @@ public class AgentTest {
             }
             assertTrue(exited, "The JVM with the agent did not terminate in time");
         }
+    }
+
+    /**
+     * Tests that the agent works even if no events are recorded, especially for short durations
+     *
+     * <p>Regression test for issue where short durations (e.g., 0.1s) with -version would cause:
+     *
+     * <ul>
+     *   <li>Exception: "The stream is already closed"
+     *   <li>Invalid timestamps (1969-12-31 23:59:59) in the summary
+     * </ul>
+     */
+    @Test
+    @Timeout(30)
+    public void testShortDurationRecording() throws Exception {
+        Path tmp = Files.createTempDirectory("agent-test-short-duration-");
+        tmp.toFile().deleteOnExit();
+        Path recordingFile = tmp.resolve("recording.cjfr");
+
+        var javaBin = JavaUtil.getJavaBinary().toString();
+        var processArgs = new ArrayList<String>();
+        processArgs.add(javaBin);
+        if (DEBUG_CLI) {
+            processArgs.add("-agentlib:jdwp=transport=dt_socket,server=y,suspend=y,address=5005");
+        }
+        processArgs.add(
+                "-javaagent:target/condensed-data.jar=start " + recordingFile + " --duration 0.1s");
+        processArgs.add("-version");
+
+        var process = new ProcessBuilder(processArgs).redirectErrorStream(true).start();
+
+        // Capture output to check for exceptions
+        var outputBytes = new ByteArrayOutputStream();
+        process.getInputStream().transferTo(outputBytes);
+        var output = outputBytes.toString();
+        process.waitFor();
+
+        assertEquals(0, process.exitValue(), "Process should exit successfully");
+
+        // Check that there's no "stream is already closed" exception
+        assertThat(output)
+                .doesNotContain("The stream is already closed")
+                .doesNotContain("Exception in thread");
+
+        // Verify the recording file was created
+        assertThat(recordingFile).exists();
+        assertThat(Files.size(recordingFile)).isGreaterThan(0);
+
+        // Run summary command to check timestamps
+        var summaryResult = new CommandExecuter("summary", recordingFile.toString()).run();
+
+        assertThat(summaryResult.exitCode()).isEqualTo(0);
+        var summaryOutput = summaryResult.output();
+
+        // Check that timestamps are valid (not 1969-12-31 23:59:59)
+        assertThat(summaryOutput)
+                .doesNotContain("1969-12-31 23:59:59")
+                .doesNotContain("1970-01-01 00:00:00"); // also check for epoch time
+
+        // Check that Start and End fields exist and are reasonable
+        assertThat(summaryOutput).contains("Start: ").contains("End: ");
+
+        // Extract and validate the year from timestamps (should be current year, not 1969/1970)
+        var currentYear = java.time.Year.now().getValue();
+        assertThat(summaryOutput).contains(String.valueOf(currentYear));
+
+        System.out.println("Summary output:\n" + summaryOutput);
     }
 
     String runAgent(AgentRunMode runMode, String... args) throws IOException, InterruptedException {
