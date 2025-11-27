@@ -9,6 +9,10 @@ import java.util.function.Function;
 import me.bechberger.condensed.Compression.CompressionLevel;
 import me.bechberger.condensed.Message.StartMessage;
 import me.bechberger.condensed.Universe.HashAndEqualsConfig;
+import me.bechberger.condensed.stats.BasicStatistic;
+import me.bechberger.condensed.stats.Statistic;
+import me.bechberger.condensed.stats.WriteCause;
+import me.bechberger.condensed.stats.WriteMode;
 import me.bechberger.condensed.types.CondensedType;
 import me.bechberger.condensed.types.Reductions;
 import me.bechberger.condensed.types.SpecifiedType;
@@ -23,168 +27,6 @@ import org.jetbrains.annotations.Nullable;
  */
 public class CondensedOutputStream extends OutputStream implements AutoCloseable {
 
-    public enum WriteMode {
-        TYPE,
-        INSTANCE,
-        OTHER
-    }
-
-    public static class SubStatistic {
-        private final WriteMode mode;
-        private int count = 0;
-        private int bytes = 0;
-        private int strings = 0;
-        private int stringBytes = 0;
-        private int stringLe10Bytes = 0;
-        private int stringLe100Bytes = 0;
-        private int stringLe1000Bytes = 0;
-
-        public SubStatistic(WriteMode mode) {
-            this.mode = mode;
-        }
-
-        @Override
-        public String toString() {
-            return "SubStatistic{"
-                    + "mode="
-                    + mode
-                    + ", count="
-                    + count
-                    + ", bytes="
-                    + bytes
-                    + ", strings="
-                    + strings
-                    + ", stringBytes="
-                    + stringBytes
-                    + '}';
-        }
-    }
-
-    /** Statistics about the written data */
-    public static class Statistic {
-        private final SubStatistic customTypes = new SubStatistic(WriteMode.TYPE);
-        private final SubStatistic instanceMessages = new SubStatistic(WriteMode.INSTANCE);
-        private final SubStatistic other = new SubStatistic(WriteMode.OTHER);
-
-        {
-            other.count = 1;
-        }
-
-        private int bytes = 0;
-        private WriteMode mode = WriteMode.OTHER;
-
-        @Override
-        public String toString() {
-            return "Statistic{"
-                    + "customTypes="
-                    + customTypes
-                    + ", instanceMessages="
-                    + instanceMessages
-                    + ", other="
-                    + other
-                    + ", bytes="
-                    + bytes
-                    + '}';
-        }
-
-        public String toPrettyString() {
-            // print as aligned table, columns: mode, count, bytes, strings, stringBytes, last row
-            // is total, first row is header
-            return String.format(
-                    """
-                    %-10s %10s %10s %10s %10s %10s %10s %10s
-                    %-10s %10d %10d %10d %10d %10d %10d %10d
-                    %-10s %10d %10d %10d %10d %10d %10d %10d
-                    %-10s %10d %10d %10d %10d %10d %10d %10d
-                    %-10s %10d %10d %10d %10d %10d %10d %10d\
-                    """,
-                    "mode",
-                    "count",
-                    "bytes",
-                    "strings",
-                    "stringBytes",
-                    "<= 10",
-                    "<= 100",
-                    "<= 1000",
-                    "types",
-                    customTypes.count,
-                    customTypes.bytes,
-                    customTypes.strings,
-                    customTypes.stringBytes,
-                    customTypes.stringLe10Bytes,
-                    customTypes.stringLe100Bytes,
-                    customTypes.stringLe1000Bytes,
-                    "instance",
-                    instanceMessages.count,
-                    instanceMessages.bytes,
-                    instanceMessages.strings,
-                    instanceMessages.stringBytes,
-                    instanceMessages.stringLe10Bytes,
-                    instanceMessages.stringLe100Bytes,
-                    instanceMessages.stringLe1000Bytes,
-                    "other",
-                    other.count,
-                    other.bytes,
-                    other.strings,
-                    other.stringBytes,
-                    other.stringLe10Bytes,
-                    other.stringLe100Bytes,
-                    other.stringLe1000Bytes,
-                    "total",
-                    customTypes.count + instanceMessages.count + other.count,
-                    bytes,
-                    customTypes.strings + instanceMessages.strings + other.strings,
-                    customTypes.stringBytes + instanceMessages.stringBytes + other.stringBytes,
-                    customTypes.stringLe10Bytes
-                            + instanceMessages.stringLe10Bytes
-                            + other.stringLe10Bytes,
-                    customTypes.stringLe100Bytes
-                            + instanceMessages.stringLe100Bytes
-                            + other.stringLe100Bytes,
-                    customTypes.stringLe1000Bytes
-                            + instanceMessages.stringLe1000Bytes
-                            + other.stringLe1000Bytes);
-        }
-
-        public void setModeAndCount(WriteMode mode) {
-            this.mode = mode;
-            switch (mode) {
-                case TYPE -> customTypes.count++;
-                case INSTANCE -> instanceMessages.count++;
-                case OTHER -> other.count++;
-            }
-        }
-
-        private @NotNull SubStatistic getSubStatistic() {
-            return switch (mode) {
-                case TYPE -> customTypes;
-                case INSTANCE -> instanceMessages;
-                case OTHER -> other;
-            };
-        }
-
-        public void record(int bytes) {
-            this.bytes += bytes;
-            getSubStatistic().bytes += bytes;
-        }
-
-        public void recordString(int bytes) {
-            getSubStatistic().strings++;
-            getSubStatistic().stringBytes += bytes;
-            if (bytes <= 10) {
-                getSubStatistic().stringLe10Bytes += bytes;
-            } else if (bytes <= 100) {
-                getSubStatistic().stringLe100Bytes += bytes;
-            } else if (bytes <= 1000) {
-                getSubStatistic().stringLe1000Bytes += bytes;
-            }
-        }
-
-        public int getBytes() {
-            return bytes;
-        }
-    }
-
     private Universe universe;
 
     private final TypeCollection typeCollection;
@@ -194,7 +36,7 @@ public class CondensedOutputStream extends OutputStream implements AutoCloseable
 
     private Reductions reductions = Reductions.NONE;
 
-    private final Statistic statistic = new Statistic();
+    private Statistic statistic = new BasicStatistic();
 
     private boolean closed = false;
 
@@ -209,7 +51,9 @@ public class CondensedOutputStream extends OutputStream implements AutoCloseable
     public CondensedOutputStream(
             OutputStream outputStream, StartMessage startMessage, Universe universe) {
         this(outputStream, universe);
-        writeStartString(startMessage);
+        try (var t = statistic.withWriteCauseContext(WriteCause.Start)) {
+            writeStartString(startMessage);
+        }
         if (startMessage.compression() != Compression.NONE) {
             this.outputStream =
                     startMessage
@@ -228,6 +72,16 @@ public class CondensedOutputStream extends OutputStream implements AutoCloseable
 
     CondensedOutputStream(OutputStream outputStream) {
         this(outputStream, new Universe());
+    }
+
+    public void enableFullStatistics() {
+        if (statistic instanceof BasicStatistic) {
+            this.statistic = new Statistic();
+        }
+    }
+
+    public void setStatistics(Statistic statistic) {
+        this.statistic = statistic;
     }
 
     private void writeStartString(StartMessage startMessage) {
@@ -283,24 +137,29 @@ public class CondensedOutputStream extends OutputStream implements AutoCloseable
                 || !typeCollection.getType(type.getId()).equals(type)) {
             throw new AssertionError("Type " + type + " is not present in type collection");
         }
-        statistic.setModeAndCount(WriteMode.TYPE);
-        var spec = ((SpecifiedType<CondensedType<?, ?>>) type.getSpecifiedType());
-        writeMessageType(spec.id());
-        spec.writeTypeSpecification(this, type);
+        try (var t = statistic.withWriteCauseContext(WriteCause.TypeSpecification)) {
+            statistic.setModeAndCount(WriteMode.TYPE);
+            var spec = ((SpecifiedType<CondensedType<?, ?>>) type.getSpecifiedType());
+            writeMessageType(spec.id());
+            spec.writeTypeSpecification(this, type);
+        }
     }
 
     public synchronized <T, R> void writeMessage(CondensedType<T, R> type, T value) {
-        statistic.setModeAndCount(WriteMode.INSTANCE);
-        writeMessageType(type.getId());
-        type.writeTo(this, value);
+        try (var t = statistic.withWriteCauseContext(new WriteCause.TypeWriteCause(type))) {
+            writeMessageType(type.getId());
+            type.writeTo(this, value);
+        }
     }
 
     /** take care that the value matches the type if the type has a reduction */
     @SuppressWarnings("unchecked")
     public synchronized <T, R, V> void writeMessageReduced(CondensedType<T, R> type, V value) {
-        statistic.setModeAndCount(WriteMode.INSTANCE);
-        writeMessageType(type.getId());
-        type.writeTo(this, (T) value);
+        try (var t = statistic.withWriteCauseContext(new WriteCause.TypeWriteCause(type))) {
+            statistic.setModeAndCount(WriteMode.INSTANCE);
+            writeMessageType(type.getId());
+            type.writeTo(this, (T) value);
+        }
     }
 
     /**
@@ -344,22 +203,24 @@ public class CondensedOutputStream extends OutputStream implements AutoCloseable
      * @param value string to write
      */
     public void writeString(String value, @Nullable String encoding) {
-        int bytesBefore = statistic.bytes;
-        byte[] bytes;
-        try {
-            bytes = value.getBytes(encoding != null ? encoding : "UTF-8");
-        } catch (UnsupportedEncodingException e) {
-            throw new RuntimeException(e);
-        }
-        writeUnsignedVarInt(bytes.length);
-        if (bytes.length > 0) {
+        try (var t = statistic.withWriteCauseContext(WriteCause.String)) {
+            int bytesBefore = statistic.getBytes();
+            byte[] bytes;
             try {
-                outputStream.write(bytes, 0, bytes.length);
-            } catch (IOException e) {
-                throw new RIOException("Can't write string", e);
+                bytes = value.getBytes(encoding != null ? encoding : "UTF-8");
+            } catch (UnsupportedEncodingException e) {
+                throw new RuntimeException(e);
             }
+            writeUnsignedVarInt(bytes.length);
+            if (bytes.length > 0) {
+                try {
+                    outputStream.write(bytes, 0, bytes.length);
+                } catch (IOException e) {
+                    throw new RIOException("Can't write string", e);
+                }
+            }
+            statistic.recordString(statistic.getBytes() - bytesBefore);
         }
-        statistic.recordString(statistic.bytes - bytesBefore);
     }
 
     public void writeTypeId(CondensedType<?, ?> type) {
@@ -532,7 +393,7 @@ public class CondensedOutputStream extends OutputStream implements AutoCloseable
         return universe;
     }
 
-    public CondensedOutputStream.Statistic getStatistic() {
+    public Statistic getStatistics() {
         return statistic;
     }
 

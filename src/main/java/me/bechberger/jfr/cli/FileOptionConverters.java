@@ -205,6 +205,10 @@ public class FileOptionConverters {
         }
     }
 
+    @FileEndingAnnotation(ending = ".html")
+    public static class HTMLFileConverter extends FileWithExtensionConverter {
+    }
+
     public static class ExistingJFRFileParameterConsumer extends SuggestionFileParameterConsumer {
         public ExistingJFRFileParameterConsumer() {
             super(".jfr", true, false);
@@ -214,6 +218,12 @@ public class FileOptionConverters {
     public static class ExistingCJFRFileParameterConsumer extends SuggestionFileParameterConsumer {
         public ExistingCJFRFileParameterConsumer() {
             super(".cjfr", true, false);
+        }
+    }
+
+    public static class HTMLFileParameterConsumer extends SuggestionFileParameterConsumer {
+        public HTMLFileParameterConsumer() {
+            super(".html", true, false);
         }
     }
 

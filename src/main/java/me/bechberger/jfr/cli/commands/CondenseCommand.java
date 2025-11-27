@@ -101,7 +101,7 @@ public class CondenseCommand implements Callable<Integer> {
                 }
             }
             if (statistics) {
-                System.out.println(out.getStatistic().toPrettyString());
+                System.out.println(out.getStatistics().toPrettyString());
             }
         } catch (Exception e) {
             e.printStackTrace();

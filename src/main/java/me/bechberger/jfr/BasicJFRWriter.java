@@ -21,7 +21,7 @@ import jdk.jfr.consumer.RecordedStackTrace;
 import jdk.jfr.consumer.RecordingFile;
 import me.bechberger.condensed.CondensedOutputStream;
 import me.bechberger.condensed.CondensedOutputStream.OverflowMode;
-import me.bechberger.condensed.CondensedOutputStream.Statistic;
+import me.bechberger.condensed.stats.Statistic;
 import me.bechberger.condensed.Universe.EmbeddingType;
 import me.bechberger.condensed.Universe.HashAndEqualsConfig;
 import me.bechberger.condensed.types.*;
@@ -777,7 +777,7 @@ public class BasicJFRWriter {
     }
 
     public Statistic getUncompressedStatistic() {
-        return out.getStatistic();
+        return out.getStatistics();
     }
 
     public CondensedOutputStream getOutputStream() {

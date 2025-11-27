@@ -14,6 +14,8 @@ import me.bechberger.condensed.Compression;
 import me.bechberger.condensed.CondensedInputStream;
 import me.bechberger.condensed.Message.StartMessage;
 import me.bechberger.condensed.ReadStruct;
+import me.bechberger.condensed.stats.BasicStatistic;
+import me.bechberger.condensed.stats.Statistic;
 import me.bechberger.jfr.cli.EventFilter;
 import me.bechberger.jfr.cli.EventFilter.EventFilterInstance;
 import org.jetbrains.annotations.Nullable;
@@ -45,7 +47,7 @@ public class CombiningJFRReader implements JFRReader {
     }
 
     public static CombiningJFRReader fromPaths(List<Path> paths) {
-        return fromPaths(paths, (EventFilterInstance) null, true);
+        return fromPaths(paths, (EventFilterInstance) null, true, new BasicStatistic());
     }
 
     /**
@@ -55,17 +57,22 @@ public class CombiningJFRReader implements JFRReader {
      * <p>Reads the events in two phases if needed for the filtering
      */
     public static <C> CombiningJFRReader fromPaths(
-            List<Path> paths, @Nullable EventFilter<C> filter, boolean reconstitute) {
+            List<Path> paths, @Nullable EventFilter<C> filter, boolean reconstitute, Statistic statistics) {
         if (filter == null) {
-            return fromPaths(paths, (EventFilterInstance) null, reconstitute);
+            return fromPaths(paths, (EventFilterInstance) null, reconstitute, statistics);
         }
         C context = filter.createContext();
         if (filter.isInformationGathering()) {
-            var reader = fromPaths(paths, filter.createAnalyzeFilter(context), reconstitute);
+            var reader = fromPaths(paths, filter.createAnalyzeFilter(context), reconstitute, statistics);
             while (reader.readNextEvent() != null)
                 ;
         }
-        return fromPaths(paths, filter.createTestFilter(context), reconstitute);
+        return fromPaths(paths, filter.createTestFilter(context), reconstitute, statistics);
+    }
+
+    public static <C> CombiningJFRReader fromPaths(
+            List<Path> paths, @Nullable EventFilter<C> filter, boolean reconstitute) {
+        return fromPaths(paths, filter, reconstitute, new BasicStatistic());
     }
 
     /**
@@ -73,13 +80,18 @@ public class CombiningJFRReader implements JFRReader {
      * folders and zip files.
      */
     public static CombiningJFRReader fromPaths(
-            List<Path> paths, EventFilterInstance filter, boolean reconstitute) {
+            List<Path> paths, EventFilterInstance filter, boolean reconstitute, Statistic statistics) {
         return new CombiningJFRReader(
                 orderedUniqueReaders(
                         paths.stream()
-                                .flatMap(p -> readersForPath(p, reconstitute).stream())
+                                .flatMap(p -> readersForPath(p, reconstitute, statistics).stream())
                                 .toList()),
                 filter);
+    }
+
+    public static CombiningJFRReader fromPaths(
+            List<Path> paths, EventFilterInstance filter, boolean reconstitute) {
+        return fromPaths(paths, filter, reconstitute, new BasicStatistic());
     }
 
     private static List<ReaderAndReadEvents> orderedUniqueReaders(
@@ -104,31 +116,32 @@ public class CombiningJFRReader implements JFRReader {
         return uniqueReaders;
     }
 
-    private static List<ReaderAndReadEvents> readersForPath(Path path, boolean reconstitute) {
+    private static List<ReaderAndReadEvents> readersForPath(Path path, boolean reconstitute, Statistic statistics) {
         if (Files.isDirectory(path)) {
             return Arrays.stream(Objects.requireNonNull(path.toFile().listFiles()))
                     .filter(f -> f.getName().endsWith(".cjfr"))
-                    .map(f -> readersForPath(f.toPath(), reconstitute))
+                    .map(f -> readersForPath(f.toPath(), reconstitute, statistics))
                     .flatMap(List::stream)
                     .toList();
         }
         if (Files.isRegularFile(path) && path.toString().endsWith(".cjfr")) {
             BasicJFRReader reader;
             try {
-                return List.of(readerForInputStream(Files.newInputStream(path), reconstitute));
+                return List.of(readerForInputStream(Files.newInputStream(path), reconstitute, statistics));
             } catch (IOException e) {
                 throw new RuntimeException(e);
             }
         }
         // check if file is zip or tar.gz file
         if (isZip(path)) {
-            return readersForZip(path, reconstitute);
+            return readersForZip(path, reconstitute, statistics);
         }
         return List.of();
     }
 
-    private static ReaderAndReadEvents readerForInputStream(InputStream is, boolean reconstitute) {
+    private static ReaderAndReadEvents readerForInputStream(InputStream is, boolean reconstitute, Statistic statistics) {
         var reader = new BasicJFRReader(new CondensedInputStream(is), reconstitute);
+        reader.setStatistics(statistics);
         var alreadyReadEvents = new ArrayList<ReadStruct>();
         var event = reader.readNextEvent();
         if (event != null) {
@@ -138,7 +151,7 @@ public class CombiningJFRReader implements JFRReader {
         return new ReaderAndReadEvents(reader, startMessage, alreadyReadEvents);
     }
 
-    private static List<ReaderAndReadEvents> readersForZip(Path path, boolean reconstitute) {
+    private static List<ReaderAndReadEvents> readersForZip(Path path, boolean reconstitute, Statistic statistics) {
         // unpack all .cjfr files to the folder
         // reading directly from the zip file is not possible because the individual files are not
         // read in order
@@ -170,7 +183,7 @@ public class CombiningJFRReader implements JFRReader {
         } catch (IOException e) {
             throw new RuntimeException(e);
         }
-        return cjfrFiles.stream().flatMap(p -> readersForPath(p, reconstitute).stream()).toList();
+        return cjfrFiles.stream().flatMap(p -> readersForPath(p, reconstitute, statistics).stream()).toList();
     }
 
     @Override

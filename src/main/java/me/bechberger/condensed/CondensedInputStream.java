@@ -11,6 +11,10 @@ import me.bechberger.condensed.Message.CondensedTypeMessage;
 import me.bechberger.condensed.Message.ReadInstance;
 import me.bechberger.condensed.Message.StartMessage;
 import me.bechberger.condensed.RIOException.NoStartStringException;
+import me.bechberger.condensed.stats.BasicStatistic;
+import me.bechberger.condensed.stats.Statistic;
+import me.bechberger.condensed.stats.WriteCause;
+import me.bechberger.condensed.stats.WriteMode;
 import me.bechberger.condensed.types.CondensedType;
 import me.bechberger.condensed.types.Reductions;
 import me.bechberger.condensed.types.TypeCollection;
@@ -37,6 +41,8 @@ public class CondensedInputStream extends InputStream {
     private Reductions reductions = Reductions.NONE;
     private boolean startStringRead = false;
 
+    private Statistic statistic = new BasicStatistic();
+
     public CondensedInputStream(InputStream inputStream) {
         this.universe = new Universe();
         this.typeCollection = new TypeCollection();
@@ -45,6 +51,20 @@ public class CondensedInputStream extends InputStream {
 
     public CondensedInputStream(byte[] data) {
         this(new ByteArrayInputStream(data));
+    }
+
+    public void enableFullStatistics() {
+        if (statistic instanceof BasicStatistic) {
+            this.statistic = new Statistic();
+        }
+    }
+
+    public void setStatistics(Statistic statistic) {
+        this.statistic = statistic;
+    }
+
+    public Statistic getStatistics() {
+        return statistic;
     }
 
     public TypeCollection getTypeCollection() {
@@ -58,16 +78,22 @@ public class CondensedInputStream extends InputStream {
      */
     public @Nullable Message readNextMessageAndProcess() {
         if (!startStringRead) {
-            readAndProcessStartString();
+            try (var t = statistic.withWriteCauseContext(WriteCause.Start)) {
+                readAndProcessStartString();
+            }
         }
         int typeId = (int) readUnsignedVarintOrEnd();
         if (typeId == -1) {
             return null;
         }
         if (TypeCollection.isSpecifiedType(typeId)) {
-            return readAndProcessSpecifiedTypeMessage(typeId);
+            statistic.setModeAndCount(WriteMode.TYPE);
+            try (var t = statistic.withWriteCauseContext(WriteCause.TypeSpecification)) {
+                return readAndProcessSpecifiedTypeMessage(typeId);
+            }
         }
         if (typeCollection.hasType(typeId)) {
+            statistic.setModeAndCount(WriteMode.INSTANCE);
             return readAndProcessInstanceMessage(typeId);
         }
         throw new TypeCollection.NoSuchTypeException(typeId);
@@ -126,9 +152,11 @@ public class CondensedInputStream extends InputStream {
     @SuppressWarnings("unchecked")
     private Message readAndProcessInstanceMessage(int typeId) {
         var type = typeCollection.getType(typeId);
-        return new ReadInstance<>(
-                (CondensedType<Object, Object>) type,
-                ensureRecursivelyComplete(type.readFrom(this)));
+        try (var t = statistic.withWriteCauseContext(new WriteCause.TypeWriteCause(type))) {
+            return new ReadInstance<>(
+                    (CondensedType<Object, Object>) type,
+                    ensureRecursivelyComplete(type.readFrom(this)));
+        }
     }
 
     /**
@@ -195,26 +223,31 @@ public class CondensedInputStream extends InputStream {
      * @return the decoded string
      */
     public String readString(@Nullable String encoding) {
-        int length = (int) readUnsignedVarint();
-        if (length == 0) {
-            return "";
-        }
-        if (length < 0) {
-            throw new RIOException("Invalid string length: " + length);
-        }
-        byte[] data = new byte[length];
-        try {
-            int res = read(data);
-            if (res != length) {
-                throw new RIOException("Unexpected end of stream");
+        try (var t = statistic.withWriteCauseContext(WriteCause.String)) {
+            int bytesBefore = statistic.getBytes();
+            int length = (int) readUnsignedVarint();
+            if (length == 0) {
+                statistic.recordString(statistic.getBytes() - bytesBefore);
+                return "";
             }
-        } catch (IOException e) {
-            throw new RIOException("Can't read string", e);
-        }
-        try {
-            return new String(data, encoding != null ? encoding : "UTF-8");
-        } catch (UnsupportedEncodingException e) {
-            throw new RIOException("Can't read string", e);
+            if (length < 0) {
+                throw new RIOException("Invalid string length: " + length);
+            }
+            byte[] data = new byte[length];
+            try {
+                int res = read(data);
+                if (res != length) {
+                    throw new RIOException("Unexpected end of stream");
+                }
+            } catch (IOException e) {
+                throw new RIOException("Can't read string", e);
+            }
+            statistic.recordString(statistic.getBytes() - bytesBefore);
+            try {
+                return new String(data, encoding != null ? encoding : "UTF-8");
+            } catch (UnsupportedEncodingException e) {
+                throw new RIOException("Can't read string", e);
+            }
         }
     }
 
@@ -293,7 +326,11 @@ public class CondensedInputStream extends InputStream {
     @Override
     public int read() {
         try {
-            return inputStream.read();
+            int result = inputStream.read();
+            if (result != -1) {
+                statistic.record(1);
+            }
+            return result;
         } catch (IOException e) {
             return -1; // end of stream
         }

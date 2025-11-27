@@ -7,6 +7,7 @@ import me.bechberger.condensed.CondensedInputStream;
 import me.bechberger.condensed.Message.ReadInstance;
 import me.bechberger.condensed.Message.StartMessage;
 import me.bechberger.condensed.ReadStruct;
+import me.bechberger.condensed.stats.Statistic;
 import me.bechberger.condensed.types.Reductions;
 import me.bechberger.jfr.JFREventCombiner.JFREventReadStructReconstitutor;
 import org.jetbrains.annotations.Nullable;
@@ -29,6 +30,18 @@ public class BasicJFRReader implements JFRReader {
     public BasicJFRReader(CondensedInputStream in, boolean reconstitute) {
         this.in = in;
         this.reconstitutor = reconstitute ? new JFREventReadStructReconstitutor(in) : null;
+    }
+
+    public void enableFullStatistics() {
+        in.enableFullStatistics();
+    }
+
+    public void setStatistics(Statistic statistics) {
+        in.setStatistics(statistics);
+    }
+
+    public Statistic getStatistics() {
+        return in.getStatistics();
     }
 
     private ReadInstance<?, ?> alreadReadNextInstance = null;
@@ -87,7 +100,6 @@ public class BasicJFRReader implements JFRReader {
                     "Configuration and Universe must be read before events");
         }
         var event = (ReadStruct) msg.value();
-        event.ensureRecursivelyComplete();
         if (reconstitutor != null && reconstitutor.isCombinedEvent(event)) {
             combinedEventCount.put(
                     event.getType().getName(),

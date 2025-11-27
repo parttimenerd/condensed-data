@@ -10,8 +10,10 @@ import jdk.jfr.EventType;
 import jdk.jfr.FlightRecorder;
 import me.bechberger.jfr.cli.FileOptionConverters;
 import me.bechberger.jfr.cli.JFRCLI;
+import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 import picocli.AutoComplete;
+import picocli.CommandLine;
 import picocli.CommandLine.Command;
 import picocli.CommandLine.Model.ArgSpec;
 import picocli.CommandLine.Model.CommandSpec;
@@ -73,36 +75,38 @@ public class GenerateCompletionCommand implements Runnable {
                 .collect(
                         Collectors.toMap(
                                 Map.Entry::getKey,
-                                e -> {
-                                    var parameters =
-                                            e.getValue().getCommandSpec().args().stream()
-                                                    .filter(ArgSpec::isPositional)
-                                                    .filter(a -> a.type().equals(Path.class))
-                                                    .map(conv)
-                                                    .toList();
-                                    var options =
-                                            e.getValue().getCommandSpec().options().stream()
-                                                    .filter(
-                                                            a ->
-                                                                    a.converters().length > 0
-                                                                            && FileOptionConverters
-                                                                                            .getFileEndingAnnotation(
-                                                                                                    a
-                                                                                                            .converters()[
-                                                                                                            0]
-                                                                                                            .getClass())
-                                                                                    != null)
-                                                    .collect(
-                                                            Collectors.toMap(
-                                                                    a ->
-                                                                            String.join(
-                                                                                    "|", a.names()),
-                                                                    a ->
-                                                                            Objects.requireNonNull(
-                                                                                    conv.apply(
-                                                                                            a))));
-                                    return new FileEndingList(parameters, options);
-                                }));
+                                e -> getEntryFileEndingListFunction(conv, e.getValue())));
+    }
+
+    private static @NotNull FileEndingList getEntryFileEndingListFunction(Function<ArgSpec, @Nullable FileEnding> conv, CommandLine command) {
+        var parameters =
+                command.getCommandSpec().args().stream()
+                        .filter(ArgSpec::isPositional)
+                        .filter(a -> a.type().equals(Path.class))
+                        .map(conv)
+                        .toList();
+        var options =
+                command.getCommandSpec().options().stream()
+                        .filter(
+                                a ->
+                                        a.converters().length > 0
+                                        && FileOptionConverters
+                                                   .getFileEndingAnnotation(
+                                                           a
+                                                                   .converters()[
+                                                                   0]
+                                                                   .getClass())
+                                           != null)
+                        .collect(
+                                Collectors.toMap(
+                                        a ->
+                                                String.join(
+                                                        "|", a.names()),
+                                        a ->
+                                                Objects.requireNonNull(
+                                                        conv.apply(
+                                                                a))));
+        return new FileEndingList(parameters, options);
     }
 
     public static String extractCommandName(String line) {
@@ -156,7 +160,7 @@ public class GenerateCompletionCommand implements Runnable {
                         .map(EventType::getName)
                         .toList();
 
-        String currentCommand;
+        String currentCommand = null;
         var fileEndings = getFileEndingsOfPositionalsPerCommand();
         List<String> results = new ArrayList<>();
         FileEndingList currentEndingList = new FileEndingList(List.of(), new HashMap<>());
@@ -230,7 +234,8 @@ public class GenerateCompletionCommand implements Runnable {
                                 "Could not find option name for line: "
                                         + line
                                         + " and option "
-                                        + optionName);
+                                        + optionName + " in command " +
+                                (currentCommand == null ? " null " : currentCommand) + ", maybe you missed adding a converter?");
                     }
                     results.add(line);
                 }

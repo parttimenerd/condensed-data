@@ -49,7 +49,7 @@ public class BasicJFRWriterTest {
                 testEvent.commit();
                 rs.awaitTermination();
             }
-            System.out.println(out.getStatistic().toPrettyString());
+            System.out.println(out.getStatistics().toPrettyString());
             var types = out.getTypeCollection();
             // ensure that there is a jdk.types.StackFrame type
             assertNotNull(types.getTypeOrNull("jdk.types.StackFrame"), "StackFrame type not found");
@@ -89,7 +89,7 @@ public class BasicJFRWriterTest {
                 testEvent.commit();
                 Thread.sleep(100);
             }
-            System.out.println(out.getStatistic().toPrettyString());
+            System.out.println(out.getStatistics().toPrettyString());
         }
 
         byte[] data = outputStream.toByteArray();

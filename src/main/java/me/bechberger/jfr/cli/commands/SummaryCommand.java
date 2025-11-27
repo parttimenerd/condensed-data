@@ -9,11 +9,14 @@ import java.util.concurrent.Callable;
 import me.bechberger.JFRReader;
 import me.bechberger.condensed.Compression;
 import me.bechberger.condensed.ReadStruct;
+import me.bechberger.condensed.stats.Statistic;
 import me.bechberger.jfr.CombiningJFRReader;
 import me.bechberger.jfr.cli.EventFilter.EventFilterOptionMixin;
+import me.bechberger.jfr.cli.FileOptionConverters;
 import me.bechberger.jfr.cli.FileOptionConverters.ExistingCJFRFileOrZipOrFolderConverter;
 import me.bechberger.jfr.cli.FileOptionConverters.ExistingCJFRFileOrZipOrFolderParameterConsumer;
 import me.bechberger.jfr.cli.FileOptionConverters.ExistingCJFRFilesOrZipOrFolderConsumer;
+import me.bechberger.condensed.stats.FlamegraphGenerator;
 import me.bechberger.util.TimeUtil;
 import org.json.JSONObject;
 import picocli.CommandLine.Command;
@@ -50,21 +53,65 @@ public class SummaryCommand implements Callable<Integer> {
     @Option(names = "--json", description = "Output as JSON", defaultValue = "false")
     private boolean json;
 
+    @Option(
+            names = {"--full"},
+            description =
+                    "Print full statistics including EventWriteTree table and detailed statistics",
+            defaultValue = "false")
+    private boolean full;
+
+    @Option(
+            names = {"--flamegraph"},
+            description = "Write flamegraph HTML to the specified file",
+            converter = FileOptionConverters.HTMLFileConverter.class)
+    private Path flamegraphPath;
+
     @Mixin private EventFilterOptionMixin eventFilterOptionMixin;
 
     public Integer call() {
         inputFiles.add(0, inputFile);
         try {
+            Statistic statistic = new Statistic();
             var jfrReader =
                     CombiningJFRReader.fromPaths(
                             inputFiles,
                             eventFilterOptionMixin.createFilter(),
-                            eventFilterOptionMixin.noReconstitution());
+                            eventFilterOptionMixin.noReconstitution(),
+                            statistic);
+
             var summary = computeSummary(jfrReader);
+
             if (json) {
-                System.out.println(summary.toJSON(shortSummary).toString(2));
+                JSONObject output = summary.toJSON(shortSummary);
+
+                // Add EventWriteTree data if --full is specified
+                if (full) {
+                    var flamegraphGenerator = new FlamegraphGenerator(statistic.getContextRoot());
+                    output.put("eventWriteTree", flamegraphGenerator.toJSON());
+                }
+
+                System.out.println(output.toString(2));
             } else {
-                System.out.println(summary.toString(shortSummary));
+                // Print full statistics if requested
+                if (full) {
+                    System.out.println("\nEventWriteTree:");
+                    System.out.println("===============");
+                    var flamegraphGenerator = new FlamegraphGenerator(statistic.getContextRoot());
+                    flamegraphGenerator.writeTable(System.out);
+
+                    System.out.println("\nDetailed Statistics:");
+                    System.out.println("===================");
+                    System.out.println(statistic.toPrettyString());
+                } else {
+                    System.out.println(summary.toString(shortSummary));
+                }
+            }
+
+            // Write flamegraph if path is provided
+            if (flamegraphPath != null) {
+                var flamegraphGenerator = new FlamegraphGenerator(statistic.getContextRoot());
+                flamegraphGenerator.writeHTML(flamegraphPath);
+                System.out.println("\nFlamegraph written to: " + flamegraphPath);
             }
         } catch (Exception e) {
             e.printStackTrace();
