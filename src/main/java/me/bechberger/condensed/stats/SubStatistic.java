@@ -17,16 +17,16 @@ public class SubStatistic {
     @Override
     public String toString() {
         return "SubStatistic{"
-               + "mode="
-               + mode
-               + ", count="
-               + count
-               + ", bytes="
-               + bytes
-               + ", strings="
-               + strings
-               + ", stringBytes="
-               + stringBytes
-               + '}';
+                + "mode="
+                + mode
+                + ", count="
+                + count
+                + ", bytes="
+                + bytes
+                + ", strings="
+                + strings
+                + ", stringBytes="
+                + stringBytes
+                + '}';
     }
 }

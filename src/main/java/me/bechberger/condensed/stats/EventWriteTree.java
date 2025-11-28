@@ -1,19 +1,22 @@
 package me.bechberger.condensed.stats;
 
-import org.jetbrains.annotations.Nullable;
-
 import java.util.Collection;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Objects;
+import org.jetbrains.annotations.Nullable;
 
-/** This records how many bytes are written under the context of a specific type, supports nesting */
+/**
+ * This records how many bytes are written under the context of a specific type, supports nesting
+ */
 public class EventWriteTree {
 
     public static final WriteCause STRING_CAUSE = new WriteCause.SingleWriteCause("string");
     public static final WriteCause ROOT_CAUSE = new WriteCause.SingleWriteCause("root");
-    public static final WriteCause STARTMESSAGE_CAUSE = new WriteCause.SingleWriteCause("StartMessage");
-    public static final WriteCause TYPEDEFINITION_CAUSE = new WriteCause.SingleWriteCause("TypeDefinition");
+    public static final WriteCause STARTMESSAGE_CAUSE =
+            new WriteCause.SingleWriteCause("StartMessage");
+    public static final WriteCause TYPEDEFINITION_CAUSE =
+            new WriteCause.SingleWriteCause("TypeDefinition");
 
     private final @Nullable EventWriteTree parent;
     private final WriteCause cause;
@@ -41,11 +44,13 @@ public class EventWriteTree {
         if (isRoot()) {
             return "EventWriteTree{root}";
         }
-        return "EventWriteTree{" +
-                cause +
-                ", directBytesWritten=" + directBytesWritten +
-                ", count=" + count +
-                '}';
+        return "EventWriteTree{"
+                + cause
+                + ", directBytesWritten="
+                + directBytesWritten
+                + ", count="
+                + count
+                + '}';
     }
 
     public WriteCause getCause() {

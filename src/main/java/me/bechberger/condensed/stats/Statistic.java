@@ -1,14 +1,10 @@
 package me.bechberger.condensed.stats;
 
+import java.util.Stack;
 import me.bechberger.condensed.types.CondensedType;
-import me.bechberger.condensed.types.StringType;
 import org.jetbrains.annotations.NotNull;
 
-import java.util.Stack;
-
-/**
- * Statistics about the written data
- */
+/** Statistics about the written data */
 public class Statistic {
     private final SubStatistic customTypes = new SubStatistic(WriteMode.TYPE);
     private final SubStatistic instanceMessages = new SubStatistic(WriteMode.INSTANCE);
@@ -18,9 +14,7 @@ public class Statistic {
         other.count = 1;
     }
 
-    /**
-     * Type context for the current write
-     */
+    /** Type context for the current write */
     private final Stack<CondensedType<?, ?>> typeStack = new Stack<>();
 
     private int bytes = 0;
@@ -31,15 +25,15 @@ public class Statistic {
     @Override
     public String toString() {
         return "Statistic{"
-               + "customTypes="
-               + customTypes
-               + ", instanceMessages="
-               + instanceMessages
-               + ", other="
-               + other
-               + ", bytes="
-               + bytes
-               + '}';
+                + "customTypes="
+                + customTypes
+                + ", instanceMessages="
+                + instanceMessages
+                + ", other="
+                + other
+                + ", bytes="
+                + bytes
+                + '}';
     }
 
     public String toPrettyString() {
@@ -47,12 +41,12 @@ public class Statistic {
         // is total, first row is header
         return String.format(
                 """
-                        %-10s %10s %10s %10s %10s %10s %10s %10s
-                        %-10s %10d %10d %10d %10d %10d %10d %10d
-                        %-10s %10d %10d %10d %10d %10d %10d %10d
-                        %-10s %10d %10d %10d %10d %10d %10d %10d
-                        %-10s %10d %10d %10d %10d %10d %10d %10d\
-                        """,
+                %-10s %10s %10s %10s %10s %10s %10s %10s
+                %-10s %10d %10d %10d %10d %10d %10d %10d
+                %-10s %10d %10d %10d %10d %10d %10d %10d
+                %-10s %10d %10d %10d %10d %10d %10d %10d
+                %-10s %10d %10d %10d %10d %10d %10d %10d\
+                """,
                 "mode",
                 "count",
                 "bytes",
@@ -91,14 +85,14 @@ public class Statistic {
                 customTypes.strings + instanceMessages.strings + other.strings,
                 customTypes.stringBytes + instanceMessages.stringBytes + other.stringBytes,
                 customTypes.stringLe10Bytes
-                + instanceMessages.stringLe10Bytes
-                + other.stringLe10Bytes,
+                        + instanceMessages.stringLe10Bytes
+                        + other.stringLe10Bytes,
                 customTypes.stringLe100Bytes
-                + instanceMessages.stringLe100Bytes
-                + other.stringLe100Bytes,
+                        + instanceMessages.stringLe100Bytes
+                        + other.stringLe100Bytes,
                 customTypes.stringLe1000Bytes
-                + instanceMessages.stringLe1000Bytes
-                + other.stringLe1000Bytes);
+                        + instanceMessages.stringLe1000Bytes
+                        + other.stringLe1000Bytes);
     }
 
     public void setModeAndCount(WriteMode mode) {
@@ -168,5 +162,9 @@ public class Statistic {
 
     public WriteCauseContext withWriteCauseContext(WriteCause cause) {
         return new WriteCauseContext(this, cause);
+    }
+
+    public WriteCauseContext withWriteCauseContext(CondensedType<?, ?> type) {
+        return new WriteCauseContext(this, new WriteCause.TypeWriteCause(type));
     }
 }

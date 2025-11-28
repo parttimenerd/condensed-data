@@ -146,7 +146,7 @@ public class CondensedOutputStream extends OutputStream implements AutoCloseable
     }
 
     public synchronized <T, R> void writeMessage(CondensedType<T, R> type, T value) {
-        try (var t = statistic.withWriteCauseContext(new WriteCause.TypeWriteCause(type))) {
+        try (var t = statistic.withWriteCauseContext(type)) {
             writeMessageType(type.getId());
             type.writeTo(this, value);
         }
@@ -155,7 +155,7 @@ public class CondensedOutputStream extends OutputStream implements AutoCloseable
     /** take care that the value matches the type if the type has a reduction */
     @SuppressWarnings("unchecked")
     public synchronized <T, R, V> void writeMessageReduced(CondensedType<T, R> type, V value) {
-        try (var t = statistic.withWriteCauseContext(new WriteCause.TypeWriteCause(type))) {
+        try (var t = statistic.withWriteCauseContext(type)) {
             statistic.setModeAndCount(WriteMode.INSTANCE);
             writeMessageType(type.getId());
             type.writeTo(this, (T) value);

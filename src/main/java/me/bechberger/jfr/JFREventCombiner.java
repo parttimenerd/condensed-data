@@ -706,20 +706,23 @@ public class JFREventCombiner extends EventCombiner {
             return new GCIdToken(event.getLong("gcId"));
         }
     }
-    
+
     // TODO
 
     //  sumObjectSizes sum object sizes in jdk.ObjectAllocationInNewTLAB,
     // *     jdk.ObjectAllocationOutsideTLAB and ObjectAllocation events
 
-
+    static class BasicObjectAllocationCombiner {
+        // per second / configurable
+        // thread -> tlab size -> class of object -> array of sizes or summed size
+    }
 
     /** Throws away the thread id and the PLAB size */
     static class PromoteObjectCombiner extends GCIdBasedCombiner {
 
         public PromoteObjectCombiner(
                 String typeName,
-                boolean hasPlabSize,
+                boolean hasPlabSize, // TODO: use hasPlabSize
                 Configuration configuration,
                 BasicJFRWriter basicJFRWriter) {
             super(

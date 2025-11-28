@@ -9,6 +9,7 @@ import me.bechberger.condensed.CondensedInputStream;
 import me.bechberger.condensed.CondensedOutputStream;
 import me.bechberger.condensed.ReadStruct;
 import me.bechberger.condensed.Universe.EmbeddingType;
+import me.bechberger.condensed.stats.WriteCause;
 import org.jetbrains.annotations.Nullable;
 
 /** A type that represents a struct */
@@ -262,53 +263,57 @@ public class StructType<T, R> extends CondensedType<T, R> {
     @Override
     @SuppressWarnings("unchecked")
     public void writeTo(CondensedOutputStream out, T value) {
-        var val = out.getReductions().reduce(reductionId, value);
-        for (Field<T, ?, ?> field : fields) {
-            var fieldType = ((CondensedType<Object, Object>) field.type());
-            var fieldValue =
-                    out.getReductions().reduce(field.reductionId, field.getter().apply((T) val));
-            fieldType.writeTo(out, fieldValue, this, field.embedding());
+        try (var t = out.getStatistics().withWriteCauseContext(this)) {
+            var val = out.getReductions().reduce(reductionId, value);
+            for (Field<T, ?, ?> field : fields) {
+                var fieldType = ((CondensedType<Object, Object>) field.type());
+                var fieldValue =
+                        out.getReductions().reduce(field.reductionId, field.getter().apply((T) val));
+                fieldType.writeTo(out, fieldValue, this, field.embedding());
+            }
         }
     }
 
     @Override
     @SuppressWarnings("unchecked")
     public R readFrom(CondensedInputStream in) {
-        Map<String, Object> values = new HashMap<>();
-        Map<String, @Nullable Integer> idsOrNull = new HashMap<>();
-        for (Field<T, ?, ?> field : fields) {
-            if (field.embedding() == EmbeddingType.INLINE
+        try (var t = in.getStatistics().withWriteCauseContext(this)) {
+            Map<String, Object> values = new HashMap<>();
+            Map<String, @Nullable Integer> idsOrNull = new HashMap<>();
+            for (Field<T, ?, ?> field : fields) {
+                if (field.embedding() == EmbeddingType.INLINE
                     || field.embedding() == EmbeddingType.NULLABLE_INLINE) {
-                var value =
-                        ((CondensedType<Object, Object>) field.type())
-                                .readFrom(in, this, field.embedding());
-                values.put(field.name(), in.getReductions().inflate(field.reductionId, value));
-            } else {
-                var ref = field.type().readReference(in, this, field.embedding());
-                idsOrNull.put(field.name(), ref == -1 ? null : ref);
+                    var value =
+                            ((CondensedType<Object, Object>) field.type())
+                                    .readFrom(in, this, field.embedding());
+                    values.put(field.name(), in.getReductions().inflate(field.reductionId, value));
+                } else {
+                    var ref = field.type().readReference(in, this, field.embedding());
+                    idsOrNull.put(field.name(), ref == -1 ? null : ref);
+                }
             }
+            ReadStruct readStruct;
+            if (idsOrNull.isEmpty()) {
+                readStruct = new ReadStruct(readStructType, values);
+            } else {
+                readStruct =
+                        new ReadStruct(
+                                readStructType,
+                                values,
+                                idsOrNull,
+                                (field, id) ->
+                                        in.getReductions()
+                                                .inflate(
+                                                        field.reductionId,
+                                                        field.type()
+                                                                .getViaReference(
+                                                                        in,
+                                                                        this,
+                                                                        field.embedding,
+                                                                        id)));
+            }
+            return in.getReductions().inflate(reductionId, creator.apply(readStruct));
         }
-        ReadStruct readStruct;
-        if (idsOrNull.isEmpty()) {
-            readStruct = new ReadStruct(readStructType, values);
-        } else {
-            readStruct =
-                    new ReadStruct(
-                            readStructType,
-                            values,
-                            idsOrNull,
-                            (field, id) ->
-                                    in.getReductions()
-                                            .inflate(
-                                                    field.reductionId,
-                                                    field.type()
-                                                            .getViaReference(
-                                                                    in,
-                                                                    this,
-                                                                    field.embedding,
-                                                                    id)));
-        }
-        return in.getReductions().inflate(reductionId, creator.apply(readStruct));
     }
 
     @Override

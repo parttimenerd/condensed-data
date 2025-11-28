@@ -33,7 +33,8 @@ public record Configuration(
         boolean combineObjectAllocationSampleEvents,
         boolean sumObjectSizes,
         boolean ignoreZeroSizedTenuredAges,
-        boolean ignoreTooShortGCPauses)
+        boolean ignoreTooShortGCPauses,
+        boolean removeBCIAndLineNumberFromStackFrames)
         implements Comparable<Configuration> {
 
     public static final Configuration DEFAULT =
@@ -51,6 +52,7 @@ public record Configuration(
                     false,
                     false,
                     false,
+                    false,
                     false);
 
     /** with conservative lossy compression */
@@ -61,14 +63,16 @@ public record Configuration(
                     .withDurationTicksPerSecond(1_000_000)
                     .withUseSpecificHashesAndRefs(true)
                     .withIgnoreZeroSizedTenuredAges(true)
-                    .withIgnoreTooShortGCPauses(true);
+                    .withIgnoreTooShortGCPauses(true)
+                    .withRemoveBCIAndLineNumberFromStackFrames(true);
 
     public static final Configuration REDUCED_DEFAULT =
             REASONABLE_DEFAULT
                     .withName("reduced-default")
                     .withCombinePLABPromotionEvents(true)
                     .withCombineObjectAllocationSampleEvents(true)
-                    .withSumObjectSizes(true);
+                    .withSumObjectSizes(true)
+                    .withIgnoreUnnecessaryEvents(true);
 
     public Configuration {
         if (timeStampTicksPerSecond <= 0) {
@@ -144,6 +148,12 @@ public record Configuration(
 
     public Configuration withIgnoreTooShortGCPauses(boolean ignoreTooShortGCPauses) {
         return withFieldValue("ignoreTooShortGCPauses", ignoreTooShortGCPauses);
+    }
+
+    public Configuration withRemoveBCIAndLineNumberFromStackFrames(
+            boolean removeBCIAndLineNumberFromStackFrames) {
+        return withFieldValue(
+                "removeBCIAndLineNumberFromStackFrames", removeBCIAndLineNumberFromStackFrames);
     }
 
     public Configuration withFieldValue(String fieldName, Object value) {

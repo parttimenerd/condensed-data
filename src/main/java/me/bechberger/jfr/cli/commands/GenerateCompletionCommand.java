@@ -78,7 +78,8 @@ public class GenerateCompletionCommand implements Runnable {
                                 e -> getEntryFileEndingListFunction(conv, e.getValue())));
     }
 
-    private static @NotNull FileEndingList getEntryFileEndingListFunction(Function<ArgSpec, @Nullable FileEnding> conv, CommandLine command) {
+    private static @NotNull FileEndingList getEntryFileEndingListFunction(
+            Function<ArgSpec, @Nullable FileEnding> conv, CommandLine command) {
         var parameters =
                 command.getCommandSpec().args().stream()
                         .filter(ArgSpec::isPositional)
@@ -90,22 +91,13 @@ public class GenerateCompletionCommand implements Runnable {
                         .filter(
                                 a ->
                                         a.converters().length > 0
-                                        && FileOptionConverters
-                                                   .getFileEndingAnnotation(
-                                                           a
-                                                                   .converters()[
-                                                                   0]
-                                                                   .getClass())
-                                           != null)
+                                                && FileOptionConverters.getFileEndingAnnotation(
+                                                                a.converters()[0].getClass())
+                                                        != null)
                         .collect(
                                 Collectors.toMap(
-                                        a ->
-                                                String.join(
-                                                        "|", a.names()),
-                                        a ->
-                                                Objects.requireNonNull(
-                                                        conv.apply(
-                                                                a))));
+                                        a -> String.join("|", a.names()),
+                                        a -> Objects.requireNonNull(conv.apply(a))));
         return new FileEndingList(parameters, options);
     }
 
@@ -234,8 +226,10 @@ public class GenerateCompletionCommand implements Runnable {
                                 "Could not find option name for line: "
                                         + line
                                         + " and option "
-                                        + optionName + " in command " +
-                                (currentCommand == null ? " null " : currentCommand) + ", maybe you missed adding a converter?");
+                                        + optionName
+                                        + " in command "
+                                        + (currentCommand == null ? " null " : currentCommand)
+                                        + ", maybe you missed adding a converter?");
                     }
                     results.add(line);
                 }

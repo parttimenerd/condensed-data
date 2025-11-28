@@ -2,6 +2,7 @@ package me.bechberger.condensed.types;
 
 import me.bechberger.condensed.CondensedInputStream;
 import me.bechberger.condensed.CondensedOutputStream;
+import me.bechberger.condensed.stats.WriteCause;
 
 /**
  * Abstract type which can read and write its specific type instances from and to a {@link
@@ -22,10 +23,12 @@ public interface SpecifiedType<T extends CondensedType<?, ?>> {
 
     /** Write the type specification to the stream (excluding the header) */
     default void writeTypeSpecification(CondensedOutputStream out, T typeInstance) {
-        out.writeUnsignedVarInt(typeInstance.getId());
-        out.writeString(typeInstance.getName());
-        out.writeString(typeInstance.getDescription());
-        writeInnerTypeSpecification(out, typeInstance);
+        try (var t = out.getStatistics().withWriteCauseContext(WriteCause.TypeSpecification)) {
+            out.writeUnsignedVarInt(typeInstance.getId());
+            out.writeString(typeInstance.getName());
+            out.writeString(typeInstance.getDescription());
+            writeInnerTypeSpecification(out, typeInstance);
+        }
     }
 
     /**
@@ -35,8 +38,13 @@ public interface SpecifiedType<T extends CondensedType<?, ?>> {
 
     /** Read the type specification from the stream (excluding the type) */
     default T readTypeSpecification(CondensedInputStream in) {
-        return readInnerTypeSpecification(
-                in, (int) in.readUnsignedVarint(), in.readString(), in.readString());
+        try (var t = in.getStatistics().withWriteCauseContext(WriteCause.TypeSpecification)) {
+            return readInnerTypeSpecification(
+                    in,
+                    (int) in.readUnsignedVarint(),
+                    in.readString(),
+                    in.readString());
+        }
     }
 
     /**

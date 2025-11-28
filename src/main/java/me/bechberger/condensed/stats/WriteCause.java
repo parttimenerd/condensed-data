@@ -1,8 +1,7 @@
 package me.bechberger.condensed.stats;
 
-import me.bechberger.condensed.types.CondensedType;
-
 import java.util.Objects;
+import me.bechberger.condensed.types.CondensedType;
 
 public sealed interface WriteCause {
     String getName();
@@ -20,7 +19,10 @@ public sealed interface WriteCause {
 
         @Override
         public boolean equals(Object obj) {
-            return this == obj || (obj != null && getClass() == obj.getClass() && Objects.equals(name, ((SingleWriteCause) obj).name));
+            return this == obj
+                    || (obj != null
+                            && getClass() == obj.getClass()
+                            && Objects.equals(name, ((SingleWriteCause) obj).name));
         }
     }
 
