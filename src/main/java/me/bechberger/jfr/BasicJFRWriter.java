@@ -2,6 +2,7 @@ package me.bechberger.jfr;
 
 import static me.bechberger.condensed.Util.toNanoSeconds;
 import static me.bechberger.condensed.types.TypeCollection.normalize;
+import static me.bechberger.jfr.ReducedJFRTypes.REDUCED_JFR_TYPES;
 
 import java.io.IOException;
 import java.nio.charset.Charset;
@@ -15,10 +16,7 @@ import jdk.jfr.AnnotationElement;
 import jdk.jfr.EventType;
 import jdk.jfr.Timespan;
 import jdk.jfr.ValueDescriptor;
-import jdk.jfr.consumer.RecordedEvent;
-import jdk.jfr.consumer.RecordedObject;
-import jdk.jfr.consumer.RecordedStackTrace;
-import jdk.jfr.consumer.RecordingFile;
+import jdk.jfr.consumer.*;
 import me.bechberger.condensed.CondensedOutputStream;
 import me.bechberger.condensed.CondensedOutputStream.OverflowMode;
 import me.bechberger.condensed.Universe.EmbeddingType;
@@ -281,6 +279,12 @@ public class BasicJFRWriter {
 
     @NotNull
     private ArrayType<?, ?> createArrayType(ValueDescriptor field, Integer id) {
+        return createArrayType(field, id, null);
+    }
+
+    @SuppressWarnings({"unchecked", "rawtypes"})
+    @NotNull
+    private ArrayType<?, ?> createArrayType(ValueDescriptor field, Integer id, @Nullable Function<Integer, CondensedType<?, ?>> fieldType) {
         EmbeddingType embedding = JFRHashConfig.getEmbeddingType(field);
         TypeIdent innerIdent = TypeIdent.of(field, false);
         var name = field.getTypeName() + "[]";
@@ -303,7 +307,8 @@ public class BasicJFRWriter {
                             innerIdent.toString()),
                     embedding);
         }
-        return new ArrayType<>(id, name, "", createTypeAndRegister(field, false), embedding);
+        return new ArrayType<>(id, name, "", fieldType == null ?
+                createTypeAndRegister(field, false) : (CondensedType)out.writeAndStoreType(fieldType), embedding);
     }
 
     @SuppressWarnings({"rawtypes", "unchecked"})
@@ -312,6 +317,12 @@ public class BasicJFRWriter {
             ValueDescriptor field, Integer id) {
         var fields = field.getFields().stream().map(e -> eventFieldToField(e, false)).toList();
         var name = field.getTypeName();
+        if (REDUCED_JFR_TYPES.containsKey(name)) { // Remove fields based on configuration
+            var removedFields = ReducedJFRTypes.getRemovedFields(name, configuration, false);
+            fields = fields.stream()
+                    .filter(f -> !removedFields.contains(f.name()))
+                    .toList();
+        }
         var description =
                 field.getLabel()
                         + (field.getDescription() == null ? "" : ": " + field.getDescription());
@@ -324,8 +335,12 @@ public class BasicJFRWriter {
     }
 
     CondensedType<?, ?> getTypeCached(ValueDescriptor field) {
+        return getTypeCached(field, field.isArray());
+    }
+
+    CondensedType<?, ?> getTypeCached(ValueDescriptor field, boolean isArray) {
         return getTypeOrElse(
-                TypeIdent.of(field), f -> createTypeAndRegister(field, field.isArray()));
+                TypeIdent.of(field), f -> createTypeAndRegister(field, isArray));
     }
 
     public String getDescription(ValueDescriptor field) {
@@ -494,8 +509,7 @@ public class BasicJFRWriter {
             }
         }
         JFRReduction reduction = JFRReduction.NONE;
-        if (field.getTypeName().equals("jdk.types.StackTrace")
-                && configuration.maxStackTraceDepth() != -1) {
+        if (field.getTypeName().equals("jdk.types.StackTrace")) {
             return new GetterAndCachedType(
                     event -> {
                         var trace = event.getValue(field.getName());
@@ -514,18 +528,65 @@ public class BasicJFRWriter {
                 reduction);
     }
 
+    private ValueDescriptor getField(ValueDescriptor parent, String fieldName) {
+        return parent.getFields().stream()
+                .filter(f -> f.getName().equals(fieldName))
+                .findFirst()
+                .orElseThrow();
+    }
+
+    @SuppressWarnings({"unchecked", "rawtypes"})
+    private CondensedType<?, ?> createFrameType(int id, ValueDescriptor field) {
+        ValueDescriptor methodField = getField(field, "method");
+        ValueDescriptor typeField = getField(field, "type");
+        ValueDescriptor bciField = getField(field, "bytecodeIndex");
+        ValueDescriptor lineNumberField = getField(field, "lineNumber");
+
+        List<Field<?, ?, ?>> fields = new ArrayList<>();
+        fields.add(
+                new Field<>(
+                        "method",
+                        getDescription(methodField),
+                        getTypeCached(methodField),
+                        obj -> ((RecordedFrame) obj).getMethod(),
+                        EmbeddingType.REFERENCE));
+        if (!configuration.removeBCIAndLineNumberFromStackFrames()) {
+            fields.add(
+                    new Field<>(
+                            "bci",
+                            getDescription(bciField),
+                            getTypeCached(bciField),
+                            obj -> ((RecordedFrame) obj).getBytecodeIndex(),
+                            EmbeddingType.INLINE));
+            fields.add(
+                    new Field<>(
+                            "lineNumber",
+                            getDescription(lineNumberField),
+                            getTypeCached(lineNumberField),
+                            obj -> ((RecordedFrame) obj).getLineNumber(),
+                            EmbeddingType.INLINE));
+        }
+        if (!configuration.removeTypeInformationFromStackFrames()) {
+            fields.add(
+                    new Field<>(
+                            "type",
+                            getDescription(typeField),
+                            getTypeCached(typeField),
+                            obj -> ((RecordedFrame) obj).getType(),
+                            EmbeddingType.REFERENCE));
+        }
+        return new StructType(
+                id,
+                "jdk.types.StackFrame" + (fields.size() < 4 ? "_reduced" : ""),
+                "Stack frame",
+                fields,
+                obj -> obj);
+    }
+
     private StructType<?, ?> getReducedStackTraceType(ValueDescriptor field) {
         if (reducedStackTraceType == null) {
-            var truncatedField =
-                    field.getFields().stream()
-                            .filter(f -> f.getName().equals("truncated"))
-                            .findFirst()
-                            .orElseThrow();
-            var framesField =
-                    field.getFields().stream()
-                            .filter(f -> f.getName().equals("frames"))
-                            .findFirst()
-                            .orElseThrow();
+            var truncatedField = getField(field, "truncated");
+            var framesField = getField(field, "frames");
             reducedStackTraceType =
                     out.writeAndStoreType(
                             id -> {

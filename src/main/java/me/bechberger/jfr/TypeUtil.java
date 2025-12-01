@@ -2,6 +2,8 @@ package me.bechberger.jfr;
 
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Modifier;
+import java.time.Duration;
+import java.time.Instant;
 import java.util.Arrays;
 import java.util.List;
 import java.util.stream.Collectors;
@@ -9,6 +11,11 @@ import java.util.stream.Stream;
 import me.bechberger.condensed.ReadStruct;
 import me.bechberger.condensed.types.*;
 import me.bechberger.condensed.types.StructType.Field;
+import org.jetbrains.annotations.Nullable;
+import org.openjdk.jmc.flightrecorder.writer.api.TypedField;
+import org.openjdk.jmc.flightrecorder.writer.api.TypedValue;
+
+import static me.bechberger.condensed.Util.toNanoSeconds;
 
 public class TypeUtil {
     private static CondensedType<?, ?> getPrimitiveType(Class<?> klass) {
@@ -96,7 +103,8 @@ public class TypeUtil {
     @SuppressWarnings("unchecked")
     public static <T> T createInstanceFromReadStruct(Class<T> klass, ReadStruct readStruct) {
         var members = readStruct.ensureComplete();
-        var args = getFieldsForClass(klass).map(f -> members.get(f.getName())).toArray();
+        var args = getFieldsForClass(klass).filter(f -> members.containsKey(f.getName()))
+                .map(f -> members.get(f.getName())).toArray();
         var constructor =
                 Arrays.stream(klass.getDeclaredConstructors())
                         .filter(c -> c.getParameterCount() == args.length)
@@ -112,5 +120,46 @@ public class TypeUtil {
                 | IllegalArgumentException e) {
             throw new RuntimeException(e);
         }
+    }
+
+    public static long toLong(Object longable) {
+        if (longable instanceof Float) {
+            return (long) (float) (Float) longable;
+        }
+        if (longable instanceof Double) {
+            return (long) (double) (Double) longable;
+        }
+        return (long) longable;
+    }
+
+    public static @Nullable TypedValue getTypedPrimitiveValue(TypedField field, Object value) {
+        if (value == null) {
+            return null;
+        }
+        var type = field.getType();
+        if (value instanceof Instant) {
+            // improve
+            return field.getType().asValue(toNanoSeconds((Instant) value));
+        }
+        if (value instanceof Duration) {
+            return field.getType().asValue(((Duration) value).toNanos());
+        }
+        return switch (type.getTypeName()) {
+            case "boolean" -> type.asValue((boolean) value);
+            case "byte" -> type.asValue((byte) toLong(value));
+            case "char" -> type.asValue((char) toLong(value));
+            case "short" -> type.asValue((short) toLong(value));
+            case "int" -> type.asValue((int) toLong(value));
+            case "long" -> type.asValue(toLong(value));
+            case "float" -> type.asValue((float) value);
+            case "double" -> type.asValue((double) (float) value);
+            case "String", "java.lang.String" -> type.asValue((String) value);
+            default -> {
+                if (value instanceof String) {
+                    yield type.asValue((String) value);
+                }
+                yield null;
+            }
+        };
     }
 }

@@ -34,7 +34,8 @@ public record Configuration(
         boolean sumObjectSizes,
         boolean ignoreZeroSizedTenuredAges,
         boolean ignoreTooShortGCPauses,
-        boolean removeBCIAndLineNumberFromStackFrames)
+        boolean removeBCIAndLineNumberFromStackFrames,
+        boolean removeTypeInformationFromStackFrames)
         implements Comparable<Configuration> {
 
     public static final Configuration DEFAULT =
@@ -53,6 +54,7 @@ public record Configuration(
                     false,
                     false,
                     false,
+                    false,
                     false);
 
     /** with conservative lossy compression */
@@ -64,7 +66,8 @@ public record Configuration(
                     .withUseSpecificHashesAndRefs(true)
                     .withIgnoreZeroSizedTenuredAges(true)
                     .withIgnoreTooShortGCPauses(true)
-                    .withRemoveBCIAndLineNumberFromStackFrames(true);
+                    .withRemoveBCIAndLineNumberFromStackFrames(true)
+                    .withMaxStackTraceDepth(32);
 
     public static final Configuration REDUCED_DEFAULT =
             REASONABLE_DEFAULT
@@ -72,7 +75,39 @@ public record Configuration(
                     .withCombinePLABPromotionEvents(true)
                     .withCombineObjectAllocationSampleEvents(true)
                     .withSumObjectSizes(true)
-                    .withIgnoreUnnecessaryEvents(true);
+                    .withIgnoreUnnecessaryEvents(true)
+                    .withRemoveTypeInformationFromStackFrames(true)
+                    .withMaxStackTraceDepth(16);
+
+    public Configuration(String name,
+                         long timeStampTicksPerSecond,
+                         long durationTicksPerSecond,
+                         boolean memoryAsBFloat16,
+                         boolean ignoreUnnecessaryEvents,
+                         long maxStackTraceDepth,
+                         boolean useSpecificHashesAndRefs,
+                         boolean combineEventsWithoutDataLoss,
+                         boolean combinePLABPromotionEvents,
+                         boolean combineObjectAllocationSampleEvents,
+                         boolean sumObjectSizes,
+                         boolean ignoreZeroSizedTenuredAges,
+                         boolean ignoreTooShortGCPauses) {
+        this(name,
+             timeStampTicksPerSecond,
+             durationTicksPerSecond,
+             memoryAsBFloat16,
+            ignoreUnnecessaryEvents,
+            maxStackTraceDepth,
+            useSpecificHashesAndRefs,
+            combineEventsWithoutDataLoss,
+            combinePLABPromotionEvents,
+            combineObjectAllocationSampleEvents,
+            sumObjectSizes,
+            ignoreZeroSizedTenuredAges,
+            ignoreTooShortGCPauses,
+            false,
+                false);
+    }
 
     public Configuration {
         if (timeStampTicksPerSecond <= 0) {
@@ -156,10 +191,17 @@ public record Configuration(
                 "removeBCIAndLineNumberFromStackFrames", removeBCIAndLineNumberFromStackFrames);
     }
 
+    public Configuration withRemoveTypeInformationFromStackFrames(
+            boolean removeTypeInformationFromStackFrames) {
+        return withFieldValue(
+                "removeTypeInformationFromStackFrames", removeTypeInformationFromStackFrames);
+    }
+
     public Configuration withFieldValue(String fieldName, Object value) {
         // use reflection to call the constructor
         try {
-            var constructor = Configuration.class.getDeclaredConstructors()[0];
+            var constructor = Arrays.stream(Configuration.class.getDeclaredConstructors()).min((c1, c2) -> Integer.compare(c2.getParameterCount(), c1.getParameterCount()))
+                    .orElseThrow();
             var params =
                     Arrays.stream(constructor.getParameters())
                             .map(

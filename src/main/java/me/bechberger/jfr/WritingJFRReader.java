@@ -1,6 +1,7 @@
 package me.bechberger.jfr;
 
 import static me.bechberger.condensed.Util.toNanoSeconds;
+import static me.bechberger.jfr.TypeUtil.getTypedPrimitiveValue;
 
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
@@ -39,14 +40,28 @@ public class WritingJFRReader {
             new JFREventTypedValuedReconstitutor(this);
     private final Queue<TypedValue> eventsToEmit = new ArrayDeque<>();
     private final Map<String, Integer> combinedEventCount = new HashMap<>();
+    /**
+     * Add default values for removed fields that are not handled by the Java JFR API
+     */
+    private final boolean shouldAddDefaultValuesIfNecessary;
+    private boolean addAllRemovedFields = false;
 
-    public WritingJFRReader(JFRReader reader, OutputStream outputStream) {
+    public WritingJFRReader(JFRReader reader, OutputStream outputStream, boolean shouldAddDefaultValuesIfNecessary) {
         this.reader = reader;
         this.outputStream = outputStream;
+        this.shouldAddDefaultValuesIfNecessary = shouldAddDefaultValuesIfNecessary;
+    }
+
+    public WritingJFRReader(JFRReader reader, OutputStream outputStream) {
+        this(reader, outputStream, false);
     }
 
     public WritingJFRReader(BasicJFRReader reader) {
         this(reader, new ByteArrayOutputStream());
+    }
+
+    public void setAddAllRemovedFields(boolean addAllRemovedFields) {
+        this.addAllRemovedFields = addAllRemovedFields;
     }
 
     public JFREventTypedValuedReconstitutor getReconstitutor() {
@@ -224,47 +239,6 @@ public class WritingJFRReader {
 
     // stackTrace, eventThread, startTime
 
-    private long toLong(Object longable) {
-        if (longable instanceof Float) {
-            return (long) (float) (Float) longable;
-        }
-        if (longable instanceof Double) {
-            return (long) (double) (Double) longable;
-        }
-        return (long) longable;
-    }
-
-    private @Nullable TypedValue getTypedPrimitiveValue(TypedField field, Object value) {
-        if (value == null) {
-            return null;
-        }
-        var type = field.getType();
-        if (value instanceof Instant) {
-            // improve
-            return field.getType().asValue(toNanoSeconds((Instant) value));
-        }
-        if (value instanceof Duration) {
-            return field.getType().asValue(((Duration) value).toNanos());
-        }
-        return switch (type.getTypeName()) {
-            case "boolean" -> type.asValue((boolean) value);
-            case "byte" -> type.asValue((byte) toLong(value));
-            case "char" -> type.asValue((char) toLong(value));
-            case "short" -> type.asValue((short) toLong(value));
-            case "int" -> type.asValue((int) toLong(value));
-            case "long" -> type.asValue(toLong(value));
-            case "float" -> type.asValue((float) value);
-            case "double" -> type.asValue((double) (float) value);
-            case "String", "java.lang.String" -> type.asValue((String) value);
-            default -> {
-                if (value instanceof String) {
-                    yield type.asValue((String) value);
-                }
-                yield null;
-            }
-        };
-    }
-
     private record ReadStructPath(@Nullable ReadStructPath parent, @Nullable ReadStruct value) {
 
         ReadStructPath() {
@@ -400,10 +374,14 @@ public class WritingJFRReader {
     }
 
     public static List<RecordedEvent> toJFREventsList(BasicJFRReader reader) {
-        return toJFREventsList(reader, Integer.MAX_VALUE);
+        return toJFREventsList(reader, Integer.MAX_VALUE, true);
     }
 
-    public static List<RecordedEvent> toJFREventsList(BasicJFRReader reader, int limit) {
+    public static List<RecordedEvent> toJFREventsList(BasicJFRReader reader, boolean shouldAddDefaultValuesIfNecessary) {
+        return toJFREventsList(reader, Integer.MAX_VALUE, shouldAddDefaultValuesIfNecessary);
+    }
+
+    public static List<RecordedEvent> toJFREventsList(BasicJFRReader reader, int limit, boolean shouldAddDefaultValuesIfNecessary) {
         try {
             Path tmp = toJFRFile(reader);
             List<RecordedEvent> events = new ArrayList<>();

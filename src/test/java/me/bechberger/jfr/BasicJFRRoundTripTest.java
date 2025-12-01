@@ -17,6 +17,8 @@ import me.bechberger.condensed.Message.StartMessage;
 import me.bechberger.util.Asserters;
 import net.jqwik.api.ForAll;
 import net.jqwik.api.Property;
+import net.jqwik.api.constraints.IntRange;
+import org.checkerframework.checker.units.qual.C;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.CsvSource;
@@ -615,6 +617,55 @@ public class BasicJFRRoundTripTest {
                 message = in.readNextInstance();
             }
             assertTrue(hadGCPhasePauseLevel1Event, "No combined GCPhasePauseLevel1 event found");
+        }
+    }
+
+    @Test
+    public void testReducedStackFrames() {
+        ByteArrayOutputStream outputStream = new ByteArrayOutputStream();
+        List<RecordedEvent> recordedEvents = new ArrayList<>();
+        var config =
+                Configuration.DEFAULT
+                        .withCombinePLABPromotionEvents(true)
+                        .withRemoveTypeInformationFromStackFrames(true)
+                        .withRemoveBCIAndLineNumberFromStackFrames(true);
+        try (CondensedOutputStream out =
+                new CondensedOutputStream(outputStream, StartMessage.DEFAULT)) {
+            BasicJFRWriter basicJFRWriter = new BasicJFRWriter(out, config);
+            try (RecordingStream rs = new RecordingStream()) {
+                rs.enable("jdk.ThreadSleep");
+                rs.onEvent(
+                        "jdk.ThreadSleep",
+                        event -> {
+                            basicJFRWriter.processEvent(event);
+                            recordedEvents.add(event);
+                            rs.close();
+                        });
+                rs.onEvent("TestEvent", e -> rs.close());
+                rs.startAsync();
+                Thread.sleep(10);
+                rs.awaitTermination();
+            } catch (InterruptedException e) {
+                throw new RuntimeException(e);
+            }
+        }
+        try (var in = new CondensedInputStream(outputStream.toByteArray())) {
+            var events = WritingJFRReader.toJFREventsList(new BasicJFRReader(in));
+            assertEquals(1, recordedEvents.size());
+            assertEquals(recordedEvents.size(), events.size());
+            var recordedEvent = recordedEvents.get(0);
+            var event = events.get(0);
+            var recordedStackTrace = recordedEvent.getStackTrace();
+            var stackTrace = event.getStackTrace();
+            assertEquals(recordedStackTrace.isTruncated(), stackTrace.isTruncated());
+            assertEquals(recordedStackTrace.getFrames().size(), stackTrace.getFrames().size());
+            for (int i = 0; i < recordedStackTrace.getFrames().size(); i++) {
+                var recordedFrame = recordedStackTrace.getFrames().get(i);
+                var frame = stackTrace.getFrames().get(i);
+                assertEquals(recordedFrame.getMethod().getName(), frame.getMethod().getName());
+                assertEquals(-1, frame.getBytecodeIndex());
+                assertEquals(-1, frame.getLineNumber());
+            }
         }
     }
 }

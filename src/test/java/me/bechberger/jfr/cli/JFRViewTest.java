@@ -133,7 +133,7 @@ public class JFRViewTest {
         assertEquals(1, content.size());
         var line = content.get(0);
         System.err.println(line);
-        assertTrue(line.contains(" .bechberger.jfr.cli.JFRViewTest.initJFRStructs:"));
+        assertTrue(line.contains(".bechberger.jfr.cli.JFRViewTest.initJFRStructs "));
         assertTrue(line.contains(" Hello"));
         assertTrue(line.contains("main"));
     }

@@ -19,4 +19,20 @@ public class RIOException extends RuntimeException {
             super("Stream has no start string, has the following string instead: " + firstString);
         }
     }
+
+    public static class UnexpectedEOFException extends RIOException {
+        public UnexpectedEOFException(Throwable cause) {
+            super("Unexpected end of stream", cause);
+        }
+
+        public UnexpectedEOFException() {
+            super("Unexpected end of stream");
+        }
+    }
+
+    public static class CannotCloseStreamException extends RIOException {
+        public CannotCloseStreamException(Throwable cause) {
+            super("Cannot close stream", cause);
+        }
+    }
 }

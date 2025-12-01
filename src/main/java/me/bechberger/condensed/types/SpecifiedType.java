@@ -40,10 +40,7 @@ public interface SpecifiedType<T extends CondensedType<?, ?>> {
     default T readTypeSpecification(CondensedInputStream in) {
         try (var t = in.getStatistics().withWriteCauseContext(WriteCause.TypeSpecification)) {
             return readInnerTypeSpecification(
-                    in,
-                    (int) in.readUnsignedVarint(),
-                    in.readString(),
-                    in.readString());
+                    in, (int) in.readUnsignedVarint(), in.readString(), in.readString());
         }
     }
 

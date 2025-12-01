@@ -193,7 +193,7 @@ public class CondensedInputStream extends InputStream {
         do {
             b = read();
             if (b < 0) {
-                throw new RIOException("Unexpected end of stream");
+                throw new RIOException.UnexpectedEOFException();
             }
             result |= (long) (b & 0x7F) << shift;
             shift += 7;
@@ -237,7 +237,7 @@ public class CondensedInputStream extends InputStream {
             try {
                 int res = read(data);
                 if (res != length) {
-                    throw new RIOException("Unexpected end of stream");
+                    throw new RIOException.UnexpectedEOFException();
                 }
             } catch (IOException e) {
                 throw new RIOException("Can't read string", e);
@@ -281,7 +281,7 @@ public class CondensedInputStream extends InputStream {
         for (int i = 0; i < bytes; i++) {
             int b = read();
             if (b < 0) {
-                throw new RIOException("Unexpected end of stream");
+                throw new RIOException.UnexpectedEOFException();
             }
             result |= (long) (b & 0xFF) << (i * 8);
         }
@@ -308,7 +308,7 @@ public class CondensedInputStream extends InputStream {
     public boolean[] readFlags() {
         int b = read();
         if (b < 0) {
-            throw new RIOException("Unexpected end of stream");
+            throw new RIOException.UnexpectedEOFException();
         }
         // lowest to highest bit
         boolean[] result = new boolean[8];
@@ -341,7 +341,7 @@ public class CondensedInputStream extends InputStream {
         try {
             inputStream.close();
         } catch (IOException e) {
-            throw new RIOException("Can't close stream", e);
+            throw new RIOException.CannotCloseStreamException(e);
         }
     }
 

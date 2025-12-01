@@ -9,7 +9,6 @@ import me.bechberger.condensed.CondensedInputStream;
 import me.bechberger.condensed.CondensedOutputStream;
 import me.bechberger.condensed.ReadStruct;
 import me.bechberger.condensed.Universe.EmbeddingType;
-import me.bechberger.condensed.stats.WriteCause;
 import org.jetbrains.annotations.Nullable;
 
 /** A type that represents a struct */
@@ -268,7 +267,8 @@ public class StructType<T, R> extends CondensedType<T, R> {
             for (Field<T, ?, ?> field : fields) {
                 var fieldType = ((CondensedType<Object, Object>) field.type());
                 var fieldValue =
-                        out.getReductions().reduce(field.reductionId, field.getter().apply((T) val));
+                        out.getReductions()
+                                .reduce(field.reductionId, field.getter().apply((T) val));
                 fieldType.writeTo(out, fieldValue, this, field.embedding());
             }
         }
@@ -282,7 +282,7 @@ public class StructType<T, R> extends CondensedType<T, R> {
             Map<String, @Nullable Integer> idsOrNull = new HashMap<>();
             for (Field<T, ?, ?> field : fields) {
                 if (field.embedding() == EmbeddingType.INLINE
-                    || field.embedding() == EmbeddingType.NULLABLE_INLINE) {
+                        || field.embedding() == EmbeddingType.NULLABLE_INLINE) {
                     var value =
                             ((CondensedType<Object, Object>) field.type())
                                     .readFrom(in, this, field.embedding());

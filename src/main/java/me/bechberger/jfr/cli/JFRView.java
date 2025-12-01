@@ -378,7 +378,7 @@ public class JFRView {
             }
             var frames = val.<ReadStruct>getList("frames");
             return frames.stream()
-                    .map(f -> METHOD_COLUMN.format(f, 1).get(0) + ":" + f.get("lineNumber"))
+                    .map(f -> METHOD_COLUMN.format(f, 1).get(0) + (f.hasField("lineNumber") ? (":" + f.get("lineNumber")) : ""))
                     .limit(rows)
                     .toList();
         }

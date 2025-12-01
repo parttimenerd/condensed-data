@@ -128,9 +128,7 @@ public class FlamegraphGenerator {
         s.println(
                 "---------------------------------------------------------------------------------------------------------------");
         aggregated.entrySet().stream()
-                .sorted(
-                        (a, b) ->
-                                Long.compare(b.getValue().directBytes, a.getValue().directBytes))
+                .sorted((a, b) -> Long.compare(b.getValue().directBytes, a.getValue().directBytes))
                 .forEach(
                         entry -> {
                             String typeName = entry.getKey();
@@ -194,9 +192,7 @@ public class FlamegraphGenerator {
 
         JSONArray result = new JSONArray();
         aggregated.entrySet().stream()
-                .sorted(
-                        (a, b) ->
-                                Long.compare(b.getValue().directBytes, a.getValue().directBytes))
+                .sorted((a, b) -> Long.compare(b.getValue().directBytes, a.getValue().directBytes))
                 .forEach(
                         entry -> {
                             String typeName = entry.getKey();

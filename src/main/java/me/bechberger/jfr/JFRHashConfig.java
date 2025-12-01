@@ -69,6 +69,7 @@ public class JFRHashConfig extends HashAndEqualsConfig {
 
     private IdentityHashMap<RecordedFrame, Integer> methodHashCodeCache = new IdentityHashMap<>();
 
+    /** Currently not used */
     static class StackFrameWrapper implements HashAndEqualsWrapper<RecordedFrame> {
 
         private RecordedFrame value;

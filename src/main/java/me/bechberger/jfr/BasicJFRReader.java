@@ -6,6 +6,7 @@ import me.bechberger.JFRReader;
 import me.bechberger.condensed.CondensedInputStream;
 import me.bechberger.condensed.Message.ReadInstance;
 import me.bechberger.condensed.Message.StartMessage;
+import me.bechberger.condensed.RIOException;
 import me.bechberger.condensed.ReadStruct;
 import me.bechberger.condensed.stats.Statistic;
 import me.bechberger.condensed.types.Reductions;
@@ -19,17 +20,25 @@ public class BasicJFRReader implements JFRReader {
     private Configuration configuration = Configuration.DEFAULT;
     private final Universe universe = new Universe();
     private final @Nullable JFREventReadStructReconstitutor reconstitutor;
+    /** Ignore {@link RIOException.UnexpectedEOFException}, this might be due to the condensed not being finished */
+    private final boolean ignoreCloseErrors;
     private final Queue<ReadStruct> eventsToEmit = new ArrayDeque<>();
     private final Map<String, Integer> combinedEventCount = new HashMap<>();
     private boolean closed = false;
+    private boolean isTruncated = false;
 
     public BasicJFRReader(CondensedInputStream in) {
-        this(in, true);
+        this(in, false);
     }
 
-    public BasicJFRReader(CondensedInputStream in, boolean reconstitute) {
+    public BasicJFRReader(CondensedInputStream in, boolean ignoreCloseErrors) {
+        this(in, true, ignoreCloseErrors);
+    }
+
+    public BasicJFRReader(CondensedInputStream in, boolean reconstitute, boolean ignoreCloseErrors) {
         this.in = in;
         this.reconstitutor = reconstitute ? new JFREventReadStructReconstitutor(in) : null;
+        this.ignoreCloseErrors = ignoreCloseErrors;
     }
 
     public void enableFullStatistics() {
@@ -47,67 +56,90 @@ public class BasicJFRReader implements JFRReader {
     private ReadInstance<?, ?> alreadReadNextInstance = null;
 
     public void readTillFirstEvent() {
-        ReadInstance<?, ?> msg;
-        while ((msg = in.readNextInstance()) != null) {
-            if (isUniverseType(msg)) {
-                processUniverse(msg);
-            } else if (isConfigurationType(msg)) {
-                processConfiguration(msg);
+        try {
+            ReadInstance<?, ?> msg;
+            while ((msg = in.readNextInstance()) != null) {
+                if (isUniverseType(msg)) {
+                    processUniverse(msg);
+                } else if (isConfigurationType(msg)) {
+                    processConfiguration(msg);
+                } else {
+                    // We reached the first event
+                    in.setReductions(new JFRReduction.JFRReductions(configuration, universe));
+                    alreadReadNextInstance = msg;
+                    return;
+                }
+            }
+        } catch (RIOException.UnexpectedEOFException e) {
+            isTruncated = true;
+            if (ignoreCloseErrors) {
+                closed = true;
             } else {
-                // We reached the first event
-                in.setReductions(new JFRReduction.JFRReductions(configuration, universe));
-                alreadReadNextInstance = msg;
-                return;
+                throw e;
             }
         }
     }
 
     @Override
     public @Nullable ReadStruct readNextEvent() {
-        ReadInstance<?, ?> msg = alreadReadNextInstance;
-        if (alreadReadNextInstance == null) {
-            if (!eventsToEmit.isEmpty()) {
-                return eventsToEmit.poll();
-            }
-            if (closed) {
-                return null;
-            }
-            msg = in.readNextInstance();
-            if (msg == null) {
-                closed = true;
-                return null;
-            }
-        } else {
-            alreadReadNextInstance = null; // reset for next call
-        }
-        while (isUniverseType(msg) || isConfigurationType(msg)) {
-            if (isUniverseType(msg)) {
-                processUniverse(msg);
+        try {
+            ReadInstance<?, ?> msg = alreadReadNextInstance;
+            if (alreadReadNextInstance == null) {
+                if (!eventsToEmit.isEmpty()) {
+                    return eventsToEmit.poll();
+                }
+                if (closed) {
+                    return null;
+                }
+                msg = in.readNextInstance();
+                if (msg == null) {
+                    closed = true;
+                    return null;
+                }
             } else {
-                processConfiguration(msg);
+                alreadReadNextInstance = null; // reset for next call
             }
-            if (in.getReductions() == Reductions.NONE) {
-                in.setReductions(new JFRReduction.JFRReductions(configuration, universe));
+            while (isUniverseType(msg) || isConfigurationType(msg)) {
+                if (isUniverseType(msg)) {
+                    processUniverse(msg);
+                } else {
+                    processConfiguration(msg);
+                }
+                if (in.getReductions() == Reductions.NONE) {
+                    in.setReductions(new JFRReduction.JFRReductions(configuration, universe));
+                }
+                msg = in.readNextInstance();
+                if (msg == null) {
+                    closed = true;
+                    return null;
+                }
             }
-            msg = in.readNextInstance();
-            if (msg == null) {
+            if (configuration == null) {
+                throw new IllegalStateException(
+                        "Configuration and Universe must be read before events");
+            }
+            var event = (ReadStruct) msg.value();
+            if (reconstitutor != null && reconstitutor.isCombinedEvent(event)) {
+                combinedEventCount.put(
+                        event.getType().getName(),
+                        combinedEventCount.getOrDefault(event.getType().getName(), 0) + 1);
+                eventsToEmit.addAll(reconstitutor.reconstitute(getInputStream(), event));
+                return readNextEvent(); // comes in handy when the combined events
+            }
+            return event;
+        } catch (RIOException.UnexpectedEOFException e) {
+            isTruncated = true;
+            if (ignoreCloseErrors) {
                 closed = true;
                 return null;
+            } else {
+                throw e;
             }
         }
-        if (configuration == null) {
-            throw new IllegalStateException(
-                    "Configuration and Universe must be read before events");
-        }
-        var event = (ReadStruct) msg.value();
-        if (reconstitutor != null && reconstitutor.isCombinedEvent(event)) {
-            combinedEventCount.put(
-                    event.getType().getName(),
-                    combinedEventCount.getOrDefault(event.getType().getName(), 0) + 1);
-            eventsToEmit.addAll(reconstitutor.reconstitute(getInputStream(), event));
-            return readNextEvent(); // comes in handy when the combined events
-        }
-        return event;
+    }
+
+    public boolean isTruncated() {
+        return isTruncated;
     }
 
     public Map<String, Integer> getCombinedEventCount() {

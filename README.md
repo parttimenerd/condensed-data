@@ -202,10 +202,9 @@ TODO
 - [x] test start, stop and status via CLI
 - [x] implement simple view
 
-- [ ] check why summary numbers are low
-- [ ] have option to remove line numbers from stack frames
-
-- [ ] implement missing reducers/reconstitutors
+- [x] have option to remove line numbers from stack frames
+- [x] check benchmark per hour calculation
+- [x] check that incomplete files can be read
 - [ ] increase performance of ensureRecursiveCompleteness
 
 - [ ] make all tools support multiple files
