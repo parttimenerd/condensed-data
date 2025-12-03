@@ -471,15 +471,65 @@ public class JFREventCombinerTest {
 
     private static <T, V> void assertMapEquals(
             Map<T, V> expected, Map<T, V> actual, BiPredicate<T, V> canKeyBeNonPresent) {
+        Set<T> missingKeys = new HashSet<>();
+        Set<T> mismatchedKeys = new HashSet<>();
+        Set<T> extraKeys = new HashSet<>();
+
         for (var key : expected.keySet()) {
-            if (actual.get(key) == null && !canKeyBeNonPresent.test(key, expected.get(key))) {
-                fail(key + " not found");
-            }
-            if (expected.get(key).equals(0L)) {
-                assertTrue(actual.get(key) == null || actual.get(key).equals(0L));
+            if (!actual.containsKey(key)) {
+                if (!canKeyBeNonPresent.test(key, expected.get(key))) {
+                    missingKeys.add(key);
+                }
                 continue;
             }
-            assertEquals(expected.get(key), actual.get(key));
+            if (expected.get(key).equals(0L)) {
+                if (actual.get(key) != null && !actual.get(key).equals(0L)) {
+                    mismatchedKeys.add(key);
+                }
+                continue;
+            }
+            if (!expected.get(key).equals(actual.get(key))) {
+                mismatchedKeys.add(key);
+            }
+        }
+
+        // Check for extra keys in actual that aren't in expected
+        for (var key : actual.keySet()) {
+            if (!expected.containsKey(key)) {
+                extraKeys.add(key);
+            }
+        }
+
+        if (!missingKeys.isEmpty() || !mismatchedKeys.isEmpty() || !extraKeys.isEmpty()) {
+            StringBuilder error = new StringBuilder("Map comparison failed:\n");
+            error.append("Expected size: ").append(expected.size())
+                 .append(", Actual size: ").append(actual.size()).append("\n");
+            if (!missingKeys.isEmpty()) {
+                error.append("Missing keys in actual (").append(missingKeys.size()).append("): ")
+                     .append(missingKeys).append("\n");
+                for (T key : missingKeys) {
+                    error.append("  ").append(key).append(": expected=")
+                         .append(expected.get(key)).append("\n");
+                }
+            }
+            if (!mismatchedKeys.isEmpty()) {
+                error.append("Mismatched values (").append(mismatchedKeys.size()).append("): ")
+                     .append(mismatchedKeys).append("\n");
+                for (T key : mismatchedKeys) {
+                    error.append("  ").append(key).append(": expected=")
+                         .append(expected.get(key))
+                         .append(", actual=").append(actual.get(key)).append("\n");
+                }
+            }
+            if (!extraKeys.isEmpty()) {
+                error.append("Extra keys in actual (").append(extraKeys.size()).append("): ")
+                     .append(extraKeys).append("\n");
+                for (T key : extraKeys) {
+                    error.append("  ").append(key).append(": actual=")
+                         .append(actual.get(key)).append("\n");
+                }
+            }
+            fail(error.toString());
         }
     }
 

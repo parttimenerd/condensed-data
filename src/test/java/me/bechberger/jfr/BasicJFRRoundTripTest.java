@@ -633,17 +633,16 @@ public class BasicJFRRoundTripTest {
                 new CondensedOutputStream(outputStream, StartMessage.DEFAULT)) {
             BasicJFRWriter basicJFRWriter = new BasicJFRWriter(out, config);
             try (RecordingStream rs = new RecordingStream()) {
-                rs.enable("jdk.ThreadSleep");
+                rs.enable(TestEvent.class);
                 rs.onEvent(
-                        "jdk.ThreadSleep",
+                        "TestEvent",
                         event -> {
                             basicJFRWriter.processEvent(event);
                             recordedEvents.add(event);
                             rs.close();
                         });
-                rs.onEvent("TestEvent", e -> rs.close());
                 rs.startAsync();
-                Thread.sleep(10);
+                new TestEvent(42).commit();
                 rs.awaitTermination();
             } catch (InterruptedException e) {
                 throw new RuntimeException(e);
@@ -657,6 +656,8 @@ public class BasicJFRRoundTripTest {
             var event = events.get(0);
             var recordedStackTrace = recordedEvent.getStackTrace();
             var stackTrace = event.getStackTrace();
+            assertNotNull(recordedStackTrace);
+            assertNotNull(stackTrace);
             assertEquals(recordedStackTrace.isTruncated(), stackTrace.isTruncated());
             assertEquals(recordedStackTrace.getFrames().size(), stackTrace.getFrames().size());
             for (int i = 0; i < recordedStackTrace.getFrames().size(); i++) {
