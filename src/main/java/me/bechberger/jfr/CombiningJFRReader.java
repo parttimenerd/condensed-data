@@ -150,7 +150,7 @@ public class CombiningJFRReader implements JFRReader {
 
     private static ReaderAndReadEvents readerForInputStream(
             InputStream is, boolean reconstitute, Statistic statistics) {
-        var reader = new BasicJFRReader(new CondensedInputStream(is), reconstitute);
+        var reader = new BasicJFRReader(new CondensedInputStream(is), BasicJFRReader.Options.DEFAULT.withReconstitute(reconstitute));
         reader.setStatistics(statistics);
         var alreadyReadEvents = new ArrayList<ReadStruct>();
         var event = reader.readNextEvent();

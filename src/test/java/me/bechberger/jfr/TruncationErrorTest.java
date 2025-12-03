@@ -58,7 +58,8 @@ public class TruncationErrorTest {
     private void assertEventCounts(int truncate, int expectedMinCount, int expectedMaxCount) {
         try (CondensedInputStream in =
                      new CondensedInputStream(new ByteArrayInputStream(data, 0, data.length - truncate))) {
-            List<RecordedEvent> events = WritingJFRReader.toJFREventsList(new BasicJFRReader(in, true));
+            List<RecordedEvent> events = WritingJFRReader.toJFREventsList(new BasicJFRReader(in,
+                    BasicJFRReader.Options.DEFAULT.withIgnoreCloseErrors(true)));
             assertTrue(events.size() >= expectedMinCount, "Event count should be at least " + expectedMinCount + " but was " + events.size());
             assertTrue(events.size() <= expectedMaxCount, "Event count should be at most " + expectedMaxCount + " but was " + events.size());
         }

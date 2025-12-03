@@ -605,7 +605,8 @@ public class JFREventCombinerTest {
             basicJFRWriter.close();
         }
         try (var in = new CondensedInputStream(outputStream.toByteArray())) {
-            WritingJFRReader reader = new WritingJFRReader(new BasicJFRReader(in, false));
+            WritingJFRReader reader = new WritingJFRReader(new BasicJFRReader(in,
+                    BasicJFRReader.Options.DEFAULT.withReconstitute(false)));
             for (var combiner : combiners.values()) {
                 if (combiner.reconstitutor != null) {
                     reader.getReconstitutor()

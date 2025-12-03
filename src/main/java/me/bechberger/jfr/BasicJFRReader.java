@@ -27,18 +27,34 @@ public class BasicJFRReader implements JFRReader {
     private boolean closed = false;
     private boolean isTruncated = false;
 
+    public static class Options {
+        final boolean reconstitute;
+        final boolean ignoreCloseErrors;
+
+        public static Options DEFAULT = new Options(true, false);
+
+        private Options(boolean reconstitute, boolean ignoreCloseErrors) {
+            this.reconstitute = reconstitute;
+            this.ignoreCloseErrors = ignoreCloseErrors;
+        }
+
+        public Options withReconstitute(boolean reconstitute) {
+            return new Options(reconstitute, this.ignoreCloseErrors);
+        }
+
+        public Options withIgnoreCloseErrors(boolean ignoreCloseErrors) {
+            return new Options(this.reconstitute, ignoreCloseErrors);
+        }
+    }
+
     public BasicJFRReader(CondensedInputStream in) {
-        this(in, false);
+        this(in, Options.DEFAULT);
     }
 
-    public BasicJFRReader(CondensedInputStream in, boolean ignoreCloseErrors) {
-        this(in, true, ignoreCloseErrors);
-    }
-
-    public BasicJFRReader(CondensedInputStream in, boolean reconstitute, boolean ignoreCloseErrors) {
+    public BasicJFRReader(CondensedInputStream in, Options options) {
         this.in = in;
-        this.reconstitutor = reconstitute ? new JFREventReadStructReconstitutor(in) : null;
-        this.ignoreCloseErrors = ignoreCloseErrors;
+        this.reconstitutor = options.reconstitute ? new JFREventReadStructReconstitutor(in) : null;
+        this.ignoreCloseErrors = options.ignoreCloseErrors;
     }
 
     public void enableFullStatistics() {
