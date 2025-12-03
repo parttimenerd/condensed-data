@@ -577,7 +577,7 @@ public class BasicJFRWriter {
         }
         return new StructType(
                 id,
-                "jdk.types.StackFrame" + (fields.size() < 4 ? "_reduced" : ""),
+                "jdk.types.StackFrame",
                 "Stack frame",
                 fields,
                 obj -> obj);

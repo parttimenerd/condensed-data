@@ -205,7 +205,7 @@ TODO
 - [x] have option to remove line numbers from stack frames
 - [x] check benchmark per hour calculation
 - [x] check that incomplete files can be read
-- [ ] increase performance of ensureRecursiveCompleteness
+- [x] increase performance of ensureRecursiveCompleteness
 
 - [ ] make all tools support multiple files
 - [ ] add black box tests for the CLI tools

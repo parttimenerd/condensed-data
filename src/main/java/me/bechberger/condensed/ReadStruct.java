@@ -13,6 +13,7 @@ public class ReadStruct implements Map<String, Object>, ReadContainer<ReadStruct
     private final Map<String, Object> map;
     private final @Nullable BiFunction<Field<?, ?, ?>, Integer, Object> accessor;
     private final @Nullable Map<String, @Nullable Integer> idsOrNull;
+    private boolean isComplete = false;
 
     private ReadStruct(
             StructType<?, ReadStruct> type,
@@ -88,17 +89,43 @@ public class ReadStruct implements Map<String, Object>, ReadContainer<ReadStruct
     }
 
     @Override
-    public ReadStruct ensureRecursivelyComplete(IdentityHashMap<Object, Void> checked) {
+    public ReadStruct ensureRecursivelyComplete() {
+        if (isComplete()) {
+            return this;
+        }
+        this.markAsComplete();
         ensureComplete();
         for (var field : type.getFields()) {
             if (!field.type().getSpecifiedType().isPrimitive()) {
-                map.put(
-                        field.name(),
-                        CompletableContainer.ensureRecursivelyComplete(
-                                map.get(field.name()), checked));
+                var val = map.get(field.name());
+                var res = CompletableContainer.ensureRecursivelyComplete(val);
+                if (val != res) {
+                    map.put(field.name(), res);
+                }
             }
         }
         return this;
+    }
+
+    @Override
+    public boolean isComplete() {
+        return isComplete;
+    }
+
+    @Override
+    public void markAsComplete() {
+        isComplete = true;
+    }
+
+    @Override
+    public void cleanCompletenessMark() {
+        if (!isComplete) {
+            return; // we already are cleaned the mark, avoid infinite loops
+        }
+        isComplete = false;
+        for (var value : map.values()) {
+            CompletableContainer.cleanRecursivenessMark(value);
+        }
     }
 
     @Override

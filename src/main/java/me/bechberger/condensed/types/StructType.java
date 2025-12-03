@@ -161,6 +161,7 @@ public class StructType<T, R> extends CondensedType<T, R> {
     }
 
     private final List<Field<T, ?, ?>> fields;
+    private final List<String> fieldNames;
     private final Map<String, Field<T, ?, ?>> fieldMap;
     private final Function<ReadStruct, R> creator;
     private final StructType<?, ReadStruct> readStructType;
@@ -179,6 +180,7 @@ public class StructType<T, R> extends CondensedType<T, R> {
         super(id, name, description);
         this.fields = fields;
         this.fieldMap = fields.stream().collect(Collectors.toMap(Field::name, Function.identity()));
+        this.fieldNames = fields.stream().map(Field::name).collect(Collectors.toList());
         this.creator = creator;
         this.readStructType =
                 readStructType == null ? (StructType<?, ReadStruct>) this : readStructType;
@@ -433,7 +435,7 @@ public class StructType<T, R> extends CondensedType<T, R> {
     }
 
     public List<String> getFieldNames() {
-        return fields.stream().map(Field::name).collect(Collectors.toList());
+        return fieldNames;
     }
 
     public List<Field<T, ?, ?>> getFields() {

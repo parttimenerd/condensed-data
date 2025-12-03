@@ -12,6 +12,7 @@ public class ReadList<T> implements List<T>, ReadContainer<List<T>> {
     private final @Nullable List<@Nullable Integer> idsOrNull;
     private final List<T> list;
     private final @Nullable IntFunction<T> accessor;
+    private boolean isComplete = false;
 
     public ReadList(
             ArrayType<?, T> type,
@@ -53,12 +54,46 @@ public class ReadList<T> implements List<T>, ReadContainer<List<T>> {
     }
 
     @Override
-    public ReadList<T> ensureRecursivelyComplete(IdentityHashMap<Object, Void> checked) {
+    public ReadList<T> ensureRecursivelyComplete() {
+        if (isComplete()) {
+            return this;
+        }
+        this.markAsComplete();
         ensureComplete();
         if (!type.getSpecifiedType().isPrimitive()) {
-            list.replaceAll(t -> CompletableContainer.ensureRecursivelyComplete(t, checked));
+            for (int i = 0; i < list.size(); i++) {
+                var t = list.get(i);
+                var rec = CompletableContainer.ensureRecursivelyComplete(t);
+                if (t != rec) {
+                    list.set(i, rec);
+                }
+            }
         }
         return this;
+    }
+
+    @Override
+    public boolean isComplete() {
+        return isComplete;
+    }
+
+    @Override
+    public void markAsComplete() {
+        isComplete = true;
+    }
+
+    @SuppressWarnings("unchecked")
+    @Override
+    public void cleanCompletenessMark() {
+        if (!isComplete) {
+            return; // we already are cleaned the mark, avoid infinite loops
+        }
+        isComplete = false;
+        if (!type.getSpecifiedType().isPrimitive()) {
+            for (T t : list) {
+                CompletableContainer.cleanRecursivenessMark((CompletableContainer<T>)t);
+            }
+        }
     }
 
     @Override
