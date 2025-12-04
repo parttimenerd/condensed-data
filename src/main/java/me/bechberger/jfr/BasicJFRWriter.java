@@ -284,7 +284,10 @@ public class BasicJFRWriter {
 
     @SuppressWarnings({"unchecked", "rawtypes"})
     @NotNull
-    private ArrayType<?, ?> createArrayType(ValueDescriptor field, Integer id, @Nullable Function<Integer, CondensedType<?, ?>> fieldType) {
+    private ArrayType<?, ?> createArrayType(
+            ValueDescriptor field,
+            Integer id,
+            @Nullable Function<Integer, CondensedType<?, ?>> fieldType) {
         EmbeddingType embedding = JFRHashConfig.getEmbeddingType(field);
         TypeIdent innerIdent = TypeIdent.of(field, false);
         var name = field.getTypeName() + "[]";
@@ -307,8 +310,14 @@ public class BasicJFRWriter {
                             innerIdent.toString()),
                     embedding);
         }
-        return new ArrayType<>(id, name, "", fieldType == null ?
-                createTypeAndRegister(field, false) : (CondensedType)out.writeAndStoreType(fieldType), embedding);
+        return new ArrayType<>(
+                id,
+                name,
+                "",
+                fieldType == null
+                        ? createTypeAndRegister(field, false)
+                        : (CondensedType) out.writeAndStoreType(fieldType),
+                embedding);
     }
 
     @SuppressWarnings({"rawtypes", "unchecked"})
@@ -319,9 +328,7 @@ public class BasicJFRWriter {
         var name = field.getTypeName();
         if (REDUCED_JFR_TYPES.containsKey(name)) { // Remove fields based on configuration
             var removedFields = ReducedJFRTypes.getRemovedFields(name, configuration, false);
-            fields = fields.stream()
-                    .filter(f -> !removedFields.contains(f.name()))
-                    .toList();
+            fields = fields.stream().filter(f -> !removedFields.contains(f.name())).toList();
         }
         var description =
                 field.getLabel()
@@ -339,8 +346,7 @@ public class BasicJFRWriter {
     }
 
     CondensedType<?, ?> getTypeCached(ValueDescriptor field, boolean isArray) {
-        return getTypeOrElse(
-                TypeIdent.of(field), f -> createTypeAndRegister(field, isArray));
+        return getTypeOrElse(TypeIdent.of(field), f -> createTypeAndRegister(field, isArray));
     }
 
     public String getDescription(ValueDescriptor field) {
@@ -575,12 +581,7 @@ public class BasicJFRWriter {
                             obj -> ((RecordedFrame) obj).getType(),
                             EmbeddingType.REFERENCE));
         }
-        return new StructType(
-                id,
-                "jdk.types.StackFrame",
-                "Stack frame",
-                fields,
-                obj -> obj);
+        return new StructType(id, "jdk.types.StackFrame", "Stack frame", fields, obj -> obj);
     }
 
     private StructType<?, ?> getReducedStackTraceType(ValueDescriptor field) {

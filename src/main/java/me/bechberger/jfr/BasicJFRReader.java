@@ -20,8 +20,13 @@ public class BasicJFRReader implements JFRReader {
     private Configuration configuration = Configuration.DEFAULT;
     private final Universe universe = new Universe();
     private final @Nullable JFREventReadStructReconstitutor reconstitutor;
-    /** Ignore {@link RIOException.UnexpectedEOFException}, this might be due to the condensed not being finished */
+
+    /**
+     * Ignore {@link RIOException.UnexpectedEOFException}, this might be due to the condensed not
+     * being finished
+     */
     private final boolean ignoreCloseErrors;
+
     private final Queue<ReadStruct> eventsToEmit = new ArrayDeque<>();
     private final Map<String, Integer> combinedEventCount = new HashMap<>();
     private boolean closed = false;

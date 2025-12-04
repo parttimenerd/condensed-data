@@ -40,13 +40,16 @@ public class WritingJFRReader {
             new JFREventTypedValuedReconstitutor(this);
     private final Queue<TypedValue> eventsToEmit = new ArrayDeque<>();
     private final Map<String, Integer> combinedEventCount = new HashMap<>();
-    /**
-     * Add default values for removed fields that are not handled by the Java JFR API
-     */
+
+    /** Add default values for removed fields that are not handled by the Java JFR API */
     private final boolean shouldAddDefaultValuesIfNecessary;
+
     private boolean addAllRemovedFields = false;
 
-    public WritingJFRReader(JFRReader reader, OutputStream outputStream, boolean shouldAddDefaultValuesIfNecessary) {
+    public WritingJFRReader(
+            JFRReader reader,
+            OutputStream outputStream,
+            boolean shouldAddDefaultValuesIfNecessary) {
         this.reader = reader;
         this.outputStream = outputStream;
         this.shouldAddDefaultValuesIfNecessary = shouldAddDefaultValuesIfNecessary;
@@ -377,11 +380,13 @@ public class WritingJFRReader {
         return toJFREventsList(reader, Integer.MAX_VALUE, true);
     }
 
-    public static List<RecordedEvent> toJFREventsList(BasicJFRReader reader, boolean shouldAddDefaultValuesIfNecessary) {
+    public static List<RecordedEvent> toJFREventsList(
+            BasicJFRReader reader, boolean shouldAddDefaultValuesIfNecessary) {
         return toJFREventsList(reader, Integer.MAX_VALUE, shouldAddDefaultValuesIfNecessary);
     }
 
-    public static List<RecordedEvent> toJFREventsList(BasicJFRReader reader, int limit, boolean shouldAddDefaultValuesIfNecessary) {
+    public static List<RecordedEvent> toJFREventsList(
+            BasicJFRReader reader, int limit, boolean shouldAddDefaultValuesIfNecessary) {
         try {
             Path tmp = toJFRFile(reader);
             List<RecordedEvent> events = new ArrayList<>();

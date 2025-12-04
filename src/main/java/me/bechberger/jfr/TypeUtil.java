@@ -1,5 +1,7 @@
 package me.bechberger.jfr;
 
+import static me.bechberger.condensed.Util.toNanoSeconds;
+
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Modifier;
 import java.time.Duration;
@@ -14,8 +16,6 @@ import me.bechberger.condensed.types.StructType.Field;
 import org.jetbrains.annotations.Nullable;
 import org.openjdk.jmc.flightrecorder.writer.api.TypedField;
 import org.openjdk.jmc.flightrecorder.writer.api.TypedValue;
-
-import static me.bechberger.condensed.Util.toNanoSeconds;
 
 public class TypeUtil {
     private static CondensedType<?, ?> getPrimitiveType(Class<?> klass) {
@@ -103,8 +103,11 @@ public class TypeUtil {
     @SuppressWarnings("unchecked")
     public static <T> T createInstanceFromReadStruct(Class<T> klass, ReadStruct readStruct) {
         var members = readStruct.ensureComplete();
-        var args = getFieldsForClass(klass).filter(f -> members.containsKey(f.getName()))
-                .map(f -> members.get(f.getName())).toArray();
+        var args =
+                getFieldsForClass(klass)
+                        .filter(f -> members.containsKey(f.getName()))
+                        .map(f -> members.get(f.getName()))
+                        .toArray();
         var constructor =
                 Arrays.stream(klass.getDeclaredConstructors())
                         .filter(c -> c.getParameterCount() == args.length)

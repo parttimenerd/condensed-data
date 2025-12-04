@@ -4,8 +4,9 @@ import java.util.IdentityHashMap;
 
 /**
  * A container that can be completed lazily
- * <p>
- * To avoid infinite recursion, it records directly in each instance whether it has been marked complete.
+ *
+ * <p>To avoid infinite recursion, it records directly in each instance whether it has been marked
+ * complete.
  */
 public interface CompletableContainer<T> {
 
@@ -25,8 +26,8 @@ public interface CompletableContainer<T> {
             int indent, IdentityHashMap<Object, Void> alreadyPrintedInPath, int depth);
 
     /**
-     * Recursively ensures that all nested CompletableContainers are complete, meaning that they resolved all
-     * their lazy data.
+     * Recursively ensures that all nested CompletableContainers are complete, meaning that they
+     * resolved all their lazy data.
      *
      * @param t the object to ensure completeness for
      */
@@ -45,7 +46,7 @@ public interface CompletableContainer<T> {
             return t;
         }
         t.markAsComplete();
-        return (CompletableContainer<T>)t.ensureRecursivelyComplete();
+        return (CompletableContainer<T>) t.ensureRecursivelyComplete();
     }
 
     /** Whether this container is marked recursively complete */

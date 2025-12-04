@@ -79,33 +79,35 @@ public record Configuration(
                     .withRemoveTypeInformationFromStackFrames(true)
                     .withMaxStackTraceDepth(16);
 
-    public Configuration(String name,
-                         long timeStampTicksPerSecond,
-                         long durationTicksPerSecond,
-                         boolean memoryAsBFloat16,
-                         boolean ignoreUnnecessaryEvents,
-                         long maxStackTraceDepth,
-                         boolean useSpecificHashesAndRefs,
-                         boolean combineEventsWithoutDataLoss,
-                         boolean combinePLABPromotionEvents,
-                         boolean combineObjectAllocationSampleEvents,
-                         boolean sumObjectSizes,
-                         boolean ignoreZeroSizedTenuredAges,
-                         boolean ignoreTooShortGCPauses) {
-        this(name,
-             timeStampTicksPerSecond,
-             durationTicksPerSecond,
-             memoryAsBFloat16,
-            ignoreUnnecessaryEvents,
-            maxStackTraceDepth,
-            useSpecificHashesAndRefs,
-            combineEventsWithoutDataLoss,
-            combinePLABPromotionEvents,
-            combineObjectAllocationSampleEvents,
-            sumObjectSizes,
-            ignoreZeroSizedTenuredAges,
-            ignoreTooShortGCPauses,
-            false,
+    public Configuration(
+            String name,
+            long timeStampTicksPerSecond,
+            long durationTicksPerSecond,
+            boolean memoryAsBFloat16,
+            boolean ignoreUnnecessaryEvents,
+            long maxStackTraceDepth,
+            boolean useSpecificHashesAndRefs,
+            boolean combineEventsWithoutDataLoss,
+            boolean combinePLABPromotionEvents,
+            boolean combineObjectAllocationSampleEvents,
+            boolean sumObjectSizes,
+            boolean ignoreZeroSizedTenuredAges,
+            boolean ignoreTooShortGCPauses) {
+        this(
+                name,
+                timeStampTicksPerSecond,
+                durationTicksPerSecond,
+                memoryAsBFloat16,
+                ignoreUnnecessaryEvents,
+                maxStackTraceDepth,
+                useSpecificHashesAndRefs,
+                combineEventsWithoutDataLoss,
+                combinePLABPromotionEvents,
+                combineObjectAllocationSampleEvents,
+                sumObjectSizes,
+                ignoreZeroSizedTenuredAges,
+                ignoreTooShortGCPauses,
+                false,
                 false);
     }
 
@@ -200,8 +202,13 @@ public record Configuration(
     public Configuration withFieldValue(String fieldName, Object value) {
         // use reflection to call the constructor
         try {
-            var constructor = Arrays.stream(Configuration.class.getDeclaredConstructors()).min((c1, c2) -> Integer.compare(c2.getParameterCount(), c1.getParameterCount()))
-                    .orElseThrow();
+            var constructor =
+                    Arrays.stream(Configuration.class.getDeclaredConstructors())
+                            .min(
+                                    (c1, c2) ->
+                                            Integer.compare(
+                                                    c2.getParameterCount(), c1.getParameterCount()))
+                            .orElseThrow();
             var params =
                     Arrays.stream(constructor.getParameters())
                             .map(

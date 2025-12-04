@@ -1,5 +1,11 @@
 package me.bechberger.jfr;
 
+import static org.junit.jupiter.api.Assertions.assertTrue;
+
+import java.io.ByteArrayInputStream;
+import java.io.ByteArrayOutputStream;
+import java.util.ArrayList;
+import java.util.List;
 import jdk.jfr.consumer.RecordedEvent;
 import jdk.jfr.consumer.RecordingStream;
 import me.bechberger.condensed.CondensedInputStream;
@@ -10,29 +16,20 @@ import net.jqwik.api.ForAll;
 import net.jqwik.api.Property;
 import net.jqwik.api.constraints.IntRange;
 
-import java.io.ByteArrayInputStream;
-import java.io.ByteArrayOutputStream;
-import java.util.ArrayList;
-import java.util.List;
-
-import static org.junit.jupiter.api.Assertions.assertTrue;
-
-/**
- * Idea: Handle unexpected end of stream gracefully
- */
+/** Idea: Handle unexpected end of stream gracefully */
 public class TruncationErrorTest {
 
     private static final int EVENT_COUNT = 1000;
 
     private static byte[] data;
+
     {
         try {
             List<RecordedEvent> recordedEvents = new ArrayList<>();
             ByteArrayOutputStream outputStream = new ByteArrayOutputStream();
             try (CondensedOutputStream out =
-                         new CondensedOutputStream(outputStream, Message.StartMessage.DEFAULT)) {
-                BasicJFRWriter basicJFRWriter =
-                        new BasicJFRWriter(out, Configuration.DEFAULT);
+                    new CondensedOutputStream(outputStream, Message.StartMessage.DEFAULT)) {
+                BasicJFRWriter basicJFRWriter = new BasicJFRWriter(out, Configuration.DEFAULT);
                 try (RecordingStream rs = new RecordingStream()) {
                     rs.onEvent(
                             "TestEvent",
@@ -57,11 +54,25 @@ public class TruncationErrorTest {
 
     private void assertEventCounts(int truncate, int expectedMinCount, int expectedMaxCount) {
         try (CondensedInputStream in =
-                     new CondensedInputStream(new ByteArrayInputStream(data, 0, data.length - truncate))) {
-            List<RecordedEvent> events = WritingJFRReader.toJFREventsList(new BasicJFRReader(in,
-                    BasicJFRReader.Options.DEFAULT.withIgnoreCloseErrors(true)));
-            assertTrue(events.size() >= expectedMinCount, "Event count should be at least " + expectedMinCount + " but was " + events.size());
-            assertTrue(events.size() <= expectedMaxCount, "Event count should be at most " + expectedMaxCount + " but was " + events.size());
+                new CondensedInputStream(
+                        new ByteArrayInputStream(data, 0, data.length - truncate))) {
+            List<RecordedEvent> events =
+                    WritingJFRReader.toJFREventsList(
+                            new BasicJFRReader(
+                                    in,
+                                    BasicJFRReader.Options.DEFAULT.withIgnoreCloseErrors(true)));
+            assertTrue(
+                    events.size() >= expectedMinCount,
+                    "Event count should be at least "
+                            + expectedMinCount
+                            + " but was "
+                            + events.size());
+            assertTrue(
+                    events.size() <= expectedMaxCount,
+                    "Event count should be at most "
+                            + expectedMaxCount
+                            + " but was "
+                            + events.size());
         }
     }
 

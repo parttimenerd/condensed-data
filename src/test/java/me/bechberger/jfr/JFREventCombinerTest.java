@@ -502,31 +502,53 @@ public class JFREventCombinerTest {
 
         if (!missingKeys.isEmpty() || !mismatchedKeys.isEmpty() || !extraKeys.isEmpty()) {
             StringBuilder error = new StringBuilder("Map comparison failed:\n");
-            error.append("Expected size: ").append(expected.size())
-                 .append(", Actual size: ").append(actual.size()).append("\n");
+            error.append("Expected size: ")
+                    .append(expected.size())
+                    .append(", Actual size: ")
+                    .append(actual.size())
+                    .append("\n");
             if (!missingKeys.isEmpty()) {
-                error.append("Missing keys in actual (").append(missingKeys.size()).append("): ")
-                     .append(missingKeys).append("\n");
+                error.append("Missing keys in actual (")
+                        .append(missingKeys.size())
+                        .append("): ")
+                        .append(missingKeys)
+                        .append("\n");
                 for (T key : missingKeys) {
-                    error.append("  ").append(key).append(": expected=")
-                         .append(expected.get(key)).append("\n");
+                    error.append("  ")
+                            .append(key)
+                            .append(": expected=")
+                            .append(expected.get(key))
+                            .append("\n");
                 }
             }
             if (!mismatchedKeys.isEmpty()) {
-                error.append("Mismatched values (").append(mismatchedKeys.size()).append("): ")
-                     .append(mismatchedKeys).append("\n");
+                error.append("Mismatched values (")
+                        .append(mismatchedKeys.size())
+                        .append("): ")
+                        .append(mismatchedKeys)
+                        .append("\n");
                 for (T key : mismatchedKeys) {
-                    error.append("  ").append(key).append(": expected=")
-                         .append(expected.get(key))
-                         .append(", actual=").append(actual.get(key)).append("\n");
+                    error.append("  ")
+                            .append(key)
+                            .append(": expected=")
+                            .append(expected.get(key))
+                            .append(", actual=")
+                            .append(actual.get(key))
+                            .append("\n");
                 }
             }
             if (!extraKeys.isEmpty()) {
-                error.append("Extra keys in actual (").append(extraKeys.size()).append("): ")
-                     .append(extraKeys).append("\n");
+                error.append("Extra keys in actual (")
+                        .append(extraKeys.size())
+                        .append("): ")
+                        .append(extraKeys)
+                        .append("\n");
                 for (T key : extraKeys) {
-                    error.append("  ").append(key).append(": actual=")
-                         .append(actual.get(key)).append("\n");
+                    error.append("  ")
+                            .append(key)
+                            .append(": actual=")
+                            .append(actual.get(key))
+                            .append("\n");
                 }
             }
             fail(error.toString());
@@ -605,8 +627,10 @@ public class JFREventCombinerTest {
             basicJFRWriter.close();
         }
         try (var in = new CondensedInputStream(outputStream.toByteArray())) {
-            WritingJFRReader reader = new WritingJFRReader(new BasicJFRReader(in,
-                    BasicJFRReader.Options.DEFAULT.withReconstitute(false)));
+            WritingJFRReader reader =
+                    new WritingJFRReader(
+                            new BasicJFRReader(
+                                    in, BasicJFRReader.Options.DEFAULT.withReconstitute(false)));
             for (var combiner : combiners.values()) {
                 if (combiner.reconstitutor != null) {
                     reader.getReconstitutor()

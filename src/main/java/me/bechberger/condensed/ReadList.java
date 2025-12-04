@@ -91,7 +91,7 @@ public class ReadList<T> implements List<T>, ReadContainer<List<T>> {
         isComplete = false;
         if (!type.getSpecifiedType().isPrimitive()) {
             for (T t : list) {
-                CompletableContainer.cleanRecursivenessMark((CompletableContainer<T>)t);
+                CompletableContainer.cleanRecursivenessMark((CompletableContainer<T>) t);
             }
         }
     }
