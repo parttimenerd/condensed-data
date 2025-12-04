@@ -113,6 +113,13 @@ public class JFREventCombiner extends EventCombiner {
             public CondensedType<V, ?> createType(CondensedOutputStream out, EventType eventType) {
                 return val.createType(out, eventType);
             }
+
+            @Override
+            public String toString() {
+                return "{" +
+                       "val=" + val +
+                       '}';
+            }
         }
 
         /** Array of values as an entry of a map */
@@ -215,6 +222,14 @@ public class JFREventCombiner extends EventCombiner {
                                                                 Entry::getValue))));
                 return out.writeAndStoreType(
                         id -> new WrappedArrayType<>(new ArrayType<>(id, pairType), mapToList));
+            }
+
+            @Override
+            public String toString() {
+                return "{" +
+                       "key=" + key +
+                       ", value=" + value +
+                       '}';
             }
         }
 

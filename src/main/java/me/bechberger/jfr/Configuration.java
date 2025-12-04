@@ -67,12 +67,12 @@ public record Configuration(
                     .withIgnoreZeroSizedTenuredAges(true)
                     .withIgnoreTooShortGCPauses(true)
                     .withRemoveBCIAndLineNumberFromStackFrames(true)
+                    .withCombinePLABPromotionEvents(true)
                     .withMaxStackTraceDepth(32);
 
     public static final Configuration REDUCED_DEFAULT =
             REASONABLE_DEFAULT
                     .withName("reduced-default")
-                    .withCombinePLABPromotionEvents(true)
                     .withCombineObjectAllocationSampleEvents(true)
                     .withSumObjectSizes(true)
                     .withIgnoreUnnecessaryEvents(true)

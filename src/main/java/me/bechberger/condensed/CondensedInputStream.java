@@ -152,11 +152,9 @@ public class CondensedInputStream extends InputStream {
     @SuppressWarnings("unchecked")
     private Message readAndProcessInstanceMessage(int typeId) {
         var type = typeCollection.getType(typeId);
-        try (var t = statistic.withWriteCauseContext(type)) {
-            return new ReadInstance<>(
-                    (CondensedType<Object, Object>) type,
-                    ensureRecursivelyComplete(type.readFrom(this)));
-        }
+        return new ReadInstance<>(
+                (CondensedType<Object, Object>) type,
+                ensureRecursivelyComplete(type.readFrom(this)));
     }
 
     /**
