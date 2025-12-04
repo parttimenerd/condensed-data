@@ -116,9 +116,7 @@ public class JFREventCombiner extends EventCombiner {
 
             @Override
             public String toString() {
-                return "{" +
-                       "val=" + val +
-                       '}';
+                return "{" + "val=" + val + '}';
             }
         }
 
@@ -226,10 +224,7 @@ public class JFREventCombiner extends EventCombiner {
 
             @Override
             public String toString() {
-                return "{" +
-                       "key=" + key +
-                       ", value=" + value +
-                       '}';
+                return "{" + "key=" + key + ", value=" + value + '}';
             }
         }
 
