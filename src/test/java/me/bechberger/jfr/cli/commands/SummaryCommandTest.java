@@ -182,4 +182,19 @@ public class SummaryCommandTest {
                         })
                 .run();
     }
+
+    @Test
+    public void testEmptyFile() throws Exception {
+        new CommandExecuter("summary", "T/" + CommandTestUtil.getEmptyCJFRFileName())
+                .withFiles(CommandTestUtil.getEmptyCJFRFile())
+                .checkNoError()
+                .check(
+                        (result, files) -> {
+                            assertThat(result.output())
+                                    .contains("Events: 0")
+                                    .contains("Duration: 0s")
+                                    .doesNotContain("Event Type");
+                        })
+                .run();
+    }
 }

@@ -212,4 +212,12 @@ public class CondenseCommandTest {
                 () -> assertThat(result.error()).isEmpty(),
                 () -> assertThat(result.output()).contains("compression ratio"));
     }
+
+    @Test
+    public void testEmptyJFRFile() throws Exception {
+        new CommandExecuter("condense", "T/empty.jfr")
+                .withFiles(CommandTestUtil.getEmptyJFRFile())
+                .check(checkFiles(true, "empty.jfr"))
+                .run();
+    }
 }

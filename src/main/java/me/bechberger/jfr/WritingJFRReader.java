@@ -53,6 +53,7 @@ public class WritingJFRReader {
         this.reader = reader;
         this.outputStream = outputStream;
         this.shouldAddDefaultValuesIfNecessary = shouldAddDefaultValuesIfNecessary;
+        this.initRecording();
     }
 
     public WritingJFRReader(JFRReader reader, OutputStream outputStream) {
@@ -93,7 +94,7 @@ public class WritingJFRReader {
             return null;
         }
         if (recording == null) {
-            initRecording();
+            throw new IllegalStateException("Recording not initialized");
         }
         if (reconstitutor.isCombinedEvent(event)) {
             combinedEventCount.put(
@@ -343,6 +344,7 @@ public class WritingJFRReader {
 
     public void close() {
         try {
+            recording.close();
             recording.close();
         } catch (IOException e) {
             throw new RuntimeException(e);

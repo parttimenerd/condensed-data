@@ -285,4 +285,16 @@ public class InflateCommandTest {
                         })
                 .run();
     }
+
+    @Test
+    public void testEmptyFile() throws Exception {
+        new CommandExecuter("inflate", "T/" + CommandTestUtil.getEmptyCJFRFileName())
+                .withFiles(CommandTestUtil.getEmptyCJFRFile())
+                .check(
+                        (result, map) -> {
+                            assertThat(result.exitCode()).isEqualTo(0);
+                            assertThat(result.error()).isEmpty();
+                        })
+                .run();
+    }
 }

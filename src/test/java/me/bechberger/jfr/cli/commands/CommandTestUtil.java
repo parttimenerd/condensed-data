@@ -79,6 +79,13 @@ public class CommandTestUtil {
         }
     }
 
+    private static void recordEmptyJFRFile(Path jfrFile) throws IOException, ParseException {
+        try (RecordingStream rs = new RecordingStream()) {
+            rs.startAsync();
+            rs.dump(jfrFile);
+        }
+    }
+
     public static Path getSampleJFRFile() {
         return getSampleJFRFile(0);
     }
@@ -92,6 +99,18 @@ public class CommandTestUtil {
         if (!Files.exists(file)) {
             try {
                 recordSampleJFRFile(file);
+            } catch (IOException | ParseException e) {
+                throw new RuntimeException(e);
+            }
+        }
+        return file;
+    }
+
+    public static Path getEmptyJFRFile() {
+        var file = TEMP_FOLDER.resolve("empty.jfr");
+        if (!Files.exists(file)) {
+            try {
+                recordEmptyJFRFile(file);
             } catch (IOException | ParseException e) {
                 throw new RuntimeException(e);
             }
@@ -128,11 +147,28 @@ public class CommandTestUtil {
         return file;
     }
 
+    public static Path getEmptyCJFRFile() {
+        var file = TEMP_FOLDER.resolve("empty.cjfr");
+        if (!Files.exists(file)) {
+            try {
+                var jfrFile = getEmptyJFRFile();
+                JFRCLI.execute(new String[] {"condense", jfrFile.toString(), file.toString()});
+            } catch (Exception e) {
+                throw new RuntimeException(e);
+            }
+        }
+        return file;
+    }
+
     public static String getSampleCJFRFileName(int number) {
         return getSampleCJFRFile(number).getFileName().toString();
     }
 
     public static String getSampleCJFRFileName() {
         return getSampleCJFRFile().getFileName().toString();
+    }
+
+    public static String getEmptyCJFRFileName() {
+        return getEmptyCJFRFile().getFileName().toString();
     }
 }

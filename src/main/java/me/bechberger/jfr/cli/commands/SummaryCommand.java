@@ -170,7 +170,7 @@ public class SummaryCommand implements Callable<Integer> {
                     .append(TimeUtil.formatDuration(this.duration().truncatedTo(ChronoUnit.MILLIS)))
                     .append("\n");
             sb.append(" Events: ").append(this.eventCount()).append("\n");
-            if (!shortSummary) {
+            if (!shortSummary && !this.eventCounts().isEmpty()) {
                 sb.append("\n");
                 sb.append(" Event Type                                Count\n");
                 sb.append("=================================================\n");

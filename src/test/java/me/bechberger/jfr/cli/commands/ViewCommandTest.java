@@ -56,4 +56,17 @@ public class ViewCommandTest {
                 () -> assertThat(result.error()).contains("Did you mean one of these events:"),
                 () -> assertThat(result.error()).contains("TestEvent"));
     }
+
+    @Test
+    public void testEmptyFile() throws Exception {
+        var result =
+                new CommandExecuter(
+                                "view", "T/" + CommandTestUtil.getEmptyCJFRFileName(), "TestEvent")
+                        .withFiles(CommandTestUtil.getEmptyCJFRFile())
+                        .run();
+        assertAll(
+                () -> assertThat(result.exitCode()).isEqualTo(1),
+                () -> assertThat(result.error()).contains("No event of type TestEvent found."),
+                () -> assertThat(result.output()).isEmpty());
+    }
 }

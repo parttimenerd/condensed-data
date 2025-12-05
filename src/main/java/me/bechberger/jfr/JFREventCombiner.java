@@ -1373,7 +1373,7 @@ public class JFREventCombiner extends EventCombiner {
                                     Map.entry(
                                             "jdk.combined.GCPhasePauseLevel1",
                                             new GCPhasePauseLevelReconstitutor(
-                                                    "jdk.GCPhasePauseLevel2")),
+                                                    "jdk.GCPhasePauseLevel1")),
                                     Map.entry(
                                             "jdk.combined.GCPhasePauseLevel2",
                                             new GCPhasePauseLevelReconstitutor(
