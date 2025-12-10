@@ -209,7 +209,7 @@ TODO
 
 - [ ] make all tools support multiple files
 - [ ] add black box tests for the CLI tools
-- [ ] check empty files
+- [x] check empty files
 
 License
 -------

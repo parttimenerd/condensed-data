@@ -232,7 +232,7 @@
         <dependency>
             <groupId>org.openjdk.jmc</groupId>
             <artifactId>flightrecorder.writer</artifactId>
-            <version>9.1.0</version>
+            <version>9.1.1</version>
         </dependency>
         <dependency>
             <groupId>org.json</groupId>
