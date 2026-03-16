@@ -32,10 +32,22 @@ jobs:
     - name: Build package
       run: mvn package -DskipTests
 
+    - name: Generate platform-specific JARs
+      run: python3 reduce-jar.py matrix target/condensed-data.jar target/platform-jars/
+
+    - name: Upload JARs
+      uses: actions/upload-artifact@v4
+      with:
+        name: condensed-data-jars-jdk${{ matrix.java-version }}
+        path: |
+          target/condensed-data.jar
+          target/platform-jars/*.jar
+        retention-days: 30
+
   snapshot-release:
     needs: test
     runs-on: ubuntu-latest
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    if: false # disabled for now
     permissions:
       contents: write
 
@@ -85,6 +97,9 @@ jobs:
     - name: Build package with snapshot version
       run: mvn clean package -DskipTests
 
+    - name: Generate platform-specific JARs
+      run: python3 reduce-jar.py matrix target/condensed-data.jar target/platform-jars/
+
     - name: Create GitHub release
       id: create_release
       uses: softprops/action-gh-release@v2
@@ -106,8 +121,11 @@ jobs:
           ```bash
           java -jar condensed-data.jar --help
           ```
+          
+          **Platform-specific JARs** are smaller variants that only include native libraries for a single OS/architecture.
         draft: false
         prerelease: true
         files: |
           target/condensed-data.jar
+          target/platform-jars/*.jar
         token: ${{ secrets.GITHUB_TOKEN }}

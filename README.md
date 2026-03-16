@@ -132,6 +132,8 @@ bin/update-help.py # updates the help messages in the README
 
 This pre-commit hook also runs the tests via `mvn test`.
 
+Use `./reduce-jar.py` to build the reduced JARs.
+
 Benchmarking
 ------------
 To create the JFR files for benchmarking, run the following command:
