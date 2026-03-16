@@ -9,16 +9,14 @@ import jdk.jfr.consumer.RecordingFile;
 import me.bechberger.condensed.Compression;
 import me.bechberger.condensed.CondensedOutputStream;
 import me.bechberger.condensed.Message.StartMessage;
+import me.bechberger.femtocli.annotations.Command;
+import me.bechberger.femtocli.annotations.Option;
+import me.bechberger.femtocli.annotations.Parameters;
 import me.bechberger.jfr.BasicJFRWriter;
 import me.bechberger.jfr.Configuration;
 import me.bechberger.jfr.cli.CLIUtils.ConfigurationConverter;
-import me.bechberger.jfr.cli.CLIUtils.ConfigurationIterable;
 import me.bechberger.jfr.cli.Constants;
 import me.bechberger.jfr.cli.FileOptionConverters.*;
-import picocli.CommandLine.Command;
-import picocli.CommandLine.Help.Visibility;
-import picocli.CommandLine.Option;
-import picocli.CommandLine.Parameters;
 
 @Command(name = "condense", description = "Condense a JFR file", mixinStandardHelpOptions = true)
 public class CondenseCommand implements Callable<Integer> {
@@ -28,8 +26,7 @@ public class CondenseCommand implements Callable<Integer> {
     @Parameters(
             index = "0",
             description = "The input file",
-            converter = ExistingJFRFileConverter.class,
-            parameterConsumer = ExistingJFRFileParameterConsumer.class)
+            converter = ExistingJFRFileConverter.class)
     private Path inputFile;
 
     @Parameters(
@@ -42,8 +39,7 @@ public class CondenseCommand implements Callable<Integer> {
     @Option(
             names = {"-i", "--inputs"},
             description = "Additional input files",
-            converter = ExistingJFRFileConverter.class,
-            parameterConsumer = ExistingJFRFilesConsumer.class)
+            converter = ExistingJFRFileConverter.class)
     private List<Path> inputFiles = new ArrayList<>();
 
     @Option(
@@ -60,9 +56,7 @@ public class CondenseCommand implements Callable<Integer> {
             names = {"-c", "--generatorConfiguration"},
             description =
                     "The configuration to use, possible values:" + " ${COMPLETION-CANDIDATES}",
-            completionCandidates = ConfigurationIterable.class,
             defaultValue = "default",
-            showDefaultValue = Visibility.ALWAYS,
             converter = ConfigurationConverter.class)
     private Configuration configuration;
 

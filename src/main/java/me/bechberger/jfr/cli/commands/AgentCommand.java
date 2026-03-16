@@ -1,7 +1,5 @@
 package me.bechberger.jfr.cli.commands;
 
-import static me.bechberger.jfr.cli.CLIUtils.combineArgs;
-
 import com.sun.tools.attach.AgentInitializationException;
 import com.sun.tools.attach.AgentLoadException;
 import com.sun.tools.attach.AttachNotSupportedException;
@@ -13,16 +11,11 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
 import java.util.concurrent.Callable;
-import java.util.regex.Matcher;
-import java.util.regex.Pattern;
+import me.bechberger.femtocli.annotations.Command;
+import me.bechberger.femtocli.annotations.Parameters;
 import me.bechberger.jfr.cli.agent.AgentIO;
 import me.bechberger.jfr.cli.agent.commands.*;
 import me.bechberger.jfr.cli.commands.AgentCommand.ReadCommand;
-import picocli.CommandLine;
-import picocli.CommandLine.Command;
-import picocli.CommandLine.HelpCommand;
-import picocli.CommandLine.Parameters;
-import picocli.CommandLine.ParseResult;
 
 @Command(
         name = "agent",
@@ -36,7 +29,6 @@ import picocli.CommandLine.ParseResult;
             StatusCommand.class,
             StopCommand.class,
             ReadCommand.class,
-            HelpCommand.class,
             SetDurationCommand.class
         })
 public class AgentCommand implements Callable<Integer> {
@@ -82,8 +74,9 @@ public class AgentCommand implements Callable<Integer> {
     public Integer call() {
         if (pid == -1) {
             listVMs();
-            return -1;
+            return 0;
         }
+        // If a PID is given without a subcommand, load the agent with the remaining args
         return 0;
     }
 
@@ -91,40 +84,29 @@ public class AgentCommand implements Callable<Integer> {
         if (options.contains("--logToFile")) {
             return options;
         }
-        return options + (options.isEmpty() ? "" : " ") + "--logToFile";
+        return options + (options.isEmpty() ? "" : ",") + "--logToFile";
     }
 
-    public static int execute(List<String> args, CommandLine subCommandCommandLine) {
+    public static int execute(List<String> args) {
         var subCommandArgs = args.subList(1, args.size());
-        // we have to prevent sub commands from being executed
-        ParseResult parseResult;
-        try {
-            parseResult =
-                    new CommandLine(new AgentCommand())
-                            .parseArgs(subCommandArgs.toArray(new String[0]));
-        } catch (CommandLine.UnmatchedArgumentException ex) {
-            // replace "at index %d+:" with "at index " + (index +1)
-            Matcher m = Pattern.compile("(\\d+):").matcher(ex.getMessage());
-            if (!m.find()) {
-                throw ex;
-            }
-            int index = Integer.parseInt(m.toMatchResult().group(0).replace(":", ""));
-            System.err.println(m.replaceFirst((index + 1) + ":"));
-            return 2;
-        }
-        if (parseResult.hasSubcommand()) {
-            return handleSubCommand(parseResult, subCommandArgs);
-        }
         if (subCommandArgs.isEmpty()) {
             listVMs();
             return 0;
         }
-        if (subCommandArgs.contains("--help")) {
-            subCommandCommandLine.usage(System.out);
+        // Try to parse the first arg as a PID
+        int pid;
+        try {
+            pid = Integer.parseInt(subCommandArgs.get(0));
+        } catch (NumberFormatException e) {
+            // Not a PID, must be a subcommand name or --help
+            return -1; // let the normal CLI handle it
+        }
+        if (subCommandArgs.size() == 1) {
+            // Just a PID, no subcommand
             return 0;
         }
-        subCommandCommandLine.usage(System.err);
-        return 2;
+        List<String> agentArgs = subCommandArgs.subList(1, subCommandArgs.size());
+        return handleSubCommand(pid, agentArgs);
     }
 
     public static Path ownJAR() throws URISyntaxException {
@@ -145,12 +127,10 @@ public class AgentCommand implements Callable<Integer> {
         return path.getParent().resolve("condensed-data.jar");
     }
 
-    private static int handleSubCommand(ParseResult parseResult, List<String> subCommandArgs) {
-        int pid = Integer.parseInt(subCommandArgs.get(0));
-        List<String> agentArgs = subCommandArgs.subList(1, subCommandArgs.size());
+    private static int handleSubCommand(int pid, List<String> agentArgs) {
         try {
             VirtualMachine jvm = VirtualMachine.attach(pid + "");
-            jvm.loadAgent(ownJAR().toString(), addLogToFileOption(combineArgs(agentArgs)));
+            jvm.loadAgent(ownJAR().toString(), addLogToFileOption(String.join(",", agentArgs)));
             jvm.detach();
             AgentIO agentIO = AgentIO.getAgentInstance(pid);
             String out;

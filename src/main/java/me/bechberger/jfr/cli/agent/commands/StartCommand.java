@@ -2,14 +2,13 @@ package me.bechberger.jfr.cli.agent.commands;
 
 import java.time.Duration;
 import java.util.concurrent.Callable;
+import me.bechberger.femtocli.annotations.Command;
+import me.bechberger.femtocli.annotations.Mixin;
+import me.bechberger.femtocli.annotations.Option;
+import me.bechberger.femtocli.annotations.Parameters;
 import me.bechberger.jfr.Configuration;
 import me.bechberger.jfr.cli.CLIUtils.ConfigurationConverter;
-import me.bechberger.jfr.cli.CLIUtils.ConfigurationIterable;
 import me.bechberger.jfr.cli.agent.*;
-import picocli.CommandLine.Command;
-import picocli.CommandLine.Mixin;
-import picocli.CommandLine.Option;
-import picocli.CommandLine.Parameters;
 
 @Command(name = "start", description = "Start the recording", mixinStandardHelpOptions = true)
 public class StartCommand implements Callable<Integer> {
@@ -23,17 +22,14 @@ public class StartCommand implements Callable<Integer> {
     private String path;
 
     @Option(
-            names = {"-d", "--condenser-config"},
-            description =
-                    "The condenser generatorConfiguration to use, possible values:"
-                            + " ${COMPLETION-CANDIDATES}",
-            completionCandidates = ConfigurationIterable.class,
+            names = "--condenser-config",
+            description = "The condenser generatorConfiguration to use",
             defaultValue = "reasonable-default",
             converter = ConfigurationConverter.class)
     private Configuration configuration;
 
     @Option(
-            names = {"-m", "--misc-jfr-config"},
+            names = "--misc-jfr-config",
             description =
                     "Additional JFR config, '|' separated, like"
                             + " 'jfr.ExecutionSample#interval=1s'",
@@ -44,7 +40,7 @@ public class StartCommand implements Callable<Integer> {
     private boolean verbose;
 
     @Option(
-            names = {"-c", "--config"},
+            names = "--config",
             description = "The JFR generatorConfiguration to use.",
             defaultValue = "default")
     private String jfrConfig = "default";

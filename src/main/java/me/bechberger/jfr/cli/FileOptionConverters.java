@@ -8,20 +8,14 @@ import java.lang.annotation.Retention;
 import java.lang.annotation.Target;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
-import java.util.Stack;
 import java.util.stream.Collectors;
 import java.util.zip.ZipFile;
+import me.bechberger.femtocli.TypeConverter;
 import org.jetbrains.annotations.Nullable;
-import picocli.CommandLine;
-import picocli.CommandLine.IParameterConsumer;
-import picocli.CommandLine.ITypeConverter;
-import picocli.CommandLine.Model.OptionSpec;
-import picocli.CommandLine.ParameterException;
 
-/** Utility class for handling file options in a command-line interface using picocli. */
+/** Utility class for handling file options in a command-line interface. */
 public class FileOptionConverters {
 
     @Retention(java.lang.annotation.RetentionPolicy.RUNTIME)
@@ -32,34 +26,6 @@ public class FileOptionConverters {
         boolean allowFolder() default false;
 
         boolean allowZip() default false;
-    }
-
-    /** Converter that ensures the file exists and has the specified extension. */
-    public static class ExistingFileWithExtensionConverter implements ITypeConverter<Path> {
-        private final String extension;
-        private final boolean allowEmpty;
-
-        public ExistingFileWithExtensionConverter(String extension, boolean allowEmpty) {
-            this.extension = extension;
-            this.allowEmpty = allowEmpty;
-        }
-
-        @Override
-        public Path convert(String value) throws Exception {
-            if (value.isEmpty()) {
-                if (allowEmpty) {
-                    return Path.of("");
-                } else {
-                    throw new IllegalArgumentException("File path cannot be empty");
-                }
-            }
-            Path file = Path.of(value);
-            String check = check(file, extension);
-            if (check != null) {
-                throw new IllegalArgumentException(check);
-            }
-            return file;
-        }
     }
 
     private static @Nullable String check(Path file, String expectedExtension) {
@@ -83,111 +49,97 @@ public class FileOptionConverters {
         return null;
     }
 
+    private record FileSuggestion(String name, int distance) {}
+
     /**
-     * Parameter consumer that suggests similar files if the specified file does not exist or has
-     * the wrong extension.
+     * Builds a suggestion string for similar files in the same directory. Returns null if no
+     * suggestions found.
      */
-    public static class SuggestionFileParameterConsumer implements IParameterConsumer {
-        private final String extension;
-        private final boolean allowEmpty;
-        private final boolean allowZipAndFolder;
-
-        public SuggestionFileParameterConsumer(
-                String extension, boolean allowEmpty, boolean allowZipAndFolder) {
-            this.extension = extension;
-            this.allowEmpty = allowEmpty;
-            this.allowZipAndFolder = allowZipAndFolder;
+    private static @Nullable String buildSuggestions(
+            Path file, String extension, boolean allowZipAndFolder) {
+        var parent = file.getParent();
+        if (parent == null) {
+            return null;
         }
-
-        private record FileSuggestion(String name, int distance) {}
-
-        @Override
-        public void consumeParameters(
-                Stack<String> args,
-                CommandLine.Model.ArgSpec argSpec,
-                CommandLine.Model.CommandSpec commandSpec) {
-            if (args.isEmpty() || args.peek().isEmpty()) {
-                if (!allowEmpty) {
-                    throw new ParameterException(
-                            commandSpec.commandLine(),
-                            "Missing required parameter: " + argSpec.paramLabel());
-                }
-                argSpec.setValue(Path.of(""));
-                return;
-            }
-            String value = args.pop();
-            Path file = Path.of(value);
-            String check =
-                    allowZipAndFolder
-                            ? checkAllowFolderOrZIP(file, extension)
-                            : check(file, extension);
-            if (check != null) {
-                var parent = file.getParent();
-                if (parent == null) {
-                    throw new ParameterException(commandSpec.commandLine(), check);
-                }
-                try (var fs = Files.list(parent)) {
-                    List<String> suggestions =
-                            fs.map(Path::toFile)
-                                    .filter(
-                                            f -> {
-                                                if (f.isFile()) {
-                                                    if (f.getName().endsWith(extension)) {
-                                                        return true;
-                                                    }
-                                                    if (allowZipAndFolder
-                                                            && f.getName().endsWith(".zip")) {
-                                                        try (var zip = new ZipFile(f)) {
-                                                            return zip.stream()
-                                                                    .anyMatch(
-                                                                            entry ->
-                                                                                    entry.getName()
-                                                                                            .endsWith(
-                                                                                                    extension));
-                                                        } catch (IOException e) {
-                                                            return false;
-                                                        }
-                                                    }
-                                                }
-                                                if (f.isDirectory()) {
-                                                    if (allowZipAndFolder) {
-                                                        try (var stream = Files.list(f.toPath())) {
-                                                            return stream.anyMatch(
-                                                                    p ->
-                                                                            p.toString()
+        try (var fs = Files.list(parent)) {
+            List<String> suggestions =
+                    fs.map(Path::toFile)
+                            .filter(
+                                    f -> {
+                                        if (f.isFile()) {
+                                            if (f.getName().endsWith(extension)) {
+                                                return true;
+                                            }
+                                            if (allowZipAndFolder && f.getName().endsWith(".zip")) {
+                                                try (var zip = new ZipFile(f)) {
+                                                    return zip.stream()
+                                                            .anyMatch(
+                                                                    entry ->
+                                                                            entry.getName()
                                                                                     .endsWith(
                                                                                             extension));
-                                                        } catch (IOException e) {
-                                                            return false;
-                                                        }
-                                                    }
+                                                } catch (IOException e) {
+                                                    return false;
                                                 }
+                                            }
+                                        }
+                                        if (f.isDirectory() && allowZipAndFolder) {
+                                            try (var stream = Files.list(f.toPath())) {
+                                                return stream.anyMatch(
+                                                        p -> p.toString().endsWith(extension));
+                                            } catch (IOException e) {
                                                 return false;
-                                            })
-                                    .map(File::getName)
-                                    .map(
-                                            name ->
-                                                    new FileSuggestion(
-                                                            name,
-                                                            editDistance(
-                                                                    name,
-                                                                    file.getFileName().toString())))
-                                    .filter(s -> s.distance <= 20)
-                                    .sorted(Comparator.comparingInt(a -> a.distance))
-                                    .limit(5)
-                                    .map(s -> s.name)
-                                    .collect(Collectors.toList());
-                    if (suggestions.isEmpty()) {
-                        throw new ParameterException(commandSpec.commandLine(), check);
-                    }
-                    throw new ParameterException(
-                            commandSpec.commandLine(),
-                            check + ". Did you mean: " + String.join(", ", suggestions));
-                } catch (IOException e) {
-                    throw new ParameterException(commandSpec.commandLine(), check);
+                                            }
+                                        }
+                                        return false;
+                                    })
+                            .map(File::getName)
+                            .map(
+                                    name ->
+                                            new FileSuggestion(
+                                                    name,
+                                                    editDistance(
+                                                            name, file.getFileName().toString())))
+                            .filter(s -> s.distance <= 20)
+                            .sorted(Comparator.comparingInt(a -> a.distance))
+                            .limit(5)
+                            .map(s -> s.name)
+                            .collect(Collectors.toList());
+            if (!suggestions.isEmpty()) {
+                return ". Did you mean: " + String.join(", ", suggestions);
+            }
+        } catch (IOException e) {
+            // ignore
+        }
+        return null;
+    }
+
+    /** Converter that ensures the file exists and has the specified extension, with suggestions. */
+    public static class ExistingFileWithExtensionConverter implements TypeConverter<Path> {
+        private final String extension;
+        private final boolean allowEmpty;
+
+        public ExistingFileWithExtensionConverter(String extension, boolean allowEmpty) {
+            this.extension = extension;
+            this.allowEmpty = allowEmpty;
+        }
+
+        @Override
+        public Path convert(String value) {
+            if (value.isEmpty()) {
+                if (allowEmpty) {
+                    return Path.of("");
+                } else {
+                    throw new IllegalArgumentException("File path cannot be empty");
                 }
             }
-            argSpec.setValue(file);
+            Path file = Path.of(value);
+            String error = check(file, extension);
+            if (error != null) {
+                String suggestion = buildSuggestions(file, extension, false);
+                throw new IllegalArgumentException(error + (suggestion != null ? suggestion : ""));
+            }
+            return file;
         }
     }
 
@@ -208,25 +160,7 @@ public class FileOptionConverters {
     @FileEndingAnnotation(ending = ".html")
     public static class HTMLFileConverter extends FileWithExtensionConverter {}
 
-    public static class ExistingJFRFileParameterConsumer extends SuggestionFileParameterConsumer {
-        public ExistingJFRFileParameterConsumer() {
-            super(".jfr", true, false);
-        }
-    }
-
-    public static class ExistingCJFRFileParameterConsumer extends SuggestionFileParameterConsumer {
-        public ExistingCJFRFileParameterConsumer() {
-            super(".cjfr", true, false);
-        }
-    }
-
-    public static class HTMLFileParameterConsumer extends SuggestionFileParameterConsumer {
-        public HTMLFileParameterConsumer() {
-            super(".html", true, false);
-        }
-    }
-
-    public static class FileWithExtensionConverter implements ITypeConverter<Path> {
+    public static class FileWithExtensionConverter implements TypeConverter<Path> {
 
         private final String extension;
 
@@ -235,7 +169,7 @@ public class FileOptionConverters {
         }
 
         @Override
-        public Path convert(String value) throws Exception {
+        public Path convert(String value) {
             if (value.isEmpty()) {
                 return Path.of("");
             }
@@ -271,9 +205,12 @@ public class FileOptionConverters {
         return annotation != null && annotation.allowZip();
     }
 
-    /** Converter that ensures the file exists and has the specified extension. */
+    /**
+     * Converter that ensures the file exists and has the specified extension, or is a zip/folder
+     * containing such files, with suggestions.
+     */
     public static class ExistingFileWithExtensionOrZipOrFolderConverter
-            implements ITypeConverter<Path> {
+            implements TypeConverter<Path> {
         private final String extension;
         private final boolean allowEmpty;
 
@@ -284,7 +221,7 @@ public class FileOptionConverters {
         }
 
         @Override
-        public Path convert(String value) throws Exception {
+        public Path convert(String value) {
             if (value.isEmpty()) {
                 if (allowEmpty) {
                     return Path.of("");
@@ -293,9 +230,10 @@ public class FileOptionConverters {
                 }
             }
             Path file = Path.of(value);
-            String check = checkAllowFolderOrZIP(file, extension);
-            if (check != null) {
-                throw new IllegalArgumentException(check);
+            String error = checkAllowFolderOrZIP(file, extension);
+            if (error != null) {
+                String suggestion = buildSuggestions(file, extension, true);
+                throw new IllegalArgumentException(error + (suggestion != null ? suggestion : ""));
             }
             return file;
         }
@@ -327,7 +265,6 @@ public class FileOptionConverters {
         }
 
         if (isZip) {
-            // check that the zip file contains a file with the correct extension
             try (var zip = new ZipFile(file.toFile())) {
                 boolean hasCorrectFile =
                         zip.stream().anyMatch(entry -> entry.getName().endsWith(expectedExtension));
@@ -344,7 +281,6 @@ public class FileOptionConverters {
         }
 
         if (isFolder) {
-            // check that the folder contains a file with the correct extension
             try (var stream = Files.list(file)) {
                 boolean hasCorrectFile =
                         stream.anyMatch(p -> p.toString().endsWith(expectedExtension));
@@ -371,58 +307,6 @@ public class FileOptionConverters {
             extends ExistingFileWithExtensionOrZipOrFolderConverter {
         public ExistingCJFRFileOrZipOrFolderConverter() {
             super(".cjfr", true);
-        }
-    }
-
-    public static class ExistingCJFRFileOrZipOrFolderParameterConsumer
-            extends SuggestionFileParameterConsumer {
-        public ExistingCJFRFileOrZipOrFolderParameterConsumer() {
-            super(".cjfr", true, true);
-        }
-    }
-
-    /** For options only */
-    public static class PathListConsumer implements IParameterConsumer {
-
-        private final IParameterConsumer delegate;
-
-        public PathListConsumer(IParameterConsumer delegate) {
-            this.delegate = delegate;
-        }
-
-        @Override
-        @SuppressWarnings("unchecked")
-        public void consumeParameters(
-                Stack<String> args,
-                CommandLine.Model.ArgSpec argSpec,
-                CommandLine.Model.CommandSpec commandSpec) {
-            if (args.isEmpty() || args.peek().isEmpty()) {
-                argSpec.setValue(new ArrayList<>());
-                return;
-            }
-            var stack = new Stack<String>();
-            stack.push(args.pop());
-            var newArgSpec = OptionSpec.builder(((OptionSpec) argSpec).names()).build();
-            delegate.consumeParameters(stack, newArgSpec, commandSpec);
-            ((List<Path>) argSpec.getValue()).add(newArgSpec.getValue());
-        }
-    }
-
-    public static class ExistingJFRFilesConsumer extends PathListConsumer {
-        public ExistingJFRFilesConsumer() {
-            super(new ExistingJFRFileParameterConsumer());
-        }
-    }
-
-    public static class ExistingCJFRFilesConsumer extends PathListConsumer {
-        public ExistingCJFRFilesConsumer() {
-            super(new ExistingCJFRFileParameterConsumer());
-        }
-    }
-
-    public static class ExistingCJFRFilesOrZipOrFolderConsumer extends PathListConsumer {
-        public ExistingCJFRFilesOrZipOrFolderConsumer() {
-            super(new ExistingCJFRFileOrZipOrFolderParameterConsumer());
         }
     }
 }

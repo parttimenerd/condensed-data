@@ -3,13 +3,12 @@ package me.bechberger.jfr.cli.commands;
 import java.util.List;
 import java.util.concurrent.Callable;
 import me.bechberger.condensed.Compression;
+import me.bechberger.femtocli.annotations.Command;
+import me.bechberger.femtocli.annotations.Option;
 import me.bechberger.jfr.Benchmark;
 import me.bechberger.jfr.Benchmark.TableConfig;
 import me.bechberger.jfr.Configuration;
 import me.bechberger.jfr.cli.CLIUtils.ConfigurationConverter;
-import me.bechberger.jfr.cli.CLIUtils.ConfigurationIterable;
-import picocli.CommandLine.Command;
-import picocli.CommandLine.Option;
 
 @Command(
         name = "benchmark",
@@ -54,7 +53,6 @@ public class BenchmarkCommand implements Callable<Integer> {
             description =
                     "The generatorConfiguration to use, possible values:"
                             + " ${COMPLETION-CANDIDATES}",
-            completionCandidates = ConfigurationIterable.class,
             converter = ConfigurationConverter.class,
             arity = "1..*")
     private List<Configuration> configurations =

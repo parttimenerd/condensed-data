@@ -6,18 +6,15 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
 import java.util.concurrent.Callable;
+import me.bechberger.femtocli.annotations.*;
 import me.bechberger.jfr.CombiningJFRReader;
 import me.bechberger.jfr.cli.CLIUtils;
-import me.bechberger.jfr.cli.EventCompletionCandidates;
 import me.bechberger.jfr.cli.EventFilter.EventFilterOptionMixin;
 import me.bechberger.jfr.cli.FileOptionConverters.ExistingCJFRFileOrZipOrFolderConverter;
-import me.bechberger.jfr.cli.FileOptionConverters.ExistingCJFRFileOrZipOrFolderParameterConsumer;
-import me.bechberger.jfr.cli.FileOptionConverters.ExistingCJFRFilesOrZipOrFolderConsumer;
 import me.bechberger.jfr.cli.JFRView;
 import me.bechberger.jfr.cli.JFRView.JFRViewConfig;
 import me.bechberger.jfr.cli.JFRView.PrintConfig;
 import me.bechberger.jfr.cli.TruncateMode;
-import picocli.CommandLine.*;
 
 @Command(
         name = "view",
@@ -28,23 +25,16 @@ public class ViewCommand implements Callable<Integer> {
     @Parameters(
             index = "0",
             description = "The input .cjfr file, can be a folder, or a zip",
-            converter = ExistingCJFRFileOrZipOrFolderConverter.class,
-            parameterConsumer = ExistingCJFRFileOrZipOrFolderParameterConsumer.class)
+            converter = ExistingCJFRFileOrZipOrFolderConverter.class)
     private Path inputFile;
 
     @Option(
             names = {"-i", "--inputs"},
             description = "Additional input files",
-            converter = ExistingCJFRFileOrZipOrFolderConverter.class,
-            parameterConsumer = ExistingCJFRFilesOrZipOrFolderConsumer.class)
+            converter = ExistingCJFRFileOrZipOrFolderConverter.class)
     private List<Path> inputFiles = new ArrayList<>();
 
-    @Parameters(
-            index = "1",
-            description = "The event name",
-            paramLabel = "EVENT_NAME",
-            arity = "1",
-            completionCandidates = EventCompletionCandidates.class)
+    @Parameters(index = "1", description = "The event name", paramLabel = "EVENT_NAME", arity = "1")
     private String eventName;
 
     @Option(names = "--width", description = "Width of the table")

@@ -51,7 +51,7 @@ public class CondenseCommandTest {
                 () ->
                         assertThat(result.error())
                                 .containsIgnoringNewLines("Usage: cjfr")
-                                .contains("Missing required parameters"),
+                                .contains("Missing required parameter"),
                 () -> assertThat(result.output()).isEmpty());
     }
 

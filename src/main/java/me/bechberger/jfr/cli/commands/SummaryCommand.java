@@ -11,18 +11,16 @@ import me.bechberger.condensed.Compression;
 import me.bechberger.condensed.ReadStruct;
 import me.bechberger.condensed.stats.FlamegraphGenerator;
 import me.bechberger.condensed.stats.Statistic;
+import me.bechberger.femtocli.annotations.Command;
+import me.bechberger.femtocli.annotations.Mixin;
+import me.bechberger.femtocli.annotations.Option;
+import me.bechberger.femtocli.annotations.Parameters;
 import me.bechberger.jfr.CombiningJFRReader;
 import me.bechberger.jfr.cli.EventFilter.EventFilterOptionMixin;
 import me.bechberger.jfr.cli.FileOptionConverters;
 import me.bechberger.jfr.cli.FileOptionConverters.ExistingCJFRFileOrZipOrFolderConverter;
-import me.bechberger.jfr.cli.FileOptionConverters.ExistingCJFRFileOrZipOrFolderParameterConsumer;
-import me.bechberger.jfr.cli.FileOptionConverters.ExistingCJFRFilesOrZipOrFolderConsumer;
 import me.bechberger.util.TimeUtil;
 import me.bechberger.util.json.PrettyPrinter;
-import picocli.CommandLine.Command;
-import picocli.CommandLine.Mixin;
-import picocli.CommandLine.Option;
-import picocli.CommandLine.Parameters;
 
 @Command(
         name = "summary",
@@ -33,15 +31,13 @@ public class SummaryCommand implements Callable<Integer> {
     @Parameters(
             index = "0",
             description = "The input .cjfr file, can be a folder, or a zip",
-            converter = ExistingCJFRFileOrZipOrFolderConverter.class,
-            parameterConsumer = ExistingCJFRFileOrZipOrFolderParameterConsumer.class)
+            converter = ExistingCJFRFileOrZipOrFolderConverter.class)
     private Path inputFile;
 
     @Option(
             names = {"-i", "--inputs"},
             description = "Additional input files",
-            converter = ExistingCJFRFileOrZipOrFolderConverter.class,
-            parameterConsumer = ExistingCJFRFilesOrZipOrFolderConsumer.class)
+            converter = ExistingCJFRFileOrZipOrFolderConverter.class)
     private List<Path> inputFiles = new ArrayList<>();
 
     @Option(

@@ -9,12 +9,10 @@ import java.util.logging.Logger;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 import me.bechberger.condensed.ReadStruct;
+import me.bechberger.femtocli.annotations.Option;
 import me.bechberger.jfr.cli.CLIUtils.DurationConverter;
 import me.bechberger.jfr.cli.CLIUtils.InstantConverter;
 import org.jetbrains.annotations.Nullable;
-import picocli.CommandLine.Model.CommandSpec;
-import picocli.CommandLine.Option;
-import picocli.CommandLine.Spec;
 
 public interface EventFilter<C> {
 
@@ -160,8 +158,7 @@ public interface EventFilter<C> {
         @Option(
                 names = {"--events"},
                 description = "The event types to include",
-                split = ",",
-                completionCandidates = EventCompletionCandidates.class)
+                split = ",")
         List<String> eventTypes;
 
         @Option(
@@ -185,8 +182,6 @@ public interface EventFilter<C> {
                 converter = DurationConverter.class,
                 defaultValue = "1m")
         Duration gcPercentileContext;
-
-        @Spec CommandSpec spec;
 
         /** Create a basic event filter that checks a time window and the event types */
         static @Nullable SinglePhaseEventFilter<Void> createBasicFilter(

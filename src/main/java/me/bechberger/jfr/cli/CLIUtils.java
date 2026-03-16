@@ -10,10 +10,9 @@ import java.util.ArrayList;
 import java.util.Iterator;
 import java.util.List;
 import java.util.stream.Collectors;
+import me.bechberger.femtocli.TypeConverter;
 import me.bechberger.jfr.Configuration;
 import org.jetbrains.annotations.NotNull;
-import picocli.CommandLine;
-import picocli.CommandLine.ITypeConverter;
 
 public class CLIUtils {
     public static class ConfigurationIterable implements Iterable<String> {
@@ -27,7 +26,7 @@ public class CLIUtils {
         }
     }
 
-    public static class ConfigurationConverter implements ITypeConverter<Configuration> {
+    public static class ConfigurationConverter implements TypeConverter<Configuration> {
         public ConfigurationConverter() {}
 
         @Override
@@ -43,21 +42,21 @@ public class CLIUtils {
         }
     }
 
-    public static class ByteSizeConverter implements ITypeConverter<Long> {
+    public static class ByteSizeConverter implements TypeConverter<Long> {
         @Override
         public Long convert(String value) {
             return parseMemory(value);
         }
     }
 
-    public static class DurationConverter implements ITypeConverter<Duration> {
+    public static class DurationConverter implements TypeConverter<Duration> {
         @Override
         public Duration convert(String value) {
             return parseDuration(value);
         }
     }
 
-    public static class InstantConverter implements ITypeConverter<Instant> {
+    public static class InstantConverter implements TypeConverter<Instant> {
         @Override
         public Instant convert(String value) {
             return parseInstant(value);
@@ -168,19 +167,5 @@ public class CLIUtils {
                             return s.replace("\"", "\\\"");
                         })
                 .collect(Collectors.joining(" "));
-    }
-
-    public static void removeVersionOptionFromSubCommands(CommandLine cli) {
-        for (var sub : cli.getSubcommands().values()) {
-            sub.getCommandSpec().args().stream()
-                    .filter(
-                            a ->
-                                    a.isOption()
-                                            && ((CommandLine.Model.OptionSpec) a)
-                                                    .longestName()
-                                                    .equals("--version"))
-                    .findFirst()
-                    .ifPresent(a -> sub.getCommandSpec().remove(a));
-        }
     }
 }

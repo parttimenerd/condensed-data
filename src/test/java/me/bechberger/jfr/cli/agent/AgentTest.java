@@ -160,7 +160,11 @@ public class AgentTest {
         var output =
                 runAgent(
                         AgentRunMode.JATTACH,
-                        "start test-dir/recording.cjfr --rotating --max-duration 1s");
+                        "start",
+                        "test-dir/recording.cjfr",
+                        "--rotating",
+                        "--max-duration",
+                        "1s");
         assertThat(output).startsWith("Condensed recording to ");
         System.out.println(output);
 
@@ -170,7 +174,7 @@ public class AgentTest {
 
         Thread.sleep(1000);
         // set max-size
-        output = runAgent(AgentRunMode.JATTACH, "set-max-size 1m");
+        output = runAgent(AgentRunMode.JATTACH, "set-max-size", "1m");
         // check that status contains the new max-size
         output = runAgent(AgentRunMode.JATTACH, "status");
         assertThat(output).contains("max-size: 1.00MB");
@@ -201,8 +205,15 @@ public class AgentTest {
         var output =
                 runAgent(
                         AgentRunMode.JATTACH,
-                        "start test-dir/recording.cjfr --rotating --max-duration 2s --max-files 3"
-                                + " --duration 9s");
+                        "start",
+                        "test-dir/recording.cjfr",
+                        "--rotating",
+                        "--max-duration",
+                        "2s",
+                        "--max-files",
+                        "3",
+                        "--duration",
+                        "9s");
         assertThat(output).startsWith("Condensed recording to ").doesNotContain("Exception");
         System.out.println(output);
 
@@ -272,8 +283,14 @@ public class AgentTest {
         var output =
                 runAgent(
                         AgentRunMode.JATTACH,
-                        "start test-dir/recording.cjfr --rotating --max-duration 300ms --max-files"
-                                + " 2 --new-names");
+                        "start",
+                        "test-dir/recording.cjfr",
+                        "--rotating",
+                        "--max-duration",
+                        "300ms",
+                        "--max-files",
+                        "2",
+                        "--new-names");
         assertThat(output).startsWith("Condensed recording to ").doesNotContain("Exception");
         System.out.println(output);
 
@@ -299,27 +316,37 @@ public class AgentTest {
         var output =
                 runAgent(
                         AgentRunMode.JATTACH,
-                        "start test-dir/recording.cjfr --rotating --max-duration 1s --max-files 2");
+                        "start",
+                        "test-dir/recording.cjfr",
+                        "--rotating",
+                        "--max-duration",
+                        "1s",
+                        "--max-files",
+                        "2");
         assertThat(output).startsWith("Condensed recording to ");
         System.out.println(output);
 
-        output = runAgent(AgentRunMode.JATTACH, "set-max-size 1b");
+        output = runAgent(AgentRunMode.JATTACH, "set-max-size", "1b");
         assertThat(output).contains("Max size must be at least 1kB or 0 (no limit)");
 
-        output = runAgent(AgentRunMode.JATTACH, "set-max-size -1m");
+        output = runAgent(AgentRunMode.JATTACH, "set-max-size", "-1m");
         assertThat(output)
-                .contains("Missing required parameter"); // -1m is not parsed as a number, but as an
+                .contains("Unknown option: -1m"); // -1m is not parsed as a number, but as an
         // option
 
-        output = runAgent(AgentRunMode.JATTACH, "set-max-size 512");
-        assertThat(output).contains("Severe Error: Max size must be at least 1kB or 0 (no limit)");
+        output = runAgent(AgentRunMode.JATTACH, "set-max-size", "512");
+        assertThat(output).contains("Error: Max size must be at least 1kB or 0 (no limit)");
     }
 
     @Test
     public void testInvalidOption() throws IOException, InterruptedException {
         var output =
-                runAgent(AgentRunMode.CLI_JAR, "start test-dir/recording.cjfr --unknown-option");
-        assertThat(output).contains("Unmatched argument at index 2");
+                runAgent(
+                        AgentRunMode.CLI_JAR,
+                        "start",
+                        "test-dir/recording.cjfr",
+                        "--unknown-option");
+        assertThat(output).contains("Unknown option");
     }
 
     private static final String TEST_CLASS_CODE =
@@ -358,13 +385,13 @@ public class AgentTest {
         }
         if (rotating) {
             processArgs.add(
-                    "-javaagent:target/condensed-data.jar=start "
+                    "-javaagent:target/condensed-data.jar=start,"
                             + tmp.resolve("recording.cjfr")
-                            + " --rotating"
-                            + " --max-duration 500ms");
+                            + ",--rotating"
+                            + ",--max-duration,500ms");
         } else {
             processArgs.add(
-                    "-javaagent:target/condensed-data.jar=start " + tmp.resolve("recording.cjfr"));
+                    "-javaagent:target/condensed-data.jar=start," + tmp.resolve("recording.cjfr"));
         }
         processArgs.addAll(List.of("-cp", tmp.toString(), "TestClass"));
         var process = new ProcessBuilder(processArgs).inheritIO().start();
@@ -405,7 +432,7 @@ public class AgentTest {
             processArgs.add("-agentlib:jdwp=transport=dt_socket,server=y,suspend=y,address=5005");
         }
         processArgs.add(
-                "-javaagent:target/condensed-data.jar=start " + recordingFile + " --duration 0.1s");
+                "-javaagent:target/condensed-data.jar=start," + recordingFile + ",--duration,0.1s");
         processArgs.add("-version");
 
         var process = new ProcessBuilder(processArgs).redirectErrorStream(true).start();
@@ -470,7 +497,7 @@ public class AgentTest {
                     "load",
                     "instrument",
                     "false",
-                    "target/condensed-data.jar=" + String.join(" ", args));
+                    "target/condensed-data.jar=" + String.join(",", args));
         } catch (Exception e) {
             throw new RuntimeException(e);
         }

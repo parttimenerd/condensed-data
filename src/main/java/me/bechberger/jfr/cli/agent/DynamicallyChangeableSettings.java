@@ -3,9 +3,9 @@ package me.bechberger.jfr.cli.agent;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
+import me.bechberger.femtocli.annotations.Option;
 import me.bechberger.jfr.cli.CLIUtils.ByteSizeConverter;
 import me.bechberger.jfr.cli.CLIUtils.DurationConverter;
-import picocli.CommandLine.Option;
 
 /** All these settings can be changed during the execution of the agent, via commands */
 public class DynamicallyChangeableSettings {

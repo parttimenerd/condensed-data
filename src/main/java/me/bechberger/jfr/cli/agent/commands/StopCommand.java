@@ -1,9 +1,9 @@
 package me.bechberger.jfr.cli.agent.commands;
 
 import java.util.concurrent.Callable;
+import me.bechberger.femtocli.annotations.Command;
 import me.bechberger.jfr.cli.agent.Agent;
 import me.bechberger.jfr.cli.agent.AgentIO;
-import picocli.CommandLine.Command;
 
 @Command(name = "stop", description = "Stop the recording", mixinStandardHelpOptions = true)
 public class StopCommand implements Callable<Integer> {

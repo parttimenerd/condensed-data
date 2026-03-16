@@ -4,15 +4,13 @@ import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.Callable;
+import me.bechberger.femtocli.Spec;
+import me.bechberger.femtocli.annotations.*;
 import me.bechberger.jfr.CombiningJFRReader;
 import me.bechberger.jfr.WritingJFRReader;
 import me.bechberger.jfr.cli.EventFilter.EventFilterOptionMixin;
 import me.bechberger.jfr.cli.FileOptionConverters;
 import me.bechberger.jfr.cli.FileOptionConverters.ExistingCJFRFileOrZipOrFolderConverter;
-import me.bechberger.jfr.cli.FileOptionConverters.ExistingCJFRFileOrZipOrFolderParameterConsumer;
-import me.bechberger.jfr.cli.FileOptionConverters.ExistingCJFRFilesOrZipOrFolderConsumer;
-import picocli.CommandLine.*;
-import picocli.CommandLine.Model.CommandSpec;
 
 @Command(
         name = "inflate",
@@ -23,8 +21,7 @@ public class InflateCommand implements Callable<Integer> {
     @Parameters(
             index = "0",
             description = "The input .cjfr file, can be a folder, or a zip",
-            converter = ExistingCJFRFileOrZipOrFolderConverter.class,
-            parameterConsumer = ExistingCJFRFileOrZipOrFolderParameterConsumer.class)
+            converter = ExistingCJFRFileOrZipOrFolderConverter.class)
     private Path inputFile;
 
     @Parameters(
@@ -37,13 +34,12 @@ public class InflateCommand implements Callable<Integer> {
     @Option(
             names = {"-i", "--inputs"},
             description = "Additional input files",
-            converter = ExistingCJFRFileOrZipOrFolderConverter.class,
-            parameterConsumer = ExistingCJFRFilesOrZipOrFolderConsumer.class)
+            converter = ExistingCJFRFileOrZipOrFolderConverter.class)
     private List<Path> inputFiles = new ArrayList<>();
 
     @Mixin EventFilterOptionMixin eventFilterOptionMixin;
 
-    @Spec CommandSpec spec;
+    Spec spec;
 
     private List<Path> inputs() {
         var inputs = new ArrayList<Path>();
@@ -55,8 +51,8 @@ public class InflateCommand implements Callable<Integer> {
     private Path getOutputFile() {
         if (outputFile.toString().isEmpty()) {
             if (!inputFiles.isEmpty()) {
-                throw new ParameterException(
-                        spec.commandLine(), "Only one file is allowed if no output file given");
+                throw new IllegalArgumentException(
+                        "Only one file is allowed if no output file given");
             }
             return inputFile.resolveSibling(
                     inputFile.getFileName().toString().replace(".cjfr", ".inflated.jfr"));

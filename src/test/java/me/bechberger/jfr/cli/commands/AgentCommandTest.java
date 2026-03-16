@@ -24,7 +24,7 @@ public class AgentCommandTest {
     @Test
     public void testHelpOption() throws Exception {
         var res = new CommandExecuter("agent", "--help").checkNoError().run();
-        assertThat(res.output()).contains("Usage: cjfr agent [-h] PID [COMMAND]");
+        assertThat(res.output()).contains("Usage: cjfr agent [-hV] PID [COMMAND]");
     }
 
     @Test

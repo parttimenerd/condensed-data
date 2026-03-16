@@ -1,10 +1,10 @@
 package me.bechberger.jfr.cli.agent.commands;
 
+import me.bechberger.femtocli.annotations.Command;
+import me.bechberger.femtocli.annotations.Parameters;
 import me.bechberger.jfr.cli.CLIUtils.ByteSizeConverter;
 import me.bechberger.jfr.cli.agent.Agent;
 import me.bechberger.jfr.cli.agent.AgentIO;
-import picocli.CommandLine.Command;
-import picocli.CommandLine.Parameters;
 
 @Command(
         name = "set-max-size",

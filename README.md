@@ -49,7 +49,7 @@ Commands:
   help              Print help information
 ```
 ```shell
-> java -javaagent:target/condensed-data.jar="start --help"
+> java -javaagent:target/condensed-data.jar=start,--help
 Usage: -javaagent:condensed-agent.jar start [-h] [--new-names] [--rotating]
        [--verbose] [-c=<jfrConfig>] [-d=<configuration>]
        [--duration=<duration>] [-m=<miscJfrConfig>]

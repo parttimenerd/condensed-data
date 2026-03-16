@@ -3,15 +3,15 @@ package me.bechberger.jfr.cli.commands;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.junit.jupiter.api.Assertions.assertAll;
 
-import com.github.stefanbirkner.systemlambda.SystemLambda;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.concurrent.atomic.AtomicInteger;
-import java.util.concurrent.atomic.AtomicReference;
 import java.util.stream.Collectors;
+import me.bechberger.condensed.Util;
+import me.bechberger.femtocli.FemtoCli;
+import me.bechberger.femtocli.RunResult;
 import me.bechberger.jfr.cli.JFRCLI;
 
 /** Run a command with the given files in a temporary folder and check all files in the folder */
@@ -51,34 +51,28 @@ public class CommandExecuter {
         for (var entry : copiedInFiles.entrySet()) {
             Files.copy(entry.getKey(), tempFolder.resolve(entry.getValue()));
         }
-        AtomicInteger exitCode = new AtomicInteger();
-        AtomicReference<String> err = new AtomicReference<>();
-        var modifiedArgs = args.stream().map(s -> s.replaceAll("^T/", tempFolder.toString() + "/"));
-        String out =
-                SystemLambda.tapSystemOut(
-                        () ->
-                                err.set(
-                                        SystemLambda.tapSystemErr(
-                                                () -> {
-                                                    exitCode.set(
-                                                            JFRCLI.execute(
-                                                                    modifiedArgs.toArray(
-                                                                            String[]::new)));
-                                                })));
+        var modifiedArgs =
+                args.stream()
+                        .map(s -> s.replaceAll("^T/", tempFolder.toString() + "/"))
+                        .toArray(String[]::new);
+        RunResult result =
+                FemtoCli.builder()
+                        .commandConfig(c -> c.version = Util.getLibraryVersion())
+                        .runCaptured(new JFRCLI(), modifiedArgs);
         if (checkNoError) {
             assertAll(
-                    () -> assertThat(exitCode.get()).isEqualTo(0),
-                    () -> assertThat(err.get()).isEmpty());
+                    () -> assertThat(result.exitCode()).isEqualTo(0),
+                    () -> assertThat(result.err()).isEmpty());
         }
         if (checkNoOutput) {
-            assertThat(out).isEmpty();
+            assertThat(result.out()).isEmpty();
         }
         try (var stream = Files.list(tempFolder)) {
             checkFilesInTemp.accept(
-                    new CommandResult(exitCode.get(), out, err.get()),
+                    new CommandResult(result.exitCode(), result.out(), result.err()),
                     stream.collect(Collectors.toMap(p -> p.getFileName().toString(), p -> p)));
         }
-        return new CommandResult(exitCode.get(), out, err.get());
+        return new CommandResult(result.exitCode(), result.out(), result.err());
     }
 
     private final List<String> args;
