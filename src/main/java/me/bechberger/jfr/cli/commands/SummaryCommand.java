@@ -18,7 +18,7 @@ import me.bechberger.jfr.cli.FileOptionConverters.ExistingCJFRFileOrZipOrFolderC
 import me.bechberger.jfr.cli.FileOptionConverters.ExistingCJFRFileOrZipOrFolderParameterConsumer;
 import me.bechberger.jfr.cli.FileOptionConverters.ExistingCJFRFilesOrZipOrFolderConsumer;
 import me.bechberger.util.TimeUtil;
-import org.json.JSONObject;
+import me.bechberger.util.json.PrettyPrinter;
 import picocli.CommandLine.Command;
 import picocli.CommandLine.Mixin;
 import picocli.CommandLine.Option;
@@ -82,7 +82,7 @@ public class SummaryCommand implements Callable<Integer> {
             var summary = computeSummary(jfrReader);
 
             if (json) {
-                JSONObject output = summary.toJSON(shortSummary);
+                Map<String, Object> output = summary.toJSON(shortSummary);
 
                 // Add EventWriteTree data if --full is specified
                 if (full) {
@@ -90,7 +90,7 @@ public class SummaryCommand implements Callable<Integer> {
                     output.put("eventWriteTree", flamegraphGenerator.toJSON());
                 }
 
-                System.out.println(output.toString(2));
+                System.out.println(PrettyPrinter.prettyPrint(output));
             } else {
                 // Print full statistics if requested
                 if (full) {
@@ -184,8 +184,8 @@ public class SummaryCommand implements Callable<Integer> {
             return sb.toString();
         }
 
-        public JSONObject toJSON(boolean shortSummary) {
-            JSONObject json = new JSONObject();
+        public Map<String, Object> toJSON(boolean shortSummary) {
+            Map<String, Object> json = new LinkedHashMap<>();
             json.put("format version", version());
             json.put("generator", generatorName());
             json.put("generator version", generatorVersion());
@@ -203,7 +203,7 @@ public class SummaryCommand implements Callable<Integer> {
             json.put("count", eventCount());
 
             if (!shortSummary) {
-                JSONObject events = new JSONObject();
+                Map<String, Object> events = new LinkedHashMap<>();
                 for (var entry :
                         eventCounts().entrySet().stream()
                                 .sorted(Comparator.comparing(e -> -e.getValue()))

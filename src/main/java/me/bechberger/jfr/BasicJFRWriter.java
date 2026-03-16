@@ -26,10 +26,10 @@ import me.bechberger.condensed.types.*;
 import me.bechberger.condensed.types.FloatType.Type;
 import me.bechberger.condensed.types.StructType.Field;
 import me.bechberger.jfr.JFRReduction.ReducedStackTrace;
+import me.bechberger.util.json.JSONParser;
+import me.bechberger.util.json.PrettyPrinter;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
-import org.json.JSONArray;
-import org.json.JSONException;
 
 /**
  * Writes JFR events to a {@link CondensedOutputStream} which can be read by {@link BasicJFRReader}
@@ -351,23 +351,24 @@ public class BasicJFRWriter {
 
     public String getDescription(ValueDescriptor field) {
         // encode all important info in the description
-        JSONArray arr = new JSONArray();
-        arr.put(field.getTypeName());
-        arr.put(field.getContentType());
-        arr.put(
-                field.getAnnotationElements().stream()
-                        .map(
-                                a -> {
-                                    JSONArray annotation = new JSONArray();
-                                    annotation.put(a.getTypeName());
-                                    annotation.put(a.getValues());
-                                    return annotation;
-                                })
-                        .toList());
-        arr.put(field.getLabel());
-        arr.put(field.getDescription());
-        arr.put(field.isArray());
-        return arr.toString();
+        List<Object> arr = new ArrayList<>();
+        arr.add(field.getTypeName());
+        arr.add(field.getContentType());
+        arr.add(
+                new ArrayList<>(
+                        field.getAnnotationElements().stream()
+                                .map(
+                                        a -> {
+                                            List<Object> annotation = new ArrayList<>();
+                                            annotation.add(a.getTypeName());
+                                            annotation.add(new ArrayList<>(a.getValues()));
+                                            return (Object) annotation;
+                                        })
+                                .toList()));
+        arr.add(field.getLabel());
+        arr.add(field.getDescription());
+        arr.add(field.isArray());
+        return PrettyPrinter.compactPrint(arr);
     }
 
     record ParsedAnnotationElement(String type, List<Object> values) {}
@@ -382,26 +383,27 @@ public class BasicJFRWriter {
 
     @SuppressWarnings("unchecked")
     public static ParsedFieldDescription parseFieldDescription(String description) {
-        JSONArray arr;
+        List<Object> arr;
         try {
-            arr = new JSONArray(description);
-        } catch (JSONException e) {
+            arr = (List<Object>) JSONParser.parse(description);
+        } catch (IOException e) {
             throw new IllegalArgumentException("Invalid description: " + description, e);
         }
         return new ParsedFieldDescription(
-                arr.getString(0),
-                arr.isNull(1) ? null : arr.getString(1),
-                arr.getJSONArray(2).toList().stream()
-                        .map(
-                                o -> {
-                                    var a = (List<Object>) o;
-                                    return new ParsedAnnotationElement(
-                                            (String) a.get(0), (List<Object>) a.get(1));
-                                })
-                        .toList(),
-                arr.isNull(3) ? null : arr.getString(3),
-                arr.isNull(4) ? null : arr.getString(4),
-                arr.getBoolean(5));
+                (String) arr.get(0),
+                arr.get(1) == null ? null : (String) arr.get(1),
+                ((List<Object>) arr.get(2))
+                        .stream()
+                                .map(
+                                        o -> {
+                                            var a = (List<Object>) o;
+                                            return new ParsedAnnotationElement(
+                                                    (String) a.get(0), (List<Object>) a.get(1));
+                                        })
+                                .toList(),
+                arr.get(3) == null ? null : (String) arr.get(3),
+                arr.get(4) == null ? null : (String) arr.get(4),
+                (Boolean) arr.get(5));
     }
 
     @SuppressWarnings("unchecked")
@@ -685,17 +687,22 @@ public class BasicJFRWriter {
     }
 
     String getEventDescription(EventType type) {
-        var arr = new JSONArray();
-        arr.put(type.getLabel());
-        arr.put(type.getDescription());
-        return arr.toString();
+        var arr = new ArrayList<Object>();
+        arr.add(type.getLabel());
+        arr.add(type.getDescription());
+        return PrettyPrinter.compactPrint(arr);
     }
 
     public record ParsedEventDescription(String label, String description) {}
 
     public static ParsedEventDescription parseEventDescription(String description) {
-        JSONArray arr = new JSONArray(description);
-        return new ParsedEventDescription(arr.getString(0), arr.getString(1));
+        List<Object> arr;
+        try {
+            arr = (List<Object>) JSONParser.parse(description);
+        } catch (IOException e) {
+            throw new IllegalStateException("Invalid description: " + description, e);
+        }
+        return new ParsedEventDescription((String) arr.get(0), (String) arr.get(1));
     }
 
     @SuppressWarnings({"rawtypes", "unchecked"})

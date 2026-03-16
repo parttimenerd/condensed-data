@@ -6,10 +6,11 @@ import static org.junit.jupiter.api.Assertions.assertAll;
 import java.io.IOException;
 import java.nio.file.Path;
 import java.util.List;
+import java.util.Map;
 import jdk.jfr.consumer.RecordingFile;
 import me.bechberger.condensed.Compression;
 import me.bechberger.jfr.cli.Constants;
-import org.json.JSONObject;
+import me.bechberger.util.json.JSONParser;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
@@ -165,7 +166,12 @@ public class SummaryCommandTest {
                 .checkNoError()
                 .check(
                         (result, files) -> {
-                            var json = new JSONObject(result.output());
+                            Map<String, Object> json;
+                            try {
+                                json = (Map<String, Object>) JSONParser.parse(result.output());
+                            } catch (java.io.IOException e) {
+                                throw new RuntimeException(e);
+                            }
                             var keys = json.keySet();
                             assertAll(
                                     () -> assertThat(keys).contains("format version"),

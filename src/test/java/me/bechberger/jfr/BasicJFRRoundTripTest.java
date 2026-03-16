@@ -252,7 +252,7 @@ public class BasicJFRRoundTripTest {
                         event -> {
                             basicJFRWriter.processEvent(event);
                             recordedEvents.add(event);
-                            if (recordedEvents.size() == 2) rs.close();
+                            if (recordedEvents.size() == count) rs.close();
                         });
 
                 rs.startAsync();

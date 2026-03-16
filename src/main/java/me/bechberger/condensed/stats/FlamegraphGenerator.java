@@ -2,10 +2,11 @@ package me.bechberger.condensed.stats;
 
 import java.io.PrintStream;
 import java.nio.file.Path;
+import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
-import org.json.JSONArray;
-import org.json.JSONObject;
 
 /**
  * Generates flamegraphs from an {@link EventWriteTree}
@@ -164,7 +165,7 @@ public class FlamegraphGenerator {
      *
      * @return JSONArray with event type statistics
      */
-    public JSONArray toJSON() {
+    public List<Object> toJSON() {
         long totalBytes = computeOverallBytesWritten(root);
 
         // Aggregate entries by type name
@@ -190,7 +191,7 @@ public class FlamegraphGenerator {
                     });
         }
 
-        JSONArray result = new JSONArray();
+        List<Object> result = new ArrayList<>();
         aggregated.entrySet().stream()
                 .sorted((a, b) -> Long.compare(b.getValue().directBytes, a.getValue().directBytes))
                 .forEach(
@@ -206,7 +207,7 @@ public class FlamegraphGenerator {
                                             ? (double) stats.directBytes * 100.0 / totalBytes
                                             : 0.0;
 
-                            JSONObject obj = new JSONObject();
+                            Map<String, Object> obj = new LinkedHashMap<>();
                             obj.put("typeName", typeName);
                             obj.put("directBytes", stats.directBytes);
                             obj.put("overallBytes", stats.overallBytes);
@@ -214,7 +215,7 @@ public class FlamegraphGenerator {
                             obj.put("overallBytesPerMessage", overallBytesPerEvent);
                             obj.put("percentageOfTotal", percentageOfTotal);
 
-                            result.put(obj);
+                            result.add(obj);
                         });
 
         return result;
