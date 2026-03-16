@@ -6,12 +6,10 @@ import java.io.OutputStream;
 import java.util.zip.Deflater;
 import java.util.zip.GZIPInputStream;
 import java.util.zip.GZIPOutputStream;
-import org.apache.commons.compress.compressors.bzip2.BZip2CompressorInputStream;
-import org.apache.commons.compress.compressors.bzip2.BZip2CompressorOutputStream;
-import org.apache.commons.compress.compressors.xz.XZCompressorInputStream;
-import org.apache.commons.compress.compressors.xz.XZCompressorOutputStream;
-import org.apache.commons.compress.compressors.zstandard.ZstdCompressorInputStream;
-import org.apache.commons.compress.compressors.zstandard.ZstdCompressorOutputStream;
+import net.jpountz.lz4.LZ4Factory;
+import net.jpountz.lz4.LZ4FrameInputStream;
+import net.jpountz.lz4.LZ4FrameOutputStream;
+import net.jpountz.xxhash.XXHashFactory;
 
 public enum Compression {
     NONE(
@@ -46,67 +44,31 @@ public enum Compression {
                     return new GZIPInputStream(in);
                 }
             }),
-    XZ(
+    LZ4FRAMED(
             new CompressionFactory() {
                 @Override
                 public OutputStream wrap(OutputStream out, CompressionLevel level)
                         throws IOException {
-                    int preset =
+                    var compressor =
                             switch (level) {
-                                case FAST -> 1;
-                                case MEDIUM -> 6;
-                                case HIGH_COMPRESSION -> 8;
-                                case MAX_COMPRESSION -> 9;
+                                case FAST -> LZ4Factory.fastestInstance().fastCompressor();
+                                case MEDIUM, HIGH_COMPRESSION ->
+                                        LZ4Factory.fastestInstance().highCompressor();
+                                case MAX_COMPRESSION ->
+                                        LZ4Factory.fastestInstance().highCompressor(17);
                             };
-                    return new XZCompressorOutputStream(out, preset);
+                    return new LZ4FrameOutputStream(
+                            out,
+                            LZ4FrameOutputStream.BLOCKSIZE.SIZE_4MB,
+                            -1,
+                            compressor,
+                            XXHashFactory.fastestInstance().hash32(),
+                            LZ4FrameOutputStream.FLG.Bits.BLOCK_INDEPENDENCE);
                 }
 
                 @Override
                 public InputStream wrap(InputStream in) throws IOException {
-                    return new XZCompressorInputStream(in);
-                }
-            }),
-    BZIP2(
-            new CompressionFactory() {
-                @Override
-                public OutputStream wrap(OutputStream out, CompressionLevel level)
-                        throws IOException {
-                    int blockSize =
-                            switch (level) {
-                                case FAST -> 1; // 100k block size
-                                case MEDIUM -> 5; // 500k block size
-                                case HIGH_COMPRESSION -> 7; // 700k block size
-                                case MAX_COMPRESSION -> 9; // 900k block size (max)
-                            };
-                    return new BZip2CompressorOutputStream(out, blockSize);
-                }
-
-                @Override
-                public InputStream wrap(InputStream in) throws IOException {
-                    return new BZip2CompressorInputStream(in);
-                }
-            }),
-    ZSTD(
-            new CompressionFactory() {
-                @Override
-                public OutputStream wrap(OutputStream out, CompressionLevel level)
-                        throws IOException {
-                    int compressionLevel =
-                            switch (level) {
-                                case FAST -> 1;
-                                case MEDIUM -> 3;
-                                case HIGH_COMPRESSION -> 19;
-                                case MAX_COMPRESSION -> 22; // max level
-                            };
-                    return ZstdCompressorOutputStream.builder()
-                            .setOutputStream(out)
-                            .setLevel(compressionLevel)
-                            .get();
-                }
-
-                @Override
-                public InputStream wrap(InputStream in) throws IOException {
-                    return new ZstdCompressorInputStream(in);
+                    return new LZ4FrameInputStream(in);
                 }
             });
 
@@ -130,7 +92,7 @@ public enum Compression {
         }
     }
 
-    public static final Compression DEFAULT = XZ;
+    public static final Compression DEFAULT = LZ4FRAMED;
 
     private final CompressionFactory factory;
 

@@ -46,7 +46,7 @@ public class BenchmarkCommand implements Callable<Integer> {
             description =
                     "Used compression for condensed files, possible values:"
                             + " ${COMPLETION-CANDIDATES}",
-            defaultValue = "ZSTD")
+            defaultValue = "LZ4FRAMED")
     private Compression compression = Compression.DEFAULT;
 
     @Option(

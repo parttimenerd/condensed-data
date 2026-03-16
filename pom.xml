@@ -239,25 +239,10 @@
             <artifactId>json</artifactId>
             <version>20250517</version>
         </dependency>
-        <!--<dependency> // its fast (three times better than others), but is unmaintained
-            <groupId>org.lz4</groupId>
+        <dependency>
+            <groupId>at.yawk.lz4</groupId>
             <artifactId>lz4-java</artifactId>
-            <version>1.8.0</version>
-        </dependency>-->
-        <dependency>
-            <groupId>org.apache.commons</groupId>
-            <artifactId>commons-compress</artifactId>
-            <version>1.28.0</version>
-        </dependency>
-        <dependency>
-            <groupId>org.tukaani</groupId>
-            <artifactId>xz</artifactId>
-            <version>1.10</version>
-        </dependency>
-        <dependency>
-            <groupId>com.github.luben</groupId>
-            <artifactId>zstd-jni</artifactId>
-            <version>1.5.6-7</version>
+            <version>1.10.4</version>
         </dependency>
         <dependency>
             <groupId>com.google.errorprone</groupId>
@@ -268,7 +253,7 @@
         <dependency>
             <groupId>me.bechberger</groupId>
             <artifactId>ap-loader-all</artifactId>
-            <version>4.0-10</version>
+            <version>4.3-13</version>
             <scope>test</scope>
         </dependency>
         <dependency>
