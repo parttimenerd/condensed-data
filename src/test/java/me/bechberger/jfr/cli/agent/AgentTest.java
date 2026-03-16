@@ -103,7 +103,7 @@ public class AgentTest {
      */
     @ParameterizedTest(name = "Run {index}: mode={0}")
     @MethodSource("runModes")
-    @Disabled 
+    @Disabled
     // set test label / name
     public void testBasicRun(AgentRunMode runMode) throws InterruptedException, IOException {
         assertTrue(jvm.isAlive());
