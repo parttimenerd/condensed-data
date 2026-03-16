@@ -232,7 +232,7 @@
         <dependency>
             <groupId>org.openjdk.jmc</groupId>
             <artifactId>flightrecorder.writer</artifactId>
-            <version>9.1.1</version>
+            <version>9.1.2</version>
         </dependency>
         <dependency>
             <groupId>org.json</groupId>
@@ -242,13 +242,7 @@
         <dependency>
             <groupId>at.yawk.lz4</groupId>
             <artifactId>lz4-java</artifactId>
-            <version>1.10.4</version>
-        </dependency>
-        <dependency>
-            <groupId>com.google.errorprone</groupId>
-            <artifactId>error_prone_annotation</artifactId>
-            <version>2.40.0</version>
-            <scope>compile</scope>
+            <version>1.10.2</version>
         </dependency>
         <dependency>
             <groupId>me.bechberger</groupId>

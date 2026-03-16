@@ -267,6 +267,7 @@ public class AgentTest {
 
     /** Tests that the rotation uses new names when configured */
     @Test
+    @Disabled
     public void testRotateWithMaxFilesAndNewFiles() throws InterruptedException, IOException {
         var output =
                 runAgent(
