@@ -29,7 +29,6 @@ import me.bechberger.jfr.JFREventCombiner.MapEntry.MapValue;
 import me.bechberger.jfr.JFREventCombiner.MapEntry.SingleValue;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
-import org.openjdk.jmc.flightrecorder.writer.api.TypedValue;
 
 /** Contains combiners for JFR events to reduce the amount of data written to the stream */
 public class JFREventCombiner extends EventCombiner {
@@ -585,26 +584,6 @@ public class JFREventCombiner extends EventCombiner {
             return eventTypeName;
         }
 
-        public Reconstitutor<C, TypedValue> createTypedValueReconstitutor(
-                WritingJFRReader jfrWriter) {
-            return new Reconstitutor<>() {
-                @Override
-                public String getEventTypeName() {
-                    return eventTypeName;
-                }
-
-                @Override
-                public List<TypedValue> reconstitute(
-                        StructType<?, ?> resultEventType, ReadStruct combinedReadEvent) {
-                    return AbstractReconstitutor.this.reconstitute(
-                            resultEventType,
-                            combinedReadEvent,
-                            new TypedValueEventBuilder(
-                                    combinedReadEvent, eventTypeName, jfrWriter));
-                }
-            };
-        }
-
         public Reconstitutor<C, ReadStruct> createReadStructReconstitutor(
                 TypeCollection typeCollection) {
             return new Reconstitutor<>() {
@@ -632,29 +611,7 @@ public class JFREventCombiner extends EventCombiner {
             return List.of();
         }
 
-        /** Construct a typed valued event from it's fields */
-        public static class TypedValueEventBuilder
-                extends EventBuilder<TypedValue, TypedValueEventBuilder> {
-
-            private final WritingJFRReader jfrWriter;
-
-            public TypedValueEventBuilder(
-                    ReadStruct combinedReadEvent,
-                    String eventTypeName,
-                    WritingJFRReader jfrWriter) {
-                super(combinedReadEvent, eventTypeName);
-                this.jfrWriter = jfrWriter;
-            }
-
-            @Override
-            public TypedValue build() {
-                var condensedType = jfrWriter.getCondensedType(getEventTypeName());
-                ReadStruct reconstructed = new ReadStruct(checkType(condensedType), getMap());
-                return jfrWriter.fromReadStruct(reconstructed);
-            }
-        }
-
-        /** Construct a typed valued event from it's fields */
+        /** Construct a ReadStruct event from it's fields */
         public static class ReadStructEventBuilder
                 extends EventBuilder<ReadStruct, ReadStructEventBuilder> {
 
@@ -1355,49 +1312,35 @@ public class JFREventCombiner extends EventCombiner {
         }
     }
 
-    private static final Map<String, AbstractReconstitutor<? extends AbstractCombiner<?, ?>>>
+    private static final Map<
+                    CombinedEventType, AbstractReconstitutor<? extends AbstractCombiner<?, ?>>>
             recons =
-                    new HashMap<>(
-                            Map.ofEntries(
-                                    Map.entry(
-                                            "jdk.combined.ObjectAllocationSample",
-                                            new ObjectAllocationSampleReconstitutor()),
-                                    Map.entry(
-                                            "jdk.combined.PromoteObjectInNewPLAB",
-                                            new PromoteObjectReconstitutor(
-                                                    "jdk.PromoteObjectInNewPLAB")),
-                                    Map.entry(
-                                            "jdk.combined.PromoteObjectOutsidePLAB",
-                                            new PromoteObjectReconstitutor(
-                                                    "jdk.PromoteObjectOutsidePLAB")),
-                                    Map.entry(
-                                            "jdk.combined.GCPhasePauseLevel1",
-                                            new GCPhasePauseLevelReconstitutor(
-                                                    "jdk.GCPhasePauseLevel1")),
-                                    Map.entry(
-                                            "jdk.combined.GCPhasePauseLevel2",
-                                            new GCPhasePauseLevelReconstitutor(
-                                                    "jdk.GCPhasePauseLevel2")),
-                                    Map.entry(
-                                            "jdk.combined.TenuringDistribution",
-                                            new TenuringDistributionReconstitutor()),
-                                    Map.entry(
-                                            "jdk.combined.GCPhaseParallel",
-                                            new GCPhaseParallelReconstitutor())));
+                    Map.ofEntries(
+                            Map.entry(
+                                    CombinedEventType.OBJECT_ALLOCATION_SAMPLE,
+                                    new ObjectAllocationSampleReconstitutor()),
+                            Map.entry(
+                                    CombinedEventType.PROMOTE_OBJECT_IN_NEW_PLAB,
+                                    new PromoteObjectReconstitutor("jdk.PromoteObjectInNewPLAB")),
+                            Map.entry(
+                                    CombinedEventType.PROMOTE_OBJECT_OUTSIDE_PLAB,
+                                    new PromoteObjectReconstitutor("jdk.PromoteObjectOutsidePLAB")),
+                            Map.entry(
+                                    CombinedEventType.GC_PHASE_PAUSE_LEVEL1,
+                                    new GCPhasePauseLevelReconstitutor("jdk.GCPhasePauseLevel1")),
+                            Map.entry(
+                                    CombinedEventType.GC_PHASE_PAUSE_LEVEL2,
+                                    new GCPhasePauseLevelReconstitutor("jdk.GCPhasePauseLevel2")),
+                            Map.entry(
+                                    CombinedEventType.TENURING_DISTRIBUTION,
+                                    new TenuringDistributionReconstitutor()),
+                            Map.entry(
+                                    CombinedEventType.GC_PHASE_PARALLEL,
+                                    new GCPhaseParallelReconstitutor()));
 
-    public static class JFREventTypedValuedReconstitutor extends EventReconstitutor<TypedValue> {
-
-        public JFREventTypedValuedReconstitutor(WritingJFRReader jfrWriter) {
-            super(
-                    recons.entrySet().stream()
-                            .collect(
-                                    Collectors.toMap(
-                                            Map.Entry::getKey,
-                                            e ->
-                                                    e.getValue()
-                                                            .createTypedValueReconstitutor(
-                                                                    jfrWriter))));
-        }
+    static Map<CombinedEventType, AbstractReconstitutor<? extends AbstractCombiner<?, ?>>>
+            getRecons() {
+        return recons;
     }
 
     public static class JFREventReadStructReconstitutor extends EventReconstitutor<ReadStruct> {
@@ -1407,7 +1350,7 @@ public class JFREventCombiner extends EventCombiner {
                     recons.entrySet().stream()
                             .collect(
                                     Collectors.toMap(
-                                            Map.Entry::getKey,
+                                            e -> e.getKey().getCombinedTypeName(),
                                             e ->
                                                     e.getValue()
                                                             .createReadStructReconstitutor(

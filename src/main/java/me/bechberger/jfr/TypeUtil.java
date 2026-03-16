@@ -17,6 +17,7 @@ import org.jetbrains.annotations.Nullable;
 import org.openjdk.jmc.flightrecorder.writer.api.TypedField;
 import org.openjdk.jmc.flightrecorder.writer.api.TypedValue;
 
+@JMCDependent
 public class TypeUtil {
     private static CondensedType<?, ?> getPrimitiveType(Class<?> klass) {
         return switch (klass.getName()) {

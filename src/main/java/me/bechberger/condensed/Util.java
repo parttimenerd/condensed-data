@@ -10,9 +10,11 @@ import java.nio.file.attribute.FileTime;
 import java.time.Instant;
 import java.util.List;
 import java.util.stream.IntStream;
-import org.openjdk.jmc.common.util.Pair;
 
 public final class Util {
+
+    /** Generic pair, replacing org.openjdk.jmc.common.util.Pair */
+    public record Pair<T1, T2>(T1 left, T2 right) {}
 
     private Util() {
         // Prevent instantiation

@@ -4,6 +4,7 @@ import static me.bechberger.util.MemoryUtil.parseMemory;
 import static me.bechberger.util.TimeUtil.parseDuration;
 import static me.bechberger.util.TimeUtil.parseInstant;
 
+import java.lang.reflect.Method;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.ArrayList;
@@ -15,6 +16,37 @@ import me.bechberger.jfr.Configuration;
 import org.jetbrains.annotations.NotNull;
 
 public class CLIUtils {
+
+    /**
+     * Call the {@code run} method of the {@code $Impl} inner class via reflection, printing the
+     * result if it returns a String.
+     */
+    public static int callImpl(Object command, String commandName) {
+        try {
+            Class<?> implClass = Class.forName(command.getClass().getName() + "$Impl");
+            Method run = implClass.getMethod("run", command.getClass());
+            Object result = run.invoke(null, command);
+            if (result instanceof String s) {
+                System.out.println(s);
+            }
+        } catch (ClassNotFoundException e) {
+            System.err.println(
+                    "Error: "
+                            + commandName
+                            + " is not supported in this minimal build"
+                            + " (built without JMC support).");
+            return 1;
+        } catch (Exception e) {
+            if (e.getCause() != null) {
+                e.getCause().printStackTrace();
+            } else {
+                e.printStackTrace();
+            }
+            return 1;
+        }
+        return 0;
+    }
+
     public static class ConfigurationIterable implements Iterable<String> {
         @NotNull
         @Override

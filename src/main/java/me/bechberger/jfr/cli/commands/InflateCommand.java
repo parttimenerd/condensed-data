@@ -6,8 +6,8 @@ import java.util.List;
 import java.util.concurrent.Callable;
 import me.bechberger.femtocli.Spec;
 import me.bechberger.femtocli.annotations.*;
-import me.bechberger.jfr.CombiningJFRReader;
-import me.bechberger.jfr.WritingJFRReader;
+import me.bechberger.jfr.JMCDependent;
+import me.bechberger.jfr.cli.CLIUtils;
 import me.bechberger.jfr.cli.EventFilter.EventFilterOptionMixin;
 import me.bechberger.jfr.cli.FileOptionConverters;
 import me.bechberger.jfr.cli.FileOptionConverters.ExistingCJFRFileOrZipOrFolderConverter;
@@ -41,14 +41,14 @@ public class InflateCommand implements Callable<Integer> {
 
     Spec spec;
 
-    private List<Path> inputs() {
+    List<Path> inputs() {
         var inputs = new ArrayList<Path>();
         inputs.add(inputFile);
         inputs.addAll(inputFiles);
         return inputs;
     }
 
-    private Path getOutputFile() {
+    Path getOutputFile() {
         if (outputFile.toString().isEmpty()) {
             if (!inputFiles.isEmpty()) {
                 throw new IllegalArgumentException(
@@ -61,17 +61,19 @@ public class InflateCommand implements Callable<Integer> {
     }
 
     public Integer call() {
-        try {
+        return CLIUtils.callImpl(this, "inflate");
+    }
+
+    /** JMC-dependent implementation, loaded via reflection. */
+    @JMCDependent
+    public static class Impl {
+        public static void run(InflateCommand cmd) throws Exception {
             var jfrReader =
-                    CombiningJFRReader.fromPaths(
-                            inputs(),
-                            eventFilterOptionMixin.createFilter(),
-                            eventFilterOptionMixin.noReconstitution());
-            WritingJFRReader.toJFRFile(jfrReader, getOutputFile());
-        } catch (Exception e) {
-            e.printStackTrace();
-            return 1;
+                    me.bechberger.jfr.CombiningJFRReader.fromPaths(
+                            cmd.inputs(),
+                            cmd.eventFilterOptionMixin.createFilter(),
+                            cmd.eventFilterOptionMixin.noReconstitution());
+            me.bechberger.jfr.WritingJFRReader.toJFRFile(jfrReader, cmd.getOutputFile());
         }
-        return 0;
     }
 }

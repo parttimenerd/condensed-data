@@ -5,6 +5,7 @@ import static me.bechberger.condensed.types.TypeCollection.normalize;
 import java.util.Objects;
 import org.openjdk.jmc.flightrecorder.writer.api.TypedValue;
 
+@JMCDependent
 public class TypedValueUtil {
     public static long getLong(TypedValue value, String name) {
         return (long) Objects.requireNonNullElse(normalize(get(value, name)), 0L);

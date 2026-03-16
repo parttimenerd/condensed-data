@@ -9,8 +9,8 @@ import java.time.Instant;
 import java.util.*;
 import java.util.stream.Collectors;
 import jdk.jfr.consumer.RecordedObject;
+import me.bechberger.condensed.Util.Pair;
 import org.junit.jupiter.api.Assertions;
-import org.openjdk.jmc.common.util.Pair;
 
 public class Asserters {
 

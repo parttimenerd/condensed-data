@@ -18,6 +18,7 @@ import me.bechberger.util.MemoryUtil;
  * Runs the condenser on the JFR files from the <code>benchmark</code> folder and outputs a table on
  * the command line
  */
+@JMCDependent
 public class Benchmark {
 
     private static final Path BENCHMARK_FOLDER = Path.of("benchmark");

@@ -19,7 +19,9 @@ Usage examples:
 import argparse
 import json
 import os
+import re
 import shutil
+import subprocess
 import sys
 import tempfile
 import zipfile
@@ -34,6 +36,12 @@ from typing import List, Optional
 NATIVE_LIB_PREFIX = "net/jpountz/util/"
 REDUCTION_INFO_PATH = "jar-reduction-info.json"
 
+# Prefixes removed in inflaterless (without-JMC) builds
+JMC_PREFIX = "org/openjdk/jmc/"
+INFLATERLESS_EXTRA_PREFIXES = [
+    "org/owasp/",
+]
+
 # ---------------------------------------------------------------------------
 # Reduction descriptors – add new reductions here
 # ---------------------------------------------------------------------------
@@ -44,6 +52,7 @@ class ReductionResult:
     name: str
     description: str
     removed_prefixes: List[str] = field(default_factory=list)
+    removed_entries: List[str] = field(default_factory=list)
     kept: Optional[str] = None
     extra: dict = field(default_factory=dict)
 
@@ -96,15 +105,90 @@ def reduce_platform(
 
 
 # ---------------------------------------------------------------------------
-# (Future) JMC reduction – placeholder
+# JMC reduction
 # ---------------------------------------------------------------------------
 
-# def reduce_jmc(zf: zipfile.ZipFile) -> ReductionResult:
-#     return ReductionResult(
-#         name="without-jmc",
-#         description="Removed org.openjdk.jmc classes",
-#         removed_prefixes=["org/openjdk/jmc/"],
-#     )
+JMC_ANNOTATION = "me/bechberger/jfr/JMCDependent"
+APP_CLASS_PREFIX = "me/bechberger/"
+
+
+def _find_app_classes(zf: zipfile.ZipFile) -> List[str]:
+    """Return fully-qualified class names for all app .class files."""
+    classes = []
+    for entry in zf.namelist():
+        if entry.startswith(APP_CLASS_PREFIX) and entry.endswith(".class"):
+            # e.g. me/bechberger/jfr/WritingJFRReader.class -> me.bechberger.jfr.WritingJFRReader
+            fqcn = entry[: -len(".class")].replace("/", ".")
+            classes.append(fqcn)
+    return classes
+
+
+def _detect_jmc_dependent_classes(
+    jar_path: str,
+    class_names: List[str],
+    batch_size: int = 100,
+) -> List[str]:
+    """Use javap to detect classes annotated with @JMCDependent.
+
+    Returns a list of class entry paths (e.g. 'me/bechberger/jfr/WritingJFRReader.class').
+    """
+    annotated: List[str] = []
+    # Process in batches to avoid command-line length limits
+    for i in range(0, len(class_names), batch_size):
+        batch = class_names[i : i + batch_size]
+        cmd = ["javap", "-verbose", "-cp", jar_path] + batch
+        result = subprocess.run(
+            cmd,
+            capture_output=True,
+            text=True,
+            timeout=120,
+        )
+        output = result.stdout
+        # Parse javap output: class headers followed by annotation sections
+        current_class = None
+        in_annotations = False
+        for line in output.splitlines():
+            # Match class header: "public class me.bechberger.jfr.WritingJFRReader"
+            class_match = re.match(
+                r"^(?:public\s+|abstract\s+|final\s+)*"
+                r"(?:class|interface|@interface|enum)\s+"
+                r"(\S+)",
+                line,
+            )
+            if class_match:
+                current_class = class_match.group(1)
+                in_annotations = False
+                continue
+            if "RuntimeInvisibleAnnotations" in line or "RuntimeVisibleAnnotations" in line:
+                in_annotations = True
+                continue
+            if in_annotations and JMC_ANNOTATION in line and current_class:
+                entry_path = current_class.replace(".", "/") + ".class"
+                annotated.append(entry_path)
+                in_annotations = False
+                continue
+            # A blank or non-indented line usually ends the annotation block
+            if in_annotations and line and not line.startswith(" "):
+                in_annotations = False
+    return annotated
+
+
+def reduce_jmc(jar_path: str, zf: zipfile.ZipFile) -> ReductionResult:
+    """Remove org.openjdk.jmc classes, @JMCDependent annotated classes, and other unnecessary dependencies."""
+    app_classes = _find_app_classes(zf)
+    annotated = _detect_jmc_dependent_classes(jar_path, app_classes)
+
+    all_prefixes = [JMC_PREFIX] + INFLATERLESS_EXTRA_PREFIXES
+
+    result = ReductionResult(
+        name="without-jmc",
+        description="Removed org.openjdk.jmc classes, @JMCDependent annotated classes, and extra dependencies",
+        removed_prefixes=all_prefixes,
+        extra={"annotated_classes_removed": annotated},
+    )
+    # Add each annotated class as an exact-match entry path
+    result.removed_entries = annotated
+    return result
 
 
 # ---------------------------------------------------------------------------
@@ -116,6 +200,8 @@ def should_exclude(entry: str, reductions: List[ReductionResult]) -> bool:
         for prefix in r.removed_prefixes:
             if entry.startswith(prefix):
                 return True
+        if entry in r.removed_entries:
+            return True
     return False
 
 
@@ -188,13 +274,11 @@ def matrix_jar_name(base_stem: str, platform: str) -> str:
 
 def add_common_options(parser: argparse.ArgumentParser) -> None:
     """Add reduction flags shared by both subcommands (extend here)."""
-    # Future:
-    # parser.add_argument(
-    #     "--without-jmc",
-    #     action="store_true",
-    #     help="Remove org.openjdk.jmc classes (not yet implemented)",
-    # )
-    pass
+    parser.add_argument(
+        "--without-jmc",
+        action="store_true",
+        help="Remove org.openjdk.jmc classes and @JMCDependent annotated classes",
+    )
 
 
 def cmd_reduce(args: argparse.Namespace) -> None:
@@ -219,9 +303,11 @@ def cmd_reduce(args: argparse.Namespace) -> None:
         if args.platform:
             available = discover_platforms(zf)
             reductions.append(reduce_platform(zf, args.platform, available))
+        if args.without_jmc:
+            reductions.append(reduce_jmc(args.input, zf))
 
     if not reductions:
-        print("Error: no reduction options specified. Use --platform or see --help.", file=sys.stderr)
+        print("Error: no reduction options specified. Use --platform, --without-jmc, or see --help.", file=sys.stderr)
         sys.exit(1)
 
     reduce_jar(args.input, args.output, reductions)
@@ -251,21 +337,39 @@ def cmd_matrix(args: argparse.Namespace) -> None:
     else:
         selected = available
 
-    print(f"Generating {len(selected)} platform JARs into {out_dir}/")
+    total = 0
+    print(f"Generating platform JARs into {out_dir}/")
 
     with zipfile.ZipFile(args.input, "r") as zf:
+        jmc_reduction = reduce_jmc(args.input, zf)
         for platform in selected:
-            reductions: List[ReductionResult] = [
-                reduce_platform(zf, platform, available),
-            ]
-            out_path = os.path.join(out_dir, matrix_jar_name(base_stem, platform))
-            reduce_jar(args.input, out_path, reductions)
+            plat_reduction = reduce_platform(zf, platform, available)
 
-    # Also produce a universal (unreduced) copy
+            # Full variant (with JMC)
+            out_path = os.path.join(out_dir, matrix_jar_name(base_stem, platform))
+            reduce_jar(args.input, out_path, [plat_reduction])
+            total += 1
+
+            # Inflaterless variant (without JMC)
+            out_path_no_jmc = os.path.join(
+                out_dir, f"{base_stem}-{platform_slug(platform)}-inflaterless.jar"
+            )
+            reduce_jar(args.input, out_path_no_jmc, [plat_reduction, jmc_reduction])
+            total += 1
+
+    # Universal (unreduced) copy
     universal_path = os.path.join(out_dir, f"{base_stem}-universal.jar")
     reduce_jar(args.input, universal_path, [])
+    total += 1
 
-    print(f"\nDone. {len(selected) + 1} JARs written to {out_dir}/")
+    # Universal without JMC
+    universal_no_jmc_path = os.path.join(out_dir, f"{base_stem}-universal-inflaterless.jar")
+    with zipfile.ZipFile(args.input, "r") as zf:
+        jmc_reduction = reduce_jmc(args.input, zf)
+    reduce_jar(args.input, universal_no_jmc_path, [jmc_reduction])
+    total += 1
+
+    print(f"\nDone. {total} JARs written to {out_dir}/")
 
 
 def main() -> None:

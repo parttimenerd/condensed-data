@@ -135,8 +135,8 @@ public class BasicJFRRoundTripTest {
             assertEquals(recordedEvents.size(), events.size());
             int number = 0;
             for (var pair : Util.zip(recordedEvents, events)) {
-                var recordedEvent = pair.left;
-                var event = pair.right;
+                var recordedEvent = pair.left();
+                var event = pair.right();
 
                 // Check type and number
                 assertEquals("TestEvent", event.getEventType().getName());
@@ -269,8 +269,8 @@ public class BasicJFRRoundTripTest {
             maxDepth = maxDepth == -1 ? Integer.MAX_VALUE : maxDepth;
             int number = 0;
             for (var pair : Util.zip(recordedEvents, events)) {
-                var recordedEvent = pair.left;
-                var event = pair.right;
+                var recordedEvent = pair.left();
+                var event = pair.right();
 
                 // Check type and number
                 assertEquals("TestEvent", event.getEventType().getName());

@@ -5,9 +5,9 @@ import java.util.concurrent.Callable;
 import me.bechberger.condensed.Compression;
 import me.bechberger.femtocli.annotations.Command;
 import me.bechberger.femtocli.annotations.Option;
-import me.bechberger.jfr.Benchmark;
-import me.bechberger.jfr.Benchmark.TableConfig;
 import me.bechberger.jfr.Configuration;
+import me.bechberger.jfr.JMCDependent;
+import me.bechberger.jfr.cli.CLIUtils;
 import me.bechberger.jfr.cli.CLIUtils.ConfigurationConverter;
 
 @Command(
@@ -59,14 +59,28 @@ public class BenchmarkCommand implements Callable<Integer> {
             Configuration.configurations.values().stream().sorted().toList();
 
     public Integer call() {
-        var results =
-                new Benchmark(configurations, compression, regexp)
-                        .runBenchmarks(keepCondensedFile, inflateCondensedFile, keepInflatedFile);
-        if (csv) {
-            System.out.println(results.toTable(new TableConfig(false, onlyPerHour)).toCSV());
-        } else {
-            System.out.println(results.toTable(new TableConfig(true, onlyPerHour)));
+        return CLIUtils.callImpl(this, "benchmark");
+    }
+
+    /** JMC-dependent implementation, loaded via reflection. */
+    @JMCDependent
+    public static class Impl {
+        public static String run(BenchmarkCommand cmd) {
+            var results =
+                    new me.bechberger.jfr.Benchmark(cmd.configurations, cmd.compression, cmd.regexp)
+                            .runBenchmarks(
+                                    cmd.keepCondensedFile,
+                                    cmd.inflateCondensedFile,
+                                    cmd.keepInflatedFile);
+            if (cmd.csv) {
+                return results.toTable(
+                                new me.bechberger.jfr.Benchmark.TableConfig(false, cmd.onlyPerHour))
+                        .toCSV();
+            } else {
+                return results.toTable(
+                                new me.bechberger.jfr.Benchmark.TableConfig(true, cmd.onlyPerHour))
+                        .toString();
+            }
         }
-        return 0;
     }
 }

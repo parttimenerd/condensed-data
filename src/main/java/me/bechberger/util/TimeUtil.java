@@ -4,6 +4,7 @@ import java.time.Duration;
 import java.time.Instant;
 import java.time.LocalDateTime;
 import java.time.ZoneId;
+import java.time.ZonedDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -21,8 +22,8 @@ public class TimeUtil {
     }
 
     public static String formatInstant(Instant instant) {
-        LocalDateTime dateTime = LocalDateTime.ofInstant(instant, ZoneId.systemDefault());
-        DateTimeFormatter formatter = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
+        ZonedDateTime dateTime = instant.atZone(ZoneId.systemDefault());
+        DateTimeFormatter formatter = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ssXXX");
         return dateTime.format(formatter);
     }
 
@@ -41,9 +42,17 @@ public class TimeUtil {
                     LocalDateTime.now()
                             .format(DateTimeFormatter.ofPattern("yyyy-MM-dd " + time + ":00"));
         }
-        DateTimeFormatter formatter = DateTimeFormatter.ofPattern("yyyy-MM-dd H:m:s");
-        LocalDateTime dateTime = LocalDateTime.parse(time, formatter);
-        return dateTime.atZone(ZoneId.systemDefault()).toInstant();
+        // Try parsing with UTC offset first (format from formatInstant)
+        try {
+            DateTimeFormatter withOffset = DateTimeFormatter.ofPattern("yyyy-MM-dd H:m:sXXX");
+            ZonedDateTime zdt = ZonedDateTime.parse(time, withOffset);
+            return zdt.toInstant();
+        } catch (Exception e) {
+            // Fall back to parsing without offset (user-typed input)
+            DateTimeFormatter formatter = DateTimeFormatter.ofPattern("yyyy-MM-dd H:m:s");
+            LocalDateTime dateTime = LocalDateTime.parse(time, formatter);
+            return dateTime.atZone(ZoneId.systemDefault()).toInstant();
+        }
     }
 
     public static Duration parseDuration(String duration) {

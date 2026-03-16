@@ -7,6 +7,7 @@ import java.time.Instant;
 import java.time.LocalDateTime;
 import java.time.ZoneId;
 import java.time.ZoneOffset;
+import java.time.ZonedDateTime;
 import java.time.format.DateTimeFormatter;
 import net.jqwik.api.ForAll;
 import net.jqwik.api.Property;
@@ -35,25 +36,25 @@ public class TimeUtilTest {
     @Test
     public void testWithoutDate() {
         var instant = TimeUtil.parseInstant("12:34:56");
-        assertEquals(
-                LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyy-MM-dd 12:34:56")),
-                TimeUtil.formatInstant(instant));
+        var expected = ZonedDateTime.ofInstant(instant, ZoneId.systemDefault())
+                .format(DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ssXXX"));
+        assertEquals(expected, TimeUtil.formatInstant(instant));
     }
 
     @Test
     public void testWithoutDateAndSeconds() {
         var instant = TimeUtil.parseInstant("12:34");
-        assertEquals(
-                LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyy-MM-dd 12:34:00")),
-                TimeUtil.formatInstant(instant));
+        var expected = ZonedDateTime.ofInstant(instant, ZoneId.systemDefault())
+                .format(DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ssXXX"));
+        assertEquals(expected, TimeUtil.formatInstant(instant));
     }
 
     @Test
     public void testWithoutDateAndSeconds2() {
         var instant = TimeUtil.parseInstant("2:34");
-        assertEquals(
-                LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyy-MM-dd 02:34:00")),
-                TimeUtil.formatInstant(instant));
+        var expected = ZonedDateTime.ofInstant(instant, ZoneId.systemDefault())
+                .format(DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ssXXX"));
+        assertEquals(expected, TimeUtil.formatInstant(instant));
     }
 
     @Property
@@ -119,9 +120,9 @@ public class TimeUtilTest {
         var formatted = formatInstant(instant);
 
         // Get what the formatted time should be in the system's local timezone
-        var expectedDateTime = LocalDateTime.ofInstant(instant, java.time.ZoneId.systemDefault());
+        var expectedDateTime = ZonedDateTime.ofInstant(instant, java.time.ZoneId.systemDefault());
         var expectedFormatted =
-                expectedDateTime.format(DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss"));
+                expectedDateTime.format(DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ssXXX"));
 
         // Verify that the formatted time matches the local time, not UTC
         assertEquals(

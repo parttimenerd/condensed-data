@@ -3,8 +3,8 @@ package me.bechberger.condensed;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 
 import java.util.List;
+import me.bechberger.condensed.Util.Pair;
 import org.junit.jupiter.api.Test;
-import org.openjdk.jmc.common.util.Pair;
 
 public class UtilTest {
 

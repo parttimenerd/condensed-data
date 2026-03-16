@@ -636,7 +636,8 @@ public class JFREventCombinerTest {
                     reader.getReconstitutor()
                             .put(
                                     combiner.combinedEvent,
-                                    combiner.reconstitutor.createTypedValueReconstitutor(reader));
+                                    JFREventTypedValueCombiner.createTypedValueReconstitutor(
+                                            combiner.reconstitutor, reader));
                 }
             }
             var readEvents = reader.readAllJFREvents();

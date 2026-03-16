@@ -21,7 +21,7 @@ import me.bechberger.condensed.types.ArrayType;
 import me.bechberger.condensed.types.CondensedType;
 import me.bechberger.condensed.types.StringType;
 import me.bechberger.condensed.types.StructType;
-import me.bechberger.jfr.JFREventCombiner.JFREventTypedValuedReconstitutor;
+import me.bechberger.jfr.JFREventTypedValueCombiner.JFREventTypedValuedReconstitutor;
 import org.jetbrains.annotations.Nullable;
 import org.openjdk.jmc.flightrecorder.writer.RecordingImpl;
 import org.openjdk.jmc.flightrecorder.writer.api.*;
@@ -29,6 +29,7 @@ import org.openjdk.jmc.flightrecorder.writer.api.Types.Builtin;
 import org.openjdk.jmc.flightrecorder.writer.api.Types.JDK;
 import org.openjdk.jmc.flightrecorder.writer.api.Types.Predefined;
 
+@JMCDependent
 public class WritingJFRReader {
 
     private final JFRReader reader;
