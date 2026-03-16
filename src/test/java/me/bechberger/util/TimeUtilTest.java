@@ -4,7 +4,6 @@ import static me.bechberger.util.TimeUtil.formatInstant;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 
 import java.time.Instant;
-import java.time.LocalDateTime;
 import java.time.ZoneId;
 import java.time.ZoneOffset;
 import java.time.ZonedDateTime;
@@ -36,24 +35,27 @@ public class TimeUtilTest {
     @Test
     public void testWithoutDate() {
         var instant = TimeUtil.parseInstant("12:34:56");
-        var expected = ZonedDateTime.ofInstant(instant, ZoneId.systemDefault())
-                .format(DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ssXXX"));
+        var expected =
+                ZonedDateTime.ofInstant(instant, ZoneId.systemDefault())
+                        .format(DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ssXXX"));
         assertEquals(expected, TimeUtil.formatInstant(instant));
     }
 
     @Test
     public void testWithoutDateAndSeconds() {
         var instant = TimeUtil.parseInstant("12:34");
-        var expected = ZonedDateTime.ofInstant(instant, ZoneId.systemDefault())
-                .format(DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ssXXX"));
+        var expected =
+                ZonedDateTime.ofInstant(instant, ZoneId.systemDefault())
+                        .format(DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ssXXX"));
         assertEquals(expected, TimeUtil.formatInstant(instant));
     }
 
     @Test
     public void testWithoutDateAndSeconds2() {
         var instant = TimeUtil.parseInstant("2:34");
-        var expected = ZonedDateTime.ofInstant(instant, ZoneId.systemDefault())
-                .format(DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ssXXX"));
+        var expected =
+                ZonedDateTime.ofInstant(instant, ZoneId.systemDefault())
+                        .format(DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ssXXX"));
         assertEquals(expected, TimeUtil.formatInstant(instant));
     }
 
