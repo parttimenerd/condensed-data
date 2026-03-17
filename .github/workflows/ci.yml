@@ -31,22 +31,19 @@ jobs:
     - name: Generate platform-specific JARs
       run: python3 reduce-jar.py matrix target/condensed-data.jar target/platform-jars/
 
-    - name: Upload JARs as individual artifacts
-      uses: actions/github-script@v7
+    - name: Upload main JAR
+      uses: actions/upload-artifact@v6
       with:
-        script: |
-          const {DefaultArtifactClient} = require('@actions/artifact')
-          const fs = require('fs')
-          const path = require('path')
-          const client = new DefaultArtifactClient()
-          const options = { retentionDays: 30 }
+        name: condensed-data.jar
+        path: target/condensed-data.jar
+        retention-days: 30
 
-          await client.uploadArtifact('condensed-data.jar', ['target/condensed-data.jar'], '.', options)
-
-          const platformJars = fs.readdirSync('target/platform-jars').filter(f => f.endsWith('.jar'))
-          for (const jar of platformJars) {
-            await client.uploadArtifact(jar, [`target/platform-jars/${jar}`], '.', options)
-          }
+    - name: Upload platform JARs
+      uses: actions/upload-artifact@v6
+      with:
+        name: platform-jars
+        path: target/platform-jars/
+        retention-days: 30
 
   snapshot-release:
     needs: test
