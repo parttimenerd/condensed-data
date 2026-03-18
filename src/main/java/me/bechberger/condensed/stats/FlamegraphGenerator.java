@@ -89,8 +89,6 @@ public class FlamegraphGenerator {
      * <code>
      *     Type Name       | Direct Bytes | Overall Bytes | Event Count | Overall Bytes/Event | Percentage of Total
      * </code>
-     *
-     * @param s
      */
     public void writeTable(PrintStream s) {
         long totalBytes = computeOverallBytesWritten(root);

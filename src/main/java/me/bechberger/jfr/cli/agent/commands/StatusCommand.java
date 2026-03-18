@@ -12,7 +12,7 @@ import me.bechberger.jfr.cli.agent.AgentIO;
 public class StatusCommand implements Callable<Integer> {
 
     @Override
-    public Integer call() throws Exception {
+    public Integer call() {
         synchronized (Agent.getSyncObject()) {
             if (Agent.getCurrentRecordingThread() == null) {
                 AgentIO.getAgentInstance().println("No recording running");

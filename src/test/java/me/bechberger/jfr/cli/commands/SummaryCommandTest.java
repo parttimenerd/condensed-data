@@ -11,6 +11,7 @@ import jdk.jfr.consumer.RecordingFile;
 import me.bechberger.condensed.Compression;
 import me.bechberger.jfr.cli.Constants;
 import me.bechberger.util.json.JSONParser;
+import me.bechberger.util.json.Util;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
@@ -168,7 +169,7 @@ public class SummaryCommandTest {
                         (result, files) -> {
                             Map<String, Object> json;
                             try {
-                                json = (Map<String, Object>) JSONParser.parse(result.output());
+                                json = Util.asMap(JSONParser.parse(result.output()));
                             } catch (java.io.IOException e) {
                                 throw new RuntimeException(e);
                             }

@@ -28,6 +28,7 @@ import me.bechberger.condensed.types.StructType.Field;
 import me.bechberger.jfr.JFRReduction.ReducedStackTrace;
 import me.bechberger.util.json.JSONParser;
 import me.bechberger.util.json.PrettyPrinter;
+import me.bechberger.util.json.Util;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
@@ -171,7 +172,7 @@ public class BasicJFRWriter {
     private final JFREventCombiner eventCombiner;
     private final EventDeduplication deduplication;
     private volatile boolean closed = false;
-    private long defaultStartTimeNanos = System.currentTimeMillis() * 1000000;
+    private final long defaultStartTimeNanos = System.currentTimeMillis() * 1000000;
 
     /** field types that are not yet added, but their creation code is running + id */
     private final Map<TypeIdent, Integer> fieldTypesCurrentlyAdding;
@@ -687,7 +688,7 @@ public class BasicJFRWriter {
     }
 
     String getEventDescription(EventType type) {
-        var arr = new ArrayList<Object>();
+        var arr = new ArrayList<>();
         arr.add(type.getLabel());
         arr.add(type.getDescription());
         return PrettyPrinter.compactPrint(arr);
@@ -698,7 +699,7 @@ public class BasicJFRWriter {
     public static ParsedEventDescription parseEventDescription(String description) {
         List<Object> arr;
         try {
-            arr = (List<Object>) JSONParser.parse(description);
+            arr = Util.asList(JSONParser.parse(description));
         } catch (IOException e) {
             throw new IllegalStateException("Invalid description: " + description, e);
         }

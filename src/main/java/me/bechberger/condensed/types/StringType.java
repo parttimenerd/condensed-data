@@ -47,6 +47,11 @@ public class StringType extends CondensedType<String, String> {
         return super.equals(obj) && encoding.equals(((StringType) obj).encoding);
     }
 
+    @Override
+    public int hashCode() {
+        return super.hashCode() * 31 + encoding.hashCode();
+    }
+
     public static final SpecifiedType<StringType> SPECIFIED_TYPE =
             new SpecifiedType<>() {
                 @Override

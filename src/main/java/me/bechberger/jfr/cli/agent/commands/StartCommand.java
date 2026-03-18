@@ -14,7 +14,6 @@ import me.bechberger.jfr.cli.agent.*;
 public class StartCommand implements Callable<Integer> {
 
     @Parameters(
-            index = "0",
             arity = "0..1",
             paramLabel = "PATH",
             description = "Path to the recording file .cjfr file",

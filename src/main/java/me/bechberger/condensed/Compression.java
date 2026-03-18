@@ -15,13 +15,12 @@ public enum Compression {
     NONE(
             new CompressionFactory() {
                 @Override
-                public OutputStream wrap(OutputStream out, CompressionLevel level)
-                        throws IOException {
+                public OutputStream wrap(OutputStream out, CompressionLevel level) {
                     return out;
                 }
 
                 @Override
-                public InputStream wrap(InputStream in) throws IOException {
+                public InputStream wrap(InputStream in) {
                     return in;
                 }
             }),

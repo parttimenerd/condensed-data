@@ -43,7 +43,7 @@ public abstract class RecordingThread implements Runnable {
             DynamicallyChangeableSettings dynSettings,
             boolean rotating)
             throws IOException, ParseException {
-        this.agentIO.setLogLevel(verbose ? LogLevel.ALL : LogLevel.WARNING);
+        AgentIO.setLogLevel(verbose ? LogLevel.ALL : LogLevel.WARNING);
         this.configuration = configuration;
         this.jfrConfig = jfrConfig;
         this.dynSettings = dynSettings;

@@ -67,14 +67,15 @@ public class JFRHashConfig extends HashAndEqualsConfig {
         }
     }
 
-    private IdentityHashMap<RecordedFrame, Integer> methodHashCodeCache = new IdentityHashMap<>();
+    private final IdentityHashMap<RecordedFrame, Integer> methodHashCodeCache =
+            new IdentityHashMap<>();
 
     /** Currently not used */
     static class StackFrameWrapper implements HashAndEqualsWrapper<RecordedFrame> {
 
-        private RecordedFrame value;
+        private final RecordedFrame value;
         private final int maxCacheSize = 10000;
-        private int hashCode;
+        private final int hashCode;
 
         public StackFrameWrapper(
                 RecordedFrame value, IdentityHashMap<RecordedFrame, Integer> hashCodeCache) {

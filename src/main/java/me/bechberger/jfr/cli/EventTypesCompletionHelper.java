@@ -136,7 +136,7 @@ public class EventTypesCompletionHelper {
     }
 
     private static Map<String, Integer> obtainAndStoreTypesAndCount(Path path, Path cacheFile)
-            throws NoSuchAlgorithmException, IOException {
+            throws IOException {
         Path cacheFolder = getCJFREventsCacheFolder();
         if (cacheFolder == null) {
             return new HashMap<>();

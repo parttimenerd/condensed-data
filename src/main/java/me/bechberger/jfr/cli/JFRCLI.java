@@ -20,8 +20,7 @@ import me.bechberger.jfr.cli.commands.*;
             SummaryCommand.class,
             ViewCommand.class,
         },
-        mixinStandardHelpOptions = true,
-        version = "")
+        mixinStandardHelpOptions = true)
 public class JFRCLI implements Runnable {
 
     Spec spec;

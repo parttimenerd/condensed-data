@@ -29,7 +29,6 @@ import me.bechberger.util.json.PrettyPrinter;
 public class SummaryCommand implements Callable<Integer> {
 
     @Parameters(
-            index = "0",
             description = "The input .cjfr file, can be a folder, or a zip",
             converter = ExistingCJFRFileOrZipOrFolderConverter.class)
     private Path inputFile;

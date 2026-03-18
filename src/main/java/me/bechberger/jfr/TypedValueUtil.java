@@ -8,7 +8,7 @@ import org.openjdk.jmc.flightrecorder.writer.api.TypedValue;
 @JMCDependent
 public class TypedValueUtil {
     public static long getLong(TypedValue value, String name) {
-        return (long) Objects.requireNonNullElse(normalize(get(value, name)), 0L);
+        return Objects.requireNonNullElse(normalize(get(value, name)), 0L);
     }
 
     public static Object get(TypedValue value, String name) {

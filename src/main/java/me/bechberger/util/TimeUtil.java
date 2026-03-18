@@ -30,9 +30,6 @@ public class TimeUtil {
     /**
      * Parse an instant from a string. If the string only contains time (HH:mm:ss or HH:mm), the
      * current date is used. Interpreted as local time and converted to UTC.
-     *
-     * @param time
-     * @return
      */
     public static Instant parseInstant(String time) {
         if (time.matches("\\d{1,2}:\\d{1,2}:\\d{1,2}")) { // parse HH:mm:ss

@@ -84,7 +84,7 @@ public class AgentIO {
         }
     }
 
-    public void setLogLevel(LogLevel level) {
+    public static void setLogLevel(LogLevel level) {
         defaultLogLevel = level;
     }
 
@@ -159,12 +159,12 @@ public class AgentIO {
         return new PrintStream(
                 new OutputStream() {
                     @Override
-                    public void write(int b) throws IOException {
+                    public void write(int b) {
                         writeOutput(String.valueOf((char) b));
                     }
 
                     @Override
-                    public void write(byte @NotNull [] b, int off, int len) throws IOException {
+                    public void write(byte @NotNull [] b, int off, int len) {
                         writeOutput(new String(b, off, len));
                     }
                 });

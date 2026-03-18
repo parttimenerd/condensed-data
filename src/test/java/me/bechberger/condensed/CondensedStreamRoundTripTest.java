@@ -4,7 +4,6 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.junit.jupiter.api.Assertions.*;
 
 import java.io.ByteArrayOutputStream;
-import java.io.IOException;
 import java.io.UnsupportedEncodingException;
 import java.nio.charset.Charset;
 import java.util.function.BiPredicate;
@@ -285,8 +284,7 @@ public class CondensedStreamRoundTripTest {
 
     @Property
     public void testStartMessage(
-            @ForAll @StringLength(max = 10) String name, @ForAll String version)
-            throws IOException {
+            @ForAll @StringLength(max = 10) String name, @ForAll String version) {
         var bos = new ByteArrayOutputStream();
         new CondensedOutputStream(bos, new StartMessage(name, version)).close();
         try (var in = new CondensedInputStream(bos.toByteArray())) {

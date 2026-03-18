@@ -34,7 +34,6 @@ public interface CompletableContainer<T> {
     @SuppressWarnings("unchecked")
     static <T> T ensureRecursivelyComplete(T t) {
         if (t instanceof CompletableContainer) {
-            var cont = (CompletableContainer<T>) t;
             return ((CompletableContainer<T>) t).ensureRecursivelyComplete();
         }
         return t;

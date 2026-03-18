@@ -203,7 +203,7 @@ public class JFREventCombiner extends EventCombiner {
                                                 id,
                                                 "{" + key.toString() + "," + value.toString() + "}",
                                                 List.of(
-                                                        new Field<Map.Entry<K, V>, Object, Object>(
+                                                        new Field<>(
                                                                 "key",
                                                                 "",
                                                                 (CondensedType<?, Object>)

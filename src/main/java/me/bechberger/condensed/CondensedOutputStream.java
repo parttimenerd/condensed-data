@@ -27,7 +27,7 @@ import org.jetbrains.annotations.Nullable;
  */
 public class CondensedOutputStream extends OutputStream implements AutoCloseable {
 
-    private Universe universe;
+    private final Universe universe;
 
     private final TypeCollection typeCollection;
 

@@ -135,10 +135,6 @@
                         </configuration>
                     </execution>
                 </executions>
-                <!-- skip if -DskipTests is passed -->
-                <configuration>
-                    <skip>${skipTests}</skip>
-                </configuration>
             </plugin>
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
@@ -257,7 +253,7 @@
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
         <maven.compiler.release>17</maven.compiler.release>
         <jqwik.version>1.8.2</jqwik.version>
-        <assertj.version>3.26.3</assertj.version>
+        <assertj.version>3.27.7</assertj.version>
         <error-prone.version>2.42.0</error-prone.version>
         <error-prone-support.version>0.25.0</error-prone-support.version>
     </properties>

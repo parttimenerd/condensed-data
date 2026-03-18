@@ -117,7 +117,7 @@ public class JFRMultiFileTest {
     }
 
     @Test
-    public void testDuplicates() throws IOException {
+    public void testDuplicates() {
         var duplicates = testFiles.stream().map(Path::toAbsolutePath).collect(Collectors.toList());
         duplicates.addAll(testFiles);
         check(duplicates);

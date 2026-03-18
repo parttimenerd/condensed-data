@@ -79,7 +79,7 @@ public class CommandTestUtil {
         }
     }
 
-    private static void recordEmptyJFRFile(Path jfrFile) throws IOException, ParseException {
+    private static void recordEmptyJFRFile(Path jfrFile) throws IOException {
         try (RecordingStream rs = new RecordingStream()) {
             rs.startAsync();
             rs.dump(jfrFile);
@@ -111,7 +111,7 @@ public class CommandTestUtil {
         if (!Files.exists(file)) {
             try {
                 recordEmptyJFRFile(file);
-            } catch (IOException | ParseException e) {
+            } catch (IOException e) {
                 throw new RuntimeException(e);
             }
         }

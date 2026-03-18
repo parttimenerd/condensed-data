@@ -176,8 +176,7 @@ public class WritingJFRReader {
     }
 
     private boolean putJFRTypeIntoConstantPool(CondensedType<?, ?> type) {
-        return (type instanceof StructType<?, ?> structType
-                        && !type.getName().contains("StackFrame"))
+        return (type instanceof StructType<?, ?> && !type.getName().contains("StackFrame"))
                 || type instanceof StringType;
     }
 

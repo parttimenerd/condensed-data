@@ -41,16 +41,17 @@ public class AgentTest {
     private static void deleteTestDir() throws IOException {
         var testDir = Path.of("test-dir");
         if (Files.exists(testDir)) {
-            Files.walk(testDir)
-                    .sorted(Comparator.reverseOrder()) // delete files before directories
-                    .forEach(
-                            path -> {
-                                try {
-                                    Files.delete(path);
-                                } catch (IOException e) {
-                                    throw new RuntimeException(e);
-                                }
-                            });
+            try (var fs = Files.walk(testDir)) {
+                fs.sorted(Comparator.reverseOrder()) // delete files before directories
+                        .forEach(
+                                path -> {
+                                    try {
+                                        Files.delete(path);
+                                    } catch (IOException e) {
+                                        throw new RuntimeException(e);
+                                    }
+                                });
+            }
         }
     }
 
@@ -115,7 +116,7 @@ public class AgentTest {
         // check status
         var status = runAgent(runMode, "status");
         var lines = status.split("\n");
-        assertEquals(lines[0], "Recording running");
+        assertEquals("Recording running", lines[0]);
         System.out.println("Status: " + status);
         for (int i = 1; i < lines.length; i++) {
             assertThat(lines[i]).contains(": ");
@@ -175,7 +176,7 @@ public class AgentTest {
 
         Thread.sleep(1000);
         // set max-size
-        output = runAgent(AgentRunMode.JATTACH, "set-max-size", "1m");
+        runAgent(AgentRunMode.JATTACH, "set-max-size", "1m");
         // check that status contains the new max-size
         output = runAgent(AgentRunMode.JATTACH, "status");
         assertThat(output).contains("max-size: 1.00MB");

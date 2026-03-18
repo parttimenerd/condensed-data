@@ -157,7 +157,7 @@ public enum JFRReduction {
 
     record JFRReductions(Configuration configuration, Universe universe) implements Reductions {
 
-        private static List<JFRReduction> values = new ArrayList<>();
+        private static final List<JFRReduction> values = new ArrayList<>();
 
         @Override
         @SuppressWarnings("unchecked")
@@ -178,15 +178,6 @@ public enum JFRReduction {
         this.reducedClass = reducedClass;
         this.function = function;
         this.structFunction = null;
-        JFRReductions.values.add(this);
-    }
-
-    @SuppressWarnings({"unused"})
-    <F, R> JFRReduction(StructReductionFunction<R, F> function) {
-        this.valueClass = null;
-        this.reducedClass = null;
-        this.function = null;
-        this.structFunction = function;
         JFRReductions.values.add(this);
     }
 
@@ -226,9 +217,9 @@ public enum JFRReduction {
                                 + reduced.getClass()
                                 + " is not a ReadStruct");
             }
-            return ((StructReductionFunction) structFunction)
-                    .inflate(configuration, universe, reducedStruct);
+            return structFunction.inflate(configuration, universe, reducedStruct);
         }
+        assert reducedClass != null;
         if (reducedClass.isInstance(reduced)) {
             return ((ReductionFunction) function).inflate(configuration, universe, reduced);
         }

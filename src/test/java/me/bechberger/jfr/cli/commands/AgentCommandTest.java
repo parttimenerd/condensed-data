@@ -63,16 +63,13 @@ public class AgentCommandTest {
                                     (r, files) -> {
                                         assertThat(files).containsKey("recording.cjfr");
                                         Thread.sleep(2000000);
-                                        files.entrySet()
-                                                .forEach(
-                                                        entry -> {
-                                                            System.out.println(
-                                                                    "File: "
-                                                                            + entry.getKey()
-                                                                            + " Size: "
-                                                                            + entry.getValue()
-                                                                                    .toString());
-                                                        });
+                                        files.forEach(
+                                                (key, value) ->
+                                                        System.out.println(
+                                                                "File: "
+                                                                        + key
+                                                                        + " Size: "
+                                                                        + value.toString()));
                                         // call cjfr summary on the recording file
                                         var summaryRes =
                                                 new CommandExecuter(

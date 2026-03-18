@@ -87,7 +87,7 @@ public class TruncationErrorTest {
     }
 
     @Property(tries = 20)
-    public void testTruncatedReads(@ForAll @IntRange(min = 0, max = 1000) int cutOffBytes) {
+    public void testTruncatedReads(@ForAll @IntRange(max = 1000) int cutOffBytes) {
         assertEventCounts(cutOffBytes, EVENT_COUNT - cutOffBytes, EVENT_COUNT);
     }
 }

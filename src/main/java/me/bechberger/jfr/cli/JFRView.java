@@ -162,7 +162,7 @@ public class JFRView {
         public List<String> format(ReadStruct event, int rows) {
             var prop = event.get(property);
             var value = prop instanceof Long ? (long) prop : (long) (float) prop;
-            return List.of(formatMemory((long) value, 1));
+            return List.of(formatMemory(value, 1));
         }
 
         @Override

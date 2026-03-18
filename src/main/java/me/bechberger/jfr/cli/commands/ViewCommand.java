@@ -23,7 +23,6 @@ import me.bechberger.jfr.cli.TruncateMode;
 public class ViewCommand implements Callable<Integer> {
 
     @Parameters(
-            index = "0",
             description = "The input .cjfr file, can be a folder, or a zip",
             converter = ExistingCJFRFileOrZipOrFolderConverter.class)
     private Path inputFile;

@@ -23,10 +23,7 @@ public class CondenseCommand implements Callable<Integer> {
 
     // optional out path, compress flag, statistics flag
 
-    @Parameters(
-            index = "0",
-            description = "The input file",
-            converter = ExistingJFRFileConverter.class)
+    @Parameters(description = "The input file", converter = ExistingJFRFileConverter.class)
     private Path inputFile;
 
     @Parameters(

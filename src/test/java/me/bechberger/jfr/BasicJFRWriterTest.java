@@ -4,8 +4,6 @@ import static java.util.Map.entry;
 import static org.junit.jupiter.api.Assertions.*;
 
 import java.io.ByteArrayOutputStream;
-import java.io.IOException;
-import java.text.ParseException;
 import java.util.List;
 import java.util.concurrent.atomic.AtomicReference;
 import jdk.jfr.*;
@@ -119,7 +117,7 @@ public class BasicJFRWriterTest {
     }
 
     @Test
-    public void testEventDeduplication() throws IOException, ParseException, InterruptedException {
+    public void testEventDeduplication() throws InterruptedException {
         var outputStream = new ByteArrayOutputStream();
         try (CondensedOutputStream out =
                 new CondensedOutputStream(
