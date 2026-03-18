@@ -135,6 +135,10 @@
                         </configuration>
                     </execution>
                 </executions>
+                <configuration>
+                    <!-- skipTests is required to avoid infinite loop of packaging and running tests -->
+                    <skip>${skipTests}</skip>
+                </configuration>
             </plugin>
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>

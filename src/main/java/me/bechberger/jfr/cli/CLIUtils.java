@@ -8,13 +8,11 @@ import java.lang.reflect.Method;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.ArrayList;
-import java.util.Iterator;
 import java.util.List;
 import java.util.stream.Collectors;
 import me.bechberger.femtocli.TypeConverter;
 import me.bechberger.jfr.Configuration;
 import me.bechberger.jfr.cli.commands.InflateCommand;
-import org.jetbrains.annotations.NotNull;
 
 public class CLIUtils {
 
