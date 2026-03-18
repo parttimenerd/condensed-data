@@ -13,9 +13,19 @@ import java.util.List;
 import java.util.stream.Collectors;
 import me.bechberger.femtocli.TypeConverter;
 import me.bechberger.jfr.Configuration;
+import me.bechberger.jfr.cli.commands.InflateCommand;
 import org.jetbrains.annotations.NotNull;
 
 public class CLIUtils {
+
+    public static boolean hasInflaterRelatedClasses() {
+        try {
+            Class.forName(InflateCommand.class.getName() + "$Impl");
+            return true;
+        } catch (ClassNotFoundException e) {
+            return false;
+        }
+    }
 
     /**
      * Call the {@code run} method of the {@code $Impl} inner class via reflection, printing the
@@ -45,17 +55,6 @@ public class CLIUtils {
             return 1;
         }
         return 0;
-    }
-
-    public static class ConfigurationIterable implements Iterable<String> {
-        @NotNull
-        @Override
-        public Iterator<String> iterator() {
-            return Configuration.configurations.values().stream()
-                    .map(Configuration::name)
-                    .sorted()
-                    .iterator();
-        }
     }
 
     public static class ConfigurationConverter implements TypeConverter<Configuration> {
@@ -112,45 +111,6 @@ public class CLIUtils {
             }
         }
         return dp[a.length()][b.length()];
-    }
-
-    /** Simple code to parse a command line string into a list of arguments */
-    public static List<String> parseCommandLine(String input) {
-        List<String> args = new ArrayList<>();
-        StringBuilder currentArg = new StringBuilder();
-        boolean inQuotes = false;
-        char quoteChar = '\0';
-
-        for (int i = 0; i < input.length(); i++) {
-            char c = input.charAt(i);
-
-            if (inQuotes) {
-                if (c == quoteChar) {
-                    inQuotes = false; // Close the quoted section
-                } else {
-                    currentArg.append(c);
-                }
-            } else {
-                if (c == '"' || c == '\'') {
-                    inQuotes = true;
-                    quoteChar = c;
-                } else if (Character.isWhitespace(c)) {
-                    if (!currentArg.isEmpty()) {
-                        args.add(currentArg.toString());
-                        currentArg.setLength(0); // Reset the builder
-                    }
-                } else {
-                    currentArg.append(c);
-                }
-            }
-        }
-
-        // Add the last argument if any
-        if (!currentArg.isEmpty()) {
-            args.add(currentArg.toString());
-        }
-
-        return args;
     }
 
     public static List<String> splitArgs(String agentArgs) {

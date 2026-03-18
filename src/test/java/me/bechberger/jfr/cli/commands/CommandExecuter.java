@@ -9,8 +9,6 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
-import me.bechberger.condensed.Util;
-import me.bechberger.femtocli.FemtoCli;
 import me.bechberger.femtocli.RunResult;
 import me.bechberger.jfr.cli.JFRCLI;
 
@@ -55,10 +53,7 @@ public class CommandExecuter {
                 args.stream()
                         .map(s -> s.replaceAll("^T/", tempFolder.toString() + "/"))
                         .toArray(String[]::new);
-        RunResult result =
-                FemtoCli.builder()
-                        .commandConfig(c -> c.version = Util.getLibraryVersion())
-                        .runCaptured(new JFRCLI(), modifiedArgs);
+        RunResult result = JFRCLI.builder().runCaptured(new JFRCLI(), modifiedArgs);
         if (checkNoError) {
             assertAll(
                     () -> assertThat(result.exitCode()).isEqualTo(0),

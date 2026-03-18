@@ -36,9 +36,15 @@ public class JFRCLI implements Runnable {
     }
 
     public static int execute(String[] args) {
-        return FemtoCli.builder()
-                .commandConfig(c -> c.version = Util.getLibraryVersion())
-                .run(new JFRCLI(), args);
+        return builder().run(new JFRCLI(), args);
+    }
+
+    public static FemtoCli.Builder builder() {
+        var builder = FemtoCli.builder().commandConfig(c -> c.version = Util.getLibraryVersion());
+        if (!CLIUtils.hasInflaterRelatedClasses()) {
+            builder.removeCommands(InflateCommand.class, BenchmarkCommand.class);
+        }
+        return builder;
     }
 
     public static void main(String[] args) {
