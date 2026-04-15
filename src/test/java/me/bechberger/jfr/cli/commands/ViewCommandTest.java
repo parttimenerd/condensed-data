@@ -84,9 +84,7 @@ public class ViewCommandTest {
                         .run();
         var unlimited =
                 new CommandExecuter(
-                                "view",
-                                "T/" + CommandTestUtil.getSampleCJFRFileName(),
-                                "TestEvent")
+                                "view", "T/" + CommandTestUtil.getSampleCJFRFileName(), "TestEvent")
                         .withFiles(CommandTestUtil.getSampleCJFRFile())
                         .checkNoError()
                         .run();
@@ -99,9 +97,7 @@ public class ViewCommandTest {
     public void testWidthOption() throws Exception {
         var defaultResult =
                 new CommandExecuter(
-                                "view",
-                                "T/" + CommandTestUtil.getSampleCJFRFileName(),
-                                "TestEvent")
+                                "view", "T/" + CommandTestUtil.getSampleCJFRFileName(), "TestEvent")
                         .withFiles(CommandTestUtil.getSampleCJFRFile())
                         .checkNoError()
                         .run();
@@ -116,10 +112,8 @@ public class ViewCommandTest {
                         .checkNoError()
                         .run();
         // Narrower width should produce shorter lines
-        int defaultMaxLen =
-                defaultResult.output().lines().mapToInt(String::length).max().orElse(0);
-        int narrowMaxLen =
-                narrowResult.output().lines().mapToInt(String::length).max().orElse(0);
+        int defaultMaxLen = defaultResult.output().lines().mapToInt(String::length).max().orElse(0);
+        int narrowMaxLen = narrowResult.output().lines().mapToInt(String::length).max().orElse(0);
         assertThat(narrowMaxLen).isLessThan(defaultMaxLen);
     }
 
@@ -157,9 +151,7 @@ public class ViewCommandTest {
     public void testTruncateBeginning() throws Exception {
         var defaultResult =
                 new CommandExecuter(
-                                "view",
-                                "T/" + CommandTestUtil.getSampleCJFRFileName(),
-                                "TestEvent")
+                                "view", "T/" + CommandTestUtil.getSampleCJFRFileName(), "TestEvent")
                         .withFiles(CommandTestUtil.getSampleCJFRFile())
                         .checkNoError()
                         .run();
@@ -182,9 +174,7 @@ public class ViewCommandTest {
     public void testCellHeight() throws Exception {
         var defaultResult =
                 new CommandExecuter(
-                                "view",
-                                "T/" + CommandTestUtil.getSampleCJFRFileName(),
-                                "TestEvent")
+                                "view", "T/" + CommandTestUtil.getSampleCJFRFileName(), "TestEvent")
                         .withFiles(CommandTestUtil.getSampleCJFRFile())
                         .checkNoError()
                         .run();

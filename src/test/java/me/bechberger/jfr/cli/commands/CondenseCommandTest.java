@@ -275,8 +275,7 @@ public class CondenseCommandTest {
         var zipFile = tmpFolder.toPath().resolve("jfrs.zip");
         try (var zipOutputStream = java.nio.file.Files.newOutputStream(zipFile);
                 var zip = new java.util.zip.ZipOutputStream(zipOutputStream)) {
-            var entry =
-                    new java.util.zip.ZipEntry(CommandTestUtil.getSampleJFRFileName());
+            var entry = new java.util.zip.ZipEntry(CommandTestUtil.getSampleJFRFileName());
             zip.putNextEntry(entry);
             java.nio.file.Files.copy(CommandTestUtil.getSampleJFRFile(), zip);
             zip.closeEntry();

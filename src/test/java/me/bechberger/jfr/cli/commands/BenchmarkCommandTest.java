@@ -13,9 +13,7 @@ public class BenchmarkCommandTest {
         var result = new CommandExecuter("benchmark", "--help").run();
         assertAll(
                 () -> assertThat(result.exitCode()).isEqualTo(0),
-                () ->
-                        assertThat(result.output())
-                                .containsIgnoringNewLines("Usage: cjfr benchmark"),
+                () -> assertThat(result.output()).containsIgnoringNewLines("Usage: cjfr benchmark"),
                 () -> assertThat(result.error()).isEmpty());
     }
 
@@ -24,9 +22,7 @@ public class BenchmarkCommandTest {
         var result = new CommandExecuter("benchmark", "--version").run();
         assertAll(
                 () -> assertThat(result.exitCode()).isEqualTo(0),
-                () ->
-                        assertThat(result.output().strip())
-                                .isEqualTo(MainCommandTest.VERSION),
+                () -> assertThat(result.output().strip()).isEqualTo(MainCommandTest.VERSION),
                 () -> assertThat(result.error()).isEmpty());
     }
 }

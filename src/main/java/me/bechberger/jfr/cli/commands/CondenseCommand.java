@@ -78,8 +78,7 @@ public class CondenseCommand implements Callable<Integer> {
     /** Expand a path into individual JFR files, handling folders and ZIPs */
     private static List<Path> expandJFRPath(Path path) throws IOException {
         if (Files.isDirectory(path)) {
-            return java.util.Arrays.stream(
-                            Objects.requireNonNull(path.toFile().listFiles()))
+            return java.util.Arrays.stream(Objects.requireNonNull(path.toFile().listFiles()))
                     .filter(f -> f.getName().endsWith(".jfr"))
                     .map(java.io.File::toPath)
                     .toList();

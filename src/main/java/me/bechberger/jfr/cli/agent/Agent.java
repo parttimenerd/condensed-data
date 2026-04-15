@@ -18,10 +18,6 @@ import me.bechberger.jfr.cli.agent.commands.*;
             SetDurationCommand.class
         },
         customSynopsis = "java -javaagent:condensed-agent.jar='[COMMAND]'")
-/*
- * TODO: Test and test that everything from my side can crash without impacting the rest of the
- * system Maybe record an error state
- */
 public class Agent implements Runnable {
 
     private static final Object syncObject = new Object();
@@ -48,10 +44,15 @@ public class Agent implements Runnable {
                     try {
                         var ps = AgentIO.getAgentInstance().createPrintStream();
                         FemtoCli.runAgent(new Agent(), ps, ps, preprocResult.args);
-                    } catch (Exception e) {
-                        AgentIO.getAgentInstance()
-                                .writeSevereError("Could not start agent: " + e.getMessage());
-                        e.printStackTrace(AgentIO.getAgentInstance().createPrintStream());
+                    } catch (Throwable e) {
+                        try {
+                            AgentIO.getAgentInstance()
+                                    .writeSevereError(
+                                            "Could not start agent: " + e.getMessage());
+                            e.printStackTrace(AgentIO.getAgentInstance().createPrintStream());
+                        } catch (Throwable ignored) {
+                            // last resort — don't let agent errors crash the host JVM
+                        }
                     }
                 });
     }

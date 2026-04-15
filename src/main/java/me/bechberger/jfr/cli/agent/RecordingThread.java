@@ -22,6 +22,8 @@ import me.bechberger.jfr.cli.agent.AgentIO.LogLevel;
 
 public abstract class RecordingThread implements Runnable {
 
+    private static final int MAX_EVENT_ERRORS = 10;
+
     private final Configuration configuration;
     private final String jfrConfig;
     private final String miscJfrConfig;
@@ -32,6 +34,7 @@ public abstract class RecordingThread implements Runnable {
     private final boolean rotating;
 
     private final AtomicBoolean shouldStop = new AtomicBoolean(false);
+    private volatile int eventErrorCount = 0;
     final Instant start = Instant.now();
 
     RecordingThread(
@@ -76,24 +79,49 @@ public abstract class RecordingThread implements Runnable {
         return configuration;
     }
 
+    private volatile boolean shuttingDown = false;
+
+    {
+        Runtime.getRuntime()
+                .addShutdownHook(
+                        new Thread(
+                                () -> {
+                                    shuttingDown = true;
+                                }));
+    }
+
     @Override
     public void run() {
         try {
-            recordingStream.onEvent(this::onEvent);
+            recordingStream.onEvent(this::safeOnEvent);
             agentIO.writeInfo("start");
             recordingStream.start();
             agentIO.writeInfo("finished");
             if (!shouldStop.get()) {
                 this.stop();
             }
-        } catch (RuntimeException e) {
-            if (e.getMessage().startsWith("The stream is already closed while processing event")) {
-                return; // TODO improve, this happens when the JVM is shutdown
+        } catch (Throwable e) {
+            if (shuttingDown) {
+                return; // JVM is shutting down, silently stop
             }
             agentIO.writeSevereError("Error: " + e.getMessage());
         }
         agentIO.writeInfo("finished run");
         shouldStop.set(false);
+    }
+
+    /** Wraps {@link #onEvent} to prevent exceptions from propagating into JFR infrastructure */
+    private void safeOnEvent(RecordedEvent event) {
+        try {
+            onEvent(event);
+        } catch (Throwable e) {
+            eventErrorCount++;
+            if (eventErrorCount <= MAX_EVENT_ERRORS) {
+                agentIO.writeSevereError(
+                        "Error processing event: " + e.getMessage()
+                                + " (" + eventErrorCount + "/" + MAX_EVENT_ERRORS + ")");
+            }
+        }
     }
 
     abstract void onEvent(RecordedEvent event);
@@ -106,14 +134,30 @@ public abstract class RecordingThread implements Runnable {
         }
         stopped = true;
         shouldStop.set(true);
-        removeFromParent.run();
-        recordingStream.close();
+        try {
+            removeFromParent.run();
+        } catch (Throwable e) {
+            agentIO.writeSevereError("Error removing from parent: " + e.getMessage());
+        }
+        try {
+            recordingStream.close();
+        } catch (Throwable e) {
+            agentIO.writeSevereError("Error closing recording stream: " + e.getMessage());
+        }
         while (shouldStop.get()) { // wait till it properly stopped
             Thread.onSpinWait();
         }
-        this.close();
+        try {
+            this.close();
+        } catch (Throwable e) {
+            agentIO.writeSevereError("Error closing writer: " + e.getMessage());
+        }
         agentIO.writeInfo("closed");
-        agentIO.close();
+        try {
+            agentIO.close();
+        } catch (Throwable e) {
+            // last resort — can't report via agentIO since it's closing
+        }
     }
 
     public List<Entry<String, String>> getStatus() {

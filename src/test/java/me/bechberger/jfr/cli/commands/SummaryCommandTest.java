@@ -209,9 +209,7 @@ public class SummaryCommandTest {
     public void testFullStatistics() throws Exception {
         var result =
                 new CommandExecuter(
-                                "summary",
-                                "T/" + CommandTestUtil.getSampleCJFRFileName(),
-                                "--full")
+                                "summary", "T/" + CommandTestUtil.getSampleCJFRFileName(), "--full")
                         .withFiles(CommandTestUtil.getSampleCJFRFile())
                         .checkNoError()
                         .run();
@@ -237,12 +235,9 @@ public class SummaryCommandTest {
 
     @Test
     public void testFolderInput() throws Exception {
-        new CommandExecuter(
-                        "summary",
-                        "T/")
+        new CommandExecuter("summary", "T/")
                 .withFiles(
-                        CommandTestUtil.getSampleCJFRFile(),
-                        CommandTestUtil.getSampleCJFRFile(1))
+                        CommandTestUtil.getSampleCJFRFile(), CommandTestUtil.getSampleCJFRFile(1))
                 .checkNoError()
                 .check(
                         (result, files) -> {
@@ -266,7 +261,9 @@ public class SummaryCommandTest {
                             }
                             assertAll(
                                     () ->
-                                            assertThat(((Number) json.get("format version")).intValue())
+                                            assertThat(
+                                                            ((Number) json.get("format version"))
+                                                                    .intValue())
                                                     .isEqualTo(Constants.FORMAT_VERSION),
                                     () ->
                                             assertThat(json.get("generator"))
@@ -286,8 +283,7 @@ public class SummaryCommandTest {
                                                                     .longValue())
                                                     .isGreaterThan(0),
                                     () -> {
-                                        Map<String, Object> events =
-                                                Util.asMap(json.get("events"));
+                                        Map<String, Object> events = Util.asMap(json.get("events"));
                                         assertThat(events).containsKey("TestEvent");
                                         assertThat(((Number) events.get("TestEvent")).longValue())
                                                 .isGreaterThan(0);
@@ -302,8 +298,7 @@ public class SummaryCommandTest {
         var zipFile = tmpFolder.toPath().resolve("sample.zip");
         try (var zipOutputStream = java.nio.file.Files.newOutputStream(zipFile);
                 var zip = new java.util.zip.ZipOutputStream(zipOutputStream)) {
-            var entry =
-                    new java.util.zip.ZipEntry(CommandTestUtil.getSampleCJFRFileName());
+            var entry = new java.util.zip.ZipEntry(CommandTestUtil.getSampleCJFRFileName());
             zip.putNextEntry(entry);
             java.nio.file.Files.copy(CommandTestUtil.getSampleCJFRFile(), zip);
             zip.closeEntry();
@@ -314,9 +309,7 @@ public class SummaryCommandTest {
                 .checkNoError()
                 .check(
                         (result, files) -> {
-                            assertThat(result.output())
-                                    .contains("TestEvent")
-                                    .contains("Events:");
+                            assertThat(result.output()).contains("TestEvent").contains("Events:");
                         })
                 .run();
     }
@@ -325,8 +318,7 @@ public class SummaryCommandTest {
     public void testEventsFilter() throws Exception {
         // Without filter: should show both TestEvent and AnotherEvent
         var unfilteredResult =
-                new CommandExecuter(
-                                "summary", "T/" + CommandTestUtil.getSampleCJFRFileName())
+                new CommandExecuter("summary", "T/" + CommandTestUtil.getSampleCJFRFileName())
                         .withFiles(CommandTestUtil.getSampleCJFRFile())
                         .checkNoError()
                         .run();

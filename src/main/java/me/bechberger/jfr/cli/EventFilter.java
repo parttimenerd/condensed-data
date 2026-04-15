@@ -229,8 +229,13 @@ public interface EventFilter<C> {
         static class GCPercentileContext {
             record GCInfo(long id, long startTimeNanos, long durationNanos) {}
 
+            private static final Set<String> HEAP_SUMMARY_EVENTS =
+                    Set.of("jdk.GCHeapSummary", "jdk.PSHeapSummary", "jdk.G1HeapSummary");
+
             private final int percentile;
             private final List<GCInfo> gcInfos;
+            /** gcId -> [first startTime, last startTime] for heap summary fallback */
+            private final Map<Long, long[]> heapSummaryBounds;
 
             // start time and end time of the longest GCs
             private TreeSet<Long> percentileStartTimeNanos;
@@ -239,23 +244,44 @@ public interface EventFilter<C> {
             GCPercentileContext(int percentile) {
                 this.percentile = percentile;
                 gcInfos = new ArrayList<>();
+                heapSummaryBounds = new HashMap<>();
             }
 
             void add(ReadStruct struct) {
-                // TODO also support jdk.GCHeapSummary, PSHeapSummary, G1HeapSummary if others are
-                // unavailable
-                if (struct.getType().getName().equals("jdk.GarbageCollection")) {
+                String name = struct.getType().getName();
+                if (name.equals("jdk.GarbageCollection")) {
                     gcInfos.add(
                             new GCInfo(
                                     struct.get("gcId", Long.class),
                                     toNanoSeconds(struct.get("startTime", Instant.class)),
                                     struct.get("duration", Duration.class).toNanos()));
+                } else if (HEAP_SUMMARY_EVENTS.contains(name) && struct.containsKey("gcId")) {
+                    long gcId = struct.get("gcId", Long.class);
+                    long startNanos = toNanoSeconds(struct.get("startTime", Instant.class));
+                    heapSummaryBounds.compute(
+                            gcId,
+                            (k, bounds) -> {
+                                if (bounds == null) {
+                                    return new long[] {startNanos, startNanos};
+                                }
+                                bounds[0] = Math.min(bounds[0], startNanos);
+                                bounds[1] = Math.max(bounds[1], startNanos);
+                                return bounds;
+                            });
                 }
             }
 
             void calculatePercentileIfNeeded() {
                 if (percentileStartTimeNanos != null) {
                     return;
+                }
+                // Fall back to heap summary events if no jdk.GarbageCollection events
+                if (gcInfos.isEmpty()) {
+                    for (var entry : heapSummaryBounds.entrySet()) {
+                        long[] bounds = entry.getValue();
+                        long duration = bounds[1] - bounds[0];
+                        gcInfos.add(new GCInfo(entry.getKey(), bounds[0], duration));
+                    }
                 }
                 int percentileIndex = (int) Math.ceil(gcInfos.size() * (1 - percentile / 100.0));
                 gcInfos.sort(Comparator.comparingLong(GCInfo::startTimeNanos));

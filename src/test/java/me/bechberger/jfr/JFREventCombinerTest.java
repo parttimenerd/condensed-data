@@ -345,7 +345,7 @@ public class JFREventCombinerTest {
             reconSizePerClass.put(
                     className, reconSizePerClass.getOrDefault(className, 0L) + weight);
         }
-        // assertMapEquals(sizePerClass, reconSizePerClass); // TODO
+        assertMapEquals(sizePerClass, reconSizePerClass);
     }
 
     /**
@@ -430,7 +430,7 @@ public class JFREventCombinerTest {
      * Test {@link me.bechberger.jfr.JFREventCombiner.GCPhasePauseLevelCombiner} and {@link
      * GCPhasePauseLevelReconstitutor}
      */
-    // @Test // TODO
+    @Test
     public void testGCPhasePauseLevelCombiner() {
         var res =
                 runJFRWithCombiner(

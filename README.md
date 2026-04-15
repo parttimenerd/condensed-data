@@ -92,6 +92,10 @@ Autocompletion:
 TODO:
 - javaagent
   - [x] check what happens if any error is thrown somewhere deep down in the agent
+  - [x] agent crash resilience: `onEvent()` wrapped with `safeOnEvent()` (catches Throwable, rate-limited error logging),
+    `stop()` guards each step individually, `run()` and `premain()` catch Throwable
+  - [ ] agent crash resilience: add integration tests (e.g. corrupt config, disk full, double-attach) to verify
+    the host JVM is never impacted, and consider recording an error state marker file
 - logging (don't log anything in default warning mode)
   - seems to be missing new lines
     ```
@@ -100,6 +104,12 @@ TODO:
       ====== scrabble (functional) [default], iteration 0 started ======52046/  renaissance-gpl-0.15.0.jar                                                                                 
       GC bef
     ```
+- [ ] implement `BasicObjectAllocationCombiner` for `jdk.ObjectAllocationInNewTLAB`,
+  `jdk.ObjectAllocationOutsideTLAB` and `jdk.ObjectAllocation` events (group by
+  thread → TLAB size → object class, store summed or individual sizes)
+- [ ] consider inlining small structs in `JFRHashConfig.getEmbeddingType()` — currently only
+  primitive-only structs use `NULLABLE_INLINE`; structs with ≤2-3 small fields could also
+  benefit (benchmark compression ratio and speed before committing)
 - add examples to the README
 
 Requirements
@@ -197,21 +207,6 @@ renaissance-scala-stm-bench7_default_G1.jfr |       52,75 |    9.709MB |    2.45
 ```
 
 The generated JFR files are probably larger than real-world files, but smaller than dedicated GC benchmarks.
-
-TODO
-----
-- [x] check that flags are only recorded once
-- [x] test start, stop and status via CLI
-- [x] implement simple view
-
-- [x] have option to remove line numbers from stack frames
-- [x] check benchmark per hour calculation
-- [x] check that incomplete files can be read
-- [x] increase performance of ensureRecursiveCompleteness
-
-- [ ] make all tools support multiple files
-- [ ] add black box tests for the CLI tools
-- [x] check empty files
 
 License
 -------
