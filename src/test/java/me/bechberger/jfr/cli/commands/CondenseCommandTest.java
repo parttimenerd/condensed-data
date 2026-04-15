@@ -220,4 +220,77 @@ public class CondenseCommandTest {
                 .check(checkFiles(true, "empty.jfr"))
                 .run();
     }
+
+    @Test
+    public void testMultipleInputFiles() throws Exception {
+        new CommandExecuter(
+                        "condense",
+                        "T/" + CommandTestUtil.getSampleJFRFileName(),
+                        "T/combined.cjfr",
+                        "-i",
+                        "T/" + CommandTestUtil.getSampleJFRFileName(1))
+                .withFiles(CommandTestUtil.getSampleJFRFile(), CommandTestUtil.getSampleJFRFile(1))
+                .checkNoError()
+                .checkNoOutput()
+                .check(
+                        (result, map) -> {
+                            assertThat(map).containsKey("combined.cjfr");
+                            assertThat(map.get("combined.cjfr")).exists().isNotEmptyFile();
+                        })
+                .run();
+    }
+
+    @Test
+    public void testMultipleInputsWithoutOutputFails() throws Exception {
+        var result =
+                new CommandExecuter(
+                                "condense",
+                                "T/" + CommandTestUtil.getSampleJFRFileName(),
+                                "-i",
+                                "T/" + CommandTestUtil.getSampleJFRFileName(1))
+                        .withFiles(
+                                CommandTestUtil.getSampleJFRFile(),
+                                CommandTestUtil.getSampleJFRFile(1))
+                        .run();
+        assertThat(result.exitCode()).isNotEqualTo(0);
+    }
+
+    @Test
+    public void testFolderInput() throws Exception {
+        new CommandExecuter("condense", "T/", "T/combined.cjfr")
+                .withFiles(CommandTestUtil.getSampleJFRFile(), CommandTestUtil.getSampleJFRFile(1))
+                .checkNoError()
+                .checkNoOutput()
+                .check(
+                        (result, map) -> {
+                            assertThat(map).containsKey("combined.cjfr");
+                            assertThat(map.get("combined.cjfr")).exists().isNotEmptyFile();
+                        })
+                .run();
+    }
+
+    @Test
+    public void testZipInput() throws Exception {
+        var tmpFolder = org.assertj.core.util.Files.newTemporaryFolder();
+        var zipFile = tmpFolder.toPath().resolve("jfrs.zip");
+        try (var zipOutputStream = java.nio.file.Files.newOutputStream(zipFile);
+                var zip = new java.util.zip.ZipOutputStream(zipOutputStream)) {
+            var entry =
+                    new java.util.zip.ZipEntry(CommandTestUtil.getSampleJFRFileName());
+            zip.putNextEntry(entry);
+            java.nio.file.Files.copy(CommandTestUtil.getSampleJFRFile(), zip);
+            zip.closeEntry();
+        }
+
+        new CommandExecuter("condense", "T/jfrs.zip", "T/combined.cjfr")
+                .withFiles(zipFile)
+                .checkNoError()
+                .checkNoOutput()
+                .check(
+                        (result, map) -> {
+                            assertThat(map).containsKey("combined.cjfr");
+                            assertThat(map.get("combined.cjfr")).exists().isNotEmptyFile();
+                        })
+                .run();
+    }
 }

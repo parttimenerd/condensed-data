@@ -69,4 +69,166 @@ public class ViewCommandTest {
                 () -> assertThat(result.error()).contains("No event of type TestEvent found."),
                 () -> assertThat(result.output()).isEmpty());
     }
+
+    @Test
+    public void testLimitOption() throws Exception {
+        var result =
+                new CommandExecuter(
+                                "view",
+                                "T/" + CommandTestUtil.getSampleCJFRFileName(),
+                                "TestEvent",
+                                "--limit",
+                                "1")
+                        .withFiles(CommandTestUtil.getSampleCJFRFile())
+                        .checkNoError()
+                        .run();
+        var unlimited =
+                new CommandExecuter(
+                                "view",
+                                "T/" + CommandTestUtil.getSampleCJFRFileName(),
+                                "TestEvent")
+                        .withFiles(CommandTestUtil.getSampleCJFRFile())
+                        .checkNoError()
+                        .run();
+        // Limited output should have fewer lines than unlimited
+        assertThat(result.output().strip().split("\n").length)
+                .isLessThan(unlimited.output().strip().split("\n").length);
+    }
+
+    @Test
+    public void testWidthOption() throws Exception {
+        var defaultResult =
+                new CommandExecuter(
+                                "view",
+                                "T/" + CommandTestUtil.getSampleCJFRFileName(),
+                                "TestEvent")
+                        .withFiles(CommandTestUtil.getSampleCJFRFile())
+                        .checkNoError()
+                        .run();
+        var narrowResult =
+                new CommandExecuter(
+                                "view",
+                                "T/" + CommandTestUtil.getSampleCJFRFileName(),
+                                "TestEvent",
+                                "--width",
+                                "120")
+                        .withFiles(CommandTestUtil.getSampleCJFRFile())
+                        .checkNoError()
+                        .run();
+        // Narrower width should produce shorter lines
+        int defaultMaxLen =
+                defaultResult.output().lines().mapToInt(String::length).max().orElse(0);
+        int narrowMaxLen =
+                narrowResult.output().lines().mapToInt(String::length).max().orElse(0);
+        assertThat(narrowMaxLen).isLessThan(defaultMaxLen);
+    }
+
+    @Test
+    public void testViewAnotherEvent() throws Exception {
+        var result =
+                new CommandExecuter(
+                                "view",
+                                "T/" + CommandTestUtil.getSampleCJFRFileName(),
+                                "AnotherEvent")
+                        .withFiles(CommandTestUtil.getSampleCJFRFile())
+                        .checkNoError()
+                        .run();
+        assertThat(result.output()).contains("AnotherEvent");
+    }
+
+    @Test
+    public void testMultipleInputFiles() throws Exception {
+        var result =
+                new CommandExecuter(
+                                "view",
+                                "T/" + CommandTestUtil.getSampleCJFRFileName(),
+                                "TestEvent",
+                                "-i",
+                                "T/" + CommandTestUtil.getSampleCJFRFileName(1))
+                        .withFiles(
+                                CommandTestUtil.getSampleCJFRFile(),
+                                CommandTestUtil.getSampleCJFRFile(1))
+                        .checkNoError()
+                        .run();
+        assertThat(result.output()).contains("TestEvent");
+    }
+
+    @Test
+    public void testTruncateBeginning() throws Exception {
+        var defaultResult =
+                new CommandExecuter(
+                                "view",
+                                "T/" + CommandTestUtil.getSampleCJFRFileName(),
+                                "TestEvent")
+                        .withFiles(CommandTestUtil.getSampleCJFRFile())
+                        .checkNoError()
+                        .run();
+        var beginResult =
+                new CommandExecuter(
+                                "view",
+                                "T/" + CommandTestUtil.getSampleCJFRFileName(),
+                                "TestEvent",
+                                "--truncate",
+                                "begin")
+                        .withFiles(CommandTestUtil.getSampleCJFRFile())
+                        .checkNoError()
+                        .run();
+        // Both should produce output with the same number of lines
+        assertThat(beginResult.output().strip().split("\n").length)
+                .isEqualTo(defaultResult.output().strip().split("\n").length);
+    }
+
+    @Test
+    public void testCellHeight() throws Exception {
+        var defaultResult =
+                new CommandExecuter(
+                                "view",
+                                "T/" + CommandTestUtil.getSampleCJFRFileName(),
+                                "TestEvent")
+                        .withFiles(CommandTestUtil.getSampleCJFRFile())
+                        .checkNoError()
+                        .run();
+        var tallResult =
+                new CommandExecuter(
+                                "view",
+                                "T/" + CommandTestUtil.getSampleCJFRFileName(),
+                                "TestEvent",
+                                "--cell-height",
+                                "2")
+                        .withFiles(CommandTestUtil.getSampleCJFRFile())
+                        .checkNoError()
+                        .run();
+        // Taller cells should produce more output lines
+        assertThat(tallResult.output().strip().split("\n").length)
+                .isGreaterThan(defaultResult.output().strip().split("\n").length);
+    }
+
+    @Test
+    public void testFolderInput() throws Exception {
+        var result =
+                new CommandExecuter("view", "T/", "TestEvent")
+                        .withFiles(
+                                CommandTestUtil.getSampleCJFRFile(),
+                                CommandTestUtil.getSampleCJFRFile(1))
+                        .checkNoError()
+                        .run();
+        assertThat(result.output()).contains("TestEvent");
+    }
+
+    @Test
+    public void testEventsFilter() throws Exception {
+        // With --events TestEvent, viewing AnotherEvent should find nothing
+        var result =
+                new CommandExecuter(
+                                "view",
+                                "T/" + CommandTestUtil.getSampleCJFRFileName(),
+                                "AnotherEvent",
+                                "--events",
+                                "TestEvent")
+                        .withFiles(CommandTestUtil.getSampleCJFRFile())
+                        .run();
+        assertAll(
+                () -> assertThat(result.exitCode()).isEqualTo(1),
+                () -> assertThat(result.error()).contains("No event of type AnotherEvent found."));
+    }
 }

@@ -71,6 +71,14 @@ public class MainCommandTest {
                 () -> assertThat(result.error()).isEmpty());
     }
 
+    @Test
+    public void testUnknownSubCommand() throws Exception {
+        var result = new CommandExecuter("nonexistent").run();
+        assertAll(
+                () -> assertThat(result.exitCode()).isNotEqualTo(0),
+                () -> assertThat(result.error()).isNotEmpty());
+    }
+
     @ParameterizedTest
     @MethodSource("subCommands")
     public void testSubCommandsHaveVersion(String subCommand) throws Exception {

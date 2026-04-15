@@ -1,10 +1,14 @@
 package me.bechberger.jfr.cli.commands;
 
+import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Objects;
 import java.util.concurrent.Callable;
+import java.util.zip.ZipEntry;
+import java.util.zip.ZipInputStream;
 import jdk.jfr.consumer.RecordingFile;
 import me.bechberger.condensed.Compression;
 import me.bechberger.condensed.CondensedOutputStream;
@@ -23,7 +27,9 @@ public class CondenseCommand implements Callable<Integer> {
 
     // optional out path, compress flag, statistics flag
 
-    @Parameters(description = "The input file", converter = ExistingJFRFileConverter.class)
+    @Parameters(
+            description = "The input .jfr file, can be a folder, or a zip",
+            converter = ExistingJFRFileOrZipOrFolderConverter.class)
     private Path inputFile;
 
     @Parameters(
@@ -36,7 +42,7 @@ public class CondenseCommand implements Callable<Integer> {
     @Option(
             names = {"-i", "--inputs"},
             description = "Additional input files",
-            converter = ExistingJFRFileConverter.class)
+            converter = ExistingJFRFileOrZipOrFolderConverter.class)
     private List<Path> inputFiles = new ArrayList<>();
 
     @Option(
@@ -69,6 +75,46 @@ public class CondenseCommand implements Callable<Integer> {
         return outputFile;
     }
 
+    /** Expand a path into individual JFR files, handling folders and ZIPs */
+    private static List<Path> expandJFRPath(Path path) throws IOException {
+        if (Files.isDirectory(path)) {
+            return java.util.Arrays.stream(
+                            Objects.requireNonNull(path.toFile().listFiles()))
+                    .filter(f -> f.getName().endsWith(".jfr"))
+                    .map(java.io.File::toPath)
+                    .toList();
+        }
+        if (path.toString().endsWith(".zip")) {
+            var jfrFiles = new ArrayList<Path>();
+            var tmpFolder = Files.createTempDirectory("jfr-cli-condense");
+            Runtime.getRuntime()
+                    .addShutdownHook(
+                            new Thread(
+                                    () -> {
+                                        try {
+                                            for (var f : jfrFiles) {
+                                                Files.deleteIfExists(f);
+                                            }
+                                            Files.deleteIfExists(tmpFolder);
+                                        } catch (IOException e) {
+                                            throw new RuntimeException(e);
+                                        }
+                                    }));
+            try (var is = new ZipInputStream(Files.newInputStream(path))) {
+                ZipEntry entry;
+                while ((entry = is.getNextEntry()) != null) {
+                    if (entry.getName().endsWith(".jfr")) {
+                        var tmpFile = tmpFolder.resolve(Path.of(entry.getName()).getFileName());
+                        Files.copy(is, tmpFile);
+                        jfrFiles.add(tmpFile);
+                    }
+                }
+            }
+            return jfrFiles;
+        }
+        return List.of(path);
+    }
+
     public Integer call() {
         try (var out =
                 new CondensedOutputStream(
@@ -82,8 +128,12 @@ public class CondenseCommand implements Callable<Integer> {
             var inputs = new ArrayList<Path>();
             inputs.add(inputFile);
             inputs.addAll(inputFiles);
-            var basicJFRWriter = new BasicJFRWriter(out, configuration);
+            var resolvedInputs = new ArrayList<Path>();
             for (var input : inputs) {
+                resolvedInputs.addAll(expandJFRPath(input));
+            }
+            var basicJFRWriter = new BasicJFRWriter(out, configuration);
+            for (var input : resolvedInputs) {
                 try (RecordingFile r = new RecordingFile(input)) {
                     while (r.hasMoreEvents()) {
                         var e = r.readEvent();

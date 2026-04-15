@@ -298,4 +298,62 @@ public class InflateCommandTest {
                         })
                 .run();
     }
+
+    @Test
+    public void testEventsFilter() throws Exception {
+        // Inflate with --events TestEvent should only include TestEvent, not AnotherEvent
+        new CommandExecuter(
+                        "inflate",
+                        "T/" + CommandTestUtil.getSampleCJFRFileName(),
+                        "T/out.jfr",
+                        "--events",
+                        "TestEvent")
+                .withFiles(CommandTestUtil.getSampleCJFRFile())
+                .checkNoError()
+                .checkNoOutput()
+                .check(
+                        (result, map) -> {
+                            assertThat(map).containsKey("out.jfr");
+                            var events = RecordingFile.readAllEvents(map.get("out.jfr"));
+                            assertThat(
+                                            events.stream()
+                                                    .filter(
+                                                            e ->
+                                                                    e.getEventType()
+                                                                            .getName()
+                                                                            .equals("TestEvent")))
+                                    .isNotEmpty();
+                            assertThat(
+                                            events.stream()
+                                                    .filter(
+                                                            e ->
+                                                                    e.getEventType()
+                                                                            .getName()
+                                                                            .equals(
+                                                                                    "AnotherEvent")))
+                                    .isEmpty();
+                        })
+                .run();
+    }
+
+    @Test
+    public void testNoReconstitution() throws Exception {
+        // --no-reconstitution should still produce a JFR file
+        new CommandExecuter(
+                        "inflate",
+                        "T/" + CommandTestUtil.getSampleCJFRFileName(),
+                        "T/out.jfr",
+                        "--no-reconstitution")
+                .withFiles(CommandTestUtil.getSampleCJFRFile())
+                .checkNoError()
+                .checkNoOutput()
+                .check(
+                        (result, map) -> {
+                            assertThat(map).containsKey("out.jfr");
+                            assertThat(map.get("out.jfr")).exists();
+                            var events = RecordingFile.readAllEvents(map.get("out.jfr"));
+                            assertThat(events).isNotEmpty();
+                        })
+                .run();
+    }
 }

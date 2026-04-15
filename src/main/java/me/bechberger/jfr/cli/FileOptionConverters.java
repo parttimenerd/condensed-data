@@ -309,4 +309,12 @@ public class FileOptionConverters {
             super(".cjfr", true);
         }
     }
+
+    @FileEndingAnnotation(ending = ".jfr", allowZip = true, allowFolder = true)
+    public static class ExistingJFRFileOrZipOrFolderConverter
+            extends ExistingFileWithExtensionOrZipOrFolderConverter {
+        public ExistingJFRFileOrZipOrFolderConverter() {
+            super(".jfr", true);
+        }
+    }
 }
