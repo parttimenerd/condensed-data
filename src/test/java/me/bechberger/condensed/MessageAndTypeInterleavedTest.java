@@ -79,9 +79,8 @@ public class MessageAndTypeInterleavedTest {
             for (var write : writes) {
                 if (!write.writeValue) {
                     if (checkTypeMessage) {
-                        VarIntType result =
-                                (VarIntType)
-                                        (CondensedType<?, ?>) in.readNextTypeMessageAndProcess();
+                        CondensedType<?, ?> raw = in.readNextTypeMessageAndProcess();
+                        VarIntType result = (VarIntType) raw;
                         assertEquals(types.get(write.typeIndex), result);
                     }
                 } else {

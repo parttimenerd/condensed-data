@@ -3,8 +3,11 @@ package me.bechberger.jfr.cli.commands;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.junit.jupiter.api.Assertions.assertAll;
 
+import java.io.BufferedReader;
+import java.io.InputStreamReader;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -14,6 +17,13 @@ import me.bechberger.jfr.cli.JFRCLI;
 
 /** Run a command with the given files in a temporary folder and check all files in the folder */
 public class CommandExecuter {
+
+    /**
+     * Set the system property {@code cjfr.test.jar} to a JAR path to run commands via {@code java
+     * -jar <jar>} instead of in-process. This allows testing reduced/minimal JARs (e.g. built by
+     * {@code reduce-jar.py}).
+     */
+    private static final String TEST_JAR_PROPERTY = "cjfr.test.jar";
 
     @FunctionalInterface
     public interface ConsumerWithException<T> {
@@ -35,6 +45,26 @@ public class CommandExecuter {
         }
     }
 
+    private static RunResult runViaJar(String jarPath, String[] args) throws Exception {
+        List<String> command = new ArrayList<>();
+        command.add(Path.of(System.getProperty("java.home"), "bin", "java").toString());
+        command.add("-jar");
+        command.add(jarPath);
+        command.addAll(List.of(args));
+        ProcessBuilder pb = new ProcessBuilder(command);
+        Process process = pb.start();
+        String out;
+        String err;
+        try (var outReader = new BufferedReader(new InputStreamReader(process.getInputStream()));
+                var errReader =
+                        new BufferedReader(new InputStreamReader(process.getErrorStream()))) {
+            out = outReader.lines().collect(Collectors.joining("\n"));
+            err = errReader.lines().collect(Collectors.joining("\n"));
+        }
+        int exitCode = process.waitFor();
+        return new RunResult(out, err, exitCode);
+    }
+
     /**
      * Run a command with the given files in a temporary folder and check all files in the folder
      */
@@ -53,7 +83,13 @@ public class CommandExecuter {
                 args.stream()
                         .map(s -> s.replaceAll("^T/", tempFolder.toString() + "/"))
                         .toArray(String[]::new);
-        RunResult result = JFRCLI.builder().runCaptured(new JFRCLI(), modifiedArgs);
+        String testJar = System.getProperty(TEST_JAR_PROPERTY);
+        RunResult result;
+        if (testJar != null) {
+            result = runViaJar(testJar, modifiedArgs);
+        } else {
+            result = JFRCLI.builder().runCaptured(new JFRCLI(), modifiedArgs);
+        }
         if (checkNoError) {
             assertAll(
                     () -> assertThat(result.exitCode()).isEqualTo(0),

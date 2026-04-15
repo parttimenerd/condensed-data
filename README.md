@@ -91,7 +91,7 @@ Autocompletion:
 
 TODO:
 - javaagent
-  - check what happens if any error is thrown somewhere deep down in the agent
+  - [x] check what happens if any error is thrown somewhere deep down in the agent
 - logging (don't log anything in default warning mode)
   - seems to be missing new lines
     ```

@@ -28,8 +28,17 @@ jobs:
     - name: Build package
       run: mvn package -DskipTests
 
-    - name: Generate platform-specific JARs
-      run: python3 reduce-jar.py matrix target/condensed-data.jar target/platform-jars/
+    - name: Generate femtojar-reencoded JARs
+      run: python3 reduce-jar.py femtojar target/condensed-data.jar target/femtojar-jars/
+
+    - name: Generate platform-specific JARs and test them
+      run: |
+        python3 reduce-jar.py matrix \
+          target/condensed-data.jar \
+          target/platform-jars/ \
+          --with-minimal \
+          --minimal-output-dir target/platform-jars-minimal/ \
+          --run-tests
 
     - name: Upload main JAR
       uses: actions/upload-artifact@v6
@@ -38,11 +47,25 @@ jobs:
         path: target/condensed-data.jar
         retention-days: 30
 
+    - name: Upload femtojar JARs
+      uses: actions/upload-artifact@v6
+      with:
+        name: femtojar-jars
+        path: target/femtojar-jars/
+        retention-days: 30
+
     - name: Upload platform JARs
       uses: actions/upload-artifact@v6
       with:
         name: platform-jars
         path: target/platform-jars/
+        retention-days: 30
+
+    - name: Upload minimal platform JARs
+      uses: actions/upload-artifact@v6
+      with:
+        name: platform-jars-minimal
+        path: target/platform-jars-minimal/
         retention-days: 30
 
   snapshot-release:
@@ -99,7 +122,12 @@ jobs:
       run: mvn clean package -DskipTests
 
     - name: Generate platform-specific JARs
-      run: python3 reduce-jar.py matrix target/condensed-data.jar target/platform-jars/
+      run: |
+        python3 reduce-jar.py matrix \
+          target/condensed-data.jar \
+          target/platform-jars/ \
+          --with-minimal \
+          --minimal-output-dir target/platform-jars-minimal/
 
     - name: Create GitHub release
       id: create_release
@@ -129,4 +157,5 @@ jobs:
         files: |
           target/condensed-data.jar
           target/platform-jars/*.jar
+          target/platform-jars-minimal/*.jar
         token: ${{ secrets.GITHUB_TOKEN }}

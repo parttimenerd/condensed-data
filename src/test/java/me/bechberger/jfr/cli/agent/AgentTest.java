@@ -10,6 +10,7 @@ import java.io.IOException;
 import java.io.PrintStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Comparator;
@@ -18,6 +19,7 @@ import java.util.concurrent.TimeUnit;
 import java.util.function.Consumer;
 import java.util.stream.Stream;
 import me.bechberger.condensed.Util;
+import me.bechberger.jfr.Configuration;
 import me.bechberger.jfr.cli.commands.CommandExecuter;
 import me.bechberger.jfr.cli.commands.WithRunningJVM;
 import me.bechberger.util.JavaUtil;
@@ -41,17 +43,16 @@ public class AgentTest {
     private static void deleteTestDir() throws IOException {
         var testDir = Path.of("test-dir");
         if (Files.exists(testDir)) {
-            try (var fs = Files.walk(testDir)) {
-                fs.sorted(Comparator.reverseOrder()) // delete files before directories
-                        .forEach(
-                                path -> {
-                                    try {
-                                        Files.delete(path);
-                                    } catch (IOException e) {
-                                        throw new RuntimeException(e);
-                                    }
-                                });
-            }
+            Files.walk(testDir)
+                    .sorted(Comparator.reverseOrder()) // delete files before directories
+                    .forEach(
+                            path -> {
+                                try {
+                                    Files.delete(path);
+                                } catch (IOException e) {
+                                    throw new RuntimeException(e);
+                                }
+                            });
         }
     }
 
@@ -116,7 +117,7 @@ public class AgentTest {
         // check status
         var status = runAgent(runMode, "status");
         var lines = status.split("\n");
-        assertEquals("Recording running", lines[0]);
+        assertEquals(lines[0], "Recording running");
         System.out.println("Status: " + status);
         for (int i = 1; i < lines.length; i++) {
             assertThat(lines[i]).contains(": ");
@@ -176,7 +177,7 @@ public class AgentTest {
 
         Thread.sleep(1000);
         // set max-size
-        runAgent(AgentRunMode.JATTACH, "set-max-size", "1m");
+        output = runAgent(AgentRunMode.JATTACH, "set-max-size", "1m");
         // check that status contains the new max-size
         output = runAgent(AgentRunMode.JATTACH, "status");
         assertThat(output).contains("max-size: 1.00MB");
@@ -475,6 +476,105 @@ public class AgentTest {
         assertThat(summaryOutput).contains(String.valueOf(currentYear));
 
         System.out.println("Summary output:\n" + summaryOutput);
+    }
+
+    /**
+     * Tests that a RuntimeException thrown deep in event processing (e.g. NPE from {@link
+     * me.bechberger.jfr.BasicJFRWriter#processEvent}) is caught by {@link
+     * SingleRecordingThread#onEvent} and does not crash the recording thread or JVM.
+     *
+     * <p>The {@link SingleRecordingThread} is constructed directly (without jattach) so the test is
+     * self-contained and fast.
+     */
+    @Test
+    public void testAgentSurvivesRuntimeExceptionDuringEventProcessing() throws Exception {
+        Path tmp = Files.createTempDirectory("agent-test-exception-");
+        tmp.toFile().deleteOnExit();
+        Path recordingPath = tmp.resolve("recording.cjfr");
+
+        // Initialise DynamicallyChangeableSettings with all-zero / safe defaults
+        var settings = new DynamicallyChangeableSettings();
+        settings.maxDuration = Duration.ZERO;
+        settings.maxSize = 0;
+        settings.maxFiles = 10;
+        settings.newNames = false;
+        settings.duration = Duration.ZERO;
+
+        var thread =
+                new SingleRecordingThread(
+                        recordingPath.toString(),
+                        Configuration.DEFAULT,
+                        false,
+                        "default",
+                        "",
+                        () -> {},
+                        settings);
+
+        // Capture stdout so we can verify the error was reported
+        var captured = new ByteArrayOutputStream();
+        var savedOut = System.out;
+        System.setOut(new PrintStream(captured));
+        try {
+            // Passing null causes a NullPointerException inside BasicJFRWriter.processEvent.
+            // The catch block in SingleRecordingThread.onEvent must absorb it without
+            // rethrowing, keeping the recording thread alive.
+            thread.onEvent(null);
+        } finally {
+            System.setOut(savedOut);
+            thread.close();
+        }
+
+        // The error must have been logged via AgentIO.writeSevereError
+        assertThat(captured.toString())
+                .as("agent should log the error without crashing")
+                .contains("Severe Error");
+        // And no exception escaped (the test would have failed above if it had)
+    }
+
+    /**
+     * Tests that the JVM continues and exits normally when the agent fails at startup because the
+     * recording path is invalid (its parent component is an existing regular file, not a
+     * directory).
+     *
+     * <p>The IOException from {@link SingleRecordingThread}'s constructor must be caught by {@link
+     * Agent#premain} and reported without terminating the host application.
+     */
+    @Test
+    @Timeout(30)
+    public void testAgentStartupFailureDoesNotCrashJVM() throws IOException, InterruptedException {
+        Path tmp = Files.createTempDirectory("agent-test-startup-failure-");
+        tmp.toFile().deleteOnExit();
+
+        // Create a regular file where the agent would need to create a directory
+        Path blockingFile = tmp.resolve("subdir");
+        Files.writeString(blockingFile, "I am a file, not a directory");
+
+        // The agent tries Files.createDirectories("subdir/...") which fails with
+        // NotADirectoryException because "subdir" is a regular file
+        Path invalidRecordingPath = blockingFile.resolve("recording.cjfr");
+
+        var javaBin = JavaUtil.getJavaBinary().toString();
+        var processArgs = new ArrayList<String>();
+        processArgs.add(javaBin);
+        processArgs.add("-javaagent:target/condensed-data.jar=start," + invalidRecordingPath);
+        processArgs.add("-version");
+
+        var process = new ProcessBuilder(processArgs).redirectErrorStream(true).start();
+        var outputBytes = new ByteArrayOutputStream();
+        process.getInputStream().transferTo(outputBytes);
+        var agentOutput = outputBytes.toString();
+        process.waitFor();
+
+        // The JVM must exit cleanly despite the agent failing to start the recording
+        assertEquals(
+                0,
+                process.exitValue(),
+                "JVM should exit normally even if the agent fails to start the recording");
+
+        // The agent must have reported the problem.
+        // FemtoCli intercepts the IOException from StartCommand.call() and prints
+        // "Error: <message>" before Agent.premain's own catch block is reached.
+        assertThat(agentOutput).as("agent should report the startup error").contains("Error: ");
     }
 
     String runAgent(AgentRunMode runMode, String... args) throws IOException, InterruptedException {

@@ -14,11 +14,17 @@ Usage examples:
     # Generate matrix of all platform variants into a folder
     ./reduce-jar.py matrix input.jar out-dir/
     ./reduce-jar.py matrix input.jar out-dir/ --platforms darwin/aarch64,linux/amd64
+
+    # Recompress with femtojar (ProGuard + zopfli), output jars into a directory
+    # Builds femtojar automatically if the CLI jar is not yet present.
+    ./reduce-jar.py femtojar target/condensed-data.jar out-dir/
+    ./reduce-jar.py femtojar target/condensed-data.jar out-dir/ --skip-proguard
 """
 
 import argparse
 import json
 import os
+import platform as platform_mod
 import re
 import shutil
 import subprocess
@@ -338,6 +344,7 @@ def cmd_matrix(args: argparse.Namespace) -> None:
         selected = available
 
     total = 0
+    generated_jars: List[str] = []
     print(f"Generating platform JARs into {out_dir}/")
 
     with zipfile.ZipFile(args.input, "r") as zf:
@@ -349,6 +356,7 @@ def cmd_matrix(args: argparse.Namespace) -> None:
             out_path = os.path.join(out_dir, matrix_jar_name(base_stem, platform))
             reduce_jar(args.input, out_path, [plat_reduction])
             total += 1
+            generated_jars.append(out_path)
 
             # Inflaterless variant (without JMC)
             out_path_no_jmc = os.path.join(
@@ -356,11 +364,13 @@ def cmd_matrix(args: argparse.Namespace) -> None:
             )
             reduce_jar(args.input, out_path_no_jmc, [plat_reduction, jmc_reduction])
             total += 1
+            generated_jars.append(out_path_no_jmc)
 
     # Universal (unreduced) copy
     universal_path = os.path.join(out_dir, f"{base_stem}-universal.jar")
     reduce_jar(args.input, universal_path, [])
     total += 1
+    generated_jars.append(universal_path)
 
     # Universal without JMC
     universal_no_jmc_path = os.path.join(out_dir, f"{base_stem}-universal-inflaterless.jar")
@@ -368,8 +378,320 @@ def cmd_matrix(args: argparse.Namespace) -> None:
         jmc_reduction = reduce_jmc(args.input, zf)
     reduce_jar(args.input, universal_no_jmc_path, [jmc_reduction])
     total += 1
+    generated_jars.append(universal_no_jmc_path)
+
+    if args.with_minimal:
+        minimal_output_dir = args.minimal_output_dir or f"{out_dir.rstrip('/')}-minimal"
+        os.makedirs(minimal_output_dir, exist_ok=True)
+        cli_jar = _ensure_femtojar_cli()
+        print(
+            f"\nGenerating minimal variants (zopfli + proguard) into {minimal_output_dir}/"
+        )
+        failed: List[str] = []
+        help_failed: List[str] = []
+        minimal_generated = 0
+
+        for input_jar in generated_jars:
+            base_name = os.path.splitext(os.path.basename(input_jar))[0]
+            output_jar = os.path.join(minimal_output_dir, f"{base_name}-minimal.jar")
+            ok = _run_femtojar(
+                cli_jar,
+                input_jar,
+                output_jar,
+                "zopfli",
+                True,
+                CONDENSED_DATA_PROGUARD_OPTIONS,
+                args.minimal_verbose,
+            )
+            if not ok:
+                failed.append(output_jar)
+                continue
+
+            minimal_generated += 1
+            total += 1
+
+            if not args.minimal_no_smoke_test and not _test_jar_help(output_jar):
+                help_failed.append(output_jar)
+
+        if failed:
+            print(f"\n[matrix] {len(failed)} minimal jar(s) failed to build:", file=sys.stderr)
+            for f in failed:
+                print(f"  {f}", file=sys.stderr)
+
+        if help_failed:
+            print(
+                f"\n[matrix] {len(help_failed)} minimal jar(s) failed --help check:",
+                file=sys.stderr,
+            )
+            for f in help_failed:
+                print(f"  {f}", file=sys.stderr)
+
+        if failed or help_failed:
+            sys.exit(1)
+
+        print(f"Generated {minimal_generated} minimal JARs")
+
+    # ------ test against current-platform JARs ------
+    if args.run_tests:
+        current = _detect_current_platform()
+        current_slug = platform_slug(current)
+        print(f"\nRunning tests for current platform ({current}) …")
+
+        test_failed: List[str] = []
+        for jar in generated_jars:
+            jar_base = os.path.basename(jar)
+            # Only test JARs that match the current platform or are universal
+            if current_slug not in jar_base and "universal" not in jar_base:
+                continue
+            inflaterless = "inflaterless" in jar_base
+            if not _run_jar_tests(jar, inflaterless):
+                test_failed.append(jar)
+
+        if test_failed:
+            print(
+                f"\n[matrix] {len(test_failed)} jar(s) failed tests:",
+                file=sys.stderr,
+            )
+            for f in test_failed:
+                print(f"  {f}", file=sys.stderr)
+            sys.exit(1)
 
     print(f"\nDone. {total} JARs written to {out_dir}/")
+
+
+# ---------------------------------------------------------------------------
+# femtojar subcommand
+# ---------------------------------------------------------------------------
+
+# Default ProGuard options for condensed-data (mirrors femtojar CI benchmark)
+CONDENSED_DATA_PROGUARD_OPTIONS = [
+    "-dontwarn",
+    "-keep class **.cli.** { *; }",
+]
+
+# femtojar source dir relative to this script
+FEMTOJAR_SOURCE_DIR = os.path.join(os.path.dirname(__file__), "femtojar")
+
+# The assembled CLI jar produced by `mvn package` in FEMTOJAR_SOURCE_DIR
+FEMTOJAR_CLI_JAR = os.path.join(FEMTOJAR_SOURCE_DIR, "target", "femtojar.jar")
+
+
+def _ensure_femtojar_cli() -> str:
+    """Return path to the femtojar CLI jar, building it if not present."""
+    if os.path.exists(FEMTOJAR_CLI_JAR):
+        return FEMTOJAR_CLI_JAR
+
+    if not os.path.isdir(FEMTOJAR_SOURCE_DIR):
+        print(
+            f"Error: femtojar source directory not found at {FEMTOJAR_SOURCE_DIR}",
+            file=sys.stderr,
+        )
+        sys.exit(1)
+
+    print(f"femtojar CLI jar not found, building from {FEMTOJAR_SOURCE_DIR} …")
+    result = subprocess.run(
+        ["mvn", "install", "-DskipTests", "-q"],
+        cwd=FEMTOJAR_SOURCE_DIR,
+    )
+    if result.returncode != 0:
+        print("Error: mvn install failed for femtojar", file=sys.stderr)
+        sys.exit(result.returncode)
+
+    result = subprocess.run(
+        ["mvn", "package", "-DskipTests", "-q"],
+        cwd=FEMTOJAR_SOURCE_DIR,
+    )
+    if result.returncode != 0:
+        print("Error: mvn package failed for femtojar", file=sys.stderr)
+        sys.exit(result.returncode)
+
+    if not os.path.exists(FEMTOJAR_CLI_JAR):
+        print(f"Error: expected CLI jar not found after build: {FEMTOJAR_CLI_JAR}", file=sys.stderr)
+        sys.exit(1)
+
+    print(f"femtojar CLI jar built: {FEMTOJAR_CLI_JAR}")
+    return FEMTOJAR_CLI_JAR
+
+
+def _run_femtojar(
+    cli_jar: str,
+    input_jar: str,
+    output_jar: str,
+    compression: str,
+    proguard: bool,
+    proguard_options: List[str],
+    verbose: bool,
+) -> bool:
+    """Run femtojar CLI. Returns True on success."""
+    cmd = ["java", "-jar", cli_jar, input_jar, output_jar, "--compression", compression]
+    if proguard:
+        cmd.append("--proguard")
+        for opt in proguard_options:
+            cmd += ["--proguard-options", opt]
+    if verbose:
+        cmd.append("--verbose")
+
+    label = os.path.basename(output_jar)
+    print(f"  → {label}")
+    result = subprocess.run(cmd, capture_output=not verbose, text=True)
+    if result.returncode != 0:
+        print(f"Error: femtojar failed for {label}", file=sys.stderr)
+        if not verbose and result.stdout:
+            print(result.stdout, file=sys.stderr)
+        if not verbose and result.stderr:
+            print(result.stderr, file=sys.stderr)
+        return False
+    return True
+
+
+def _test_jar_help(jar_path: str) -> bool:
+    """Run `java -jar <jar> --help` and return True if exit code is 0."""
+    result = subprocess.run(
+        ["java", "-jar", jar_path, "--help"],
+        capture_output=True,
+        text=True,
+    )
+    ok = result.returncode == 0
+    if not ok:
+        print(f"  FAIL --help check for {os.path.basename(jar_path)}", file=sys.stderr)
+        if result.stdout:
+            print(result.stdout[:500], file=sys.stderr)
+        if result.stderr:
+            print(result.stderr[:500], file=sys.stderr)
+    return ok
+
+
+def _detect_current_platform() -> str:
+    """Detect the current OS/arch as a platform string like 'darwin/aarch64'."""
+    os_name = platform_mod.system().lower()
+    machine = platform_mod.machine().lower()
+    # Map Python arch names to JVM-style names
+    arch_map = {
+        "x86_64": "amd64",
+        "amd64": "amd64",
+        "aarch64": "aarch64",
+        "arm64": "aarch64",
+    }
+    arch = arch_map.get(machine, machine)
+    return f"{os_name}/{arch}"
+
+
+def _run_jar_tests(jar_path: str, inflaterless: bool) -> bool:
+    """Run Maven tests against the given JAR.
+
+    Uses system properties ``cjfr.test.jar`` and, when *inflaterless* is True,
+    ``cjfr.test.inflaterless`` to configure the test harness.
+    Returns True on success.
+    """
+    jar_abs = os.path.abspath(jar_path)
+    label = os.path.basename(jar_path)
+    print(f"  Running tests against {label} …")
+
+    project_dir = os.path.dirname(os.path.abspath(__file__))
+    sys_props = [f"-Dcjfr.test.jar={jar_abs}"]
+    if inflaterless:
+        sys_props.append("-Dcjfr.test.inflaterless=true")
+
+    cmd = [
+        "mvn", "test", "-pl", ".",
+        *sys_props,
+        "-q",
+    ]
+    result = subprocess.run(cmd, cwd=project_dir, capture_output=True, text=True)
+    if result.returncode == 0:
+        print(f"  {label}: tests PASSED")
+        return True
+    else:
+        print(f"  {label}: tests FAILED", file=sys.stderr)
+        if result.stdout:
+            # Show last lines of output for diagnostics
+            lines = result.stdout.strip().splitlines()
+            for line in lines[-30:]:
+                print(f"    {line}", file=sys.stderr)
+        if result.stderr:
+            lines = result.stderr.strip().splitlines()
+            for line in lines[-15:]:
+                print(f"    {line}", file=sys.stderr)
+        return False
+
+
+def cmd_femtojar(args: argparse.Namespace) -> None:
+    """Handler for the 'femtojar' subcommand.
+
+    Produces, for each compression mode (default + zopfli), two JARs:
+      <stem>-<mode>.jar           – plain femtojar reencoding
+      <stem>-<mode>-proguard.jar  – ProGuard + femtojar reencoding  (unless --skip-proguard)
+
+    Then verifies each produced JAR by running `java -jar <jar> --help`.
+    """
+    cli_jar = _ensure_femtojar_cli()
+
+    out_dir = args.output_dir
+    os.makedirs(out_dir, exist_ok=True)
+
+    base_stem = os.path.splitext(os.path.basename(args.input))[0]
+    compression_modes = ["default", "zopfli"]
+    proguard_options = CONDENSED_DATA_PROGUARD_OPTIONS
+
+    generated: List[str] = []
+    failed: List[str] = []
+
+    for mode in compression_modes:
+        # Plain reencoding
+        out_plain = os.path.join(out_dir, f"{base_stem}-{mode}.jar")
+        print(f"[femtojar] {mode} (no ProGuard):")
+        ok = _run_femtojar(cli_jar, args.input, out_plain, mode, False, [], args.verbose)
+        if ok:
+            generated.append(out_plain)
+        else:
+            failed.append(out_plain)
+
+        # ProGuard + reencoding
+        if not args.skip_proguard:
+            out_pg = os.path.join(out_dir, f"{base_stem}-{mode}-proguard.jar")
+            print(f"[femtojar] {mode} + ProGuard:")
+            ok = _run_femtojar(cli_jar, args.input, out_pg, mode, True, proguard_options, args.verbose)
+            if ok:
+                generated.append(out_pg)
+            else:
+                failed.append(out_pg)
+
+    # ------ size table ------
+    original_size = os.path.getsize(args.input)
+    print(f"\nSize comparison (original: {original_size / 1024:.1f} KB):")
+    print(f"  {'JAR':<55} {'size (KB)':>10}  {'%':>6}")
+    print(f"  {'-'*55}  {'-'*10}  {'-'*6}")
+    for jar in generated:
+        size = os.path.getsize(jar)
+        pct = 100.0 * size / original_size
+        print(f"  {os.path.basename(jar):<55} {size / 1024:>10.1f}  {pct:>6.1f}%")
+
+    # ------ smoke-test ------
+    print("\nRunning --help smoke tests …")
+    help_failed: List[str] = []
+    for jar in generated:
+        sys.stdout.write(f"  {os.path.basename(jar)} … ")
+        sys.stdout.flush()
+        if _test_jar_help(jar):
+            print("OK")
+        else:
+            print("FAIL")
+            help_failed.append(jar)
+
+    if failed:
+        print(f"\n[femtojar] {len(failed)} jar(s) failed to build:", file=sys.stderr)
+        for f in failed:
+            print(f"  {f}", file=sys.stderr)
+
+    if help_failed:
+        print(f"\n[femtojar] {len(help_failed)} jar(s) failed --help check:", file=sys.stderr)
+        for f in help_failed:
+            print(f"  {f}", file=sys.stderr)
+
+    if failed or help_failed:
+        sys.exit(1)
+
+    print(f"\nDone. {len(generated)} JARs written to {out_dir}/")
 
 
 def main() -> None:
@@ -413,8 +735,52 @@ def main() -> None:
         metavar="P1,P2,...",
         help="Comma-separated subset of platforms (default: all)",
     )
+    p_matrix.add_argument(
+        "--with-minimal",
+        action="store_true",
+        help="Also generate -minimal variants via femtojar (zopfli + proguard)",
+    )
+    p_matrix.add_argument(
+        "--minimal-output-dir",
+        help="Output dir for minimal variants (default: <output_dir>-minimal)",
+    )
+    p_matrix.add_argument(
+        "--minimal-no-smoke-test",
+        action="store_true",
+        help="Skip black-box '--help' smoke tests for generated minimal variants",
+    )
+    p_matrix.add_argument(
+        "--minimal-verbose",
+        action="store_true",
+        help="Pass --verbose to femtojar while generating minimal variants",
+    )
+    p_matrix.add_argument(
+        "--run-tests",
+        action="store_true",
+        help="Run Maven tests against JARs matching the current platform (and universal)",
+    )
     add_common_options(p_matrix)
     p_matrix.set_defaults(func=cmd_matrix)
+
+    # --- femtojar ---
+    p_femtojar = subparsers.add_parser(
+        "femtojar",
+        help="Reencode with femtojar (default + zopfli, with and without ProGuard)",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
+    p_femtojar.add_argument("input", help="Input JAR path")
+    p_femtojar.add_argument("output_dir", help="Directory to write reencoded JARs into")
+    p_femtojar.add_argument(
+        "--skip-proguard",
+        action="store_true",
+        help="Skip ProGuard variants (only produce plain reencoded JARs)",
+    )
+    p_femtojar.add_argument(
+        "--verbose",
+        action="store_true",
+        help="Pass --verbose to femtojar and show its output",
+    )
+    p_femtojar.set_defaults(func=cmd_femtojar)
 
     args = parser.parse_args()
     args.func(args)

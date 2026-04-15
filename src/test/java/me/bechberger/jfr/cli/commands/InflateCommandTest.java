@@ -15,6 +15,7 @@ import org.assertj.core.data.TemporalUnitLessThanOffset;
 import org.assertj.core.util.Files;
 import org.junit.jupiter.api.Test;
 
+@InflaterRelated
 public class InflateCommandTest {
 
     @Test

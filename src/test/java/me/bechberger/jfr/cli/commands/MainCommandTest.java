@@ -3,6 +3,7 @@ package me.bechberger.jfr.cli.commands;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.junit.jupiter.api.Assertions.assertAll;
 
+import java.util.List;
 import java.util.stream.Stream;
 import me.bechberger.jfr.cli.JFRCLI;
 import org.junit.jupiter.api.Test;
@@ -48,8 +49,14 @@ public class MainCommandTest {
                 () -> assertThat(result.error()).isEmpty());
     }
 
+    private static final List<String> INFLATER_COMMANDS = List.of("inflate", "benchmark");
+
     private static Stream<Arguments> subCommands() {
-        return JFRCLI.subCommandNames().stream().map(Arguments::of);
+        var names = JFRCLI.subCommandNames().stream();
+        if ("true".equals(System.getProperty("cjfr.test.inflaterless"))) {
+            names = names.filter(n -> !INFLATER_COMMANDS.contains(n));
+        }
+        return names.map(Arguments::of);
     }
 
     @ParameterizedTest

@@ -19,6 +19,7 @@ import me.bechberger.jfr.cli.FileOptionConverters.ExistingCJFRFileOrZipOrFolderC
 public class InflateCommand implements Callable<Integer> {
 
     @Parameters(
+            index = "0",
             description = "The input .cjfr file, can be a folder, or a zip",
             converter = ExistingCJFRFileOrZipOrFolderConverter.class)
     private Path inputFile;
@@ -66,7 +67,7 @@ public class InflateCommand implements Callable<Integer> {
     /** JMC-dependent implementation, loaded via reflection. */
     @JMCDependent
     public static class Impl {
-        public static void run(InflateCommand cmd) {
+        public static void run(InflateCommand cmd) throws Exception {
             var jfrReader =
                     me.bechberger.jfr.CombiningJFRReader.fromPaths(
                             cmd.inputs(),
