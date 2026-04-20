@@ -11,15 +11,20 @@ public class MemoryUtil {
     }
 
     public static String formatMemory(long bytes, int decimals, MemoryUnit unit) {
+        String suffix = unit == MemoryUnit.BITS ? "b" : "B";
         if (bytes < 1024) {
-            return bytes + "B";
+            return bytes + suffix;
         }
-        int exp = (int) (Math.log(bytes) / Math.log(1024));
-        return String.format(
-                Locale.ENGLISH,
-                "%.0" + decimals + "f%s" + (unit == MemoryUnit.BITS ? "b" : "B"),
-                bytes / Math.pow(1024, exp),
-                "KMGT".charAt(exp - 1));
+        int exp = Math.min((int) (Math.log(bytes) / Math.log(1024)), 4);
+        double divisor = Math.pow(1024, exp);
+        char unitChar = "KMGT".charAt(exp - 1);
+        for (int d = decimals; d <= 20; d++) {
+            String numberStr = String.format(Locale.ENGLISH, "%." + d + "f", bytes / divisor);
+            if (Math.round(Double.parseDouble(numberStr) * divisor) == bytes) {
+                return numberStr + unitChar + suffix;
+            }
+        }
+        return bytes + suffix;
     }
 
     public static String formatMemory(long bytes, int decimals) {
@@ -31,13 +36,17 @@ public class MemoryUtil {
     }
 
     public static long parseMemory(String memory) {
-        memory = memory.toLowerCase();
+        memory = memory.strip().toLowerCase();
         if (memory.endsWith("b")) {
             memory = memory.substring(0, memory.length() - 1);
         }
+        if (memory.isEmpty()) {
+            throw new IllegalArgumentException(
+                    "Invalid memory format: empty after removing 'b' suffix");
+        }
         int exp = "kmgt".indexOf(memory.charAt(memory.length() - 1)) + 1;
         if (exp == 0) {
-            return (long) Double.parseDouble(memory);
+            return Math.round(Double.parseDouble(memory));
         }
         var numberPart = Double.parseDouble(memory.substring(0, memory.length() - 1));
         return Math.round(numberPart * Math.pow(1024, exp));

@@ -6,7 +6,7 @@ import org.jetbrains.annotations.NotNull;
 
 class CountingOutputStream extends OutputStream {
     private final OutputStream out;
-    private int count = 0;
+    private long count = 0;
 
     public CountingOutputStream(OutputStream out) {
         this.out = out;
@@ -40,7 +40,7 @@ class CountingOutputStream extends OutputStream {
         count += len;
     }
 
-    public int writtenBytes() {
+    public long writtenBytes() {
         return count;
     }
 }

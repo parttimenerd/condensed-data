@@ -118,8 +118,13 @@ public abstract class RecordingThread implements Runnable {
             eventErrorCount++;
             if (eventErrorCount <= MAX_EVENT_ERRORS) {
                 agentIO.writeSevereError(
-                        "Error processing event: " + e.getMessage()
-                                + " (" + eventErrorCount + "/" + MAX_EVENT_ERRORS + ")");
+                        "Error processing event: "
+                                + e.getMessage()
+                                + " ("
+                                + eventErrorCount
+                                + "/"
+                                + MAX_EVENT_ERRORS
+                                + ")");
             }
         }
     }
@@ -166,7 +171,7 @@ public abstract class RecordingThread implements Runnable {
         status.add(Map.entry("jfr-config", jfrConfig));
         status.add(Map.entry("misc-jfr-config", miscJfrConfig));
         status.add(Map.entry("start", formatInstant(start)));
-        status.add(Map.entry("duration", formatDuration(Duration.between(start, Instant.now()))));
+        status.add(Map.entry("elapsed", formatDuration(Duration.between(start, Instant.now()))));
         status.add(Map.entry("max-duration", formatDuration(getMaxDuration())));
         status.add(Map.entry("max-size", formatMemory(getMaxSize())));
         status.add(Map.entry("max-files", Integer.toString(getMaxFiles())));

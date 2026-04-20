@@ -489,6 +489,7 @@ public class JFRView {
                     new JFRView.MemoryColumn(field.name(), MemoryUtil.MemoryUnit.BITS);
             case "java.lang.String" -> new JFRView.StringColumn(field.name());
             case "int", "jdk.jfr.Unsigned" -> new JFRView.IntegerColumn(field.name(), 10);
+            case "long" -> new JFRView.IntegerColumn(field.name(), 20);
             case "float" -> new JFRView.FloatColumn(field.name(), 10, 2);
             case "boolean" -> new JFRView.BooleanColumn(field.name());
             case "jdk.types.Class" -> new JFRView.ClassColumn(field.name());
@@ -601,6 +602,8 @@ public class JFRView {
     public List<String> rows(ReadStruct struct) {
         List<String> rows = new ArrayList<>();
         List<List<String>> rowsPerColumn = new ArrayList<>();
+        // Track which column indices have width > 0
+        List<Integer> visibleColumnIndices = new ArrayList<>();
         for (int j = 0; j < view.columns.size(); j++) {
             var column = view.columns.get(j);
             var width = columnWidths.get(j);
@@ -608,18 +611,20 @@ public class JFRView {
                 var rowsForColumn =
                         column.format(struct, Math.min(column.rows(struct), config.cellHeight));
                 rowsPerColumn.add(rowsForColumn);
+                visibleColumnIndices.add(j);
             }
         }
         int maxRows = rowsPerColumn.stream().mapToInt(List::size).max().orElse(0);
         for (int rowIndex = 0; rowIndex < maxRows; rowIndex++) {
             StringBuilder row = new StringBuilder();
-            for (int j = 0; j < view.columns.size(); j++) {
+            for (int colIdx = 0; colIdx < visibleColumnIndices.size(); colIdx++) {
+                int j = visibleColumnIndices.get(colIdx);
                 var column = view.columns.get(j);
                 var width = columnWidths.get(j);
-                var rowsForColumn = rowsPerColumn.get(j);
+                var rowsForColumn = rowsPerColumn.get(colIdx);
                 var value = rowIndex < rowsForColumn.size() ? rowsForColumn.get(rowIndex) : "";
                 row.append(pad(truncate(value, width), width, column.alignment()));
-                if (j < view.columns.size() - 1) {
+                if (colIdx < visibleColumnIndices.size() - 1) {
                     row.append(" ");
                 }
             }
@@ -629,12 +634,12 @@ public class JFRView {
     }
 
     private String truncate(String s, int width) {
-        if (s.length() <= width) {
+        if (width <= 0 || s.length() <= width) {
             return s;
         }
         return switch (config.truncateMode) {
-            case BEGIN -> s.substring(0, width);
-            case END -> s.substring(s.length() - width);
+            case BEGIN -> s.substring(s.length() - width);
+            case END -> s.substring(0, width);
         };
     }
 

@@ -9,7 +9,6 @@ import java.util.Map.Entry;
 import java.util.function.BiFunction;
 import java.util.function.Function;
 import java.util.function.Supplier;
-import java.util.logging.Logger;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 import jdk.jfr.EventType;
@@ -32,8 +31,6 @@ import org.jetbrains.annotations.Nullable;
 
 /** Contains combiners for JFR events to reduce the amount of data written to the stream */
 public class JFREventCombiner extends EventCombiner {
-
-    private static final Logger LOGGER = Logger.getLogger(JFREventCombiner.class.getName());
 
     /**
      * A typed field value
@@ -674,13 +671,192 @@ public class JFREventCombiner extends EventCombiner {
         }
     }
 
-    // Object allocation combining: summing object sizes for jdk.ObjectAllocationInNewTLAB,
-    // jdk.ObjectAllocationOutsideTLAB and ObjectAllocation events is tracked by
-    // ObjectAllocationSampleCombiner and not yet implemented for TLAB-level events
+    /**
+     * Combines TLAB allocation events by the next GC id and object class.
+     *
+     * <p>This is intentionally lossy with respect to eventThread/stackTrace and exact timestamps,
+     * matching the behavior of the existing ObjectAllocationSample combiner.
+     */
+    static class BasicObjectAllocationCombiner
+            extends AbstractCombiner<ObjectAllocationSampleToken, ObjectAllocationSampleState> {
 
-    static class BasicObjectAllocationCombiner {
-        // per second / configurable
-        // thread -> tlab size -> class of object -> array of sizes or summed size
+        private final GCIdPerTimestamp gcIdPerTimestamp;
+
+        public BasicObjectAllocationCombiner(
+                String typeName,
+                boolean hasTLABSize,
+                Configuration configuration,
+                BasicJFRWriter basicJFRWriter,
+                GCIdPerTimestamp gcIdPerTimestamp) {
+            super(
+                    typeName,
+                    configuration,
+                    basicJFRWriter,
+                    createValueDefinition(basicJFRWriter, configuration, hasTLABSize));
+            this.gcIdPerTimestamp = gcIdPerTimestamp;
+        }
+
+        @Override
+        public void combine(
+                ObjectAllocationSampleToken token,
+                ObjectAllocationSampleState state,
+                RecordedEvent event) {
+            state.updateEndTimestamp(event.getStartTime());
+            super.combine(token, state, event);
+        }
+
+        @Override
+        public Instant getStartTimestamp(ObjectAllocationSampleState state) {
+            return state.endTimestamp;
+        }
+
+        @Override
+        @SuppressWarnings("unchecked")
+        public List<Field<ObjectAllocationSampleState, ?, ?>> getAdditionalFields(
+                EventType eventType) {
+            return List.of(
+                    new Field<>(
+                            "nextGCId",
+                            "",
+                            TypeCollection.getDefaultTypeInstance(VarIntType.SPECIFIED_TYPE),
+                            s -> s.nextGCId),
+                    new Field<>(
+                            "endTime",
+                            "",
+                            (CondensedType<Instant, Instant>)
+                                    basicJFRWriter.getTypeCached(eventType.getField("startTime")),
+                            s ->
+                                    JFRReduction.TIMESTAMP_REDUCTION.reduce(
+                                            configuration,
+                                            basicJFRWriter.universe,
+                                            s.endTimestamp)));
+        }
+
+        @SuppressWarnings({"rawtypes", "unchecked"})
+        private static MapValue<RecordedEvent, ?, ?> createValueDefinition(
+                BasicJFRWriter basicJFRWriter, Configuration configuration, boolean hasTLABSize) {
+            BiFunction<CondensedOutputStream, EventType, CondensedType<Object, Object>>
+                    allocationSizeCreator =
+                            (out, eventType) ->
+                                    (CondensedType<Object, Object>)
+                                            basicJFRWriter.getTypeCached(
+                                                    eventType.getField("allocationSize"));
+
+            MapEntry<RecordedEvent, Object> allocationSizeValue =
+                    configuration.sumObjectSizes()
+                            ? new SingleValue<RecordedEvent, Object>(
+                                    new MapPartValue<>(
+                                            "allocationSize",
+                                            allocationSizeCreator,
+                                            e -> e.getLong("allocationSize")),
+                                    (a, b) -> (long) a + (long) b,
+                                    () -> 0L)
+                            : (MapEntry<RecordedEvent, Object>)
+                                    (MapEntry)
+                                            new ArrayValue<RecordedEvent, Object>(
+                                                    new MapPartValue<>(
+                                                            "allocationSize",
+                                                            allocationSizeCreator,
+                                                            e -> e.getLong("allocationSize")));
+
+            MapEntry<RecordedEvent, ?> values;
+            if (hasTLABSize) {
+                values =
+                        (MapEntry)
+                                new MapValue<>(
+                                        new MapPartValue<>(
+                                                "tlabSize",
+                                                (out, eventType) ->
+                                                        (CondensedType<Object, Object>)
+                                                                basicJFRWriter.getTypeCached(
+                                                                        eventType.getField(
+                                                                                "tlabSize")),
+                                                e -> e.getLong("tlabSize")),
+                                        allocationSizeValue);
+            } else {
+                values = allocationSizeValue;
+            }
+
+            return new MapValue<>(
+                    new MapPartValue<>(
+                            "objectClass",
+                            (out, eventType) ->
+                                    (CondensedType<RecordedClass, RecordedClass>)
+                                            basicJFRWriter.getTypeCached(
+                                                    eventType.getField("objectClass")),
+                            e -> e.getClass("objectClass")),
+                    values);
+        }
+
+        @Override
+        public ObjectAllocationSampleState createInitialState(
+                ObjectAllocationSampleToken token, RecordedEvent event) {
+            var state = new DefinedMap<>(getValueDefinition(), event);
+            return new ObjectAllocationSampleState(token.nextGCId(), state, event.getStartTime());
+        }
+
+        @Override
+        public ObjectAllocationSampleToken createToken(RecordedEvent event) {
+            return new ObjectAllocationSampleToken(
+                    gcIdPerTimestamp.getClosestGCId(event.getStartTime()));
+        }
+    }
+
+    static class BasicObjectAllocationReconstitutor
+            extends AbstractReconstitutor<BasicObjectAllocationCombiner> {
+
+        public BasicObjectAllocationReconstitutor(String eventTypeName) {
+            super(eventTypeName);
+        }
+
+        @Override
+        @SuppressWarnings("unchecked")
+        public <E> List<E> reconstitute(
+                StructType<?, ?> resultEventType,
+                ReadStruct combinedReadEvent,
+                EventBuilder<E, ?> builder) {
+            builder.addStandardFieldsIfNeeded();
+            boolean hasTLABSize = resultEventType.hasField("tlabSize");
+
+            return combinedReadEvent.asMapEntryList("objectClass").stream()
+                    .flatMap(
+                            classEntry -> {
+                                builder.put("objectClass", classEntry.getKey());
+
+                                if (!hasTLABSize) {
+                                    var value = classEntry.getValue();
+                                    if (value instanceof ReadList<?> sizes) {
+                                        return sizes.stream()
+                                                .map(
+                                                        size ->
+                                                                builder.put("allocationSize", size)
+                                                                        .build());
+                                    }
+                                    return Stream.of(builder.put("allocationSize", value).build());
+                                }
+
+                                ReadList<?> tlabEntries = (ReadList<?>) classEntry.getValue();
+                                return tlabEntries.asMapEntryList().stream()
+                                        .flatMap(
+                                                tlabEntry -> {
+                                                    builder.put("tlabSize", tlabEntry.getKey());
+                                                    var value = tlabEntry.getValue();
+                                                    if (value instanceof ReadList<?> sizes) {
+                                                        return sizes.stream()
+                                                                .map(
+                                                                        size ->
+                                                                                builder.put(
+                                                                                                "allocationSize",
+                                                                                                size)
+                                                                                        .build());
+                                                    }
+                                                    return Stream.of(
+                                                            builder.put("allocationSize", value)
+                                                                    .build());
+                                                });
+                            })
+                    .toList();
+        }
     }
 
     /** Throws away the thread id. Discards plabSize as it is not meaningfully aggregatable. */
@@ -1078,6 +1254,11 @@ public class JFREventCombiner extends EventCombiner {
         }
 
         @Override
+        public Instant getStartTimestamp(ObjectAllocationSampleState state) {
+            return state.endTimestamp;
+        }
+
+        @Override
         @SuppressWarnings("unchecked")
         public List<Field<ObjectAllocationSampleState, ?, ?>> getAdditionalFields(
                 EventType eventType) {
@@ -1168,7 +1349,481 @@ public class JFREventCombiner extends EventCombiner {
                 EventBuilder<E, ?> builder) {
             builder.put("endTime").addStandardFieldsIfNeeded();
             return combinedReadEvent.asMapEntryList("objectClass").stream()
-                    .map(e -> builder.put("objectClass", "weight", e).build())
+                    .flatMap(
+                            entry -> {
+                                var objectClass = entry.getKey();
+                                var weight = entry.getValue();
+                                if (weight instanceof ReadList<?> weights) {
+                                    return weights.stream()
+                                            .map(
+                                                    singleWeight ->
+                                                            builder.put(
+                                                                            "objectClass",
+                                                                            objectClass,
+                                                                            "weight",
+                                                                            singleWeight)
+                                                                    .build());
+                                }
+                                return Stream.of(
+                                        builder.put("objectClass", objectClass, "weight", weight)
+                                                .build());
+                            })
+                    .toList();
+        }
+    }
+
+    /** Combines GCReferenceStatistics per GC id: gcId -> type -> count */
+    static class GCReferenceStatisticsCombiner extends GCIdBasedCombiner {
+
+        public GCReferenceStatisticsCombiner(
+                String typeName, Configuration configuration, BasicJFRWriter basicJFRWriter) {
+            super(typeName, configuration, basicJFRWriter, createValueDefinition(basicJFRWriter));
+        }
+
+        @SuppressWarnings("unchecked")
+        private static MapValue<RecordedEvent, ?, ?> createValueDefinition(
+                BasicJFRWriter basicJFRWriter) {
+            return new MapValue<>(
+                    new MapPartValue<>(
+                            "type",
+                            (out, eventType) ->
+                                    (CondensedType<String, String>)
+                                            basicJFRWriter.getTypeCached(
+                                                    eventType.getField("type")),
+                            e -> e.getString("type")),
+                    new SingleValue<>(
+                            new MapPartValue<>(
+                                    "count",
+                                    (out, eventType) ->
+                                            (CondensedType<Long, Long>)
+                                                    basicJFRWriter.getTypeCached(
+                                                            eventType.getField("count")),
+                                    e -> e.getLong("count"))),
+                    map -> new ArrayList<>(map.entrySet()));
+        }
+    }
+
+    static class GCReferenceStatisticsReconstitutor
+            extends AbstractReconstitutor<GCReferenceStatisticsCombiner> {
+        public GCReferenceStatisticsReconstitutor() {
+            super("jdk.GCReferenceStatistics");
+        }
+
+        @Override
+        public <E> List<E> reconstitute(
+                StructType<?, ?> resultEventType,
+                ReadStruct combinedReadEvent,
+                EventBuilder<E, ?> builder) {
+            builder.put("gcId").addStandardFieldsIfNeeded();
+            return combinedReadEvent.asMapEntryList("type").stream()
+                    .map(e -> builder.put("type", "count", e).build())
+                    .toList();
+        }
+    }
+
+    /**
+     * Combines ZStatisticsCounter and ZStatisticsSampler by next GC id and statistic id.
+     *
+     * <p>The full value history is retained per id as an array of entries.
+     */
+    static class ZStatisticsCombiner
+            extends AbstractCombiner<ObjectAllocationSampleToken, ObjectAllocationSampleState> {
+
+        private final GCIdPerTimestamp gcIdPerTimestamp;
+
+        public ZStatisticsCombiner(
+                String typeName,
+                Configuration configuration,
+                BasicJFRWriter basicJFRWriter,
+                GCIdPerTimestamp gcIdPerTimestamp) {
+            super(typeName, configuration, basicJFRWriter, createValueDefinition(basicJFRWriter));
+            this.gcIdPerTimestamp = gcIdPerTimestamp;
+        }
+
+        @Override
+        public void combine(
+                ObjectAllocationSampleToken token,
+                ObjectAllocationSampleState state,
+                RecordedEvent event) {
+            state.updateEndTimestamp(event.getStartTime());
+            super.combine(token, state, event);
+        }
+
+        @Override
+        public Instant getStartTimestamp(ObjectAllocationSampleState state) {
+            return state.endTimestamp;
+        }
+
+        @Override
+        @SuppressWarnings("unchecked")
+        public List<Field<ObjectAllocationSampleState, ?, ?>> getAdditionalFields(
+                EventType eventType) {
+            return List.of(
+                    new Field<>(
+                            "nextGCId",
+                            "",
+                            TypeCollection.getDefaultTypeInstance(VarIntType.SPECIFIED_TYPE),
+                            s -> s.nextGCId),
+                    new Field<>(
+                            "endTime",
+                            "",
+                            (CondensedType<Instant, Instant>)
+                                    basicJFRWriter.getTypeCached(eventType.getField("startTime")),
+                            s ->
+                                    JFRReduction.TIMESTAMP_REDUCTION.reduce(
+                                            configuration,
+                                            basicJFRWriter.universe,
+                                            s.endTimestamp)));
+        }
+
+        @SuppressWarnings({"rawtypes", "unchecked"})
+        private static MapValue<RecordedEvent, ?, ?> createValueDefinition(
+                BasicJFRWriter basicJFRWriter) {
+            var statisticEntry =
+                    new MapPartValue<RecordedEvent, RecordedEvent>(
+                            "statisticEntry",
+                            (out, eventType) ->
+                                    (CondensedType)
+                                            basicJFRWriter
+                                                    .getOutputStream()
+                                                    .writeAndStoreType(
+                                                            id -> {
+                                                                List<Field<RecordedEvent, ?, ?>>
+                                                                        fields = new ArrayList<>();
+                                                                fields.add(
+                                                                        basicJFRWriter
+                                                                                .eventFieldToField(
+                                                                                        eventType
+                                                                                                .getField(
+                                                                                                        "startTime"),
+                                                                                        true));
+                                                                var eventThreadField =
+                                                                        eventType.getField(
+                                                                                "eventThread");
+                                                                if (eventThreadField != null) {
+                                                                    fields.add(
+                                                                            basicJFRWriter
+                                                                                    .eventFieldToField(
+                                                                                            eventThreadField,
+                                                                                            true));
+                                                                }
+                                                                var incrementField =
+                                                                        eventType.getField(
+                                                                                "increment");
+                                                                if (incrementField != null) {
+                                                                    fields.add(
+                                                                            basicJFRWriter
+                                                                                    .eventFieldToField(
+                                                                                            incrementField,
+                                                                                            true));
+                                                                }
+                                                                fields.add(
+                                                                        basicJFRWriter
+                                                                                .eventFieldToField(
+                                                                                        eventType
+                                                                                                .getField(
+                                                                                                        "value"),
+                                                                                        true));
+                                                                return new StructType<
+                                                                        RecordedEvent, ReadStruct>(
+                                                                        id,
+                                                                        "ZStatisticsEntry",
+                                                                        fields);
+                                                            }),
+                            e -> e);
+
+            return new MapValue<>(
+                    new MapPartValue<>(
+                            "id",
+                            (out, eventType) ->
+                                    (CondensedType<String, String>)
+                                            basicJFRWriter.getTypeCached(eventType.getField("id")),
+                            e -> e.getString("id")),
+                    new ArrayValue<>(statisticEntry));
+        }
+
+        @Override
+        public ObjectAllocationSampleState createInitialState(
+                ObjectAllocationSampleToken token, RecordedEvent event) {
+            var state = new DefinedMap<>(getValueDefinition(), event);
+            return new ObjectAllocationSampleState(token.nextGCId(), state, event.getStartTime());
+        }
+
+        @Override
+        public ObjectAllocationSampleToken createToken(RecordedEvent event) {
+            return new ObjectAllocationSampleToken(
+                    gcIdPerTimestamp.getClosestGCId(event.getStartTime()));
+        }
+    }
+
+    static class ZStatisticsReconstitutor extends AbstractReconstitutor<ZStatisticsCombiner> {
+
+        public ZStatisticsReconstitutor(String eventTypeName) {
+            super(eventTypeName);
+        }
+
+        @Override
+        public <E> List<E> reconstitute(
+                StructType<?, ?> resultEventType,
+                ReadStruct combinedReadEvent,
+                EventBuilder<E, ?> builder) {
+            return combinedReadEvent.asMapEntryList("id").stream()
+                    .flatMap(
+                            idEntry -> {
+                                Object id = idEntry.getKey();
+                                ReadList<?> entries = (ReadList<?>) idEntry.getValue();
+                                return entries.stream()
+                                        .map(
+                                                entry -> {
+                                                    ReadStruct data = (ReadStruct) entry;
+                                                    builder.put("startTime", data.get("startTime"));
+                                                    builder.put("id", id);
+                                                    if (resultEventType.hasField("eventThread")) {
+                                                        builder.put(
+                                                                "eventThread",
+                                                                data.hasField("eventThread")
+                                                                        ? data.get("eventThread")
+                                                                        : null);
+                                                    }
+                                                    if (resultEventType.hasField("increment")) {
+                                                        builder.put(
+                                                                "increment", data.get("increment"));
+                                                    }
+                                                    builder.put("value", data.get("value"));
+                                                    builder.addStandardFieldsIfNeeded();
+                                                    return builder.build();
+                                                });
+                            })
+                    .toList();
+        }
+    }
+
+    /**
+     * Combines ObjectCount (or ObjectCountAfterGC) per GC id: gcId -> objectClass -> (count,
+     * totalSize) struct
+     */
+    static class ObjectCountCombiner extends GCIdBasedCombiner {
+
+        public ObjectCountCombiner(
+                String typeName, Configuration configuration, BasicJFRWriter basicJFRWriter) {
+            super(typeName, configuration, basicJFRWriter, createValueDefinition(basicJFRWriter));
+        }
+
+        @SuppressWarnings({"unchecked", "rawtypes"})
+        private static MapValue<RecordedEvent, ?, ?> createValueDefinition(
+                BasicJFRWriter basicJFRWriter) {
+            var countAndSize =
+                    new MapPartValue<RecordedEvent, RecordedEvent>(
+                            "countAndSize",
+                            (out, eventType) ->
+                                    (CondensedType)
+                                            basicJFRWriter
+                                                    .getOutputStream()
+                                                    .writeAndStoreType(
+                                                            id ->
+                                                                    new StructType<
+                                                                            RecordedEvent,
+                                                                            ReadStruct>(
+                                                                            id,
+                                                                            "ObjectCountData",
+                                                                            List.of(
+                                                                                    basicJFRWriter
+                                                                                            .eventFieldToField(
+                                                                                                    eventType
+                                                                                                            .getField(
+                                                                                                                    "count"),
+                                                                                                    true),
+                                                                                    basicJFRWriter
+                                                                                            .eventFieldToField(
+                                                                                                    eventType
+                                                                                                            .getField(
+                                                                                                                    "totalSize"),
+                                                                                                    true)))),
+                            e -> e);
+
+            return new MapValue<>(
+                    new MapPartValue<>(
+                            "objectClass",
+                            (out, eventType) ->
+                                    (CondensedType<Object, Object>)
+                                            basicJFRWriter.getTypeCached(
+                                                    eventType.getField("objectClass")),
+                            e -> e.getValue("objectClass")),
+                    new SingleValue<>(countAndSize),
+                    map -> new ArrayList<>(map.entrySet()));
+        }
+    }
+
+    static class ObjectCountReconstitutor extends AbstractReconstitutor<ObjectCountCombiner> {
+        public ObjectCountReconstitutor(String eventTypeName) {
+            super(eventTypeName);
+        }
+
+        @Override
+        public <E> List<E> reconstitute(
+                StructType<?, ?> resultEventType,
+                ReadStruct combinedReadEvent,
+                EventBuilder<E, ?> builder) {
+            builder.put("gcId").addStandardFieldsIfNeeded();
+            return combinedReadEvent.asMapEntryList("objectClass").stream()
+                    .map(
+                            e -> {
+                                ReadStruct data = (ReadStruct) e.getValue();
+                                return builder.put("objectClass", e.getKey())
+                                        .put("count", data.get("count"))
+                                        .put("totalSize", data.get("totalSize"))
+                                        .build();
+                            })
+                    .toList();
+        }
+    }
+
+    /**
+     * Combines MetaspaceChunkFreeListSummary per GC id: gcId -> (when + metadataType) -> struct of
+     * all chunk fields
+     */
+    static class MetaspaceChunkFreeListSummaryCombiner extends GCIdBasedCombiner {
+
+        public MetaspaceChunkFreeListSummaryCombiner(
+                String typeName, Configuration configuration, BasicJFRWriter basicJFRWriter) {
+            super(
+                    typeName,
+                    configuration,
+                    basicJFRWriter,
+                    createValueDefinition(basicJFRWriter, configuration));
+        }
+
+        @SuppressWarnings({"unchecked", "rawtypes"})
+        private static MapValue<RecordedEvent, ?, ?> createValueDefinition(
+                BasicJFRWriter basicJFRWriter, Configuration configuration) {
+            var chunkData =
+                    new MapPartValue<RecordedEvent, RecordedEvent>(
+                            "chunkData",
+                            (out, eventType) ->
+                                    (CondensedType)
+                                            basicJFRWriter
+                                                    .getOutputStream()
+                                                    .writeAndStoreType(
+                                                            id ->
+                                                                    new StructType<
+                                                                            RecordedEvent,
+                                                                            ReadStruct>(
+                                                                            id,
+                                                                            "MetaspaceChunkData",
+                                                                            List.of(
+                                                                                    basicJFRWriter
+                                                                                            .eventFieldToField(
+                                                                                                    eventType
+                                                                                                            .getField(
+                                                                                                                    "when"),
+                                                                                                    true),
+                                                                                    basicJFRWriter
+                                                                                            .eventFieldToField(
+                                                                                                    eventType
+                                                                                                            .getField(
+                                                                                                                    "metadataType"),
+                                                                                                    true),
+                                                                                    basicJFRWriter
+                                                                                            .eventFieldToField(
+                                                                                                    eventType
+                                                                                                            .getField(
+                                                                                                                    "specializedChunks"),
+                                                                                                    true),
+                                                                                    basicJFRWriter
+                                                                                            .eventFieldToField(
+                                                                                                    eventType
+                                                                                                            .getField(
+                                                                                                                    "specializedChunksTotalSize"),
+                                                                                                    true),
+                                                                                    basicJFRWriter
+                                                                                            .eventFieldToField(
+                                                                                                    eventType
+                                                                                                            .getField(
+                                                                                                                    "smallChunks"),
+                                                                                                    true),
+                                                                                    basicJFRWriter
+                                                                                            .eventFieldToField(
+                                                                                                    eventType
+                                                                                                            .getField(
+                                                                                                                    "smallChunksTotalSize"),
+                                                                                                    true),
+                                                                                    basicJFRWriter
+                                                                                            .eventFieldToField(
+                                                                                                    eventType
+                                                                                                            .getField(
+                                                                                                                    "mediumChunks"),
+                                                                                                    true),
+                                                                                    basicJFRWriter
+                                                                                            .eventFieldToField(
+                                                                                                    eventType
+                                                                                                            .getField(
+                                                                                                                    "mediumChunksTotalSize"),
+                                                                                                    true),
+                                                                                    basicJFRWriter
+                                                                                            .eventFieldToField(
+                                                                                                    eventType
+                                                                                                            .getField(
+                                                                                                                    "humongousChunks"),
+                                                                                                    true),
+                                                                                    basicJFRWriter
+                                                                                            .eventFieldToField(
+                                                                                                    eventType
+                                                                                                            .getField(
+                                                                                                                    "humongousChunksTotalSize"),
+                                                                                                    true)))),
+                            e -> e);
+
+            // Use array (list) since there are typically 4 entries per GC (before/after x
+            // metadata/class)
+            return new MapValue<>(
+                    new MapPartValue<>(
+                            "whenAndType",
+                            (out, eventType) -> out.writeAndStoreType(VarIntType::new),
+                            e ->
+                                    (long)
+                                            (e.getString("when").hashCode() * 31
+                                                    + e.getString("metadataType").hashCode())),
+                    new SingleValue<>(chunkData),
+                    map -> new ArrayList<>(map.entrySet()));
+        }
+    }
+
+    static class MetaspaceChunkFreeListSummaryReconstitutor
+            extends AbstractReconstitutor<MetaspaceChunkFreeListSummaryCombiner> {
+        public MetaspaceChunkFreeListSummaryReconstitutor() {
+            super("jdk.MetaspaceChunkFreeListSummary");
+        }
+
+        @Override
+        public <E> List<E> reconstitute(
+                StructType<?, ?> resultEventType,
+                ReadStruct combinedReadEvent,
+                EventBuilder<E, ?> builder) {
+            builder.put("gcId").addStandardFieldsIfNeeded();
+            return combinedReadEvent.asMapEntryList("whenAndType").stream()
+                    .map(
+                            e -> {
+                                ReadStruct data = (ReadStruct) e.getValue();
+                                return builder.put("when", data.get("when"))
+                                        .put("metadataType", data.get("metadataType"))
+                                        .put("specializedChunks", data.get("specializedChunks"))
+                                        .put(
+                                                "specializedChunksTotalSize",
+                                                data.get("specializedChunksTotalSize"))
+                                        .put("smallChunks", data.get("smallChunks"))
+                                        .put(
+                                                "smallChunksTotalSize",
+                                                data.get("smallChunksTotalSize"))
+                                        .put("mediumChunks", data.get("mediumChunks"))
+                                        .put(
+                                                "mediumChunksTotalSize",
+                                                data.get("mediumChunksTotalSize"))
+                                        .put("humongousChunks", data.get("humongousChunks"))
+                                        .put(
+                                                "humongousChunksTotalSize",
+                                                data.get("humongousChunksTotalSize"))
+                                        .build();
+                            })
                     .toList();
         }
     }
@@ -1280,6 +1935,26 @@ public class JFREventCombiner extends EventCombiner {
                                 basicJFRWriter,
                                 gcIdPerTimestamp));
             }
+            if (eventType.getName().equals("jdk.ObjectAllocationInNewTLAB")) {
+                put(
+                        eventType,
+                        new JFREventCombiner.BasicObjectAllocationCombiner(
+                                "jdk.combined.ObjectAllocationInNewTLAB",
+                                true,
+                                configuration,
+                                basicJFRWriter,
+                                gcIdPerTimestamp));
+            }
+            if (eventType.getName().equals("jdk.ObjectAllocationOutsideTLAB")) {
+                put(
+                        eventType,
+                        new JFREventCombiner.BasicObjectAllocationCombiner(
+                                "jdk.combined.ObjectAllocationOutsideTLAB",
+                                false,
+                                configuration,
+                                basicJFRWriter,
+                                gcIdPerTimestamp));
+            }
         }
         if (configuration.combineEventsWithoutDataLoss()) {
             if (eventType.getName().equals("jdk.TenuringDistribution")) {
@@ -1302,11 +1977,77 @@ public class JFREventCombiner extends EventCombiner {
                         new JFREventCombiner.GCPhasePauseLevelCombiner(
                                 "jdk.combined.GCPhasePauseLevel2", configuration, basicJFRWriter));
             }
+            if (eventType.getName().equals("jdk.GCPhasePauseLevel3")) {
+                put(
+                        eventType,
+                        new JFREventCombiner.GCPhasePauseLevelCombiner(
+                                "jdk.combined.GCPhasePauseLevel3", configuration, basicJFRWriter));
+            }
+            if (eventType.getName().equals("jdk.GCPhasePauseLevel4")) {
+                put(
+                        eventType,
+                        new JFREventCombiner.GCPhasePauseLevelCombiner(
+                                "jdk.combined.GCPhasePauseLevel4", configuration, basicJFRWriter));
+            }
+            if (eventType.getName().equals("jdk.GCPhaseConcurrentLevel1")) {
+                put(
+                        eventType,
+                        new JFREventCombiner.GCPhasePauseLevelCombiner(
+                                "jdk.combined.GCPhaseConcurrentLevel1",
+                                configuration,
+                                basicJFRWriter));
+            }
             if (eventType.getName().equals("jdk.GCPhaseParallel")) {
                 put(
                         eventType,
                         new JFREventCombiner.GCPhaseParallelCombiner(
                                 configuration, basicJFRWriter));
+            }
+            if (eventType.getName().equals("jdk.GCReferenceStatistics")) {
+                put(
+                        eventType,
+                        new JFREventCombiner.GCReferenceStatisticsCombiner(
+                                "jdk.combined.GCReferenceStatistics",
+                                configuration,
+                                basicJFRWriter));
+            }
+            if (eventType.getName().equals("jdk.ZStatisticsCounter")) {
+                put(
+                        eventType,
+                        new JFREventCombiner.ZStatisticsCombiner(
+                                "jdk.combined.ZStatisticsCounter",
+                                configuration,
+                                basicJFRWriter,
+                                gcIdPerTimestamp));
+            }
+            if (eventType.getName().equals("jdk.ZStatisticsSampler")) {
+                put(
+                        eventType,
+                        new JFREventCombiner.ZStatisticsCombiner(
+                                "jdk.combined.ZStatisticsSampler",
+                                configuration,
+                                basicJFRWriter,
+                                gcIdPerTimestamp));
+            }
+            if (eventType.getName().equals("jdk.ObjectCount")) {
+                put(
+                        eventType,
+                        new JFREventCombiner.ObjectCountCombiner(
+                                "jdk.combined.ObjectCount", configuration, basicJFRWriter));
+            }
+            if (eventType.getName().equals("jdk.ObjectCountAfterGC")) {
+                put(
+                        eventType,
+                        new JFREventCombiner.ObjectCountCombiner(
+                                "jdk.combined.ObjectCountAfterGC", configuration, basicJFRWriter));
+            }
+            if (eventType.getName().equals("jdk.MetaspaceChunkFreeListSummary")) {
+                put(
+                        eventType,
+                        new JFREventCombiner.MetaspaceChunkFreeListSummaryCombiner(
+                                "jdk.combined.MetaspaceChunkFreeListSummary",
+                                configuration,
+                                basicJFRWriter));
             }
         }
     }
@@ -1318,6 +2059,14 @@ public class JFREventCombiner extends EventCombiner {
                             Map.entry(
                                     CombinedEventType.OBJECT_ALLOCATION_SAMPLE,
                                     new ObjectAllocationSampleReconstitutor()),
+                            Map.entry(
+                                    CombinedEventType.OBJECT_ALLOCATION_IN_NEW_TLAB,
+                                    new BasicObjectAllocationReconstitutor(
+                                            "jdk.ObjectAllocationInNewTLAB")),
+                            Map.entry(
+                                    CombinedEventType.OBJECT_ALLOCATION_OUTSIDE_TLAB,
+                                    new BasicObjectAllocationReconstitutor(
+                                            "jdk.ObjectAllocationOutsideTLAB")),
                             Map.entry(
                                     CombinedEventType.PROMOTE_OBJECT_IN_NEW_PLAB,
                                     new PromoteObjectReconstitutor("jdk.PromoteObjectInNewPLAB")),
@@ -1331,11 +2080,39 @@ public class JFREventCombiner extends EventCombiner {
                                     CombinedEventType.GC_PHASE_PAUSE_LEVEL2,
                                     new GCPhasePauseLevelReconstitutor("jdk.GCPhasePauseLevel2")),
                             Map.entry(
+                                    CombinedEventType.GC_PHASE_PAUSE_LEVEL3,
+                                    new GCPhasePauseLevelReconstitutor("jdk.GCPhasePauseLevel3")),
+                            Map.entry(
+                                    CombinedEventType.GC_PHASE_PAUSE_LEVEL4,
+                                    new GCPhasePauseLevelReconstitutor("jdk.GCPhasePauseLevel4")),
+                            Map.entry(
+                                    CombinedEventType.GC_PHASE_CONCURRENT_LEVEL1,
+                                    new GCPhasePauseLevelReconstitutor(
+                                            "jdk.GCPhaseConcurrentLevel1")),
+                            Map.entry(
                                     CombinedEventType.TENURING_DISTRIBUTION,
                                     new TenuringDistributionReconstitutor()),
                             Map.entry(
                                     CombinedEventType.GC_PHASE_PARALLEL,
-                                    new GCPhaseParallelReconstitutor()));
+                                    new GCPhaseParallelReconstitutor()),
+                            Map.entry(
+                                    CombinedEventType.GC_REFERENCE_STATISTICS,
+                                    new GCReferenceStatisticsReconstitutor()),
+                            Map.entry(
+                                    CombinedEventType.Z_STATISTICS_COUNTER,
+                                    new ZStatisticsReconstitutor("jdk.ZStatisticsCounter")),
+                            Map.entry(
+                                    CombinedEventType.Z_STATISTICS_SAMPLER,
+                                    new ZStatisticsReconstitutor("jdk.ZStatisticsSampler")),
+                            Map.entry(
+                                    CombinedEventType.OBJECT_COUNT,
+                                    new ObjectCountReconstitutor("jdk.ObjectCount")),
+                            Map.entry(
+                                    CombinedEventType.OBJECT_COUNT_AFTER_GC,
+                                    new ObjectCountReconstitutor("jdk.ObjectCountAfterGC")),
+                            Map.entry(
+                                    CombinedEventType.METASPACE_CHUNK_FREE_LIST_SUMMARY,
+                                    new MetaspaceChunkFreeListSummaryReconstitutor()));
 
     static Map<CombinedEventType, AbstractReconstitutor<? extends AbstractCombiner<?, ?>>>
             getRecons() {

@@ -22,6 +22,11 @@ public class GCIdPerTimestamp {
             gcIdPerTimestamp.remove(first.getKey());
             timestampPerGCId.remove(first.getValue());
         }
+        // Remove old gcId if timestamp already exists (prevents orphaned reverse entries)
+        Long oldGcId = gcIdPerTimestamp.get(startTimestamp);
+        if (oldGcId != null) {
+            timestampPerGCId.remove(oldGcId);
+        }
         gcIdPerTimestamp.put(startTimestamp, gcId);
         timestampPerGCId.put(gcId, startTimestamp);
     }

@@ -222,7 +222,7 @@ public class CondensedInputStream extends InputStream {
      */
     public String readString(@Nullable String encoding) {
         try (var t = statistic.withWriteCauseContext(WriteCause.String)) {
-            int bytesBefore = statistic.getBytes();
+            long bytesBefore = statistic.getBytes();
             int length = (int) readUnsignedVarint();
             if (length == 0) {
                 statistic.recordString(statistic.getBytes() - bytesBefore);

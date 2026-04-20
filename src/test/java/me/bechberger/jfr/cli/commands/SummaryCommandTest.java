@@ -29,6 +29,39 @@ public class SummaryCommandTest {
                 () -> assertThat(result.output()).isEmpty());
     }
 
+    @Test
+    public void testIsoStartTimeIsAccepted() throws Exception {
+        new CommandExecuter(
+                        "summary",
+                        "T/" + CommandTestUtil.getSampleCJFRFileName(),
+                        "--start",
+                        "1970-01-01T00:00:00")
+                .withFiles(CommandTestUtil.getSampleCJFRFile())
+                .checkNoError()
+                .run();
+    }
+
+    @Test
+    public void testConflictingTimeArgumentsShowFriendlyError() throws Exception {
+        var result =
+                new CommandExecuter(
+                                "summary",
+                                "T/" + CommandTestUtil.getSampleCJFRFileName(),
+                                "--start",
+                                "2025-12-05T12:12:21",
+                                "--end",
+                                "2025-12-05T12:12:22",
+                                "--duration",
+                                "1s")
+                        .withFiles(CommandTestUtil.getSampleCJFRFile())
+                        .run();
+        assertAll(
+                () -> assertThat(result.exitCode()).isEqualTo(1),
+                () -> assertThat(result.output()).isEmpty(),
+                () -> assertThat(result.error()).contains("Both start, end and duration are set"),
+                () -> assertThat(result.error()).doesNotContain("\tat "));
+    }
+
     private static String[] addShort(boolean shortSummary, String... args) {
         if (shortSummary) {
             String[] newArgs = new String[args.length + 1];
@@ -343,5 +376,221 @@ public class SummaryCommandTest {
             // If it failed, it should be the known Duration validation issue
             assertThat(filteredResult.error()).contains("Duration");
         }
+    }
+
+    @Test
+    public void testJsonEventsFilterOnlyReturnsRequestedEvents() throws Exception {
+        var result =
+                new CommandExecuter(
+                                "summary",
+                                "T/" + CommandTestUtil.getSampleCJFRFileName(),
+                                "--events",
+                                "TestEvent",
+                                "--json")
+                        .withFiles(CommandTestUtil.getSampleCJFRFile())
+                        .run();
+
+        if (result.exitCode() == 0) {
+            Map<String, Object> json = Util.asMap(JSONParser.parse(result.output()));
+            assertThat(Util.asMap(json.get("events"))).containsOnlyKeys("TestEvent");
+        } else {
+            assertThat(result.error()).contains("Duration");
+        }
+    }
+
+    @Test
+    public void testFolderInputJsonAggregatesEventCounts() throws Exception {
+        int expectedTestEventCount =
+                (int)
+                        (RecordingFile.readAllEvents(CommandTestUtil.getSampleJFRFile()).stream()
+                                        .filter(e -> e.getEventType().getName().equals("TestEvent"))
+                                        .count()
+                                + RecordingFile.readAllEvents(CommandTestUtil.getSampleJFRFile(1))
+                                        .stream()
+                                        .filter(e -> e.getEventType().getName().equals("TestEvent"))
+                                        .count());
+
+        new CommandExecuter("summary", "T/", "--json")
+                .withFiles(
+                        CommandTestUtil.getSampleCJFRFile(), CommandTestUtil.getSampleCJFRFile(1))
+                .checkNoError()
+                .check(
+                        (result, files) -> {
+                            Map<String, Object> json =
+                                    Util.asMap(JSONParser.parse(result.output()));
+                            Map<String, Object> events = Util.asMap(json.get("events"));
+                            assertThat(((Number) events.get("TestEvent")).intValue())
+                                    .isEqualTo(expectedTestEventCount);
+                        })
+                .run();
+    }
+
+    /**
+     * Bug: When --full is used (without --json), the if/else structure in SummaryCommand.call()
+     * prints EventWriteTree and DetailedStatistics in the 'if (full)' branch, but skips the basic
+     * summary (Format Version, Start, End, Duration, Events) because summary.toString() is in the
+     * 'else' branch.
+     *
+     * <p>Expected: --full should show BOTH the basic summary AND the full statistics. Actual:
+     * --full shows only EventWriteTree and DetailedStatistics, no basic summary.
+     */
+    @Test
+    public void testFullStatisticsIncludesBasicSummary() throws Exception {
+        var result =
+                new CommandExecuter(
+                                "summary", "T/" + CommandTestUtil.getSampleCJFRFileName(), "--full")
+                        .withFiles(CommandTestUtil.getSampleCJFRFile())
+                        .checkNoError()
+                        .run();
+        // --full should include EventWriteTree (it does)
+        assertThat(result.output()).contains("EventWriteTree");
+        // --full should ALSO include the basic summary info
+        assertThat(result.output())
+                .as("--full should include basic summary alongside full statistics")
+                .contains("Format Version:")
+                .contains("Events:");
+    }
+
+    @Test
+    public void testJsonFullWithEventsFilterOnMultipleInputs() throws Exception {
+        int expectedTestEventCount =
+                (int)
+                        (RecordingFile.readAllEvents(CommandTestUtil.getSampleJFRFile()).stream()
+                                        .filter(e -> e.getEventType().getName().equals("TestEvent"))
+                                        .count()
+                                + RecordingFile.readAllEvents(CommandTestUtil.getSampleJFRFile(1))
+                                        .stream()
+                                        .filter(e -> e.getEventType().getName().equals("TestEvent"))
+                                        .count());
+
+        var result =
+                new CommandExecuter(
+                                "summary",
+                                "T/" + CommandTestUtil.getSampleCJFRFileName(),
+                                "-i",
+                                "T/" + CommandTestUtil.getSampleCJFRFileName(1),
+                                "--events",
+                                "TestEvent",
+                                "--json",
+                                "--full")
+                        .withFiles(
+                                CommandTestUtil.getSampleCJFRFile(),
+                                CommandTestUtil.getSampleCJFRFile(1))
+                        .run();
+
+        if (result.exitCode() == 0) {
+            Map<String, Object> json = Util.asMap(JSONParser.parse(result.output()));
+            assertThat(json).containsKey("eventWriteTree");
+            assertThat(Util.asMap(json.get("events"))).containsOnlyKeys("TestEvent");
+            assertThat(((Number) Util.asMap(json.get("events")).get("TestEvent")).intValue())
+                    .isEqualTo(expectedTestEventCount);
+        } else {
+            assertThat(result.error()).contains("Duration");
+        }
+    }
+
+    /**
+     * summary --json on a condensed file with large string events must exit 0 and /** summary
+     * --json on a condensed file with large string events must exit 0 and report the correct event
+     * type name.
+     */
+    @Test
+    public void testSummaryJsonOnCondensedLargeStringEvents() throws Exception {
+        new CommandExecuter("condense", "T/large_string.jfr", "T/large_string.cjfr")
+                .withFiles(CommandTestUtil.getLargeStringJFRFile())
+                .checkNoError()
+                .check(
+                        (r, map) -> {
+                            var summaryResult =
+                                    new CommandExecuter(
+                                                    "summary",
+                                                    map.get("large_string.cjfr").toString(),
+                                                    "--json")
+                                            .run();
+                            assertThat(summaryResult.exitCode()).isEqualTo(0);
+                            Map<String, Object> json =
+                                    Util.asMap(JSONParser.parse(summaryResult.output()));
+                            assertThat(Util.asMap(json.get("events")))
+                                    .containsKey("LargeStringEvent");
+                        })
+                .run();
+    }
+
+    /**
+     * summary --json on condensed extreme-numeric events: field VALUES are not included in summary,
+     * so NaN/Inf in event fields must not break JSON output.
+     */
+    @Test
+    public void testSummaryJsonOnCondensedExtremeNumericEvents() throws Exception {
+        new CommandExecuter("condense", "T/extreme_numeric.jfr", "T/extreme_numeric.cjfr")
+                .withFiles(CommandTestUtil.getExtremeNumericJFRFile())
+                .checkNoError()
+                .check(
+                        (r, map) -> {
+                            var summaryResult =
+                                    new CommandExecuter(
+                                                    "summary",
+                                                    map.get("extreme_numeric.cjfr").toString(),
+                                                    "--json")
+                                            .run();
+                            assertThat(summaryResult.exitCode()).isEqualTo(0);
+                            Map<String, Object> json =
+                                    Util.asMap(JSONParser.parse(summaryResult.output()));
+                            assertThat(Util.asMap(json.get("events")))
+                                    .containsKey("ExtremeNumericEvent");
+                        })
+                .run();
+    }
+
+    /**
+     * summary --json on condensed unicode events: emoji and non-ASCII text in event field values
+     * must not corrupt the CJFR metadata or summary output.
+     */
+    @Test
+    public void testSummaryJsonOnCondensedUnicodeEvents() throws Exception {
+        new CommandExecuter("condense", "T/unicode_string.jfr", "T/unicode_string.cjfr")
+                .withFiles(CommandTestUtil.getUnicodeStringJFRFile())
+                .checkNoError()
+                .check(
+                        (r, map) -> {
+                            var summaryResult =
+                                    new CommandExecuter(
+                                                    "summary",
+                                                    map.get("unicode_string.cjfr").toString(),
+                                                    "--json")
+                                            .run();
+                            assertThat(summaryResult.exitCode()).isEqualTo(0);
+                            Map<String, Object> json =
+                                    Util.asMap(JSONParser.parse(summaryResult.output()));
+                            assertThat(Util.asMap(json.get("events")))
+                                    .containsKey("UnicodeStringEvent");
+                        })
+                .run();
+    }
+
+    /**
+     * summary --json on condensed many-fields events: event type with many fields must be fully
+     * summarised.
+     */
+    @Test
+    public void testSummaryJsonOnCondensedManyFieldsEvents() throws Exception {
+        new CommandExecuter("condense", "T/many_fields.jfr", "T/many_fields.cjfr")
+                .withFiles(CommandTestUtil.getManyFieldsJFRFile())
+                .checkNoError()
+                .check(
+                        (r, map) -> {
+                            var summaryResult =
+                                    new CommandExecuter(
+                                                    "summary",
+                                                    map.get("many_fields.cjfr").toString(),
+                                                    "--json")
+                                            .run();
+                            assertThat(summaryResult.exitCode()).isEqualTo(0);
+                            Map<String, Object> json =
+                                    Util.asMap(JSONParser.parse(summaryResult.output()));
+                            assertThat(Util.asMap(json.get("events")))
+                                    .containsKey("ManyFieldsEvent");
+                        })
+                .run();
     }
 }

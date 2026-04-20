@@ -118,4 +118,42 @@ public class CacheTest {
         assertEquals(Map.entry(4, 5), removed.get(1));
         assertEquals(Map.entry(6, 7), removed.get(2));
     }
+
+    /**
+     * Bug: When updating an existing key, Cache.put() adds a duplicate entry to the internal keys
+     * queue without removing the old one. This causes the queue to contain stale entries, and a
+     * subsequent eviction may evict the recently-updated key instead of the actual oldest untouched
+     * entry.
+     *
+     * <p>Scenario with maxSize=2: put(A,1) → keys=[A] put(B,2) → keys=[A, B] put(A,3) → keys=[A, B,
+     * A] ← duplicate A! put(C,4) → evicts keys.poll()=A → removes A=3 instead of B=2
+     *
+     * <p>Expected: B should be evicted (oldest untouched entry) Actual: A is evicted (the recently
+     * updated entry)
+     */
+    @Test
+    public void testUpdateThenEvictBug() {
+        List<Entry<String, Integer>> removed = new ArrayList<>();
+        Cache<String, Integer> cache =
+                new Cache<>(2) {
+                    @Override
+                    public void onRemove(String key, Integer value) {
+                        removed.add(Map.entry(key, value));
+                    }
+                };
+        cache.put("A", 1);
+        cache.put("B", 2);
+        // Update A — should NOT cause issues on next eviction
+        cache.put("A", 3);
+        // Now insert C — should evict B (the oldest untouched entry)
+        cache.put("C", 4);
+
+        // A was recently updated and should still be in the cache
+        assertEquals(
+                3, cache.get("A"), "A was recently updated to 3, should not have been evicted");
+        assertEquals(4, cache.get("C"), "C was just inserted, should be in cache");
+        assertNull(cache.get("B"), "B is the oldest untouched entry and should have been evicted");
+        // Only B should have been evicted
+        assertEquals(List.of(Map.entry("B", 2)), removed);
+    }
 }

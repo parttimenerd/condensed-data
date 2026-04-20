@@ -47,8 +47,7 @@ public class Agent implements Runnable {
                     } catch (Throwable e) {
                         try {
                             AgentIO.getAgentInstance()
-                                    .writeSevereError(
-                                            "Could not start agent: " + e.getMessage());
+                                    .writeSevereError("Could not start agent: " + e.getMessage());
                             e.printStackTrace(AgentIO.getAgentInstance().createPrintStream());
                         } catch (Throwable ignored) {
                             // last resort — don't let agent errors crash the host JVM

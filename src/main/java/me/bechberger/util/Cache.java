@@ -25,7 +25,10 @@ public abstract class Cache<K, V> {
      * #onRemove(K, V)} for the removed entry
      */
     public void put(K key, V value) {
-        if (backing.size() >= maxSize && !backing.containsKey(key)) {
+        if (backing.containsKey(key)) {
+            // Update existing: remove old queue entry, re-add at tail
+            keys.remove(key);
+        } else if (backing.size() >= maxSize) {
             K oldest = keys.poll();
             onRemove(oldest, backing.get(oldest));
             backing.remove(oldest);

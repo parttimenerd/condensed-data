@@ -19,6 +19,24 @@ public interface EventFilter<C> {
     Logger LOGGER = Logger.getLogger(EventFilter.class.getName());
 
     /**
+     * Gets startTime/endTime as Instant, handling both Instant and Long (nanoseconds) storage
+     * (combined events store timestamps as Long).
+     */
+    static @Nullable Instant getInstant(ReadStruct event, String field) {
+        Object val = event.get(field);
+        if (val == null) {
+            return null;
+        }
+        if (val instanceof Instant inst) {
+            return inst;
+        }
+        if (val instanceof Long nanos) {
+            return Instant.ofEpochSecond(0, nanos);
+        }
+        throw new ClassCastException("Cannot convert " + val.getClass().getName() + " to Instant");
+    }
+
+    /**
      * Checks if the filter matches the event.
      *
      * @param struct event to check
@@ -209,13 +227,13 @@ public interface EventFilter<C> {
             Instant fixedEnd = end;
             return (event, context) -> {
                 if (fixedStart != null || fixedEnd != null) {
-                    var startTime = event.get("startTime", Instant.class);
+                    var startTime = getInstant(event, "startTime");
                     if (fixedStart != null) { // startTime should be present for almost all events
                         if (startTime == null || startTime.isBefore(fixedStart)) {
                             return false;
                         }
                     }
-                    var endTime = event.get("endTime", Instant.class);
+                    var endTime = getInstant(event, "endTime");
                     if (fixedEnd != null && endTime != null) {
                         if (endTime.isAfter(fixedEnd)) {
                             return false;
@@ -234,6 +252,7 @@ public interface EventFilter<C> {
 
             private final int percentile;
             private final List<GCInfo> gcInfos;
+
             /** gcId -> [first startTime, last startTime] for heap summary fallback */
             private final Map<Long, long[]> heapSummaryBounds;
 
@@ -253,11 +272,11 @@ public interface EventFilter<C> {
                     gcInfos.add(
                             new GCInfo(
                                     struct.get("gcId", Long.class),
-                                    toNanoSeconds(struct.get("startTime", Instant.class)),
+                                    toNanoSeconds(getInstant(struct, "startTime")),
                                     struct.get("duration", Duration.class).toNanos()));
                 } else if (HEAP_SUMMARY_EVENTS.contains(name) && struct.containsKey("gcId")) {
                     long gcId = struct.get("gcId", Long.class);
-                    long startNanos = toNanoSeconds(struct.get("startTime", Instant.class));
+                    long startNanos = toNanoSeconds(getInstant(struct, "startTime"));
                     heapSummaryBounds.compute(
                             gcId,
                             (k, bounds) -> {
@@ -284,7 +303,7 @@ public interface EventFilter<C> {
                     }
                 }
                 int percentileIndex = (int) Math.ceil(gcInfos.size() * (1 - percentile / 100.0));
-                gcInfos.sort(Comparator.comparingLong(GCInfo::startTimeNanos));
+                gcInfos.sort(Comparator.comparingLong(GCInfo::durationNanos));
                 percentileStartTimeNanos =
                         gcInfos.subList(percentileIndex, gcInfos.size()).stream()
                                 .map(GCInfo::startTimeNanos)
@@ -323,10 +342,10 @@ public interface EventFilter<C> {
             return new TwoPhaseEventFilter<>() {
                 @Override
                 public boolean test(ReadStruct struct, GCPercentileContext context) {
-                    var startTimeNanos = toNanoSeconds(struct.get("startTime", Instant.class));
+                    var startTimeNanos = toNanoSeconds(getInstant(struct, "startTime"));
                     var endTimeNanos =
                             struct.containsKey("endTime")
-                                    ? toNanoSeconds(struct.get("endTime", Instant.class))
+                                    ? toNanoSeconds(getInstant(struct, "endTime"))
                                     : startTimeNanos;
                     return context.getTimeDiffToLongGC(startTimeNanos, endTimeNanos)
                             <= gcPercentileContext.toNanos();

@@ -1,7 +1,5 @@
 package me.bechberger.jfr;
 
-import java.util.IdentityHashMap;
-import java.util.Iterator;
 import java.util.Objects;
 import java.util.Set;
 import jdk.jfr.ValueDescriptor;
@@ -67,36 +65,21 @@ public class JFRHashConfig extends HashAndEqualsConfig {
         }
     }
 
-    private final IdentityHashMap<RecordedFrame, Integer> methodHashCodeCache =
-            new IdentityHashMap<>();
-
     /** Currently not used */
     static class StackFrameWrapper implements HashAndEqualsWrapper<RecordedFrame> {
 
         private final RecordedFrame value;
-        private final int maxCacheSize = 10000;
         private final int hashCode;
 
-        public StackFrameWrapper(
-                RecordedFrame value, IdentityHashMap<RecordedFrame, Integer> hashCodeCache) {
+        public StackFrameWrapper(RecordedFrame value) {
             this.value = value;
-            if (hashCodeCache.size() > maxCacheSize) {
-                while (hashCodeCache.size() > maxCacheSize / 2) {
-                    Iterator<RecordedFrame> it = hashCodeCache.keySet().iterator();
-                    hashCodeCache.remove(it.next());
-                }
-            }
             this.hashCode =
-                    hashCodeCache.computeIfAbsent(
-                            value,
-                            f -> {
-                                return Objects.hash(
-                                        value.getLineNumber(),
-                                        f.getBytecodeIndex(),
-                                        f.getMethod().getType().getId(),
-                                        f.getMethod().getName(),
-                                        f.getType());
-                            });
+                    Objects.hash(
+                            value.getLineNumber(),
+                            value.getBytecodeIndex(),
+                            value.getMethod().getType().getId(),
+                            value.getMethod().getName(),
+                            value.getType());
         }
 
         @Override
@@ -169,9 +152,7 @@ public class JFRHashConfig extends HashAndEqualsConfig {
         put("java.lang.Class", ClassWrapper::new);
         put("jdk.types.ClassLoader", ClassLoaderWrapper::new);
         put("jdk.types.Method", MethodWrapper::new);
-        put(
-                "jdk.types.StackFrame",
-                (RecordedFrame f) -> new StackFrameWrapper(f, methodHashCodeCache));
+        put("jdk.types.StackFrame", StackFrameWrapper::new);
         put("java.lang.Thread", ThreadWrapper::new);
         put("jdk.types.ThreadGroup", ThreadGroupWrapper::new);
     }
@@ -188,7 +169,7 @@ public class JFRHashConfig extends HashAndEqualsConfig {
                 && field.getFields().stream()
                         .allMatch(
                                 f ->
-                                        field.getFields().isEmpty()
+                                        f.getFields().isEmpty()
                                                 || isPrimitiveStructOrArray(f, depth - 1));
     }
 
@@ -196,8 +177,11 @@ public class JFRHashConfig extends HashAndEqualsConfig {
         if (field.getTypeName().equals("java.lang.String")) {
             return EmbeddingType.REFERENCE_PER_TYPE;
         }
-        // TODO: maybe also inline for small structs
-        if (field.getFields().isEmpty() || field.getTypeName().equals("jdk.types.StackFrame")) {
+        // StackFrames benefit hugely from reference embedding: 99.97% are duplicates
+        if (field.getTypeName().equals("jdk.types.StackFrame")) {
+            return EmbeddingType.REFERENCE;
+        }
+        if (field.getFields().isEmpty()) {
             return EmbeddingType.INLINE;
         }
         if (isPrimitiveStructOrArray(field, 2)) {

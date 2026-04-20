@@ -532,6 +532,50 @@ public class AgentTest {
     }
 
     /**
+     * Bug: RecordingThread.getStatus() adds two entries with the key "duration": - line 174:
+     * elapsed time since recording start - line 179: configured duration from dynSettings
+     *
+     * <p>This makes status output ambiguous — consumers parsing key-value pairs will see duplicate
+     * keys with different meanings.
+     */
+    @Test
+    public void testGetStatusHasNoDuplicateKeys() throws Exception {
+        Path tmp = Files.createTempDirectory("agent-test-dup-key-");
+        tmp.toFile().deleteOnExit();
+        Path recordingPath = tmp.resolve("recording.cjfr");
+
+        var settings = new DynamicallyChangeableSettings();
+        settings.maxDuration = Duration.ZERO;
+        settings.maxSize = 0;
+        settings.maxFiles = 10;
+        settings.newNames = false;
+        settings.duration = Duration.ZERO;
+
+        var thread =
+                new SingleRecordingThread(
+                        recordingPath.toString(),
+                        Configuration.DEFAULT,
+                        false,
+                        "default",
+                        "",
+                        () -> {},
+                        settings);
+
+        try {
+            var status = thread.getStatus();
+            var keys = status.stream().map(e -> e.getKey()).toList();
+
+            // Check for duplicate keys
+            var uniqueKeys = new java.util.HashSet<>(keys);
+            assertThat(uniqueKeys)
+                    .as("getStatus() should not have duplicate keys, but 'duration' appears twice")
+                    .hasSameSizeAs(keys);
+        } finally {
+            thread.close();
+        }
+    }
+
+    /**
      * Tests that the JVM continues and exits normally when the agent fails at startup because the
      * recording path is invalid (its parent component is an existing regular file, not a
      * directory).

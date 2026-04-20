@@ -296,7 +296,6 @@ public class WritingJFRReader {
                                 }
                                 if (value instanceof ReadList<?>) {
                                     List<TypedValue> values = new ArrayList<>();
-                                    int index = 0;
                                     for (var val : (ReadList<?>) value) {
                                         var prim = getTypedPrimitiveValue(field, val);
                                         if (prim != null) {
@@ -306,7 +305,6 @@ public class WritingJFRReader {
                                                     toTypedValue(
                                                             (ReadStruct) val, false, curVisited));
                                         }
-                                        index++;
                                     }
                                     builder.putField(
                                             field.getName(), values.toArray(new TypedValue[0]));
@@ -345,7 +343,7 @@ public class WritingJFRReader {
     public void close() {
         try {
             recording.close();
-            recording.close();
+            outputStream.close();
         } catch (IOException e) {
             throw new RuntimeException(e);
         }
@@ -361,10 +359,15 @@ public class WritingJFRReader {
     }
 
     public static Path toJFRFile(JFRReader reader) {
+        return toJFRFile(reader, false);
+    }
+
+    public static Path toJFRFile(JFRReader reader, boolean shouldAddDefaultValuesIfNecessary) {
         try {
             Path tmp = Files.createTempFile("recording", ".jfr");
             WritingJFRReader writingJFRReader =
-                    new WritingJFRReader(reader, Files.newOutputStream(tmp));
+                    new WritingJFRReader(
+                            reader, Files.newOutputStream(tmp), shouldAddDefaultValuesIfNecessary);
             while (true) {
                 var event = writingJFRReader.readNextJFREvent();
                 if (event == null) {
@@ -390,7 +393,7 @@ public class WritingJFRReader {
     public static List<RecordedEvent> toJFREventsList(
             BasicJFRReader reader, int limit, boolean shouldAddDefaultValuesIfNecessary) {
         try {
-            Path tmp = toJFRFile(reader);
+            Path tmp = toJFRFile(reader, shouldAddDefaultValuesIfNecessary);
             List<RecordedEvent> events = new ArrayList<>();
             try (RecordingFile recordingFile = new RecordingFile(tmp)) {
                 for (int i = 0; i < limit; i++) {

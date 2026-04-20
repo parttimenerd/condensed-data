@@ -3,6 +3,7 @@ package me.bechberger.jfr.cli;
 import static org.junit.jupiter.api.Assertions.*;
 
 import java.io.ByteArrayOutputStream;
+import java.lang.reflect.Method;
 import java.util.concurrent.atomic.AtomicBoolean;
 import jdk.jfr.*;
 import jdk.jfr.consumer.RecordingStream;
@@ -125,6 +126,23 @@ public class JFRViewTest {
                 String.join("\n", view.header()).strip());
     }
 
+    /**
+     * Bug: JFRView.rows() throws IndexOutOfBoundsException when some columns have width <= 0. The
+     * first loop in rows() conditionally adds to rowsPerColumn (only if width > 0), but the second
+     * loop indexes into rowsPerColumn using the original column index j, which is larger than
+     * rowsPerColumn.size() when columns were skipped.
+     */
+    @Test
+    public void testNotEnoughSpaceRows() {
+        // Using width=10 causes some variable-width columns to get width <= 0
+        var config = new PrintConfig(10, 1, TruncateMode.END);
+        JFRView view = new JFRView(new JFRViewConfig(testEventStruct.getType()), config);
+        // This should not throw IndexOutOfBoundsException
+        var rows = view.rows(testEventStruct);
+        assertNotNull(rows);
+        assertFalse(rows.isEmpty());
+    }
+
     @Test
     public void testRows() {
         var config = new PrintConfig(160, 1, TruncateMode.END);
@@ -156,5 +174,50 @@ public class JFRViewTest {
         System.err.println(String.join("\n", view.header()));
         System.err.println(content.get(0));
         System.out.println(gcEventStruct);
+    }
+
+    // ========== Bug reproducer tests ==========
+
+    /**
+     * Bug: TruncateMode.BEGIN keeps the beginning of the string, but the option description says
+     * "--truncate beginning" means "truncate the beginning" (i.e., keep the end). The modes are
+     * swapped relative to the documented semantics.
+     *
+     * <p>With input "ABCDEFGHIJ" and width 5: --truncate begin → should truncate beginning → keep
+     * "FGHIJ" but actually keeps "ABCDE" (the beginning)
+     *
+     * <p>--truncate end → should truncate end → keep "ABCDE" but actually keeps "FGHIJ" (the end)
+     */
+    @Test
+    public void testTruncateModeBeginKeepsEnd() throws Exception {
+        // Access the private truncate method via reflection
+        var config = new PrintConfig(160, 1, TruncateMode.BEGIN);
+        JFRView view = new JFRView(new JFRViewConfig(testEventStruct.getType()), config);
+
+        Method truncateMethod =
+                JFRView.class.getDeclaredMethod("truncate", String.class, int.class);
+        truncateMethod.setAccessible(true);
+
+        // --truncate begin should mean "truncate the beginning" → keep the end
+        String result = (String) truncateMethod.invoke(view, "ABCDEFGHIJ", 5);
+        assertEquals(
+                "FGHIJ",
+                result,
+                "TruncateMode.BEGIN should truncate the beginning and keep the end");
+    }
+
+    @Test
+    public void testTruncateModeEndKeepsBeginning() throws Exception {
+        var config = new PrintConfig(160, 1, TruncateMode.END);
+        JFRView view = new JFRView(new JFRViewConfig(testEventStruct.getType()), config);
+
+        Method truncateMethod =
+                JFRView.class.getDeclaredMethod("truncate", String.class, int.class);
+        truncateMethod.setAccessible(true);
+
+        // --truncate end should mean "truncate the end" → keep the beginning
+        String result = (String) truncateMethod.invoke(view, "ABCDEFGHIJ", 5);
+        assertEquals(
+                "ABCDE", result, "TruncateMode.END should truncate the end and keep the beginning");
     }
 }

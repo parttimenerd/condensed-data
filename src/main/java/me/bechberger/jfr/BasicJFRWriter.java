@@ -321,11 +321,13 @@ public class BasicJFRWriter {
                 embedding);
     }
 
-    @SuppressWarnings({"rawtypes", "unchecked"})
     @NotNull
     private StructType<RecordedObject, Map<String, Object>> createStructType(
             ValueDescriptor field, Integer id) {
-        var fields = field.getFields().stream().map(e -> eventFieldToField(e, false)).toList();
+        List<Field<RecordedObject, ?, ?>> fields =
+                field.getFields().stream()
+                        .<Field<RecordedObject, ?, ?>>map(e -> eventFieldToField(e, false))
+                        .collect(java.util.stream.Collectors.toList());
         var name = field.getTypeName();
         if (REDUCED_JFR_TYPES.containsKey(name)) { // Remove fields based on configuration
             var removedFields = ReducedJFRTypes.getRemovedFields(name, configuration, false);
@@ -334,12 +336,7 @@ public class BasicJFRWriter {
         var description =
                 field.getLabel()
                         + (field.getDescription() == null ? "" : ": " + field.getDescription());
-        return new StructType<>(
-                id,
-                name,
-                description,
-                (List<Field<RecordedObject, ?, ?>>) (List) fields,
-                members -> members);
+        return new StructType<>(id, name, description, fields, members -> members);
     }
 
     CondensedType<?, ?> getTypeCached(ValueDescriptor field) {
@@ -473,6 +470,14 @@ public class BasicJFRWriter {
         if (contentType != null && contentType.equals("jdk.jfr.Timespan")) {
             return getTimespanType(field, topLevel);
         }
+        // BFloat16 for @Percentage floats (e.g., ThreadCPULoad, CPULoad)
+        if (configuration.memoryAsBFloat16()
+                && field.getTypeName().equals("float")
+                && contentType != null
+                && contentType.equals("jdk.jfr.Percentage")) {
+            return new GetterAndCachedType(
+                    event -> event.getFloat(field.getName()), getPercentageFloatType());
+        }
         if ((field.getTypeName().equals("long") || field.getTypeName().equals("int"))
                 && configuration.memoryAsBFloat16()) {
             var dataAmount = getDataAmountAnnotationValue(field);
@@ -544,49 +549,6 @@ public class BasicJFRWriter {
                 .orElseThrow();
     }
 
-    @SuppressWarnings({"unchecked", "rawtypes"})
-    private CondensedType<?, ?> createFrameType(int id, ValueDescriptor field) {
-        ValueDescriptor methodField = getField(field, "method");
-        ValueDescriptor typeField = getField(field, "type");
-        ValueDescriptor bciField = getField(field, "bytecodeIndex");
-        ValueDescriptor lineNumberField = getField(field, "lineNumber");
-
-        List<Field<?, ?, ?>> fields = new ArrayList<>();
-        fields.add(
-                new Field<>(
-                        "method",
-                        getDescription(methodField),
-                        getTypeCached(methodField),
-                        obj -> ((RecordedFrame) obj).getMethod(),
-                        EmbeddingType.REFERENCE));
-        if (!configuration.removeBCIAndLineNumberFromStackFrames()) {
-            fields.add(
-                    new Field<>(
-                            "bci",
-                            getDescription(bciField),
-                            getTypeCached(bciField),
-                            obj -> ((RecordedFrame) obj).getBytecodeIndex(),
-                            EmbeddingType.INLINE));
-            fields.add(
-                    new Field<>(
-                            "lineNumber",
-                            getDescription(lineNumberField),
-                            getTypeCached(lineNumberField),
-                            obj -> ((RecordedFrame) obj).getLineNumber(),
-                            EmbeddingType.INLINE));
-        }
-        if (!configuration.removeTypeInformationFromStackFrames()) {
-            fields.add(
-                    new Field<>(
-                            "type",
-                            getDescription(typeField),
-                            getTypeCached(typeField),
-                            obj -> ((RecordedFrame) obj).getType(),
-                            EmbeddingType.REFERENCE));
-        }
-        return new StructType(id, "jdk.types.StackFrame", "Stack frame", fields, obj -> obj);
-    }
-
     private StructType<?, ?> getReducedStackTraceType(ValueDescriptor field) {
         if (reducedStackTraceType == null) {
             var truncatedField = getField(field, "truncated");
@@ -629,12 +591,25 @@ public class BasicJFRWriter {
                                 id -> new FloatType(id, "memory " + kind, "", Type.BFLOAT16)));
     }
 
+    private FloatType percentageFloatType;
+
+    private FloatType getPercentageFloatType() {
+        if (percentageFloatType == null) {
+            percentageFloatType =
+                    out.writeAndStoreType(id -> new FloatType(id, "percentage", "", Type.BFLOAT16));
+        }
+        return percentageFloatType;
+    }
+
     private VarIntType getMemoryVarIntType(String kind) {
         return memoryVarIntTypes.computeIfAbsent(
                 kind,
-                k ->
-                        out.writeAndStoreType(
-                                id -> new VarIntType(id, "memory varint " + kind, "", true)));
+                k -> {
+                    // JVM objects are 8-byte aligned, so BYTES values can be divided by 8
+                    long multiplier = "BYTES".equals(k) ? 8 : 1;
+                    return out.writeAndStoreType(
+                            id -> new VarIntType(id, "memory varint " + k, "", true, multiplier));
+                });
     }
 
     private VarIntType getCachedTimespanType(long divisor) {
@@ -711,8 +686,12 @@ public class BasicJFRWriter {
             EventType eventType) {
         return out.writeAndStoreType(
                 id -> {
+                    var removedFields =
+                            ReducedJFRTypes.getRemovedFields(
+                                    eventType.getName(), configuration, false);
                     var fields =
                             eventType.getFields().stream()
+                                    .filter(e -> !removedFields.contains(e.getName()))
                                     .map(e -> this.<RecordedEvent>eventFieldToField(e, true))
                                     .toList();
                     return new StructType<>(
@@ -834,7 +813,7 @@ public class BasicJFRWriter {
         return closed;
     }
 
-    public int estimateSize() {
+    public long estimateSize() {
         return out.estimateSize();
     }
 

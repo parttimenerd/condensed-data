@@ -41,7 +41,7 @@ public class ViewCommand implements Callable<Integer> {
 
     @Option(
             names = "--truncate",
-            description = "How to truncate the output cells, 'begining' or 'end'")
+            description = "How to truncate the output cells, 'beginning' or 'end'")
     private String truncate = "end";
 
     @Option(names = "--cell-height", description = "Height of the table cells")
@@ -63,7 +63,7 @@ public class ViewCommand implements Callable<Integer> {
                     CombiningJFRReader.fromPaths(
                             inputFiles,
                             eventFilterOptionMixin.createFilter(),
-                            eventFilterOptionMixin.noReconstitution());
+                            !eventFilterOptionMixin.noReconstitution());
             var struct = jfrReader.readNextEvent();
             JFRView view = null;
             int count = 0;
@@ -78,7 +78,7 @@ public class ViewCommand implements Callable<Integer> {
                                         new PrintConfig(
                                                 width,
                                                 cellHeight,
-                                                TruncateMode.valueOf(truncate.toUpperCase())));
+                                                TruncateMode.fromCliValue(truncate)));
                         for (var line : view.header()) {
                             System.out.println(line);
                         }
@@ -115,8 +115,7 @@ public class ViewCommand implements Callable<Integer> {
                 return 1;
             }
         } catch (Exception e) {
-            e.printStackTrace();
-            return 1;
+            return CLIUtils.printError(e);
         }
         return 0;
     }

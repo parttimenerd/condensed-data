@@ -7,6 +7,7 @@ import java.time.Duration;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Objects;
 import jdk.jfr.consumer.RecordedFrame;
 import jdk.jfr.consumer.RecordedStackTrace;
 import me.bechberger.condensed.ReadStruct;
@@ -90,11 +91,13 @@ public enum JFRReduction {
         private final List<RecordedFrame> frames;
         private final boolean truncated;
         private final RecordedStackTrace backing;
+        private final int contentHash;
 
         private ReducedStackTrace(RecordedStackTrace stackTrace) {
             this.frames = stackTrace.getFrames();
             this.truncated = stackTrace.isTruncated();
             this.backing = stackTrace;
+            this.contentHash = computeContentHash();
         }
 
         private ReducedStackTrace(
@@ -102,6 +105,20 @@ public enum JFRReduction {
             this.frames = frames;
             this.truncated = truncated;
             this.backing = backing;
+            this.contentHash = computeContentHash();
+        }
+
+        private int computeContentHash() {
+            int h = Boolean.hashCode(truncated);
+            for (var f : frames) {
+                h = h * 31 + Long.hashCode(f.getMethod().getType().getId());
+                h = h * 31 + f.getMethod().getName().hashCode();
+                h = h * 31 + f.getMethod().getDescriptor().hashCode();
+                h = h * 31 + f.getLineNumber();
+                h = h * 31 + f.getBytecodeIndex();
+                h = h * 31 + (f.getType() != null ? f.getType().hashCode() : 0);
+            }
+            return h;
         }
 
         static ReducedStackTrace create(RecordedStackTrace stackTrace, int limit) {
@@ -123,7 +140,7 @@ public enum JFRReduction {
 
         @Override
         public int hashCode() {
-            return backing.hashCode();
+            return contentHash;
         }
 
         @Override
@@ -134,7 +151,28 @@ public enum JFRReduction {
             if (!(obj instanceof ReducedStackTrace other)) {
                 return false;
             }
-            return other.backing == backing;
+            if (other.backing == backing) {
+                return true;
+            }
+            if (other.contentHash != contentHash || other.truncated != truncated) {
+                return false;
+            }
+            if (other.frames.size() != frames.size()) {
+                return false;
+            }
+            for (int i = 0; i < frames.size(); i++) {
+                var a = frames.get(i);
+                var b = other.frames.get(i);
+                if (a.getLineNumber() != b.getLineNumber()
+                        || a.getBytecodeIndex() != b.getBytecodeIndex()
+                        || a.getMethod().getType().getId() != b.getMethod().getType().getId()
+                        || !a.getMethod().getName().equals(b.getMethod().getName())
+                        || !a.getMethod().getDescriptor().equals(b.getMethod().getDescriptor())
+                        || !Objects.equals(a.getType(), b.getType())) {
+                    return false;
+                }
+            }
+            return true;
         }
     }
 

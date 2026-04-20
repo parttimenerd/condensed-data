@@ -42,12 +42,20 @@ public class Universe {
             startTimeNanos = other.startTimeNanos;
         }
         if (other.lastStartTimeNanos != -1) {
-            lastStartTimeNanos = other.lastStartTimeNanos;
+            if (lastStartTimeNanos == -1) {
+                lastStartTimeNanos = other.lastStartTimeNanos;
+            } else {
+                lastStartTimeNanos = Math.max(lastStartTimeNanos, other.lastStartTimeNanos);
+            }
         }
     }
 
     public void setLastStartTimeNanos(long lastStartTimeNanos) {
-        this.lastStartTimeNanos = lastStartTimeNanos;
+        if (this.lastStartTimeNanos == -1) {
+            this.lastStartTimeNanos = lastStartTimeNanos;
+        } else {
+            this.lastStartTimeNanos = Math.max(this.lastStartTimeNanos, lastStartTimeNanos);
+        }
     }
 
     public long getLastStartTimeNanos() {

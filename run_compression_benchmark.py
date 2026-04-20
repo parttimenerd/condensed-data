@@ -17,8 +17,7 @@ from datetime import datetime
 COMPRESSIONS = [
     "NONE",
     "GZIP",
-    "XZ",
-    "BZIP2",
+    "LZ4FRAMED",
     "ZSTD"
 ]
 

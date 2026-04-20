@@ -49,6 +49,22 @@ public class FloatType extends CondensedType<Float, Float> {
     }
 
     @Override
+    public boolean equals(Object obj) {
+        if (!super.equals(obj)) {
+            return false;
+        }
+        if (!(obj instanceof FloatType other)) {
+            return false;
+        }
+        return this.type == other.type;
+    }
+
+    @Override
+    public int hashCode() {
+        return super.hashCode() * 31 + type.hashCode();
+    }
+
+    @Override
     public SpecifiedType<FloatType> getSpecifiedType() {
         return SPECIFIED_TYPE;
     }

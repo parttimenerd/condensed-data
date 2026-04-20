@@ -45,58 +45,65 @@ public class TypeUtil {
             TypeCollection collection, Class<T> clazz) {
         return collection.addType(
                 id -> {
-                    var fields =
-                            getFieldsForClass(clazz)
-                                    .map(
-                                            f ->
-                                                    new Field<>(
-                                                            f.getName(),
-                                                            "",
-                                                            getPrimitiveType(f.getType()),
-                                                            obj -> {
-                                                                try {
-                                                                    return f.get(obj);
-                                                                } catch (IllegalAccessException e) {
-                                                                    // try calling the getter
-                                                                    try {
-                                                                        return clazz.getMethod(
-                                                                                        "get"
-                                                                                                + f.getName()
-                                                                                                        .substring(
-                                                                                                                0,
-                                                                                                                1)
-                                                                                                        .toUpperCase()
-                                                                                                + f.getName()
-                                                                                                        .substring(
-                                                                                                                1))
-                                                                                .invoke(obj);
-                                                                    } catch (IllegalAccessException
-                                                                            | InvocationTargetException
-                                                                            | NoSuchMethodException
-                                                                                    e1) {
-                                                                        // try calling the record
-                                                                        // getter
+                    List<Field<T, ?, ?>> fields =
+                            (List)
+                                    getFieldsForClass(clazz)
+                                            .map(
+                                                    f ->
+                                                            new Field(
+                                                                    f.getName(),
+                                                                    "",
+                                                                    getPrimitiveType(f.getType()),
+                                                                    obj -> {
                                                                         try {
-                                                                            return clazz.getMethod(
-                                                                                            f
-                                                                                                    .getName())
-                                                                                    .invoke(obj);
-                                                                        } catch (IllegalAccessException
-                                                                                | InvocationTargetException
-                                                                                | NoSuchMethodException
-                                                                                        e2) {
-                                                                            throw new RuntimeException(
-                                                                                    e2);
+                                                                            return f.get(obj);
+                                                                        } catch (
+                                                                                IllegalAccessException
+                                                                                        e) {
+                                                                            // try calling the
+                                                                            // getter
+                                                                            try {
+                                                                                return clazz.getMethod(
+                                                                                                "get"
+                                                                                                        + f.getName()
+                                                                                                                .substring(
+                                                                                                                        0,
+                                                                                                                        1)
+                                                                                                                .toUpperCase()
+                                                                                                        + f.getName()
+                                                                                                                .substring(
+                                                                                                                        1))
+                                                                                        .invoke(
+                                                                                                obj);
+                                                                            } catch (IllegalAccessException
+                                                                                    | InvocationTargetException
+                                                                                    | NoSuchMethodException
+                                                                                            e1) {
+                                                                                // try calling the
+                                                                                // record
+                                                                                // getter
+                                                                                try {
+                                                                                    return clazz.getMethod(
+                                                                                                    f
+                                                                                                            .getName())
+                                                                                            .invoke(
+                                                                                                    obj);
+                                                                                } catch (IllegalAccessException
+                                                                                        | InvocationTargetException
+                                                                                        | NoSuchMethodException
+                                                                                                e2) {
+                                                                                    throw new RuntimeException(
+                                                                                            e2);
+                                                                                }
+                                                                            }
                                                                         }
-                                                                    }
-                                                                }
-                                                            }))
-                                    .collect(Collectors.toList());
+                                                                    }))
+                                            .collect(Collectors.toList());
                     return new StructType<>(
                             id,
                             clazz.getCanonicalName(),
                             "",
-                            (List<Field<T, ?, ?>>) (List) fields,
+                            fields,
                             r -> createInstanceFromReadStruct(clazz, r));
                 });
     }
@@ -104,26 +111,49 @@ public class TypeUtil {
     @SuppressWarnings("unchecked")
     public static <T> T createInstanceFromReadStruct(Class<T> klass, ReadStruct readStruct) {
         var members = readStruct.ensureComplete();
-        var args =
-                getFieldsForClass(klass)
-                        .filter(f -> members.containsKey(f.getName()))
-                        .map(f -> members.get(f.getName()))
-                        .toArray();
+        // Use the constructor with the most parameters (canonical for records)
         var constructor =
                 Arrays.stream(klass.getDeclaredConstructors())
-                        .filter(c -> c.getParameterCount() == args.length)
-                        .findFirst();
-        if (constructor.isEmpty()) {
-            throw new AssertionError("Can't find suitable constructor for " + klass);
+                        .max(
+                                (c1, c2) ->
+                                        Integer.compare(
+                                                c1.getParameterCount(), c2.getParameterCount()))
+                        .orElseThrow(() -> new AssertionError("No constructor found for " + klass));
+        // Use field declaration order (matches canonical constructor param order for records)
+        var fields = getFieldsForClass(klass).toList();
+        var args = new Object[constructor.getParameterCount()];
+        for (int i = 0; i < fields.size() && i < args.length; i++) {
+            var field = fields.get(i);
+            if (members.containsKey(field.getName())) {
+                args[i] = members.get(field.getName());
+            } else {
+                args[i] = getDefaultValue(field.getType());
+            }
+        }
+        // Fill remaining args with defaults (fields added after the stored version)
+        for (int i = fields.size(); i < args.length; i++) {
+            args[i] = getDefaultValue(constructor.getParameterTypes()[i]);
         }
         try {
-            return (T) constructor.get().newInstance(args);
+            return (T) constructor.newInstance(args);
         } catch (InstantiationException
                 | IllegalAccessException
                 | InvocationTargetException
                 | IllegalArgumentException e) {
             throw new RuntimeException(e);
         }
+    }
+
+    private static Object getDefaultValue(Class<?> type) {
+        if (type == boolean.class) return false;
+        if (type == int.class) return 0;
+        if (type == long.class) return 0L;
+        if (type == float.class) return 0.0f;
+        if (type == double.class) return 0.0;
+        if (type == byte.class) return (byte) 0;
+        if (type == short.class) return (short) 0;
+        if (type == char.class) return '\0';
+        return null;
     }
 
     public static long toLong(Object longable) {

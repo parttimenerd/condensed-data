@@ -1,7 +1,6 @@
 package me.bechberger.condensed;
 
 import java.util.*;
-import java.util.Map.Entry;
 import java.util.function.Consumer;
 import java.util.function.Function;
 import java.util.function.Supplier;
@@ -19,25 +18,30 @@ public class Universe {
      */
     static class WritingCachePerType<T> {
         private final int size;
-        private final Map<T, Integer> cache = new HashMap<>();
-        private final ArrayDeque<T> cacheOrder = new ArrayDeque<>();
+
+        /** LRU cache: accessOrder=true promotes entries on get(), eldest entry is LRU */
+        private final LinkedHashMap<T, Integer> cache;
+
         private int lastId = -1;
 
         public WritingCachePerType(int size) {
             this.size = size;
+            this.cache = new LinkedHashMap<>(16, 0.75f, true);
         }
 
         /** Put value into cache, write out if needed, return id */
         public int get(T value, Consumer<T> writer) {
-            if (cache.containsKey(value)) {
-                return cache.get(value);
+            Integer existingId = cache.get(value);
+            if (existingId != null) {
+                return existingId;
             } else {
                 if (size != -1 && cache.size() >= size) {
-                    cache.remove(cacheOrder.removeFirst());
+                    var it = cache.entrySet().iterator();
+                    it.next();
+                    it.remove();
                 }
                 int id = ++lastId;
                 cache.put(value, id);
-                cacheOrder.add(value);
                 writer.accept(value);
                 return id;
             }
@@ -73,8 +77,25 @@ public class Universe {
     /** Cache that stores values per value type and per embedding type */
     static class WritingCachePerTypePerEmbeddingType<T> {
         private final int size;
-        private final Map<CondensedType<?, ?>, Map<T, Integer>> cache = new HashMap<>();
-        private final ArrayDeque<Entry<Map<T, Integer>, T>> cacheOrder = new ArrayDeque<>();
+
+        private static class CacheNode<V> {
+            final Map<V, CacheNode<V>> typeCache;
+            final V value;
+            final int id;
+
+            CacheNode(Map<V, CacheNode<V>> typeCache, V value, int id) {
+                this.typeCache = typeCache;
+                this.value = value;
+                this.id = id;
+            }
+        }
+
+        private final Map<CondensedType<?, ?>, Map<T, CacheNode<T>>> cache = new HashMap<>();
+
+        /** Global LRU order using CacheNode identity as key */
+        private final LinkedHashMap<CacheNode<T>, Void> lruOrder =
+                new LinkedHashMap<>(16, 0.75f, true);
+
         private final Map<CondensedType<?, ?>, Integer> lastIds = new HashMap<>();
 
         public WritingCachePerTypePerEmbeddingType(int size) {
@@ -83,21 +104,27 @@ public class Universe {
 
         /** Put value into cache per embbeding type, write out if needed, return id */
         public int get(T value, Consumer<T> writer, CondensedType<?, ?> embeddingType) {
-            Map<T, Integer> typeCache = cache.computeIfAbsent(embeddingType, k -> new HashMap<>());
-            if (typeCache.containsKey(value)) {
-                return typeCache.get(value);
+            Map<T, CacheNode<T>> typeCache =
+                    cache.computeIfAbsent(embeddingType, k -> new HashMap<>());
+            CacheNode<T> existing = typeCache.get(value);
+            if (existing != null) {
+                lruOrder.get(existing); // promote in LRU order
+                return existing.id;
             } else {
-                if (size != -1 && cacheOrder.size() >= size) {
-                    var e = cacheOrder.removeFirst();
-                    e.getKey().remove(e.getValue());
+                if (size != -1 && lruOrder.size() >= size) {
+                    var it = lruOrder.entrySet().iterator();
+                    CacheNode<T> lruNode = it.next().getKey();
+                    it.remove();
+                    lruNode.typeCache.remove(lruNode.value);
                 }
                 if (!lastIds.containsKey(embeddingType)) {
                     lastIds.put(embeddingType, -1);
                 }
                 int id = lastIds.get(embeddingType) + 1;
                 lastIds.put(embeddingType, id);
-                typeCache.put(value, id);
-                cacheOrder.add(Map.entry(typeCache, value));
+                CacheNode<T> node = new CacheNode<>(typeCache, value, id);
+                typeCache.put(value, node);
+                lruOrder.put(node, null);
                 writer.accept(value);
                 return id;
             }

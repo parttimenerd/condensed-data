@@ -2,7 +2,9 @@ package me.bechberger.util;
 
 import static me.bechberger.util.TimeUtil.formatInstant;
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotEquals;
 
+import java.time.Duration;
 import java.time.Instant;
 import java.time.ZoneId;
 import java.time.ZoneOffset;
@@ -155,5 +157,212 @@ public class TimeUtilTest {
                                 + formatted);
             }
         }
+    }
+
+    // ========== Bug reproducer tests ==========
+
+    /**
+     * Bug: parseDuration uses (long)(value * 1_000_000_000L) which truncates toward zero. For
+     * values where the double product is slightly below the true integer (due to IEEE 754
+     * representation), this causes an off-by-one nanosecond error.
+     *
+     * <p>Example: "0.000001005s" → Double.parseDouble("0.000001005") * 1e9 ≈ 1004.9999... → (long)
+     * truncates to 1004 instead of the correct 1005.
+     *
+     * <p>Fix: use Math.round() instead of (long) cast.
+     */
+    @ParameterizedTest
+    @CsvSource({
+        "0.000001005s, 1005",
+        "0.000001008s, 1008",
+        "0.00000192s, 1920",
+        "1.001s, 1001000000",
+        "1.0007s, 1000700000",
+        "1.0009s, 1000900000",
+    })
+    public void testParseDurationTruncationBug(String input, long expectedNanos) {
+        var duration = TimeUtil.parseDuration(input);
+        assertEquals(
+                expectedNanos,
+                duration.toNanos(),
+                "parseDuration(\""
+                        + input
+                        + "\") should give "
+                        + expectedNanos
+                        + " nanos but got "
+                        + duration.toNanos()
+                        + " (off by "
+                        + (duration.toNanos() - expectedNanos)
+                        + " due to (long) truncation)");
+    }
+
+    /**
+     * Bug: formatDuration → parseDuration roundtrip fails for durations whose formatted
+     * decimal-second representation triggers the (long) truncation issue.
+     *
+     * <p>Example: Duration.ofNanos(1005) → formatDuration → "0.000001005s" → parseDuration →
+     * Duration.ofNanos(1004) ≠ original.
+     */
+    @ParameterizedTest
+    @ValueSource(longs = {15, 30, 60, 1005, 1008, 1920, 1001000000})
+    public void testDurationRoundtripWithNanosTruncationBug(long nanos) {
+        var original = Duration.ofNanos(nanos);
+        var formatted = TimeUtil.formatDuration(original);
+        var parsed = TimeUtil.parseDuration(formatted);
+        assertEquals(
+                original,
+                parsed,
+                "Roundtrip failed for "
+                        + nanos
+                        + " nanos: formatted='"
+                        + formatted
+                        + "', parsed="
+                        + parsed.toNanos()
+                        + " nanos");
+    }
+
+    /**
+     * Bug: formatDuration of a negative duration produces output like "-3s" which parseDuration
+     * cannot parse (its regex requires \\d+ before the unit). This means negative durations cannot
+     * roundtrip through format/parse.
+     */
+    @Test
+    public void testNegativeDurationRoundtripBug() {
+        var negativeDuration = Duration.ofSeconds(-3);
+        var formatted = TimeUtil.formatDuration(negativeDuration);
+        // This will throw IllegalArgumentException because "-3s" doesn't match the regex
+        var parsed = TimeUtil.parseDuration(formatted);
+        assertEquals(negativeDuration, parsed);
+    }
+
+    // ========== Additional coverage tests ==========
+
+    /** Parse microsecond and nanosecond units */
+    @ParameterizedTest
+    @CsvSource({
+        "500us, 500000",
+        "1us, 1000",
+        "1000us, 1000000",
+        "100ns, 100",
+        "1ns, 1",
+        "1000ns, 1000",
+    })
+    public void testParseDurationSubMicrosecondUnits(String input, long expectedNanos) {
+        var duration = TimeUtil.parseDuration(input);
+        assertEquals(expectedNanos, duration.toNanos(), "parseDuration(\"" + input + "\") nanos");
+    }
+
+    /** Parse combined multi-unit duration strings */
+    @ParameterizedTest
+    @CsvSource({
+        "1h30m20s, 5420000",
+        "2h, 7200000",
+        "1m500ms, 60500",
+        "1h 30m, 5400000",
+        "1h 0m 1s, 3601000",
+    })
+    public void testParseDurationCombinedUnits(String input, long expectedMillis) {
+        var duration = TimeUtil.parseDuration(input);
+        assertEquals(
+                expectedMillis, duration.toMillis(), "parseDuration(\"" + input + "\") millis");
+    }
+
+    /** Parse fractional unit values */
+    @ParameterizedTest
+    @CsvSource({
+        "1.5h, 5400",
+        "0.5m, 30",
+        "2.5s, 2",
+    })
+    public void testParseDurationFractionalUnits(String input, long expectedSeconds) {
+        var duration = TimeUtil.parseDuration(input);
+        assertEquals(
+                expectedSeconds, duration.getSeconds(), "parseDuration(\"" + input + "\") seconds");
+    }
+
+    /** Duration parsing is case-insensitive */
+    @ParameterizedTest
+    @CsvSource({
+        "1H30M, 1h 30m",
+        "1H 30M, 1h 30m",
+        "3S, 3s",
+        "500MS, 0.5s",
+    })
+    public void testParseDurationCaseInsensitive(String input, String expectedFormatted) {
+        var duration = TimeUtil.parseDuration(input);
+        assertEquals(expectedFormatted, TimeUtil.formatDuration(duration));
+    }
+
+    /** Whitespace handling in duration parsing */
+    @Test
+    public void testParseDurationWithWhitespace() {
+        assertEquals(TimeUtil.parseDuration("1h30m"), TimeUtil.parseDuration("  1h  30m  "));
+    }
+
+    /** Duration.ZERO formatting */
+    @Test
+    public void testFormatDurationZero() {
+        assertEquals("0s", TimeUtil.formatDuration(Duration.ZERO));
+    }
+
+    /** Verify "1m" is parsed as 1 minute (not confused with "ms") */
+    @Test
+    public void testParseDurationMinuteVsMillisecond() {
+        assertEquals(Duration.ofMinutes(1), TimeUtil.parseDuration("1m"));
+        assertEquals(Duration.ofMillis(1), TimeUtil.parseDuration("1ms"));
+        assertNotEquals(TimeUtil.parseDuration("1m"), TimeUtil.parseDuration("1ms"));
+    }
+
+    /** parseInstant with full date-time and timezone offset roundtrips through formatInstant */
+    @Test
+    public void testParseInstantWithOffset() {
+        var formatted = "2025-06-15 14:30:00+02:00";
+        var instant = TimeUtil.parseInstant(formatted);
+        // The instant should correspond to 12:30 UTC
+        assertEquals(Instant.parse("2025-06-15T12:30:00Z"), instant);
+    }
+
+    /** parseInstant with date-time but no offset uses local timezone */
+    @Test
+    public void testParseInstantWithoutOffset() {
+        var input = "2025-06-15 14:30:00";
+        var instant = TimeUtil.parseInstant(input);
+        // Should be interpreted as local time
+        var expected =
+                java.time.LocalDateTime.of(2025, 6, 15, 14, 30, 0)
+                        .atZone(ZoneId.systemDefault())
+                        .toInstant();
+        assertEquals(expected, instant);
+    }
+
+    /** formatDuration output for various Duration values */
+    @ParameterizedTest
+    @CsvSource({
+        "0, 0s",
+        "1, 1s",
+        "60, 1m",
+        "61, 1m 1s",
+        "3600, 1h",
+        "3661, 1h 1m 1s",
+        "86400, 24h",
+    })
+    public void testFormatDurationFromSeconds(long seconds, String expected) {
+        assertEquals(expected, TimeUtil.formatDuration(Duration.ofSeconds(seconds)));
+    }
+
+    /** Verify clamp behavior for extreme durations */
+    @Test
+    public void testClampDuration() {
+        var twoYears = Duration.ofDays(730);
+        var clamped = TimeUtil.clamp(twoYears);
+        assertEquals(TimeUtil.MAX_DURATION_SECONDS, clamped.getSeconds());
+
+        var negativeTwoYears = Duration.ofDays(-730);
+        var clampedNeg = TimeUtil.clamp(negativeTwoYears);
+        assertEquals(-TimeUtil.MAX_DURATION_SECONDS, clampedNeg.getSeconds());
+
+        // Within range: unchanged
+        var oneHour = Duration.ofHours(1);
+        assertEquals(oneHour, TimeUtil.clamp(oneHour));
     }
 }

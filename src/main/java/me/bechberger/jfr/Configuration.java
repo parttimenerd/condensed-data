@@ -35,7 +35,8 @@ public record Configuration(
         boolean ignoreZeroSizedTenuredAges,
         boolean ignoreTooShortGCPauses,
         boolean removeBCIAndLineNumberFromStackFrames,
-        boolean removeTypeInformationFromStackFrames)
+        boolean removeTypeInformationFromStackFrames,
+        boolean removeUnnecessaryAddresses)
         implements Comparable<Configuration> {
 
     public static final Configuration DEFAULT =
@@ -55,6 +56,7 @@ public record Configuration(
                     false,
                     false,
                     false,
+                    false,
                     false);
 
     /** with conservative lossy compression */
@@ -68,6 +70,7 @@ public record Configuration(
                     .withIgnoreTooShortGCPauses(true)
                     .withRemoveBCIAndLineNumberFromStackFrames(true)
                     .withCombinePLABPromotionEvents(true)
+                    .withRemoveUnnecessaryAddresses(true)
                     .withMaxStackTraceDepth(32);
 
     public static final Configuration REDUCED_DEFAULT =
@@ -107,6 +110,7 @@ public record Configuration(
                 sumObjectSizes,
                 ignoreZeroSizedTenuredAges,
                 ignoreTooShortGCPauses,
+                false,
                 false,
                 false);
     }
@@ -199,6 +203,10 @@ public record Configuration(
                 "removeTypeInformationFromStackFrames", removeTypeInformationFromStackFrames);
     }
 
+    public Configuration withRemoveUnnecessaryAddresses(boolean removeUnnecessaryAddresses) {
+        return withFieldValue("removeUnnecessaryAddresses", removeUnnecessaryAddresses);
+    }
+
     public Configuration withFieldValue(String fieldName, Object value) {
         // use reflection to call the constructor
         try {
@@ -231,7 +239,9 @@ public record Configuration(
     }
 
     public boolean eventCombinersEnabled() {
-        return combinePLABPromotionEvents;
+        return combinePLABPromotionEvents
+                || combineObjectAllocationSampleEvents
+                || combineEventsWithoutDataLoss;
     }
 
     @Override

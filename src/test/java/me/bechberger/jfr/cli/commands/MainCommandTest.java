@@ -79,6 +79,15 @@ public class MainCommandTest {
                 () -> assertThat(result.error()).isNotEmpty());
     }
 
+    @Test
+    public void testUnknownGlobalOptionShowsUsageAndError() throws Exception {
+        var result = new CommandExecuter("--does-not-exist").run();
+        assertAll(
+                () -> assertThat(result.exitCode()).isEqualTo(2),
+                () -> assertThat(result.output()).isEmpty(),
+                () -> assertThat(result.error()).contains("Usage: cjfr"));
+    }
+
     @ParameterizedTest
     @MethodSource("subCommands")
     public void testSubCommandsHaveVersion(String subCommand) throws Exception {
@@ -87,5 +96,18 @@ public class MainCommandTest {
                 () -> assertThat(result.exitCode()).isEqualTo(0),
                 () -> assertThat(result.output().strip()).isEqualTo(VERSION),
                 () -> assertThat(result.error()).isEmpty());
+    }
+
+    @Test
+    public void testMainHelpAndVersionRemainIndependentCalls() throws Exception {
+        var helpResult = new CommandExecuter("--help").run();
+        var versionResult = new CommandExecuter("--version").run();
+        assertAll(
+                () -> assertThat(helpResult.exitCode()).isEqualTo(0),
+                () -> assertThat(helpResult.output()).contains("Usage: cjfr"),
+                () -> assertThat(helpResult.error()).isEmpty(),
+                () -> assertThat(versionResult.exitCode()).isEqualTo(0),
+                () -> assertThat(versionResult.output().strip()).isEqualTo(VERSION),
+                () -> assertThat(versionResult.error()).isEmpty());
     }
 }

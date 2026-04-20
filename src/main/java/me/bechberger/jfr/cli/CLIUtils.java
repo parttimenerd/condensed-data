@@ -45,14 +45,25 @@ public class CLIUtils {
                             + " (built without JMC support).");
             return 1;
         } catch (Exception e) {
-            if (e.getCause() != null) {
-                e.getCause().printStackTrace();
-            } else {
-                e.printStackTrace();
-            }
-            return 1;
+            return printError(e);
         }
         return 0;
+    }
+
+    public static int printError(Throwable throwable) {
+        System.err.println("Error: " + userErrorMessage(throwable));
+        return 1;
+    }
+
+    public static String userErrorMessage(Throwable throwable) {
+        Throwable current = throwable;
+        while (current.getCause() != null
+                && (current instanceof java.lang.reflect.InvocationTargetException
+                        || current instanceof RuntimeException)) {
+            current = current.getCause();
+        }
+        String message = current.getMessage();
+        return (message == null || message.isBlank()) ? current.toString() : message;
     }
 
     public static class ConfigurationConverter implements TypeConverter<Configuration> {
@@ -121,7 +132,12 @@ public class CLIUtils {
         var currentArg = new StringBuilder();
         for (var c : agentArgs.toCharArray()) {
             if (escapeNext) {
-                currentArg.append(c);
+                if (c == '"') {
+                    currentArg.append(c);
+                } else {
+                    currentArg.append('\\');
+                    currentArg.append(c);
+                }
                 escapeNext = false;
             } else if (c == '\\') {
                 escapeNext = true;
@@ -143,7 +159,16 @@ public class CLIUtils {
         if (!currentArg.isEmpty() || inQuotes) {
             args.add(currentArg.toString());
         }
-        return args.stream().map(s -> s.replace("\\\"", "\"")).toList();
+        if (escapeNext) {
+            // trailing backslash
+            var last = args.size() - 1;
+            if (last >= 0) {
+                args.set(last, args.get(last) + "\\");
+            } else {
+                args.add("\\");
+            }
+        }
+        return args;
     }
 
     public static String combineArgs(List<String> options) {
@@ -151,10 +176,12 @@ public class CLIUtils {
         return options.stream()
                 .map(
                         s -> {
+                            // Escape quotes (backslashes are literal in splitArgs)
+                            String escaped = s.replace("\"", "\\\"");
                             if (s.contains(" ") || s.isEmpty()) {
-                                return "\"" + s.replace("\"", "\\\"") + "\"";
+                                return "\"" + escaped + "\"";
                             }
-                            return s.replace("\"", "\\\"");
+                            return escaped;
                         })
                 .collect(Collectors.joining(" "));
     }

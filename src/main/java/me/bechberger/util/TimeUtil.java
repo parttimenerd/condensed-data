@@ -18,6 +18,9 @@ public class TimeUtil {
      * <p>Based on <a href="https://stackoverflow.com/a/40487511/19040822">stackoverflow.com</a>
      */
     public static String formatDuration(Duration duration) {
+        if (duration.isNegative()) {
+            return "-" + formatDuration(duration.negated());
+        }
         return duration.toString().substring(2).replaceAll("(\\d[HMS])(?!$)", "$1 ").toLowerCase();
     }
 
@@ -35,6 +38,7 @@ public class TimeUtil {
      * @return
      */
     public static Instant parseInstant(String time) {
+        time = time.strip();
         if (time.matches("\\d{1,2}:\\d{1,2}:\\d{1,2}")) { // parse HH:mm:ss
             time = LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyy-MM-dd " + time));
         } else if (time.matches("\\d{1,2}:\\d{1,2}")) { // parse HH:mm
@@ -42,20 +46,48 @@ public class TimeUtil {
                     LocalDateTime.now()
                             .format(DateTimeFormatter.ofPattern("yyyy-MM-dd " + time + ":00"));
         }
+        try {
+            return Instant.parse(time);
+        } catch (Exception ignored) {
+        }
+        try {
+            return ZonedDateTime.parse(time, DateTimeFormatter.ISO_DATE_TIME).toInstant();
+        } catch (Exception ignored) {
+        }
+        try {
+            return LocalDateTime.parse(time, DateTimeFormatter.ISO_LOCAL_DATE_TIME)
+                    .atZone(ZoneId.systemDefault())
+                    .toInstant();
+        } catch (Exception ignored) {
+        }
         // Try parsing with UTC offset first (format from formatInstant)
         try {
             DateTimeFormatter withOffset = DateTimeFormatter.ofPattern("yyyy-MM-dd H:m:sXXX");
             ZonedDateTime zdt = ZonedDateTime.parse(time, withOffset);
             return zdt.toInstant();
         } catch (Exception e) {
-            // Fall back to parsing without offset (user-typed input)
-            DateTimeFormatter formatter = DateTimeFormatter.ofPattern("yyyy-MM-dd H:m:s");
-            LocalDateTime dateTime = LocalDateTime.parse(time, formatter);
-            return dateTime.atZone(ZoneId.systemDefault()).toInstant();
+            try {
+                // Fall back to parsing without offset (user-typed input)
+                DateTimeFormatter formatter = DateTimeFormatter.ofPattern("yyyy-MM-dd H:m:s");
+                LocalDateTime dateTime = LocalDateTime.parse(time, formatter);
+                return dateTime.atZone(ZoneId.systemDefault()).toInstant();
+            } catch (Exception ignored) {
+                throw new IllegalArgumentException(
+                        "Invalid instant format: "
+                                + time
+                                + ". Use yyyy-MM-dd HH:mm:ss, yyyy-MM-ddTHH:mm:ss, or include a"
+                                + " timezone offset.");
+            }
         }
     }
 
     public static Duration parseDuration(String duration) {
+        boolean negative = false;
+        String trimmed = duration.strip();
+        if (trimmed.startsWith("-")) {
+            negative = true;
+            trimmed = trimmed.substring(1).strip();
+        }
         Pattern pattern =
                 Pattern.compile(
                         "(?i)\\s*(?:(\\d+(?:\\.\\d+)?)h)?\\s*"
@@ -64,7 +96,7 @@ public class TimeUtil {
                                 + "(?:(\\d+(?:\\.\\d+)?)ms)?\\s*"
                                 + "(?:(\\d+(?:\\.\\d+)?)us)?\\s*"
                                 + "(?:(\\d+(?:\\.\\d+)?)ns)?\\s*");
-        Matcher matcher = pattern.matcher(duration);
+        Matcher matcher = pattern.matcher(trimmed);
         if (matcher.matches() && (IntStream.range(1, 7).anyMatch(i -> matcher.group(i) != null))) {
             double hours = matcher.group(1) != null ? Double.parseDouble(matcher.group(1)) : 0;
             double minutes = matcher.group(2) != null ? Double.parseDouble(matcher.group(2)) : 0;
@@ -74,14 +106,15 @@ public class TimeUtil {
             double nanos = matcher.group(6) != null ? Double.parseDouble(matcher.group(6)) : 0;
 
             long totalNanos = 0;
-            totalNanos += (long) (hours * 3_600_000_000_000L);
-            totalNanos += (long) (minutes * 60_000_000_000L);
-            totalNanos += (long) (seconds * 1_000_000_000L);
-            totalNanos += (long) (millis * 1_000_000L);
-            totalNanos += (long) (micros * 1_000L);
-            totalNanos += (long) (nanos);
+            totalNanos += Math.round(hours * 3_600_000_000_000L);
+            totalNanos += Math.round(minutes * 60_000_000_000L);
+            totalNanos += Math.round(seconds * 1_000_000_000L);
+            totalNanos += Math.round(millis * 1_000_000L);
+            totalNanos += Math.round(micros * 1_000L);
+            totalNanos += Math.round(nanos);
 
-            return Duration.ofNanos(totalNanos);
+            Duration result = Duration.ofNanos(totalNanos);
+            return negative ? result.negated() : result;
         } else {
             throw new IllegalArgumentException("Invalid duration format: " + duration);
         }

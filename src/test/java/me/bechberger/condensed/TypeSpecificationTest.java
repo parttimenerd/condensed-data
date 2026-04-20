@@ -305,46 +305,42 @@ public class TypeSpecificationTest {
     @Provide
     Arbitrary<TypeCreatorAndValue<Long, IntType>> intType(
             @ForAll @IntRange(min = 4, max = 8) int width, @ForAll boolean signed) {
-        var longs = !signed ? Arbitraries.integers().greaterOrEqual(0) : Arbitraries.integers();
-        return longs.map(
-                l ->
-                        TypeCreatorAndValue.forId(
-                                id -> new IntType(id, width, signed, OverflowMode.ERROR),
-                                longs.map(l2 -> (long) l2)));
+        Arbitrary<Long> longs =
+                (signed ? Arbitraries.integers() : Arbitraries.integers().greaterOrEqual(0))
+                        .map(Integer::longValue);
+        return Arbitraries.just(
+                TypeCreatorAndValue.forId(
+                        id -> new IntType(id, width, signed, OverflowMode.ERROR), longs));
     }
 
     @Provide
     Arbitrary<TypeCreatorAndValue<Long, VarIntType>> varIntType(@ForAll boolean signed) {
-        var longs = Arbitraries.longs();
-        return longs.map(
-                l -> TypeCreatorAndValue.forId(id -> new VarIntType(id, "", "", signed), longs));
+        return Arbitraries.just(
+                TypeCreatorAndValue.forId(
+                        id -> new VarIntType(id, "", "", signed), Arbitraries.longs()));
     }
 
     @Provide
     Arbitrary<TypeCreatorAndValue<Float, FloatType>> floatType() {
-        return Arbitraries.floats()
-                .map(f -> TypeCreatorAndValue.forId(FloatType::new, Arbitraries.floats()));
+        return Arbitraries.just(TypeCreatorAndValue.forId(FloatType::new, Arbitraries.floats()));
     }
 
     @Provide
     Arbitrary<TypeCreatorAndValue<String, StringType>> stringType() {
-        return Arbitraries.strings()
-                .map(s -> TypeCreatorAndValue.forId(StringType::new, Arbitraries.strings()));
+        return Arbitraries.just(TypeCreatorAndValue.forId(StringType::new, Arbitraries.strings()));
     }
 
     @Provide
     Arbitrary<TypeCreatorAndValue<Boolean, BooleanType>> booleanType() {
-        return Arbitraries.of(
-                TypeCreatorAndValue.forId(BooleanType::new, Arbitraries.of(true, false)));
+        return Arbitraries.just(
+                TypeCreatorAndValue.<Boolean, BooleanType>forId(
+                        id -> new BooleanType(id), Arbitraries.of(true, false)));
     }
 
     @Provide
     Arbitrary<TypeCreatorAndValue<String, StringType>> asciiStringType() {
-        return Arbitraries.strings()
-                .map(
-                        s ->
-                                TypeCreatorAndValue.forId(
-                                        StringType::new, Arbitraries.strings().ascii().alpha()));
+        return Arbitraries.just(
+                TypeCreatorAndValue.forId(StringType::new, Arbitraries.strings().ascii().alpha()));
     }
 
     @Provide
@@ -513,7 +509,8 @@ public class TypeSpecificationTest {
                     Arbitrary<EmbeddingType> embeddings,
                     Arbitrary<Integer> reductionIds) {
         if (members.isEmpty()) {
-            return new TypeCreatorAndValue<>(
+            return new TypeCreatorAndValue<
+                    Map<String, Object>, StructType<Map<String, Object>, Map<String, Object>>>(
                     out ->
                             out.writeAndStoreType(
                                     id -> new StructType<>(id, List.of(), l -> Map.of())),

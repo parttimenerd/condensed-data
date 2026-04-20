@@ -40,10 +40,14 @@ public class FlamegraphGenerator {
         return computedBytes.get(tree);
     }
 
+    private static String escapeJson(String s) {
+        return s.replace("\\", "\\\\").replace("\"", "\\\"");
+    }
+
     private void writeJSON(PrintStream s, EventWriteTree tree) {
         s.printf(
                 "{ \"name\": \"%s\", \"value\": %d, \"children\": [",
-                tree.getCauseName(), computeOverallBytesWritten(tree));
+                escapeJson(tree.getCauseName()), computeOverallBytesWritten(tree));
         for (var child : tree.getChildren()) {
             writeJSON(s, child);
             s.print(",");
@@ -117,13 +121,14 @@ public class FlamegraphGenerator {
         }
 
         s.printf(
-                "%-40s | %13s | %13s | %11s | %20s | %20s%n",
+                "%-40s | %13s | %13s | %11s | %20s | %20s | %20s%n",
                 "Type Name",
                 "Direct Bytes",
                 "Overall Bytes",
                 "Count",
                 "Overall Bytes/Message",
-                "Percentage of Total");
+                "Percentage of Total",
+                "Overall % of Total");
         s.println(
                 "---------------------------------------------------------------------------------------------------------------");
         aggregated.entrySet().stream()

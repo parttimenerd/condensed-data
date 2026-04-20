@@ -16,6 +16,7 @@ import me.bechberger.femtocli.annotations.Mixin;
 import me.bechberger.femtocli.annotations.Option;
 import me.bechberger.femtocli.annotations.Parameters;
 import me.bechberger.jfr.CombiningJFRReader;
+import me.bechberger.jfr.cli.CLIUtils;
 import me.bechberger.jfr.cli.EventFilter.EventFilterOptionMixin;
 import me.bechberger.jfr.cli.FileOptionConverters;
 import me.bechberger.jfr.cli.FileOptionConverters.ExistingCJFRFileOrZipOrFolderConverter;
@@ -71,7 +72,7 @@ public class SummaryCommand implements Callable<Integer> {
                     CombiningJFRReader.fromPaths(
                             inputFiles,
                             eventFilterOptionMixin.createFilter(),
-                            eventFilterOptionMixin.noReconstitution(),
+                            !eventFilterOptionMixin.noReconstitution(),
                             statistic);
 
             var summary = computeSummary(jfrReader);
@@ -87,6 +88,9 @@ public class SummaryCommand implements Callable<Integer> {
 
                 System.out.println(PrettyPrinter.prettyPrint(output));
             } else {
+                // Always print the basic summary
+                System.out.println(summary.toString(shortSummary));
+
                 // Print full statistics if requested
                 if (full) {
                     System.out.println("\nEventWriteTree:");
@@ -97,8 +101,6 @@ public class SummaryCommand implements Callable<Integer> {
                     System.out.println("\nDetailed Statistics:");
                     System.out.println("===================");
                     System.out.println(statistic.toPrettyString());
-                } else {
-                    System.out.println(summary.toString(shortSummary));
                 }
             }
 
@@ -109,8 +111,7 @@ public class SummaryCommand implements Callable<Integer> {
                 System.out.println("\nFlamegraph written to: " + flamegraphPath);
             }
         } catch (Exception e) {
-            e.printStackTrace();
-            return 1;
+            return CLIUtils.printError(e);
         }
         return 0;
     }

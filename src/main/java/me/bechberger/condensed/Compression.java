@@ -1,5 +1,7 @@
 package me.bechberger.condensed;
 
+import com.github.luben.zstd.ZstdInputStream;
+import com.github.luben.zstd.ZstdOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
@@ -69,6 +71,26 @@ public enum Compression {
                 public InputStream wrap(InputStream in) throws IOException {
                     return new LZ4FrameInputStream(in);
                 }
+            }),
+    ZSTD(
+            new CompressionFactory() {
+                @Override
+                public OutputStream wrap(OutputStream out, CompressionLevel level)
+                        throws IOException {
+                    int zstdLevel =
+                            switch (level) {
+                                case FAST -> 1;
+                                case MEDIUM -> 3;
+                                case HIGH_COMPRESSION -> 9;
+                                case MAX_COMPRESSION -> 19;
+                            };
+                    return new ZstdOutputStream(out, zstdLevel);
+                }
+
+                @Override
+                public InputStream wrap(InputStream in) throws IOException {
+                    return new ZstdInputStream(in);
+                }
             });
 
     public interface CompressionFactory {
@@ -91,7 +113,7 @@ public enum Compression {
         }
     }
 
-    public static final Compression DEFAULT = LZ4FRAMED;
+    public static final Compression DEFAULT = ZSTD;
 
     private final CompressionFactory factory;
 

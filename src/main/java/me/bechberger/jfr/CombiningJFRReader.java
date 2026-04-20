@@ -34,7 +34,6 @@ public class CombiningJFRReader implements JFRReader {
     private int currentReaderIndex = 0;
     private ReaderAndReadEvents currentReader;
     private int currentEventIndex = 0;
-    private ReadStruct lastReadEvent;
 
     private CombiningJFRReader(
             List<ReaderAndReadEvents> orderedReaders, EventFilterInstance filter) {
@@ -133,7 +132,6 @@ public class CombiningJFRReader implements JFRReader {
                     .toList();
         }
         if (Files.isRegularFile(path) && path.toString().endsWith(".cjfr")) {
-            BasicJFRReader reader;
             try {
                 return List.of(
                         readerForInputStream(Files.newInputStream(path), reconstitute, statistics));
@@ -222,14 +220,12 @@ public class CombiningJFRReader implements JFRReader {
                 if (filter != null && !filter.test(event)) {
                     continue;
                 }
-                lastReadEvent = event;
                 return event;
             }
             var event = currentReader.alreadyReadEvents.get(currentEventIndex++);
             if (filter != null && !filter.test(event)) {
                 continue;
             }
-            lastReadEvent = event;
             return event;
         }
     }
@@ -279,11 +275,10 @@ public class CombiningJFRReader implements JFRReader {
 
     @Override
     public Instant getEndTime() {
-        if (lastReadEvent == null) {
-            return getStartTime();
-        }
-        var lastStartTime = lastReadEvent.get("startTime", Instant.class);
-        return Instant.ofEpochSecond(lastStartTime.getEpochSecond(), lastStartTime.getNano());
+        return readers.stream()
+                .map(reader -> reader.reader().getEndTime())
+                .max(Comparator.naturalOrder())
+                .orElseGet(this::getStartTime);
     }
 
     @Override

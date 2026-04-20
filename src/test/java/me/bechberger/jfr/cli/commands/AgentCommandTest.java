@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.nio.file.Files;
+import java.util.List;
 import me.bechberger.condensed.CondensedInputStream;
 import me.bechberger.condensed.ReadStruct;
 import me.bechberger.jfr.BasicJFRReader;
@@ -25,6 +26,30 @@ public class AgentCommandTest {
     public void testHelpOption() throws Exception {
         var res = new CommandExecuter("agent", "--help").checkNoError().run();
         assertThat(res.output()).contains("Usage: cjfr agent [-hV] PID [COMMAND]");
+    }
+
+    @Test
+    public void testPidWithoutSubcommandReturnsSuccessQuietly() throws Exception {
+        var res = new CommandExecuter("agent", ProcessHandle.current().pid() + "").run();
+        res.assertNoErrorOrOutput();
+    }
+
+    @Test
+    public void testReadCommandWithoutAgentOutputExitsQuietly() throws Exception {
+        var res = new CommandExecuter("agent", "read").run();
+        res.assertNoErrorOrOutput();
+    }
+
+    @Test
+    public void testExecuteWithNonNumericPidReturnsMinusOne() {
+        int code = AgentCommand.execute(List.of("agent", "not-a-pid"));
+        assertThat(code).isEqualTo(-1);
+    }
+
+    @Test
+    public void testExecuteWithOnlyPidReturnsZeroWithoutAttach() {
+        int code = AgentCommand.execute(List.of("agent", ProcessHandle.current().pid() + ""));
+        assertThat(code).isEqualTo(0);
     }
 
     @Test
@@ -71,13 +96,11 @@ public class AgentCommandTest {
                                                                         + " Size: "
                                                                         + value.toString()));
                                         // call cjfr summary on the recording file
-                                        var summaryRes =
-                                                new CommandExecuter(
-                                                                "summary",
-                                                                files.get("recording.cjfr")
-                                                                        .toString())
-                                                        .checkNoError()
-                                                        .run();
+                                        new CommandExecuter(
+                                                        "summary",
+                                                        files.get("recording.cjfr").toString())
+                                                .checkNoError()
+                                                .run();
                                         try (var is =
                                                 Files.newInputStream(files.get("recording.cjfr"))) {
                                             BasicJFRReader reader =

@@ -46,6 +46,88 @@ public class CommandTestUtil {
     @StackTrace
     static class AnotherEvent extends Event {}
 
+    // Custom edge-case events for stress testing
+    @Name("LargeStringEvent")
+    @Label("Large String Event")
+    @StackTrace(false)
+    static class LargeStringEvent extends Event {
+        String largeString = "x".repeat(10000); // 10KB string
+    }
+
+    @Name("ExtremeNumericEvent")
+    @Label("Extreme Numeric Event")
+    @StackTrace(false)
+    static class ExtremeNumericEvent extends Event {
+        long maxLong = Long.MAX_VALUE;
+        long minLong = Long.MIN_VALUE;
+        int maxInt = Integer.MAX_VALUE;
+        int minInt = Integer.MIN_VALUE;
+        double maxDouble = Double.MAX_VALUE;
+        double minDouble = Double.MIN_VALUE;
+        float maxFloat = Float.MAX_VALUE;
+        float minFloat = Float.MIN_VALUE;
+    }
+
+    @Name("UnicodeStringEvent")
+    @Label("Unicode String Event")
+    @StackTrace(false)
+    static class UnicodeStringEvent extends Event {
+        String emoji = "🎉🚀💥✨🔥"; // emoji and special chars
+        String chinese = "你好世界";
+        String arabic = "مرحبا بالعالم";
+        String specialChars = "!@#$%^&*()<>?{}[]|\\;':\",.";
+    }
+
+    @Name("ManyFieldsEvent")
+    @Label("Many Fields Event")
+    @StackTrace(false)
+    static class ManyFieldsEvent extends Event {
+        int field1 = 1;
+        int field2 = 2;
+        int field3 = 3;
+        int field4 = 4;
+        int field5 = 5;
+        int field6 = 6;
+        int field7 = 7;
+        int field8 = 8;
+        int field9 = 9;
+        int field10 = 10;
+        String name1 = "test1";
+        String name2 = "test2";
+        String name3 = "test3";
+        long time1 = System.nanoTime();
+    }
+
+    /** Event with uninitialized (null) String fields — tests null-safety in condense pipeline. */
+    @Name("NullStringEvent")
+    @StackTrace(false)
+    static class NullStringEvent extends Event {
+        String nullField; // intentionally uninitialized → null at emit time
+        String emptyField = "";
+        int controlInt = 99;
+    }
+
+    /** Event with IEEE-754 special double values: NaN, +Inf, -Inf, negative zero. */
+    @Name("SpecialDoubleEvent")
+    @StackTrace(false)
+    static class SpecialDoubleEvent extends Event {
+        double nanValue = Double.NaN;
+        double posInfinity = Double.POSITIVE_INFINITY;
+        double negInfinity = Double.NEGATIVE_INFINITY;
+        double negZero = -0.0;
+    }
+
+    /** Lightweight event committed at high frequency to stress buffering. */
+    @Name("HighFreqEvent")
+    @StackTrace(false)
+    static class HighFreqEvent extends Event {
+        int seq;
+
+        HighFreqEvent(int seq) {
+            this.seq = seq;
+        }
+    }
+
     private static final int SAMPLE_JFR_FILE_DURATION = 2;
 
     private static int counter = 0;
@@ -170,5 +252,203 @@ public class CommandTestUtil {
 
     public static String getEmptyCJFRFileName() {
         return getEmptyCJFRFile().getFileName().toString();
+    }
+
+    // Methods to create JFR files with custom edge-case events
+    private static void recordLargeStringJFRFile(Path jfrFile) throws IOException {
+        try (RecordingStream rs = new RecordingStream()) {
+            rs.enable("LargeStringEvent");
+            rs.onEvent("LargeStringEvent", event -> {});
+            rs.startAsync();
+            for (int i = 0; i < 5; i++) {
+                new LargeStringEvent().commit();
+            }
+            Thread.sleep(100);
+            rs.dump(jfrFile);
+            // Don't call close before dump - stream is auto-closed by try-with-resources
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            throw new IOException(e);
+        }
+    }
+
+    public static Path getLargeStringJFRFile() {
+        var file = TEMP_FOLDER.resolve("large_string.jfr");
+        if (!Files.exists(file)) {
+            try {
+                recordLargeStringJFRFile(file);
+            } catch (IOException e) {
+                throw new RuntimeException(e);
+            }
+        }
+        return file;
+    }
+
+    private static void recordExtremeNumericJFRFile(Path jfrFile) throws IOException {
+        try (RecordingStream rs = new RecordingStream()) {
+            rs.enable("ExtremeNumericEvent");
+            rs.onEvent("ExtremeNumericEvent", event -> {});
+            rs.startAsync();
+            for (int i = 0; i < 3; i++) {
+                new ExtremeNumericEvent().commit();
+            }
+            Thread.sleep(100);
+            rs.dump(jfrFile);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            throw new IOException(e);
+        }
+    }
+
+    public static Path getExtremeNumericJFRFile() {
+        var file = TEMP_FOLDER.resolve("extreme_numeric.jfr");
+        if (!Files.exists(file)) {
+            try {
+                recordExtremeNumericJFRFile(file);
+            } catch (IOException e) {
+                throw new RuntimeException(e);
+            }
+        }
+        return file;
+    }
+
+    private static void recordUnicodeStringJFRFile(Path jfrFile) throws IOException {
+        try (RecordingStream rs = new RecordingStream()) {
+            rs.enable("UnicodeStringEvent");
+            rs.onEvent("UnicodeStringEvent", event -> {});
+            rs.startAsync();
+            for (int i = 0; i < 5; i++) {
+                new UnicodeStringEvent().commit();
+            }
+            Thread.sleep(100);
+            rs.dump(jfrFile);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            throw new IOException(e);
+        }
+    }
+
+    public static Path getUnicodeStringJFRFile() {
+        var file = TEMP_FOLDER.resolve("unicode_string.jfr");
+        if (!Files.exists(file)) {
+            try {
+                recordUnicodeStringJFRFile(file);
+            } catch (IOException e) {
+                throw new RuntimeException(e);
+            }
+        }
+        return file;
+    }
+
+    private static void recordManyFieldsJFRFile(Path jfrFile) throws IOException {
+        try (RecordingStream rs = new RecordingStream()) {
+            rs.enable("ManyFieldsEvent");
+            rs.onEvent("ManyFieldsEvent", event -> {});
+            rs.startAsync();
+            for (int i = 0; i < 10; i++) {
+                new ManyFieldsEvent().commit();
+            }
+            Thread.sleep(100);
+            rs.dump(jfrFile);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            throw new IOException(e);
+        }
+    }
+
+    public static Path getManyFieldsJFRFile() {
+        var file = TEMP_FOLDER.resolve("many_fields.jfr");
+        if (!Files.exists(file)) {
+            try {
+                recordManyFieldsJFRFile(file);
+            } catch (IOException e) {
+                throw new RuntimeException(e);
+            }
+        }
+        return file;
+    }
+
+    private static void recordNullStringJFRFile(Path jfrFile) throws IOException {
+        try (RecordingStream rs = new RecordingStream()) {
+            rs.enable("NullStringEvent");
+            rs.onEvent("NullStringEvent", event -> {});
+            rs.startAsync();
+            for (int i = 0; i < 5; i++) {
+                new NullStringEvent().commit();
+            }
+            Thread.sleep(100);
+            rs.dump(jfrFile);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            throw new IOException(e);
+        }
+    }
+
+    public static Path getNullStringJFRFile() {
+        var file = TEMP_FOLDER.resolve("null_string.jfr");
+        if (!Files.exists(file)) {
+            try {
+                recordNullStringJFRFile(file);
+            } catch (IOException e) {
+                throw new RuntimeException(e);
+            }
+        }
+        return file;
+    }
+
+    private static void recordSpecialDoubleJFRFile(Path jfrFile) throws IOException {
+        try (RecordingStream rs = new RecordingStream()) {
+            rs.enable("SpecialDoubleEvent");
+            rs.onEvent("SpecialDoubleEvent", event -> {});
+            rs.startAsync();
+            for (int i = 0; i < 5; i++) {
+                new SpecialDoubleEvent().commit();
+            }
+            Thread.sleep(100);
+            rs.dump(jfrFile);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            throw new IOException(e);
+        }
+    }
+
+    public static Path getSpecialDoubleJFRFile() {
+        var file = TEMP_FOLDER.resolve("special_double.jfr");
+        if (!Files.exists(file)) {
+            try {
+                recordSpecialDoubleJFRFile(file);
+            } catch (IOException e) {
+                throw new RuntimeException(e);
+            }
+        }
+        return file;
+    }
+
+    public static Path getHighFreqJFRFile(int count) {
+        var file = TEMP_FOLDER.resolve("high_freq_" + count + ".jfr");
+        if (!Files.exists(file)) {
+            try {
+                recordHighFreqJFRFile(file, count);
+            } catch (IOException e) {
+                throw new RuntimeException(e);
+            }
+        }
+        return file;
+    }
+
+    private static void recordHighFreqJFRFile(Path jfrFile, int count) throws IOException {
+        try (RecordingStream rs = new RecordingStream()) {
+            rs.enable("HighFreqEvent");
+            rs.onEvent("HighFreqEvent", event -> {});
+            rs.startAsync();
+            for (int i = 0; i < count; i++) {
+                new HighFreqEvent(i).commit();
+            }
+            Thread.sleep(100);
+            rs.dump(jfrFile);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            throw new IOException(e);
+        }
     }
 }

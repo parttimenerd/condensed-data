@@ -1,6 +1,5 @@
 package me.bechberger.condensed.stats;
 
-import java.util.Stack;
 import me.bechberger.condensed.types.CondensedType;
 import org.jetbrains.annotations.NotNull;
 
@@ -14,10 +13,7 @@ public class Statistic {
         other.count = 1;
     }
 
-    /** Type context for the current write */
-    private final Stack<CondensedType<?, ?>> typeStack = new Stack<>();
-
-    private int bytes = 0;
+    private long bytes = 0;
     private WriteMode mode = WriteMode.OTHER;
 
     private EventWriteTree context = EventWriteTree.createRoot();
@@ -113,12 +109,12 @@ public class Statistic {
     }
 
     public void record(int bytes) {
-        this.bytes += bytes;
-        getSubStatistic().bytes += bytes;
+        this.bytes += (long) bytes;
+        getSubStatistic().bytes += (long) bytes;
         context.record(bytes);
     }
 
-    public void recordString(int bytes) {
+    public void recordString(long bytes) {
         getSubStatistic().strings++;
         getSubStatistic().stringBytes += bytes;
         if (bytes <= 10) {
@@ -130,7 +126,7 @@ public class Statistic {
         }
     }
 
-    public int getBytes() {
+    public long getBytes() {
         return bytes;
     }
 

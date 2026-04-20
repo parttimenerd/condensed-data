@@ -9,6 +9,7 @@ import java.time.Duration;
 import java.time.temporal.ChronoUnit;
 import java.util.Comparator;
 import java.util.List;
+import java.util.stream.Stream;
 import jdk.jfr.consumer.RecordingFile;
 import org.assertj.core.data.Percentage;
 import org.assertj.core.data.TemporalUnitLessThanOffset;
@@ -172,6 +173,47 @@ public class InflateCommandTest {
                 .run();
     }
 
+    /**
+     * Bug candidate: when input is a zip and output is omitted, default output path must not
+     * overwrite the zip input file.
+     */
+    @Test
+    public void testZipInputWithoutOutputDoesNotOverwriteZip() throws Exception {
+        var tmpFolder = Files.newTemporaryFolder();
+        var zipFile = tmpFolder.toPath().resolve("sample.zip");
+        try (var zipOutputStream = java.nio.file.Files.newOutputStream(zipFile);
+                var zip = new java.util.zip.ZipOutputStream(zipOutputStream)) {
+            var entry = new java.util.zip.ZipEntry("sample.cjfr");
+            zip.putNextEntry(entry);
+            java.nio.file.Files.copy(CommandTestUtil.getSampleCJFRFile(), zip);
+            zip.closeEntry();
+        }
+
+        byte[] originalZipBytes = java.nio.file.Files.readAllBytes(zipFile);
+
+        var result =
+                new CommandExecuter("inflate", "T/sample.zip")
+                        .withFiles(zipFile)
+                        .checkNoError()
+                        .check(
+                                (r, files) -> {
+                                    assertThat(files).containsKey("sample.zip");
+                                    // input zip should remain intact and must not be replaced by
+                                    // JFR bytes
+                                    assertThat(
+                                                    java.nio.file.Files.readAllBytes(
+                                                            files.get("sample.zip")))
+                                            .isEqualTo(originalZipBytes);
+                                    // default output should be generated as a distinct inflated JFR
+                                    // file
+                                    assertThat(files.keySet())
+                                            .anyMatch(name -> name.endsWith(".inflated.jfr"));
+                                })
+                        .run();
+
+        assertThat(result.error()).isEmpty();
+    }
+
     @Test
     public void testWithMultipleInputFiles() throws Exception {
         var cjfrZero = CommandTestUtil.getSampleCJFRFileName();
@@ -239,8 +281,6 @@ public class InflateCommandTest {
 
     @Test
     public void testWithMultipleInputFilesInFolder() throws Exception {
-        var cjfrZero = CommandTestUtil.getSampleCJFRFile();
-        var cjfrOne = CommandTestUtil.getSampleCJFRFile(1);
         new CommandExecuter("inflate", "T/", "T/out.jfr")
                 .withFiles(
                         CommandTestUtil.getSampleCJFRFile(), CommandTestUtil.getSampleCJFRFile(1))
@@ -353,6 +393,166 @@ public class InflateCommandTest {
                             assertThat(map.get("out.jfr")).exists();
                             var events = RecordingFile.readAllEvents(map.get("out.jfr"));
                             assertThat(events).isNotEmpty();
+                        })
+                .run();
+    }
+
+    @Test
+    public void testCondenseThenInflateRoundTrip() throws Exception {
+        new CommandExecuter("condense", "T/" + CommandTestUtil.getSampleJFRFileName(), "T/out.cjfr")
+                .withFiles(CommandTestUtil.getSampleJFRFile())
+                .checkNoError()
+                .checkNoOutput()
+                .check(
+                        (result, map) -> {
+                            var condensedFile = map.get("out.cjfr");
+                            var roundTripFile = condensedFile.resolveSibling("roundtrip.jfr");
+                            var inflateResult =
+                                    new CommandExecuter(
+                                                    "inflate",
+                                                    condensedFile.toString(),
+                                                    roundTripFile.toString())
+                                            .checkNoError()
+                                            .run();
+                            assertThat(inflateResult.output()).isEmpty();
+                            assertThat(inflateResult.error()).isEmpty();
+                            checkSampleFile(roundTripFile);
+                        })
+                .run();
+    }
+
+    @Test
+    public void testCombinedCondenseThenFilteredInflateWithoutReconstitution() throws Exception {
+        long expectedTestEvents =
+                Stream.of(
+                                CommandTestUtil.getSampleJFRFile(),
+                                CommandTestUtil.getSampleJFRFile(1),
+                                CommandTestUtil.getSampleJFRFile(2))
+                        .mapToLong(
+                                path -> {
+                                    try {
+                                        return RecordingFile.readAllEvents(path).stream()
+                                                .filter(
+                                                        e ->
+                                                                e.getEventType()
+                                                                        .getName()
+                                                                        .equals("TestEvent"))
+                                                .count();
+                                    } catch (IOException e) {
+                                        throw new RuntimeException(e);
+                                    }
+                                })
+                        .sum();
+
+        new CommandExecuter(
+                        "condense",
+                        "T/" + CommandTestUtil.getSampleJFRFileName(),
+                        "T/combined.cjfr",
+                        "-i",
+                        "T/" + CommandTestUtil.getSampleJFRFileName(1),
+                        "-i",
+                        "T/" + CommandTestUtil.getSampleJFRFileName(2))
+                .withFiles(
+                        CommandTestUtil.getSampleJFRFile(),
+                        CommandTestUtil.getSampleJFRFile(1),
+                        CommandTestUtil.getSampleJFRFile(2))
+                .checkNoError()
+                .checkNoOutput()
+                .check(
+                        (result, map) ->
+                                new CommandExecuter(
+                                                "inflate",
+                                                "T/combined.cjfr",
+                                                "T/filtered.jfr",
+                                                "--events",
+                                                "TestEvent",
+                                                "--no-reconstitution")
+                                        .withFiles(map.get("combined.cjfr"))
+                                        .checkNoError()
+                                        .checkNoOutput()
+                                        .check(
+                                                (inflateResult, inflateMap) -> {
+                                                    var events =
+                                                            RecordingFile.readAllEvents(
+                                                                    inflateMap.get("filtered.jfr"));
+                                                    assertThat(events)
+                                                            .allMatch(
+                                                                    e ->
+                                                                            e.getEventType()
+                                                                                    .getName()
+                                                                                    .equals(
+                                                                                            "TestEvent"));
+                                                    assertThat(events.size())
+                                                            .isEqualTo((int) expectedTestEvents);
+                                                })
+                                        .run())
+                .run();
+    }
+
+    /** Test inflate with condensed large string custom events */
+    @Test
+    public void testInflateWithCondensedLargeStringEvents() throws Exception {
+        new CommandExecuter("condense", "T/" + "large_string.jfr", "T/large_string.cjfr")
+                .withFiles(CommandTestUtil.getLargeStringJFRFile())
+                .check(
+                        (condenseResult, map) -> {
+                            var inflateResult =
+                                    new CommandExecuter(
+                                                    "inflate",
+                                                    map.get("large_string.cjfr").toString())
+                                            .run();
+                            assertThat(inflateResult.exitCode()).isEqualTo(0);
+                        })
+                .run();
+    }
+
+    /** Test inflate with condensed extreme numeric custom events */
+    @Test
+    public void testInflateWithCondensedExtremeNumericEvents() throws Exception {
+        new CommandExecuter("condense", "T/" + "extreme_numeric.jfr", "T/extreme_numeric.cjfr")
+                .withFiles(CommandTestUtil.getExtremeNumericJFRFile())
+                .check(
+                        (condenseResult, map) -> {
+                            var inflateResult =
+                                    new CommandExecuter(
+                                                    "inflate",
+                                                    map.get("extreme_numeric.cjfr").toString())
+                                            .run();
+                            assertThat(inflateResult.exitCode()).isEqualTo(0);
+                        })
+                .run();
+    }
+
+    /** Test inflate with condensed unicode string custom events */
+    @Test
+    public void testInflateWithCondensedUnicodeStringEvents() throws Exception {
+        new CommandExecuter("condense", "T/" + "unicode_string.jfr", "T/unicode_string.cjfr")
+                .withFiles(CommandTestUtil.getUnicodeStringJFRFile())
+                .check(
+                        (condenseResult, map) -> {
+                            var inflateResult =
+                                    new CommandExecuter(
+                                                    "inflate",
+                                                    map.get("unicode_string.cjfr").toString())
+                                            .run();
+                            assertThat(inflateResult.exitCode()).isEqualTo(0);
+                        })
+                .run();
+    }
+
+    /** Test inflate with condensed many fields custom events */
+    @Test
+    public void testInflateWithCondensedManyFieldsEvents() throws Exception {
+        new CommandExecuter("condense", "T/" + "many_fields.jfr", "T/many_fields.cjfr")
+                .withFiles(CommandTestUtil.getManyFieldsJFRFile())
+                .check(
+                        (condenseResult, map) -> {
+                            var inflateResult =
+                                    new CommandExecuter(
+                                                    "inflate",
+                                                    map.get("many_fields.cjfr").toString())
+                                            .run();
+                            assertThat(inflateResult.exitCode()).isEqualTo(0);
                         })
                 .run();
     }

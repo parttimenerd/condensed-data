@@ -26,6 +26,7 @@ public class InflateCommand implements Callable<Integer> {
 
     @Parameters(
             index = "1",
+            arity = "0..1",
             description = "The output JFR file",
             defaultValue = "",
             converter = FileOptionConverters.JFRFileConverter.class)
@@ -54,8 +55,12 @@ public class InflateCommand implements Callable<Integer> {
                 throw new IllegalArgumentException(
                         "Only one file is allowed if no output file given");
             }
-            return inputFile.resolveSibling(
-                    inputFile.getFileName().toString().replace(".cjfr", ".inflated.jfr"));
+            var inputName = inputFile.getFileName().toString();
+            if (inputName.endsWith(".cjfr")) {
+                return inputFile.resolveSibling(inputName.replace(".cjfr", ".inflated.jfr"));
+            }
+            // For zip/folder-like inputs, always create a distinct output path.
+            return inputFile.resolveSibling(inputName + ".inflated.jfr");
         }
         return outputFile;
     }
@@ -72,7 +77,7 @@ public class InflateCommand implements Callable<Integer> {
                     me.bechberger.jfr.CombiningJFRReader.fromPaths(
                             cmd.inputs(),
                             cmd.eventFilterOptionMixin.createFilter(),
-                            cmd.eventFilterOptionMixin.noReconstitution());
+                            !cmd.eventFilterOptionMixin.noReconstitution());
             me.bechberger.jfr.WritingJFRReader.toJFRFile(jfrReader, cmd.getOutputFile());
         }
     }

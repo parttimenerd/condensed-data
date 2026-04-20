@@ -72,10 +72,10 @@ public class DynamicallyChangeableSettings {
         if (maxSize > 0 && maxSize < 1024) {
             errors.add("Max size must be at least 1kB or 0 (no limit)");
         }
-        if (maxDuration.toMillis() > 0 && maxDuration.toMillis() < 1) {
+        if (maxDuration.toNanos() > 0 && maxDuration.toMillis() < 1) {
             errors.add("Max duration must be at least 1ms or 0 (no limit)");
         }
-        if (duration.toMillis() > 0 && duration.toMillis() < 1) {
+        if (duration.toNanos() > 0 && duration.toMillis() < 1) {
             errors.add("Duration must be at least 1ms or 0 (no limit)");
         }
         if (!rotating) {

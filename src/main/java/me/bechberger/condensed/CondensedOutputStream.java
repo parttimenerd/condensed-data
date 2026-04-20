@@ -100,6 +100,7 @@ public class CondensedOutputStream extends OutputStream implements AutoCloseable
                 new CondensedOutputStream(
                         outputStream, StartMessage.DEFAULT.compress(Compression.DEFAULT));
         consumer.accept(condensedOutputStream);
+        condensedOutputStream.close();
         return outputStream.toByteArray();
     }
 
@@ -110,6 +111,7 @@ public class CondensedOutputStream extends OutputStream implements AutoCloseable
                         ? new CondensedOutputStream(outputStream, StartMessage.DEFAULT)
                         : new CondensedOutputStream(outputStream);
         consumer.accept(condensedOutputStream);
+        condensedOutputStream.close();
         return outputStream.toByteArray();
     }
 
@@ -131,7 +133,7 @@ public class CondensedOutputStream extends OutputStream implements AutoCloseable
      *
      * @param type the type instance to write
      */
-    @SuppressWarnings("unchecked")
+    @SuppressWarnings({"unchecked", "rawtypes"})
     public void writeType(CondensedType<?, ?> type) {
         if (!typeCollection.hasType(type.getId())
                 || !typeCollection.getType(type.getId()).equals(type)) {
@@ -139,7 +141,7 @@ public class CondensedOutputStream extends OutputStream implements AutoCloseable
         }
         try (var t = statistic.withWriteCauseContext(WriteCause.TypeSpecification)) {
             statistic.setModeAndCount(WriteMode.TYPE);
-            var spec = ((SpecifiedType<CondensedType<?, ?>>) type.getSpecifiedType());
+            var spec = (SpecifiedType<CondensedType<?, ?>>) (SpecifiedType) type.getSpecifiedType();
             writeMessageType(spec.id());
             spec.writeTypeSpecification(this, type);
         }
@@ -147,6 +149,7 @@ public class CondensedOutputStream extends OutputStream implements AutoCloseable
 
     public synchronized <T, R> void writeMessage(CondensedType<T, R> type, T value) {
         try (var t = statistic.withWriteCauseContext(type)) {
+            statistic.setModeAndCount(WriteMode.INSTANCE);
             writeMessageType(type.getId());
             type.writeTo(this, value);
         }
@@ -204,7 +207,7 @@ public class CondensedOutputStream extends OutputStream implements AutoCloseable
      */
     public void writeString(String value, @Nullable String encoding) {
         try (var t = statistic.withWriteCauseContext(WriteCause.String)) {
-            int bytesBefore = statistic.getBytes();
+            long bytesBefore = statistic.getBytes();
             byte[] bytes;
             try {
                 bytes = value.getBytes(encoding != null ? encoding : "UTF-8");
@@ -213,11 +216,7 @@ public class CondensedOutputStream extends OutputStream implements AutoCloseable
             }
             writeUnsignedVarInt(bytes.length);
             if (bytes.length > 0) {
-                try {
-                    outputStream.write(bytes, 0, bytes.length);
-                } catch (IOException e) {
-                    throw new RIOException("Can't write string", e);
-                }
+                write(bytes);
             }
             statistic.recordString(statistic.getBytes() - bytesBefore);
         }
@@ -261,6 +260,7 @@ public class CondensedOutputStream extends OutputStream implements AutoCloseable
     public void writeUnsignedLong(long value, int bytes) {
         if (bytes == 1) {
             writeSingleByte(value);
+            return;
         }
         writeUnsignedLong(value, bytes, OverflowMode.ERROR);
     }
@@ -424,7 +424,7 @@ public class CondensedOutputStream extends OutputStream implements AutoCloseable
     }
 
     /** Estimates the size of the currently written file in bytes */
-    public int estimateSize() {
+    public long estimateSize() {
         return underlyingCountingStream.writtenBytes();
     }
 }

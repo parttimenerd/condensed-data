@@ -34,7 +34,8 @@ public class CondenseCommand implements Callable<Integer> {
 
     @Parameters(
             index = "1",
-            description = "The output file, default is the inputFile with the ending *.cjfc",
+            arity = "0..1",
+            description = "The output file, default is the inputFile with the ending *.cjfr",
             defaultValue = "",
             converter = CJFRFileConverter.class)
     private Path outputFile;
@@ -51,6 +52,12 @@ public class CondenseCommand implements Callable<Integer> {
     private boolean noCompression = false;
 
     @Option(
+            names = {"--compression"},
+            description = "Compression algorithm, possible values: ${COMPLETION-CANDIDATES}",
+            defaultValue = "ZSTD")
+    private Compression compression = Compression.DEFAULT;
+
+    @Option(
             names = {"-s", "--statistics"},
             description = "Print statistics")
     private boolean statistics = false;
@@ -58,7 +65,8 @@ public class CondenseCommand implements Callable<Integer> {
     @Option(
             names = {"-c", "--generatorConfiguration"},
             description =
-                    "The configuration to use, possible values:" + " ${COMPLETION-CANDIDATES}",
+                    "The configuration to use, possible values: default, reasonable-default,"
+                            + " reduced-default",
             defaultValue = "default",
             converter = ConfigurationConverter.class)
     private Configuration configuration;
@@ -115,6 +123,7 @@ public class CondenseCommand implements Callable<Integer> {
     }
 
     public Integer call() {
+        long resolvedInputSize = 0;
         try (var out =
                 new CondensedOutputStream(
                         Files.newOutputStream(getOutputFile()),
@@ -123,13 +132,18 @@ public class CondenseCommand implements Callable<Integer> {
                                 "condensed jfr cli",
                                 Constants.VERSION,
                                 configuration.name(),
-                                noCompression ? Compression.NONE : Compression.DEFAULT))) {
+                                noCompression ? Compression.NONE : compression))) {
             var inputs = new ArrayList<Path>();
             inputs.add(inputFile);
             inputs.addAll(inputFiles);
             var resolvedInputs = new ArrayList<Path>();
             for (var input : inputs) {
                 resolvedInputs.addAll(expandJFRPath(input));
+            }
+            if (statistics) {
+                for (var input : resolvedInputs) {
+                    resolvedInputSize += Files.size(input);
+                }
             }
             var basicJFRWriter = new BasicJFRWriter(out, configuration);
             for (var input : resolvedInputs) {
@@ -140,24 +154,22 @@ public class CondenseCommand implements Callable<Integer> {
                     }
                 }
             }
+            basicJFRWriter.close();
             if (statistics) {
                 System.out.println(out.getStatistics().toPrettyString());
             }
         } catch (Exception e) {
-            e.printStackTrace();
-            return 1;
+            return me.bechberger.jfr.cli.CLIUtils.printError(e);
         }
         // print JFR file size, output file size, compression ratio
         if (statistics) {
             try {
                 var outSize = Files.size(getOutputFile());
-                var inputSize = Files.size(inputFile);
                 System.out.printf(
                         "JFR file size: %d, output file size: %d, compression ratio: %.2f\n",
-                        inputSize, outSize, (double) outSize / inputSize);
+                        resolvedInputSize, outSize, (double) outSize / resolvedInputSize);
             } catch (Exception e) {
-                e.printStackTrace();
-                return 1;
+                return me.bechberger.jfr.cli.CLIUtils.printError(e);
             }
         }
         return 0;
