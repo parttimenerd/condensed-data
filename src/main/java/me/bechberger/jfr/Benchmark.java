@@ -260,10 +260,10 @@ public class Benchmark {
             throw new IllegalArgumentException("No configurations provided");
         }
         if (!Files.exists(BENCHMARK_FOLDER)) {
-            throw new IllegalArgumentException(
-                    "Benchmark folder does not exist, run this from the project root");
+            this.jfrFiles = List.of();
+        } else {
+            this.jfrFiles = readJFRFiles(fileRegex);
         }
-        this.jfrFiles = readJFRFiles(fileRegex);
     }
 
     private List<JFRFile> readJFRFiles(String fileRegex) {

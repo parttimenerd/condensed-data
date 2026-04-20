@@ -7,6 +7,7 @@ import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import me.bechberger.util.json.PrettyPrinter;
 
 /**
  * Generates flamegraphs from an {@link EventWriteTree}
@@ -40,19 +41,16 @@ public class FlamegraphGenerator {
         return computedBytes.get(tree);
     }
 
-    private static String escapeJson(String s) {
-        return s.replace("\\", "\\\\").replace("\"", "\\\"");
-    }
-
-    private void writeJSON(PrintStream s, EventWriteTree tree) {
-        s.printf(
-                "{ \"name\": \"%s\", \"value\": %d, \"children\": [",
-                escapeJson(tree.getCauseName()), computeOverallBytesWritten(tree));
+    private Map<String, Object> toTreeJSON(EventWriteTree tree) {
+        List<Object> children = new ArrayList<>();
         for (var child : tree.getChildren()) {
-            writeJSON(s, child);
-            s.print(",");
+            children.add(toTreeJSON(child));
         }
-        s.print("]}");
+        Map<String, Object> node = new LinkedHashMap<>();
+        node.put("name", tree.getCauseName());
+        node.put("value", computeOverallBytesWritten(tree));
+        node.put("children", children);
+        return node;
     }
 
     public void writeHTML(PrintStream s) {
@@ -72,7 +70,7 @@ public class FlamegraphGenerator {
                   var chart = flamegraph().width(window.innerWidth);
                   d3.select("#chart").datum(\
                 """);
-        writeJSON(s, root);
+        s.print(PrettyPrinter.compactPrint(toTreeJSON(root)));
         s.print(
                 """
                 ).call(chart);
