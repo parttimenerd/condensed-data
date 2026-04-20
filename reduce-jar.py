@@ -34,6 +34,7 @@ import zipfile
 from dataclasses import dataclass, field
 from pathlib import PurePosixPath
 from typing import List, Optional
+from urllib.request import Request, urlopen, urlretrieve
 
 # ---------------------------------------------------------------------------
 # Constants
@@ -475,42 +476,95 @@ FEMTOJAR_SOURCE_DIR = os.path.join(os.path.dirname(__file__), "femtojar")
 # The assembled CLI jar produced by `mvn package` in FEMTOJAR_SOURCE_DIR
 FEMTOJAR_CLI_JAR = os.path.join(FEMTOJAR_SOURCE_DIR, "target", "femtojar.jar")
 
+# Cached downloaded CLI jar (from GitHub releases)
+FEMTOJAR_CACHE_JAR = os.path.join(
+    os.path.expanduser("~"),
+    ".cache",
+    "condensed-data",
+    "femtojar",
+    "femtojar-latest.jar",
+)
+FEMTOJAR_RELEASE_API = "https://api.github.com/repos/parttimenerd/femtojar/releases/latest"
+
+
+def _download_latest_femtojar_release(target_jar: str) -> str:
+    """Download latest femtojar release jar to *target_jar* and return the path."""
+    req = Request(FEMTOJAR_RELEASE_API, headers={"Accept": "application/vnd.github+json"})
+    token = os.environ.get("GITHUB_TOKEN")
+    if token:
+        req.add_header("Authorization", f"Bearer {token}")
+
+    with urlopen(req, timeout=30) as response:
+        release = json.load(response)
+
+    assets = release.get("assets", [])
+    jar_assets = [
+        a
+        for a in assets
+        if a.get("name", "").endswith(".jar")
+        and "sources" not in a["name"]
+        and "javadoc" not in a["name"]
+    ]
+    if not jar_assets:
+        raise RuntimeError("No downloadable femtojar CLI jar found in latest release assets")
+
+    preferred = next(
+        (a for a in jar_assets if a["name"] == "femtojar.jar"),
+        next((a for a in jar_assets if "femtojar" in a["name"]), jar_assets[0]),
+    )
+
+    os.makedirs(os.path.dirname(target_jar), exist_ok=True)
+    download_url = preferred["browser_download_url"]
+    print(f"Downloading femtojar CLI release asset {preferred['name']} from {download_url}")
+    urlretrieve(download_url, target_jar)
+    print(f"Cached femtojar CLI jar at {target_jar}")
+    return target_jar
+
 
 def _ensure_femtojar_cli() -> str:
-    """Return path to the femtojar CLI jar, building it if not present."""
+    """Return path to the femtojar CLI jar from local build, cache, or latest release."""
     if os.path.exists(FEMTOJAR_CLI_JAR):
         return FEMTOJAR_CLI_JAR
 
-    if not os.path.isdir(FEMTOJAR_SOURCE_DIR):
+    refresh_cache = os.environ.get("FEMTOJAR_REFRESH", "").lower() in {"1", "true", "yes"}
+    if os.path.exists(FEMTOJAR_CACHE_JAR) and not refresh_cache:
+        print(f"Using cached femtojar CLI jar: {FEMTOJAR_CACHE_JAR}")
+        return FEMTOJAR_CACHE_JAR
+
+    if os.path.isdir(FEMTOJAR_SOURCE_DIR):
+        print(f"femtojar CLI jar not found, building from {FEMTOJAR_SOURCE_DIR} …")
+        result = subprocess.run(
+            ["mvn", "install", "-DskipTests", "-q"],
+            cwd=FEMTOJAR_SOURCE_DIR,
+        )
+        if result.returncode != 0:
+            print("Error: mvn install failed for femtojar", file=sys.stderr)
+            sys.exit(result.returncode)
+
+        result = subprocess.run(
+            ["mvn", "package", "-DskipTests", "-q"],
+            cwd=FEMTOJAR_SOURCE_DIR,
+        )
+        if result.returncode != 0:
+            print("Error: mvn package failed for femtojar", file=sys.stderr)
+            sys.exit(result.returncode)
+
+        if not os.path.exists(FEMTOJAR_CLI_JAR):
+            print(f"Error: expected CLI jar not found after build: {FEMTOJAR_CLI_JAR}", file=sys.stderr)
+            sys.exit(1)
+
+        print(f"femtojar CLI jar built: {FEMTOJAR_CLI_JAR}")
+        return FEMTOJAR_CLI_JAR
+
+    try:
+        return _download_latest_femtojar_release(FEMTOJAR_CACHE_JAR)
+    except Exception as exc:
         print(
-            f"Error: femtojar source directory not found at {FEMTOJAR_SOURCE_DIR}",
+            "Error: failed to download latest femtojar release and no local source build is available",
             file=sys.stderr,
         )
+        print(f"Cause: {exc}", file=sys.stderr)
         sys.exit(1)
-
-    print(f"femtojar CLI jar not found, building from {FEMTOJAR_SOURCE_DIR} …")
-    result = subprocess.run(
-        ["mvn", "install", "-DskipTests", "-q"],
-        cwd=FEMTOJAR_SOURCE_DIR,
-    )
-    if result.returncode != 0:
-        print("Error: mvn install failed for femtojar", file=sys.stderr)
-        sys.exit(result.returncode)
-
-    result = subprocess.run(
-        ["mvn", "package", "-DskipTests", "-q"],
-        cwd=FEMTOJAR_SOURCE_DIR,
-    )
-    if result.returncode != 0:
-        print("Error: mvn package failed for femtojar", file=sys.stderr)
-        sys.exit(result.returncode)
-
-    if not os.path.exists(FEMTOJAR_CLI_JAR):
-        print(f"Error: expected CLI jar not found after build: {FEMTOJAR_CLI_JAR}", file=sys.stderr)
-        sys.exit(1)
-
-    print(f"femtojar CLI jar built: {FEMTOJAR_CLI_JAR}")
-    return FEMTOJAR_CLI_JAR
 
 
 def _run_femtojar(

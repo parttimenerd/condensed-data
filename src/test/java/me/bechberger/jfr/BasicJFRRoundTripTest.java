@@ -224,7 +224,7 @@ public class BasicJFRRoundTripTest {
     })
     public void testTestEventWithStackTraceReduction(int maxDepth, boolean useSpecHashes)
             throws InterruptedException {
-        extracted(maxDepth, useSpecHashes, Compression.DEFAULT);
+        extracted(maxDepth, useSpecHashes, Compression.NONE);
     }
 
     @Property
@@ -239,7 +239,8 @@ public class BasicJFRRoundTripTest {
         List<RecordedEvent> recordedEvents = new ArrayList<>();
         ByteArrayOutputStream outputStream = new ByteArrayOutputStream();
         try (CondensedOutputStream out =
-                new CondensedOutputStream(outputStream, StartMessage.DEFAULT)) {
+                new CondensedOutputStream(
+                        outputStream, StartMessage.DEFAULT.compress(compression))) {
             BasicJFRWriter basicJFRWriter =
                     new BasicJFRWriter(
                             out,

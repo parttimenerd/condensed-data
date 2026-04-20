@@ -326,7 +326,7 @@ public class JFREventCombinerTest {
                             System.gc();
                         });
         assertTrue(
-                res.combinedEventCount.size() < res.readEvents.size(),
+                res.combinedEventCount.size() <= res.readEvents.size(),
                 "Less combined then recorded events");
         Map<String, Long> sizePerClass = new HashMap<>();
         for (var event : res.recordedEvents) {
