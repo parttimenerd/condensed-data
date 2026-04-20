@@ -34,7 +34,6 @@ import zipfile
 from dataclasses import dataclass, field
 from pathlib import PurePosixPath
 from typing import List, Optional
-from urllib.request import Request, urlopen, urlretrieve
 
 # ---------------------------------------------------------------------------
 # Constants
@@ -476,47 +475,49 @@ FEMTOJAR_SOURCE_DIR = os.path.join(os.path.dirname(__file__), "femtojar")
 # The assembled CLI jar produced by `mvn package` in FEMTOJAR_SOURCE_DIR
 FEMTOJAR_CLI_JAR = os.path.join(FEMTOJAR_SOURCE_DIR, "target", "femtojar.jar")
 
-# Cached downloaded CLI jar (from GitHub releases)
-FEMTOJAR_CACHE_JAR = os.path.join(
+# Cached built CLI jar
+FEMTOJAR_CACHE_DIR = os.path.join(
     os.path.expanduser("~"),
     ".cache",
     "condensed-data",
     "femtojar",
-    "femtojar-latest.jar",
 )
-FEMTOJAR_RELEASE_API = "https://api.github.com/repos/parttimenerd/femtojar/releases/latest"
+FEMTOJAR_CACHE_JAR = os.path.join(FEMTOJAR_CACHE_DIR, "femtojar-latest.jar")
+FEMTOJAR_REPO_URL = "https://github.com/parttimenerd/femtojar.git"
 
 
-def _download_latest_femtojar_release(target_jar: str) -> str:
-    """Download latest femtojar release jar to *target_jar* and return the path."""
-    req = Request(FEMTOJAR_RELEASE_API, headers={"Accept": "application/vnd.github+json"})
-    token = os.environ.get("GITHUB_TOKEN")
-    if token:
-        req.add_header("Authorization", f"Bearer {token}")
+def _clone_and_build_femtojar(target_jar: str) -> str:
+    """Clone the femtojar repo, build the CLI fat jar, and cache it at *target_jar*."""
+    cache_dir = os.path.dirname(target_jar)
+    clone_dir = os.path.join(cache_dir, "femtojar-src")
 
-    with urlopen(req, timeout=30) as response:
-        release = json.load(response)
+    # Shallow-clone (or pull latest) the repo
+    if os.path.isdir(os.path.join(clone_dir, ".git")):
+        print(f"Updating femtojar source in {clone_dir} …")
+        subprocess.run(["git", "pull", "--ff-only", "-q"], cwd=clone_dir, check=True)
+    else:
+        os.makedirs(cache_dir, exist_ok=True)
+        if os.path.isdir(clone_dir):
+            shutil.rmtree(clone_dir)
+        print(f"Cloning femtojar from {FEMTOJAR_REPO_URL} …")
+        subprocess.run(
+            ["git", "clone", "--depth", "1", FEMTOJAR_REPO_URL, clone_dir],
+            check=True,
+        )
 
-    assets = release.get("assets", [])
-    jar_assets = [
-        a
-        for a in assets
-        if a.get("name", "").endswith(".jar")
-        and "sources" not in a["name"]
-        and "javadoc" not in a["name"]
-    ]
-    if not jar_assets:
-        raise RuntimeError("No downloadable femtojar CLI jar found in latest release assets")
-
-    preferred = next(
-        (a for a in jar_assets if a["name"] == "femtojar.jar"),
-        next((a for a in jar_assets if "femtojar" in a["name"]), jar_assets[0]),
+    print("Building femtojar CLI jar …")
+    result = subprocess.run(
+        ["mvn", "package", "-DskipTests", "-q"],
+        cwd=clone_dir,
     )
+    if result.returncode != 0:
+        raise RuntimeError("mvn package failed for femtojar")
 
-    os.makedirs(os.path.dirname(target_jar), exist_ok=True)
-    download_url = preferred["browser_download_url"]
-    print(f"Downloading femtojar CLI release asset {preferred['name']} from {download_url}")
-    urlretrieve(download_url, target_jar)
+    built_jar = os.path.join(clone_dir, "target", "femtojar.jar")
+    if not os.path.exists(built_jar):
+        raise RuntimeError(f"Expected CLI jar not found after build: {built_jar}")
+
+    shutil.copy2(built_jar, target_jar)
     print(f"Cached femtojar CLI jar at {target_jar}")
     return target_jar
 
@@ -557,10 +558,10 @@ def _ensure_femtojar_cli() -> str:
         return FEMTOJAR_CLI_JAR
 
     try:
-        return _download_latest_femtojar_release(FEMTOJAR_CACHE_JAR)
+        return _clone_and_build_femtojar(FEMTOJAR_CACHE_JAR)
     except Exception as exc:
         print(
-            "Error: failed to download latest femtojar release and no local source build is available",
+            "Error: failed to build femtojar from source and no local build is available",
             file=sys.stderr,
         )
         print(f"Cause: {exc}", file=sys.stderr)
