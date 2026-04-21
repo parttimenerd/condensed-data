@@ -4,6 +4,8 @@ import static org.junit.jupiter.api.Assertions.*;
 
 import java.io.ByteArrayOutputStream;
 import java.lang.reflect.Method;
+import java.util.List;
+import java.util.Map;
 import java.util.concurrent.atomic.AtomicBoolean;
 import jdk.jfr.*;
 import jdk.jfr.consumer.RecordingStream;
@@ -11,6 +13,10 @@ import me.bechberger.condensed.CondensedInputStream;
 import me.bechberger.condensed.CondensedOutputStream;
 import me.bechberger.condensed.Message.StartMessage;
 import me.bechberger.condensed.ReadStruct;
+import me.bechberger.condensed.Universe.EmbeddingType;
+import me.bechberger.condensed.types.IntType;
+import me.bechberger.condensed.types.StructType;
+import me.bechberger.condensed.types.StructType.Field;
 import me.bechberger.jfr.BasicJFRReader;
 import me.bechberger.jfr.BasicJFRWriter;
 import me.bechberger.jfr.cli.JFRView.JFRViewConfig;
@@ -219,5 +225,115 @@ public class JFRViewTest {
         String result = (String) truncateMethod.invoke(view, "ABCDEFGHIJ", 5);
         assertEquals(
                 "ABCDE", result, "TruncateMode.END should truncate the end and keep the beginning");
+    }
+
+    @SuppressWarnings({"unchecked", "rawtypes"})
+    private static StructType<?, ReadStruct> createType(String typeName, String... fieldNames) {
+        var intType = IntType.SPECIFIED_TYPE.getDefaultType(IntType.SPECIFIED_TYPE.id());
+        List<Field<Object, ?, ?>> fields = new java.util.ArrayList<>();
+        for (String name : fieldNames) {
+            fields.add(new Field<>(name, "", intType, o -> null, EmbeddingType.INLINE));
+        }
+        return new StructType<>(1000, typeName, fields);
+    }
+
+    @Test
+    public void testStructColumnFormatReturnsDashForNullStruct() {
+        var eventType = createType("outer", "nested");
+        var values = new java.util.HashMap<String, Object>();
+        values.put("nested", null);
+        var event = new ReadStruct(eventType, values);
+        var column = new JFRView.StructColumn("nested", List.of(new JFRView.StringColumn("name")));
+
+        assertEquals(List.of("-"), column.format(event, 2));
+    }
+
+    @Test
+    public void testStructColumnRowsUsesNestedStructSize() {
+        var nestedType = createType("nested", "a", "b", "c");
+        var nested = new ReadStruct(nestedType, Map.of("a", 1L, "b", 2L, "c", 3L));
+        var outerType = createType("outer", "nested");
+        var event = new ReadStruct(outerType, Map.of("nested", nested));
+        var column = new JFRView.StructColumn("nested", List.of(new JFRView.StringColumn("a")));
+
+        assertEquals(3, column.rows(event));
+    }
+
+    @Test
+    public void testStructColumnFormatSingleRowUsesOnlyFirstPart() {
+        var nestedType = createType("nested", "name", "count");
+        var nested = new ReadStruct(nestedType, Map.of("name", "alpha", "count", 7L));
+        var outerType = createType("outer", "nested");
+        var event = new ReadStruct(outerType, Map.of("nested", nested));
+        var column =
+                new JFRView.StructColumn(
+                        "nested",
+                        List.of(
+                                new JFRView.StringColumn("name"),
+                                new JFRView.IntegerColumn("count", 10)));
+
+        var rows = column.format(event, 1);
+        assertEquals(1, rows.size());
+        assertEquals("alpha", rows.get(0));
+    }
+
+    @Test
+    public void testStructColumnFormatMultiRowIncludesHeaders() {
+        var nestedType = createType("nested", "name", "count");
+        var nested = new ReadStruct(nestedType, Map.of("name", "alpha", "count", 7L));
+        var outerType = createType("outer", "nested");
+        var event = new ReadStruct(outerType, Map.of("nested", nested));
+        var column =
+                new JFRView.StructColumn(
+                        "nested",
+                        List.of(
+                                new JFRView.StringColumn("name"),
+                                new JFRView.IntegerColumn("count", 10)));
+
+        var rows = column.format(event, 2);
+        assertEquals(2, rows.size());
+        assertTrue(rows.get(0).startsWith("Name: "));
+        assertTrue(rows.get(1).startsWith("Count: "));
+    }
+
+    @Test
+    public void testStructColumnOfWithDepthZeroCreatesFallbackFormatter() {
+        var intType = IntType.SPECIFIED_TYPE.getDefaultType(IntType.SPECIFIED_TYPE.id());
+        var column = JFRView.StructColumn.of("other", intType, 0);
+        var eventType = createType("outer", "other");
+        var event = new ReadStruct(eventType, Map.of("other", 42L));
+
+        assertEquals(-1, column.width());
+        assertEquals(List.of("42"), column.format(event, 1));
+    }
+
+    @Test
+    public void testBooleanColumnFormatsTrueAndFalse() {
+        var eventType = createType("flags", "enabled");
+        var trueEvent = new ReadStruct(eventType, Map.of("enabled", true));
+        var falseEvent = new ReadStruct(eventType, Map.of("enabled", false));
+        var column = new JFRView.BooleanColumn("enabled");
+
+        assertEquals(7, column.width());
+        assertEquals(List.of("true"), column.format(trueEvent, 1));
+        assertEquals(List.of("false"), column.format(falseEvent, 1));
+        assertEquals(JFRView.Alignment.LEFT, column.alignment());
+    }
+
+    @Test
+    public void testClassLoaderColumnFormatsMissingAndPresentLoader() {
+        var classLoaderType = createType("loader", "name");
+        var eventType = createType("event", "classLoader");
+        var loader = new ReadStruct(classLoaderType, Map.of("name", "app-loader"));
+        var eventWithLoader = new ReadStruct(eventType, Map.of("classLoader", loader));
+        var withoutLoaderValues = new java.util.HashMap<String, Object>();
+        withoutLoaderValues.put("classLoader", null);
+        var eventWithoutLoader = new ReadStruct(eventType, withoutLoaderValues);
+        var column = new JFRView.ClassLoaderColumn("classLoader");
+
+        assertEquals(12, column.width());
+        assertEquals(List.of("app-loader"), column.format(eventWithLoader, 1));
+        assertEquals(List.of("-"), column.format(eventWithoutLoader, 1));
+        assertEquals(JFRView.Alignment.LEFT, column.alignment());
     }
 }

@@ -3,8 +3,6 @@ package me.bechberger.jfr;
 import java.lang.reflect.InvocationTargetException;
 import java.util.Arrays;
 import java.util.Map;
-import me.bechberger.condensed.types.StructType;
-import me.bechberger.condensed.types.TypeCollection;
 
 /**
  * Configuration for the JFR condenser
@@ -132,10 +130,6 @@ public record Configuration(
                     "default", DEFAULT,
                     "reasonable-default", REASONABLE_DEFAULT,
                     "reduced-default", REDUCED_DEFAULT);
-
-    static StructType<Configuration, Configuration> createType(TypeCollection collection) {
-        return TypeUtil.createStructWithPrimitiveFields(collection, Configuration.class);
-    }
 
     public Configuration withTimeStampTicksPerSecond(long ttps) {
         return withFieldValue("timeStampTicksPerSecond", ttps);

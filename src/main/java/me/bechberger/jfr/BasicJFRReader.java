@@ -181,13 +181,14 @@ public class BasicJFRReader implements JFRReader {
 
     private void processUniverse(ReadInstance<?, ?> msg) {
         universe.update(
-                TypeUtil.createInstanceFromReadStruct(Universe.class, (ReadStruct) msg.value()));
+                ReadStructUtil.createInstanceFromReadStruct(
+                        Universe.class, ((ReadStruct) msg.value()).ensureComplete()));
     }
 
     private void processConfiguration(ReadInstance<?, ?> msg) {
         configuration =
-                TypeUtil.createInstanceFromReadStruct(
-                        Configuration.class, (ReadStruct) msg.value());
+                ReadStructUtil.createInstanceFromReadStruct(
+                        Configuration.class, ((ReadStruct) msg.value()).ensureComplete());
     }
 
     public Universe getUniverse() {

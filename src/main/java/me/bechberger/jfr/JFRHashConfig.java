@@ -70,16 +70,24 @@ public class JFRHashConfig extends HashAndEqualsConfig {
 
         private final RecordedFrame value;
         private final int hashCode;
+        // Snapshot comparison-relevant data at construction time to avoid
+        // stale reads from JFR's reusable internal buffers
+        private final int lineNumber;
+        private final int bytecodeIndex;
+        private final long classId;
+        private final String methodName;
+        private final String methodDescriptor;
+        private final String frameType;
 
         public StackFrameWrapper(RecordedFrame value) {
             this.value = value;
-            this.hashCode =
-                    Objects.hash(
-                            value.getLineNumber(),
-                            value.getBytecodeIndex(),
-                            value.getMethod().getType().getId(),
-                            value.getMethod().getName(),
-                            value.getType());
+            this.lineNumber = value.getLineNumber();
+            this.bytecodeIndex = value.getBytecodeIndex();
+            this.classId = value.getMethod().getType().getId();
+            this.methodName = value.getMethod().getName();
+            this.methodDescriptor = value.getMethod().getDescriptor();
+            this.frameType = value.getType();
+            this.hashCode = Objects.hash(lineNumber, bytecodeIndex, classId, methodName, frameType);
         }
 
         @Override
@@ -95,23 +103,15 @@ public class JFRHashConfig extends HashAndEqualsConfig {
         @Override
         public boolean equals(Object obj) {
             if (obj instanceof StackFrameWrapper other) {
-                if (other.value == value) {
-                    return true;
-                }
                 if (other.hashCode() != hashCode()) {
                     return false;
                 }
-                var method = value.getMethod();
-                var otherMethod = other.value.getMethod();
-                if (method == otherMethod
-                        && value.getBytecodeIndex() == other.value.getBytecodeIndex()) {
-                    return true;
-                }
-                return value.getBytecodeIndex() == other.value.getBytecodeIndex()
-                        && method.getType().getId() == otherMethod.getType().getId()
-                        && method.getName().equals(otherMethod.getName())
-                        && method.getDescriptor().equals(otherMethod.getDescriptor())
-                        && value.getType().equals(other.value.getType());
+                return bytecodeIndex == other.bytecodeIndex
+                        && classId == other.classId
+                        && lineNumber == other.lineNumber
+                        && methodName.equals(other.methodName)
+                        && methodDescriptor.equals(other.methodDescriptor)
+                        && Objects.equals(frameType, other.frameType);
             }
             return false;
         }

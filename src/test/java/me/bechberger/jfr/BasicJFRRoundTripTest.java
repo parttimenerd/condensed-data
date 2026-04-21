@@ -95,10 +95,60 @@ public class BasicJFRRoundTripTest {
      * <p>Important: Stacktrace equality is only minus recursive class objects, as the {@link
      * WritingJFRReader} can't handle self-recursive objects (yet).
      */
+    /**
+     * Snapshot of the relevant fields from a RecordedEvent, taken inside the callback before the
+     * JFR runtime recycles the event object (JDK 20+).
+     */
+    private record EventSnapshot(
+            Instant startTime,
+            Duration duration,
+            long memory,
+            String string,
+            int number,
+            boolean stackTraceTruncated,
+            int stackTraceSize,
+            List<FrameSnapshot> frames) {
+
+        record FrameSnapshot(
+                int lineNumber,
+                int bytecodeIndex,
+                long classId,
+                String methodName,
+                String methodDescriptor,
+                String frameType,
+                boolean isJavaFrame) {}
+
+        static EventSnapshot of(RecordedEvent event) {
+            var st = event.getStackTrace();
+            var frames =
+                    st.getFrames().stream()
+                            .map(
+                                    f ->
+                                            new FrameSnapshot(
+                                                    f.getLineNumber(),
+                                                    f.getBytecodeIndex(),
+                                                    f.getMethod().getType().getId(),
+                                                    f.getMethod().getName(),
+                                                    f.getMethod().getDescriptor(),
+                                                    f.getType(),
+                                                    f.isJavaFrame()))
+                            .toList();
+            return new EventSnapshot(
+                    event.getStartTime(),
+                    event.getDuration(),
+                    event.getLong("memory"),
+                    event.getString("string"),
+                    event.getInt("number"),
+                    st.isTruncated(),
+                    st.getFrames().size(),
+                    frames);
+        }
+    }
+
     @ParameterizedTest
     @ValueSource(ints = {1, 11, 1001, 1_000_000_000})
     public void testTestEventRoundTrip(int ticksPerSecond) throws InterruptedException {
-        List<RecordedEvent> recordedEvents = new ArrayList<>();
+        List<EventSnapshot> snapshots = new ArrayList<>();
         ByteArrayOutputStream outputStream = new ByteArrayOutputStream();
         var memoryAsFloatB16 = ticksPerSecond == 1;
         try (CondensedOutputStream out =
@@ -115,8 +165,8 @@ public class BasicJFRRoundTripTest {
                         "TestEvent",
                         event -> {
                             basicJFRWriter.processEvent(event);
-                            recordedEvents.add(event);
-                            if (recordedEvents.size() == 2) rs.close();
+                            snapshots.add(EventSnapshot.of(event));
+                            if (snapshots.size() == 2) rs.close();
                         });
 
                 rs.startAsync();
@@ -131,48 +181,61 @@ public class BasicJFRRoundTripTest {
         }
         try (var in = new CondensedInputStream(outputStream.toByteArray())) {
             var events = WritingJFRReader.toJFREventsList(new BasicJFRReader(in));
-            assertEquals(2, recordedEvents.size());
-            assertEquals(recordedEvents.size(), events.size());
+            assertEquals(2, snapshots.size());
+            assertEquals(snapshots.size(), events.size());
             int number = 0;
-            for (var pair : Util.zip(recordedEvents, events)) {
-                var recordedEvent = pair.left();
-                var event = pair.right();
+            for (int idx = 0; idx < snapshots.size(); idx++) {
+                var snap = snapshots.get(idx);
+                var event = events.get(idx);
 
                 // Check type and number
                 assertEquals("TestEvent", event.getEventType().getName());
                 assertEquals(number, event.getInt("number"));
 
                 // Check start time and duration
-                Asserters.assertEquals(
-                        recordedEvent.getStartTime(), event.getStartTime(), ticksPerSecond);
-                Asserters.assertEquals(
-                        recordedEvent.getDuration(), event.getDuration(), ticksPerSecond);
+                Asserters.assertEquals(snap.startTime(), event.getStartTime(), ticksPerSecond);
+                Asserters.assertEquals(snap.duration(), event.getDuration(), ticksPerSecond);
 
                 // Check memory field
                 if (memoryAsFloatB16) {
                     assertTrue(
-                            equalUnderBf16Conversion(
-                                    recordedEvent.getLong("memory"), event.getLong("memory")),
+                            equalUnderBf16Conversion(snap.memory(), event.getLong("memory")),
                             "Memory fields are not equal under bfloat16 conversion: "
-                                    + recordedEvent.getLong("memory")
+                                    + snap.memory()
                                     + " vs "
                                     + event.getLong("memory"));
                 } else {
-                    assertEquals(recordedEvent.getLong("memory"), event.getLong("memory"));
+                    assertEquals(snap.memory(), event.getLong("memory"));
                 }
 
                 // Check string field
-                assertEquals(recordedEvent.getString("string"), event.getString("string"));
+                assertEquals(snap.string(), event.getString("string"));
 
                 // Check stack trace
-                var recordedStackTrace = recordedEvent.getStackTrace();
                 var stackTrace = event.getStackTrace();
-                assertEquals(recordedStackTrace.isTruncated(), stackTrace.isTruncated());
-                assertEquals(recordedStackTrace.getFrames().size(), stackTrace.getFrames().size());
-                for (int i = 0; i < recordedStackTrace.getFrames().size(); i++) {
-                    var recordedFrame = recordedStackTrace.getFrames().get(i);
+                assertEquals(snap.stackTraceTruncated(), stackTrace.isTruncated());
+                assertEquals(snap.stackTraceSize(), stackTrace.getFrames().size());
+                for (int i = 0; i < snap.frames().size(); i++) {
+                    var snapFrame = snap.frames().get(i);
                     var frame = stackTrace.getFrames().get(i);
-                    Asserters.assertEquals(recordedFrame, frame, "frame " + i);
+                    assertEquals(
+                            snapFrame.methodName(),
+                            frame.getMethod().getString("name"),
+                            "frame " + i + " method.name");
+                    assertEquals(
+                            snapFrame.methodDescriptor(),
+                            frame.getMethod().getString("descriptor"),
+                            "frame " + i + " method.descriptor");
+                    assertEquals(
+                            snapFrame.lineNumber(),
+                            frame.getInt("lineNumber"),
+                            "frame " + i + " lineNumber");
+                    assertEquals(
+                            snapFrame.bytecodeIndex(),
+                            frame.getInt("bytecodeIndex"),
+                            "frame " + i + " bytecodeIndex");
+                    assertEquals(
+                            snapFrame.frameType(), frame.getString("type"), "frame " + i + " type");
                 }
                 number++;
             }
@@ -233,10 +296,36 @@ public class BasicJFRRoundTripTest {
         extracted(-1, true, compression);
     }
 
+    /**
+     * Snapshot of a stack trace, taken inside the callback before the JFR runtime recycles the
+     * event object (JDK 20+).
+     */
+    private record StackTraceSnapshot(
+            boolean truncated, int frameCount, List<EventSnapshot.FrameSnapshot> frames) {
+
+        static StackTraceSnapshot of(jdk.jfr.consumer.RecordedStackTrace st) {
+            var frames =
+                    st.getFrames().stream()
+                            .map(
+                                    f ->
+                                            new EventSnapshot.FrameSnapshot(
+                                                    f.getLineNumber(),
+                                                    f.getBytecodeIndex(),
+                                                    f.getMethod().getType().getId(),
+                                                    f.getMethod().getName(),
+                                                    f.getMethod().getDescriptor(),
+                                                    f.getType(),
+                                                    f.isJavaFrame()))
+                            .toList();
+            return new StackTraceSnapshot(st.isTruncated(), st.getFrames().size(), frames);
+        }
+    }
+
     private void extracted(int maxDepth, boolean useSpecHashes, Compression compression)
             throws InterruptedException {
         int count = 4;
-        List<RecordedEvent> recordedEvents = new ArrayList<>();
+        // Snapshot stack traces inside the callback to avoid stale reads (JDK 20+ event recycling)
+        List<StackTraceSnapshot> stackSnapshots = new ArrayList<>();
         ByteArrayOutputStream outputStream = new ByteArrayOutputStream();
         try (CondensedOutputStream out =
                 new CondensedOutputStream(
@@ -252,8 +341,8 @@ public class BasicJFRRoundTripTest {
                         "TestEvent",
                         event -> {
                             basicJFRWriter.processEvent(event);
-                            recordedEvents.add(event);
-                            if (recordedEvents.size() == count) rs.close();
+                            stackSnapshots.add(StackTraceSnapshot.of(event.getStackTrace()));
+                            if (stackSnapshots.size() == count) rs.close();
                         });
 
                 rs.startAsync();
@@ -265,35 +354,49 @@ public class BasicJFRRoundTripTest {
         }
         try (var in = new CondensedInputStream(outputStream.toByteArray())) {
             var events = WritingJFRReader.toJFREventsList(new BasicJFRReader(in));
-            assertEquals(count, recordedEvents.size());
-            assertEquals(recordedEvents.size(), events.size());
+            assertEquals(count, stackSnapshots.size());
+            assertEquals(stackSnapshots.size(), events.size());
             maxDepth = maxDepth == -1 ? Integer.MAX_VALUE : maxDepth;
             int number = 0;
-            for (var pair : Util.zip(recordedEvents, events)) {
-                var recordedEvent = pair.left();
-                var event = pair.right();
+            for (int idx = 0; idx < stackSnapshots.size(); idx++) {
+                var snap = stackSnapshots.get(idx);
+                var event = events.get(idx);
 
                 // Check type and number
                 assertEquals("TestEvent", event.getEventType().getName());
                 assertEquals(number, event.getInt("number"));
 
                 // Check stack trace
-                var recordedStackTrace = recordedEvent.getStackTrace();
                 var stackTrace = event.getStackTrace();
-                if (recordedStackTrace.getFrames().size() > maxDepth) {
+                if (snap.frameCount() > maxDepth) {
                     assertTrue(stackTrace.isTruncated(), "Stack trace should be truncated");
                     assertEquals(maxDepth, stackTrace.getFrames().size());
                 } else {
-                    assertEquals(recordedStackTrace.isTruncated(), stackTrace.isTruncated());
-                    assertEquals(
-                            recordedStackTrace.getFrames().size(), stackTrace.getFrames().size());
+                    assertEquals(snap.truncated(), stackTrace.isTruncated());
+                    assertEquals(snap.frameCount(), stackTrace.getFrames().size());
                 }
-                for (int i = 0;
-                        i < Math.min(recordedStackTrace.getFrames().size(), maxDepth);
-                        i++) {
-                    var recordedFrame = recordedStackTrace.getFrames().get(i);
+                int framesToCheck = Math.min(snap.frameCount(), maxDepth);
+                for (int i = 0; i < framesToCheck; i++) {
+                    var snapFrame = snap.frames().get(i);
                     var frame = stackTrace.getFrames().get(i);
-                    Asserters.assertEquals(recordedFrame, frame, "frame " + i);
+                    assertEquals(
+                            snapFrame.methodName(),
+                            frame.getMethod().getString("name"),
+                            "frame " + i + " method.name");
+                    assertEquals(
+                            snapFrame.methodDescriptor(),
+                            frame.getMethod().getString("descriptor"),
+                            "frame " + i + " method.descriptor");
+                    assertEquals(
+                            snapFrame.lineNumber(),
+                            frame.getInt("lineNumber"),
+                            "frame " + i + " lineNumber");
+                    assertEquals(
+                            snapFrame.bytecodeIndex(),
+                            frame.getInt("bytecodeIndex"),
+                            "frame " + i + " bytecodeIndex");
+                    assertEquals(
+                            snapFrame.frameType(), frame.getString("type"), "frame " + i + " type");
                 }
                 number++;
             }

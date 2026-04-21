@@ -704,7 +704,9 @@ public class BasicJFRWriter {
     }
 
     private void writeConfiguration() {
-        var t = Configuration.createType(out.getTypeCollection());
+        var t =
+                TypeUtil.createStructWithPrimitiveFields(
+                        out.getTypeCollection(), Configuration.class);
         out.writeType(t);
         out.writeMessage(t, configuration);
     }
