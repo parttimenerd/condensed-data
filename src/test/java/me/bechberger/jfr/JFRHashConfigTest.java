@@ -2,8 +2,8 @@ package me.bechberger.jfr;
 
 import static org.junit.jupiter.api.Assertions.*;
 
-import java.nio.file.Path;
 import jdk.jfr.consumer.RecordingFile;
+import me.bechberger.jfr.cli.commands.CommandTestUtil;
 import org.junit.jupiter.api.Test;
 
 public class JFRHashConfigTest {
@@ -32,8 +32,9 @@ public class JFRHashConfigTest {
     public void testIsPrimitiveStructOrArrayUsesCorrectVariable() throws Exception {
         // Read a real JFR file to get ValueDescriptor instances
         boolean foundTestCase = false;
+        var jfrPath = CommandTestUtil.getSampleJFRFile();
 
-        try (var rf = new RecordingFile(Path.of("profile.jfr"))) {
+        try (var rf = new RecordingFile(jfrPath)) {
             for (var eventType : rf.readEventTypes()) {
                 for (var field : eventType.getFields()) {
                     // Looking for 2-level nesting:
@@ -106,7 +107,7 @@ public class JFRHashConfigTest {
         if (!foundTestCase) {
             // Fall back: find any struct with only primitive children
             // and verify behavior at depth=1
-            try (var rf = new RecordingFile(Path.of("profile.jfr"))) {
+            try (var rf = new RecordingFile(jfrPath)) {
                 for (var eventType : rf.readEventTypes()) {
                     for (var field : eventType.getFields()) {
                         if (!field.getFields().isEmpty()

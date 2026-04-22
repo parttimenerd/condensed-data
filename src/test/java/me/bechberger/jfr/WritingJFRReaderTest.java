@@ -6,8 +6,8 @@ import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.OutputStream;
 import java.nio.file.Files;
-import java.nio.file.Path;
 import me.bechberger.condensed.CondensedInputStream;
+import me.bechberger.jfr.cli.commands.CommandTestUtil;
 import org.junit.jupiter.api.Test;
 
 public class WritingJFRReaderTest {
@@ -44,9 +44,8 @@ public class WritingJFRReaderTest {
                     }
                 };
 
-        var reader =
-                new BasicJFRReader(
-                        new CondensedInputStream(Files.newInputStream(Path.of("profile.cjfr"))));
+        var cjfrPath = CommandTestUtil.getSampleCJFRFile();
+        var reader = new BasicJFRReader(new CondensedInputStream(Files.newInputStream(cjfrPath)));
         var writingReader = new WritingJFRReader(reader, trackingStream);
 
         // Read a few events to initialize
@@ -80,9 +79,8 @@ public class WritingJFRReaderTest {
         // wired through to WritingJFRReader (previously it was silently ignored).
         // We verify by constructing a WritingJFRReader via toJFRFile and checking
         // the field is set correctly via reflection.
-        var reader =
-                new BasicJFRReader(
-                        new CondensedInputStream(Files.newInputStream(Path.of("profile.cjfr"))));
+        var cjfrPath = CommandTestUtil.getSampleCJFRFile();
+        var reader = new BasicJFRReader(new CondensedInputStream(Files.newInputStream(cjfrPath)));
         var trackingStream = new ByteArrayOutputStream();
         var writingReader = new WritingJFRReader(reader, trackingStream, true);
 
@@ -94,9 +92,7 @@ public class WritingJFRReaderTest {
                 "shouldAddDefaultValuesIfNecessary should be true when passed as true");
 
         // Also verify default constructor sets it to false
-        var reader2 =
-                new BasicJFRReader(
-                        new CondensedInputStream(Files.newInputStream(Path.of("profile.cjfr"))));
+        var reader2 = new BasicJFRReader(new CondensedInputStream(Files.newInputStream(cjfrPath)));
         var writingReader2 = new WritingJFRReader(reader2, new ByteArrayOutputStream());
         assertFalse(
                 (boolean) field.get(writingReader2),
