@@ -85,6 +85,7 @@ public class CustomJFREventBreakingTest {
      * Round-trip fidelity: after condense → inflate the null String field must still be readable
      * (as null or empty — both are acceptable; a crash is not).
      */
+    @InflaterRelated
     @Test
     public void testNullStringFieldSurvivesRoundTrip() throws Exception {
         var events = roundTrip(CommandTestUtil.getNullStringJFRFile(), "null_string");
@@ -133,6 +134,7 @@ public class CustomJFREventBreakingTest {
      * Round-trip fidelity: NaN and ±Infinity double values must be preserved exactly through the
      * condense → inflate pipeline.
      */
+    @InflaterRelated
     @Test
     public void testNaNAndInfinityDoublesPreservedInRoundTrip() throws Exception {
         var events = roundTrip(CommandTestUtil.getSpecialDoubleJFRFile(), "special_double");
@@ -190,6 +192,7 @@ public class CustomJFREventBreakingTest {
      * Bug candidate: high event volume may overflow internal buffers or counters. All 500 events
      * must survive the condense → inflate round-trip.
      */
+    @InflaterRelated
     @Test
     public void testHighFrequencyEventsAllSurviveRoundTrip() throws Exception {
         int count = 500;
@@ -243,6 +246,7 @@ public class CustomJFREventBreakingTest {
      * Round-trip fidelity: Long.MAX_VALUE and Long.MIN_VALUE must be preserved exactly — any
      * overflow or truncation would silently corrupt data.
      */
+    @InflaterRelated
     @Test
     public void testExtremeIntegerValuesPreservedInRoundTrip() throws Exception {
         var events = roundTrip(CommandTestUtil.getExtremeNumericJFRFile(), "extreme_numeric");
@@ -278,6 +282,7 @@ public class CustomJFREventBreakingTest {
      * Round-trip fidelity: emoji, CJK, Arabic, and special-character strings must survive condense
      * → inflate without corruption or truncation.
      */
+    @InflaterRelated
     @Test
     public void testUnicodeStringsPreservedInRoundTrip() throws Exception {
         var events = roundTrip(CommandTestUtil.getUnicodeStringJFRFile(), "unicode_string");
@@ -305,6 +310,7 @@ public class CustomJFREventBreakingTest {
      * Round-trip fidelity: a 10 000-character string field must survive condense → inflate without
      * truncation.
      */
+    @InflaterRelated
     @Test
     public void testLargeStringPreservedInRoundTrip() throws Exception {
         var events = roundTrip(CommandTestUtil.getLargeStringJFRFile(), "large_string");
