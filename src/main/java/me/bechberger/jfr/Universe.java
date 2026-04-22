@@ -18,7 +18,7 @@ public class Universe {
 
     public StructType<Universe, Universe> getStructType(TypeCollection typeCollection) {
         if (_type == null) {
-            _type = TypeUtil.createStructWithPrimitiveFields(typeCollection, Universe.class);
+            _type = StructReflectionUtil.createStructWithPrimitiveFields(typeCollection, Universe.class);
         }
         return _type;
     }

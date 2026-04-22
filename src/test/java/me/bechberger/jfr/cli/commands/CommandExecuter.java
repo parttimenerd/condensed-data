@@ -11,6 +11,7 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.stream.Collectors;
 import me.bechberger.femtocli.RunResult;
 import me.bechberger.jfr.cli.JFRCLI;
@@ -24,6 +25,17 @@ public class CommandExecuter {
      * {@code reduce-jar.py}).
      */
     private static final String TEST_JAR_PROPERTY = "cjfr.test.jar";
+
+        private static final Set<String> IGNORED_STDERR_WARNING_PREFIXES =
+            Set.of(
+                "WARNING: A restricted method in java.lang.System has been called",
+                "WARNING: java.lang.System::load has been called by",
+                "WARNING: Use --enable-native-access=ALL-UNNAMED to avoid a warning for callers",
+                "WARNING: Restricted methods will be blocked in a future release unless native access is enabled",
+                "WARNING: A Java agent has been loaded dynamically",
+                "WARNING: If a serviceability tool is in use, please run with -XX:+EnableDynamicAgentLoading to hide this warning",
+                "WARNING: If a serviceability tool is not in use, please run with -Djdk.instrument.traceUsage for more information",
+                "WARNING: Dynamic loading of agents will be disallowed by default in a future release");
 
     @FunctionalInterface
     public interface ConsumerWithException<T> {
@@ -65,6 +77,21 @@ public class CommandExecuter {
         return new RunResult(out, err, exitCode);
     }
 
+    private static String stripIgnoredStderrWarnings(String err) {
+        if (err == null || err.isBlank()) {
+            return "";
+        }
+        return err.lines()
+                .filter(
+                        line -> {
+                            var trimmed = line.stripLeading();
+                            return IGNORED_STDERR_WARNING_PREFIXES.stream()
+                                    .noneMatch(trimmed::startsWith);
+                        })
+                .collect(Collectors.joining("\n"))
+                .trim();
+    }
+
     /**
      * Run a command with the given files in a temporary folder and check all files in the folder
      */
@@ -90,20 +117,22 @@ public class CommandExecuter {
         } else {
             result = JFRCLI.builder().runCaptured(new JFRCLI(), modifiedArgs);
         }
+        var filteredError = stripIgnoredStderrWarnings(result.err());
         if (checkNoError) {
             assertAll(
                     () -> assertThat(result.exitCode()).isEqualTo(0),
-                    () -> assertThat(result.err()).isEmpty());
+                    () -> assertThat(filteredError).isEmpty());
         }
         if (checkNoOutput) {
             assertThat(result.out()).isEmpty();
         }
+        var commandResult = new CommandResult(result.exitCode(), result.out(), filteredError);
         try (var stream = Files.list(tempFolder)) {
             checkFilesInTemp.accept(
-                    new CommandResult(result.exitCode(), result.out(), result.err()),
+                    commandResult,
                     stream.collect(Collectors.toMap(p -> p.getFileName().toString(), p -> p)));
         }
-        return new CommandResult(result.exitCode(), result.out(), result.err());
+        return commandResult;
     }
 
     private final List<String> args;
