@@ -92,6 +92,16 @@ public class JFREventDeduplication extends EventDeduplication {
         putSingleton("jdk.StringTableStatistics");
         putSingleton("jdk.ResidentSetSize");
 
+        // GC-related singleton periodic events
+        putSingleton("jdk.ExceptionStatistics");
+        putSingleton("jdk.GCHeapMemoryUsage");
+
+        // ThreadCPULoad: per-thread, may repeat if load unchanged between chunks
+        put("jdk.ThreadCPULoad", "eventThread", "user", "system");
+
+        // CPULoad: singleton periodic, may repeat between chunks
+        putSingleton("jdk.CPULoad");
+
         // ThreadAllocationStatistics: per-thread, ~52% duplicate rate
         put("jdk.ThreadAllocationStatistics", "thread", "allocated");
 

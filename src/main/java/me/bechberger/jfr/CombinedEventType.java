@@ -32,7 +32,19 @@ public enum CombinedEventType {
     OBJECT_COUNT("jdk.combined.ObjectCount", "jdk.ObjectCount"),
     OBJECT_COUNT_AFTER_GC("jdk.combined.ObjectCountAfterGC", "jdk.ObjectCountAfterGC"),
     METASPACE_CHUNK_FREE_LIST_SUMMARY(
-            "jdk.combined.MetaspaceChunkFreeListSummary", "jdk.MetaspaceChunkFreeListSummary");
+            "jdk.combined.MetaspaceChunkFreeListSummary", "jdk.MetaspaceChunkFreeListSummary"),
+    JAVA_EXCEPTION_THROW("jdk.combined.JavaExceptionThrow", "jdk.JavaExceptionThrow"),
+    JAVA_ERROR_THROW("jdk.combined.JavaErrorThrow", "jdk.JavaErrorThrow"),
+    G1_HEAP_REGION_TYPE_CHANGE(
+            "jdk.combined.G1HeapRegionTypeChange", "jdk.G1HeapRegionTypeChange"),
+    GC_PHASE_PAUSE("jdk.combined.GCPhasePause", "jdk.GCPhasePause"),
+    GC_PHASE_CONCURRENT("jdk.combined.GCPhaseConcurrent", "jdk.GCPhaseConcurrent"),
+    GC_HEAP_SUMMARY("jdk.combined.GCHeapSummary", "jdk.GCHeapSummary"),
+    G1_HEAP_SUMMARY("jdk.combined.G1HeapSummary", "jdk.G1HeapSummary"),
+    METASPACE_SUMMARY("jdk.combined.MetaspaceSummary", "jdk.MetaspaceSummary"),
+    PS_HEAP_SUMMARY("jdk.combined.PSHeapSummary", "jdk.PSHeapSummary"),
+    THREAD_PARK("jdk.combined.ThreadPark", "jdk.ThreadPark"),
+    THREAD_SLEEP("jdk.combined.ThreadSleep", "jdk.ThreadSleep");
 
     private final String combinedTypeName;
     private final String originalTypeName;

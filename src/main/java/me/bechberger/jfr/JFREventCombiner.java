@@ -1828,6 +1828,652 @@ public class JFREventCombiner extends EventCombiner {
         }
     }
 
+    // ======================== GC Before/After Summary Combiner ========================
+
+    /**
+     * Generic lossless combiner for GC summary events that have a "when" field (Before GC / After
+     * GC). Groups by gcId, stores when → struct(all remaining fields) as a map. Works for
+     * GCHeapSummary, G1HeapSummary, and MetaspaceSummary.
+     */
+    static class GCBeforeAfterSummaryCombiner extends GCIdBasedCombiner {
+
+        private final String structName;
+
+        public GCBeforeAfterSummaryCombiner(
+                String typeName,
+                String structName,
+                Configuration configuration,
+                BasicJFRWriter basicJFRWriter) {
+            super(
+                    typeName,
+                    configuration,
+                    basicJFRWriter,
+                    createValueDefinition(structName, basicJFRWriter));
+            this.structName = structName;
+        }
+
+        @SuppressWarnings({"unchecked", "rawtypes"})
+        private static MapValue<RecordedEvent, ?, ?> createValueDefinition(
+                String structName, BasicJFRWriter basicJFRWriter) {
+            var summaryEntry =
+                    new MapPartValue<RecordedEvent, RecordedEvent>(
+                            "summaryData",
+                            (out, eventType) ->
+                                    (CondensedType)
+                                            basicJFRWriter
+                                                    .getOutputStream()
+                                                    .writeAndStoreType(
+                                                            id -> {
+                                                                List<Field<RecordedEvent, ?, ?>>
+                                                                        fields = new ArrayList<>();
+                                                                for (var field :
+                                                                        eventType.getFields()) {
+                                                                    String name = field.getName();
+                                                                    if (name.equals("startTime")
+                                                                            || name.equals("gcId")
+                                                                            || name.equals("when")
+                                                                            || name.equals(
+                                                                                    "eventThread")) {
+                                                                        continue;
+                                                                    }
+                                                                    fields.add(
+                                                                            basicJFRWriter
+                                                                                    .eventFieldToField(
+                                                                                            field,
+                                                                                            true));
+                                                                }
+                                                                return new StructType<
+                                                                        RecordedEvent, ReadStruct>(
+                                                                        id, structName, fields);
+                                                            }),
+                            e -> e);
+
+            return new MapValue<>(
+                    new MapPartValue<>(
+                            "when",
+                            (out, eventType) ->
+                                    (CondensedType<String, String>)
+                                            basicJFRWriter.getTypeCached(
+                                                    eventType.getField("when")),
+                            e -> e.getString("when")),
+                    new SingleValue<>(summaryEntry),
+                    map -> new ArrayList<>(map.entrySet()));
+        }
+    }
+
+    static class GCBeforeAfterSummaryReconstitutor
+            extends AbstractReconstitutor<GCBeforeAfterSummaryCombiner> {
+
+        public GCBeforeAfterSummaryReconstitutor(String eventTypeName) {
+            super(eventTypeName);
+        }
+
+        @Override
+        public <E> List<E> reconstitute(
+                StructType<?, ?> resultEventType,
+                ReadStruct combinedReadEvent,
+                EventBuilder<E, ?> builder) {
+            builder.put("gcId").addStandardFieldsIfNeeded();
+            return combinedReadEvent.asMapEntryList("when").stream()
+                    .map(
+                            e -> {
+                                builder.put("when", e.getKey());
+                                ReadStruct data = (ReadStruct) e.getValue();
+                                for (var field : data.getType().getFields()) {
+                                    builder.put(field.name(), data.get(field.name()));
+                                }
+                                return builder.build();
+                            })
+                    .toList();
+        }
+    }
+
+    // ======================== Blocking Event Combiners ========================
+
+    /**
+     * Lossy combiner for ThreadPark events: groups by next GC cycle, then by parkedClass, storing
+     * count per class. Discards per-event timestamps, threads, stack traces, timeout, until,
+     * address, and duration.
+     */
+    static class ThreadParkCombiner
+            extends AbstractCombiner<ObjectAllocationSampleToken, ObjectAllocationSampleState> {
+
+        private final GCIdPerTimestamp gcIdPerTimestamp;
+
+        public ThreadParkCombiner(
+                String typeName,
+                Configuration configuration,
+                BasicJFRWriter basicJFRWriter,
+                GCIdPerTimestamp gcIdPerTimestamp) {
+            super(typeName, configuration, basicJFRWriter, createValueDefinition(basicJFRWriter));
+            this.gcIdPerTimestamp = gcIdPerTimestamp;
+        }
+
+        @Override
+        public void combine(
+                ObjectAllocationSampleToken token,
+                ObjectAllocationSampleState state,
+                RecordedEvent event) {
+            state.updateEndTimestamp(event.getStartTime());
+            super.combine(token, state, event);
+        }
+
+        @Override
+        public Instant getStartTimestamp(ObjectAllocationSampleState state) {
+            return state.endTimestamp;
+        }
+
+        @Override
+        @SuppressWarnings("unchecked")
+        public List<Field<ObjectAllocationSampleState, ?, ?>> getAdditionalFields(
+                EventType eventType) {
+            return List.of(
+                    new Field<>(
+                            "nextGCId",
+                            "",
+                            TypeCollection.getDefaultTypeInstance(VarIntType.SPECIFIED_TYPE),
+                            s -> s.nextGCId),
+                    new Field<>(
+                            "endTime",
+                            "",
+                            (CondensedType<Instant, Instant>)
+                                    basicJFRWriter.getTypeCached(eventType.getField("startTime")),
+                            s ->
+                                    JFRReduction.TIMESTAMP_REDUCTION.reduce(
+                                            configuration,
+                                            basicJFRWriter.universe,
+                                            s.endTimestamp)));
+        }
+
+        @SuppressWarnings({"unchecked", "rawtypes"})
+        private static MapValue<RecordedEvent, ?, ?> createValueDefinition(
+                BasicJFRWriter basicJFRWriter) {
+            return new MapValue<>(
+                    new MapPartValue<>(
+                            "parkedClass",
+                            (out, eventType) ->
+                                    (CondensedType<Object, Object>)
+                                            basicJFRWriter.getTypeCached(
+                                                    eventType.getField("parkedClass")),
+                            e -> e.getValue("parkedClass")),
+                    new SingleValue<>(
+                            new MapPartValue<RecordedEvent, Long>(
+                                    "count",
+                                    (out, eventType) ->
+                                            (CondensedType<Long, Long>)
+                                                    (CondensedType)
+                                                            TypeCollection
+                                                                    .getDefaultTypeInstance(
+                                                                            VarIntType
+                                                                                    .SPECIFIED_TYPE),
+                                    e -> 1L),
+                            (a, b) -> a + b,
+                            () -> 0L));
+        }
+
+        @Override
+        public ObjectAllocationSampleState createInitialState(
+                ObjectAllocationSampleToken token, RecordedEvent event) {
+            var state = new DefinedMap<>(getValueDefinition(), event);
+            return new ObjectAllocationSampleState(token.nextGCId(), state, event.getStartTime());
+        }
+
+        @Override
+        public ObjectAllocationSampleToken createToken(RecordedEvent event) {
+            return new ObjectAllocationSampleToken(
+                    gcIdPerTimestamp.getClosestGCId(event.getStartTime()));
+        }
+    }
+
+    static class ThreadParkReconstitutor
+            extends AbstractReconstitutor<ThreadParkCombiner> {
+
+        public ThreadParkReconstitutor() {
+            super("jdk.ThreadPark");
+        }
+
+        @Override
+        public <E> List<E> reconstitute(
+                StructType<?, ?> resultEventType,
+                ReadStruct combinedReadEvent,
+                EventBuilder<E, ?> builder) {
+            builder.put("endTime").addStandardFieldsIfNeeded();
+            return combinedReadEvent.asMapEntryList("parkedClass").stream()
+                    .flatMap(
+                            entry -> {
+                                var parkedClass = entry.getKey();
+                                long count = ((Number) entry.getValue()).longValue();
+                                List<E> events = new ArrayList<>();
+                                for (long i = 0; i < count; i++) {
+                                    events.add(
+                                            builder.put("parkedClass", parkedClass)
+                                                    .put("duration", 0L)
+                                                    .put("timeout", 0L)
+                                                    .put("until", 0L)
+                                                    .put("address", 0L)
+                                                    .build());
+                                }
+                                return events.stream();
+                            })
+                    .toList();
+        }
+    }
+
+    /**
+     * Lossy combiner for ThreadSleep events: groups by next GC cycle, stores total count and
+     * duration. Discards per-event timestamps, threads, stack traces, and sleep time.
+     */
+    static class ThreadSleepCombiner
+            extends AbstractCombiner<ObjectAllocationSampleToken, ObjectAllocationSampleState> {
+
+        private final GCIdPerTimestamp gcIdPerTimestamp;
+
+        public ThreadSleepCombiner(
+                String typeName,
+                Configuration configuration,
+                BasicJFRWriter basicJFRWriter,
+                GCIdPerTimestamp gcIdPerTimestamp) {
+            super(typeName, configuration, basicJFRWriter, createValueDefinition(basicJFRWriter));
+            this.gcIdPerTimestamp = gcIdPerTimestamp;
+        }
+
+        @Override
+        public void combine(
+                ObjectAllocationSampleToken token,
+                ObjectAllocationSampleState state,
+                RecordedEvent event) {
+            state.updateEndTimestamp(event.getStartTime());
+            super.combine(token, state, event);
+        }
+
+        @Override
+        public Instant getStartTimestamp(ObjectAllocationSampleState state) {
+            return state.endTimestamp;
+        }
+
+        @Override
+        @SuppressWarnings("unchecked")
+        public List<Field<ObjectAllocationSampleState, ?, ?>> getAdditionalFields(
+                EventType eventType) {
+            return List.of(
+                    new Field<>(
+                            "nextGCId",
+                            "",
+                            TypeCollection.getDefaultTypeInstance(VarIntType.SPECIFIED_TYPE),
+                            s -> s.nextGCId),
+                    new Field<>(
+                            "endTime",
+                            "",
+                            (CondensedType<Instant, Instant>)
+                                    basicJFRWriter.getTypeCached(eventType.getField("startTime")),
+                            s ->
+                                    JFRReduction.TIMESTAMP_REDUCTION.reduce(
+                                            configuration,
+                                            basicJFRWriter.universe,
+                                            s.endTimestamp)));
+        }
+
+        @SuppressWarnings({"rawtypes", "unchecked"})
+        private static MapValue<RecordedEvent, ?, ?> createValueDefinition(
+                BasicJFRWriter basicJFRWriter) {
+            // time (requested sleep nanos) -> count
+            return new MapValue<>(
+                    new MapPartValue<>(
+                            "time",
+                            (out, eventType) ->
+                                    (CondensedType<Long, Long>)
+                                            basicJFRWriter.getTypeCached(
+                                                    eventType.getField("time")),
+                            e -> e.getLong("time")),
+                    new SingleValue<>(
+                            new MapPartValue<RecordedEvent, Long>(
+                                    "count",
+                                    (out, eventType) ->
+                                            (CondensedType<Long, Long>)
+                                                    (CondensedType)
+                                                            TypeCollection
+                                                                    .getDefaultTypeInstance(
+                                                                            VarIntType
+                                                                                    .SPECIFIED_TYPE),
+                                    e -> 1L),
+                            (a, b) -> a + b,
+                            () -> 0L));
+        }
+
+        @Override
+        public ObjectAllocationSampleState createInitialState(
+                ObjectAllocationSampleToken token, RecordedEvent event) {
+            var state = new DefinedMap<>(getValueDefinition(), event);
+            return new ObjectAllocationSampleState(token.nextGCId(), state, event.getStartTime());
+        }
+
+        @Override
+        public ObjectAllocationSampleToken createToken(RecordedEvent event) {
+            return new ObjectAllocationSampleToken(
+                    gcIdPerTimestamp.getClosestGCId(event.getStartTime()));
+        }
+    }
+
+    static class ThreadSleepReconstitutor
+            extends AbstractReconstitutor<ThreadSleepCombiner> {
+
+        public ThreadSleepReconstitutor() {
+            super("jdk.ThreadSleep");
+        }
+
+        @Override
+        public <E> List<E> reconstitute(
+                StructType<?, ?> resultEventType,
+                ReadStruct combinedReadEvent,
+                EventBuilder<E, ?> builder) {
+            builder.put("endTime").addStandardFieldsIfNeeded();
+            return combinedReadEvent.asMapEntryList("time").stream()
+                    .flatMap(
+                            entry -> {
+                                var time = entry.getKey();
+                                long count = ((Number) entry.getValue()).longValue();
+                                List<E> events = new ArrayList<>();
+                                for (long i = 0; i < count; i++) {
+                                    events.add(
+                                            builder.put("time", time)
+                                                    .put("duration", 0L)
+                                                    .build());
+                                }
+                                return events.stream();
+                            })
+                    .toList();
+        }
+    }
+
+    // ======================== JavaExceptionThrow Combiner ========================
+
+    /**
+     * Token for JavaExceptionThrow / JavaErrorThrow combiner: groups by next GC cycle. This is a
+     * lossy combiner that discards per-event timestamps, threads, and stack traces in favor of
+     * aggregate counts per (thrownClass, stackTrace) tuple.
+     */
+    static class JavaExceptionThrowCombiner
+            extends AbstractCombiner<ObjectAllocationSampleToken, ObjectAllocationSampleState> {
+
+        private final GCIdPerTimestamp gcIdPerTimestamp;
+
+        public JavaExceptionThrowCombiner(
+                String typeName,
+                Configuration configuration,
+                BasicJFRWriter basicJFRWriter,
+                GCIdPerTimestamp gcIdPerTimestamp) {
+            super(typeName, configuration, basicJFRWriter, createValueDefinition(basicJFRWriter));
+            this.gcIdPerTimestamp = gcIdPerTimestamp;
+        }
+
+        @Override
+        public void combine(
+                ObjectAllocationSampleToken token,
+                ObjectAllocationSampleState state,
+                RecordedEvent event) {
+            state.updateEndTimestamp(event.getStartTime());
+            super.combine(token, state, event);
+        }
+
+        @Override
+        public Instant getStartTimestamp(ObjectAllocationSampleState state) {
+            return state.endTimestamp;
+        }
+
+        @Override
+        @SuppressWarnings("unchecked")
+        public List<Field<ObjectAllocationSampleState, ?, ?>> getAdditionalFields(
+                EventType eventType) {
+            return List.of(
+                    new Field<>(
+                            "nextGCId",
+                            "",
+                            TypeCollection.getDefaultTypeInstance(VarIntType.SPECIFIED_TYPE),
+                            s -> s.nextGCId),
+                    new Field<>(
+                            "endTime",
+                            "",
+                            (CondensedType<Instant, Instant>)
+                                    basicJFRWriter.getTypeCached(eventType.getField("startTime")),
+                            s ->
+                                    JFRReduction.TIMESTAMP_REDUCTION.reduce(
+                                            configuration,
+                                            basicJFRWriter.universe,
+                                            s.endTimestamp)));
+        }
+
+        @SuppressWarnings({"rawtypes", "unchecked"})
+        private static MapValue<RecordedEvent, ?, ?> createValueDefinition(
+                BasicJFRWriter basicJFRWriter) {
+            // thrownClass -> count (summed)
+            return new MapValue<>(
+                    new MapPartValue<>(
+                            "thrownClass",
+                            (out, eventType) ->
+                                    (CondensedType<Object, Object>)
+                                            basicJFRWriter.getTypeCached(
+                                                    eventType.getField("thrownClass")),
+                            e -> e.getValue("thrownClass")),
+                    new SingleValue<>(
+                            new MapPartValue<RecordedEvent, Long>(
+                                    "count",
+                                    (out, eventType) ->
+                                            (CondensedType<Long, Long>)
+                                                    (CondensedType)
+                                                            TypeCollection
+                                                                    .getDefaultTypeInstance(
+                                                                            VarIntType
+                                                                                    .SPECIFIED_TYPE),
+                                    e -> 1L),
+                            (a, b) -> a + b,
+                            () -> 0L));
+        }
+
+        @Override
+        public ObjectAllocationSampleState createInitialState(
+                ObjectAllocationSampleToken token, RecordedEvent event) {
+            var state = new DefinedMap<>(getValueDefinition(), event);
+            return new ObjectAllocationSampleState(token.nextGCId(), state, event.getStartTime());
+        }
+
+        @Override
+        public ObjectAllocationSampleToken createToken(RecordedEvent event) {
+            return new ObjectAllocationSampleToken(
+                    gcIdPerTimestamp.getClosestGCId(event.getStartTime()));
+        }
+    }
+
+    static class JavaExceptionThrowReconstitutor
+            extends AbstractReconstitutor<JavaExceptionThrowCombiner> {
+
+        public JavaExceptionThrowReconstitutor(String eventTypeName) {
+            super(eventTypeName);
+        }
+
+        @Override
+        public <E> List<E> reconstitute(
+                StructType<?, ?> resultEventType,
+                ReadStruct combinedReadEvent,
+                EventBuilder<E, ?> builder) {
+            builder.put("endTime").addStandardFieldsIfNeeded();
+            return combinedReadEvent.asMapEntryList("thrownClass").stream()
+                    .flatMap(
+                            entry -> {
+                                var thrownClass = entry.getKey();
+                                long count = ((Number) entry.getValue()).longValue();
+                                // Emit 'count' individual events for reconstitution
+                                List<E> events = new ArrayList<>();
+                                for (long i = 0; i < count; i++) {
+                                    events.add(
+                                            builder.put("thrownClass", thrownClass)
+                                                    .put("message", null)
+                                                    .build());
+                                }
+                                return events.stream();
+                            })
+                    .toList();
+        }
+    }
+
+    // ======================== G1HeapRegionTypeChange Combiner ========================
+
+    /**
+     * Combines G1HeapRegionTypeChange events per time window (next GC id). Stores region changes
+     * as: index → (from, to, used) struct. This is a lossless combiner that groups by GC cycle.
+     */
+    static class G1HeapRegionTypeChangeCombiner
+            extends AbstractCombiner<ObjectAllocationSampleToken, ObjectAllocationSampleState> {
+
+        private final GCIdPerTimestamp gcIdPerTimestamp;
+
+        public G1HeapRegionTypeChangeCombiner(
+                String typeName,
+                Configuration configuration,
+                BasicJFRWriter basicJFRWriter,
+                GCIdPerTimestamp gcIdPerTimestamp) {
+            super(typeName, configuration, basicJFRWriter, createValueDefinition(basicJFRWriter));
+            this.gcIdPerTimestamp = gcIdPerTimestamp;
+        }
+
+        @Override
+        public void combine(
+                ObjectAllocationSampleToken token,
+                ObjectAllocationSampleState state,
+                RecordedEvent event) {
+            state.updateEndTimestamp(event.getStartTime());
+            super.combine(token, state, event);
+        }
+
+        @Override
+        public Instant getStartTimestamp(ObjectAllocationSampleState state) {
+            return state.endTimestamp;
+        }
+
+        @Override
+        @SuppressWarnings("unchecked")
+        public List<Field<ObjectAllocationSampleState, ?, ?>> getAdditionalFields(
+                EventType eventType) {
+            return List.of(
+                    new Field<>(
+                            "nextGCId",
+                            "",
+                            TypeCollection.getDefaultTypeInstance(VarIntType.SPECIFIED_TYPE),
+                            s -> s.nextGCId),
+                    new Field<>(
+                            "endTime",
+                            "",
+                            (CondensedType<Instant, Instant>)
+                                    basicJFRWriter.getTypeCached(eventType.getField("startTime")),
+                            s ->
+                                    JFRReduction.TIMESTAMP_REDUCTION.reduce(
+                                            configuration,
+                                            basicJFRWriter.universe,
+                                            s.endTimestamp)));
+        }
+
+        @SuppressWarnings({"rawtypes", "unchecked"})
+        private static MapValue<RecordedEvent, ?, ?> createValueDefinition(
+                BasicJFRWriter basicJFRWriter) {
+            // index -> (from, to, used) struct stored as array (multiple changes per region)
+            var regionChangeEntry =
+                    new MapPartValue<RecordedEvent, RecordedEvent>(
+                            "regionChange",
+                            (out, eventType) ->
+                                    (CondensedType)
+                                            basicJFRWriter
+                                                    .getOutputStream()
+                                                    .writeAndStoreType(
+                                                            id -> {
+                                                                List<Field<RecordedEvent, ?, ?>>
+                                                                        fields = new ArrayList<>();
+                                                                fields.add(
+                                                                        basicJFRWriter
+                                                                                .eventFieldToField(
+                                                                                        eventType
+                                                                                                .getField(
+                                                                                                        "from"),
+                                                                                        true));
+                                                                fields.add(
+                                                                        basicJFRWriter
+                                                                                .eventFieldToField(
+                                                                                        eventType
+                                                                                                .getField(
+                                                                                                        "to"),
+                                                                                        true));
+                                                                fields.add(
+                                                                        basicJFRWriter
+                                                                                .eventFieldToField(
+                                                                                        eventType
+                                                                                                .getField(
+                                                                                                        "used"),
+                                                                                        true));
+                                                                return new StructType<
+                                                                        RecordedEvent, ReadStruct>(
+                                                                        id,
+                                                                        "G1RegionChange",
+                                                                        fields);
+                                                            }),
+                            e -> e);
+
+            return new MapValue<>(
+                    new MapPartValue<>(
+                            "index",
+                            (out, eventType) ->
+                                    (CondensedType<Long, Long>)
+                                            (CondensedType)
+                                                    basicJFRWriter.getTypeCached(
+                                                            eventType.getField("index")),
+                            e -> e.getLong("index")),
+                    new ArrayValue<>(regionChangeEntry));
+        }
+
+        @Override
+        public ObjectAllocationSampleState createInitialState(
+                ObjectAllocationSampleToken token, RecordedEvent event) {
+            var state = new DefinedMap<>(getValueDefinition(), event);
+            return new ObjectAllocationSampleState(token.nextGCId(), state, event.getStartTime());
+        }
+
+        @Override
+        public ObjectAllocationSampleToken createToken(RecordedEvent event) {
+            return new ObjectAllocationSampleToken(
+                    gcIdPerTimestamp.getClosestGCId(event.getStartTime()));
+        }
+    }
+
+    static class G1HeapRegionTypeChangeReconstitutor
+            extends AbstractReconstitutor<G1HeapRegionTypeChangeCombiner> {
+
+        public G1HeapRegionTypeChangeReconstitutor() {
+            super("jdk.G1HeapRegionTypeChange");
+        }
+
+        @Override
+        public <E> List<E> reconstitute(
+                StructType<?, ?> resultEventType,
+                ReadStruct combinedReadEvent,
+                EventBuilder<E, ?> builder) {
+            builder.put("endTime").addStandardFieldsIfNeeded();
+            return combinedReadEvent.asMapEntryList("index").stream()
+                    .flatMap(
+                            indexEntry -> {
+                                var index = indexEntry.getKey();
+                                ReadList<?> changes = (ReadList<?>) indexEntry.getValue();
+                                return changes.stream()
+                                        .map(
+                                                change -> {
+                                                    ReadStruct data = (ReadStruct) change;
+                                                    return builder.put("index", index)
+                                                            .put("from", data.get("from"))
+                                                            .put("to", data.get("to"))
+                                                            .put("used", data.get("used"))
+                                                            .build();
+                                                });
+                            })
+                    .toList();
+        }
+    }
+
     enum PSHeapSummaryWhen {
         BEFORE,
         AFTER
@@ -1997,6 +2643,22 @@ public class JFREventCombiner extends EventCombiner {
                                 configuration,
                                 basicJFRWriter));
             }
+            if (eventType.getName().equals("jdk.GCPhasePause")) {
+                put(
+                        eventType,
+                        new JFREventCombiner.GCPhasePauseLevelCombiner(
+                                "jdk.combined.GCPhasePause",
+                                configuration,
+                                basicJFRWriter));
+            }
+            if (eventType.getName().equals("jdk.GCPhaseConcurrent")) {
+                put(
+                        eventType,
+                        new JFREventCombiner.GCPhasePauseLevelCombiner(
+                                "jdk.combined.GCPhaseConcurrent",
+                                configuration,
+                                basicJFRWriter));
+            }
             if (eventType.getName().equals("jdk.GCPhaseParallel")) {
                 put(
                         eventType,
@@ -2049,6 +2711,94 @@ public class JFREventCombiner extends EventCombiner {
                                 configuration,
                                 basicJFRWriter));
             }
+            if (eventType.getName().equals("jdk.GCHeapSummary")) {
+                put(
+                        eventType,
+                        new JFREventCombiner.GCBeforeAfterSummaryCombiner(
+                                "jdk.combined.GCHeapSummary",
+                                "GCHeapSummaryEntry",
+                                configuration,
+                                basicJFRWriter));
+            }
+            if (eventType.getName().equals("jdk.G1HeapSummary")) {
+                put(
+                        eventType,
+                        new JFREventCombiner.GCBeforeAfterSummaryCombiner(
+                                "jdk.combined.G1HeapSummary",
+                                "G1HeapSummaryEntry",
+                                configuration,
+                                basicJFRWriter));
+            }
+            if (eventType.getName().equals("jdk.MetaspaceSummary")) {
+                put(
+                        eventType,
+                        new JFREventCombiner.GCBeforeAfterSummaryCombiner(
+                                "jdk.combined.MetaspaceSummary",
+                                "MetaspaceSummaryEntry",
+                                configuration,
+                                basicJFRWriter));
+            }
+            if (eventType.getName().equals("jdk.PSHeapSummary")) {
+                put(
+                        eventType,
+                        new JFREventCombiner.GCBeforeAfterSummaryCombiner(
+                                "jdk.combined.PSHeapSummary",
+                                "PSHeapSummaryEntry",
+                                configuration,
+                                basicJFRWriter));
+            }
+
+        }
+        if (configuration.combineExceptionEvents()) {
+            if (eventType.getName().equals("jdk.JavaExceptionThrow")) {
+                put(
+                        eventType,
+                        new JFREventCombiner.JavaExceptionThrowCombiner(
+                                "jdk.combined.JavaExceptionThrow",
+                                configuration,
+                                basicJFRWriter,
+                                gcIdPerTimestamp));
+            }
+            if (eventType.getName().equals("jdk.JavaErrorThrow")) {
+                put(
+                        eventType,
+                        new JFREventCombiner.JavaExceptionThrowCombiner(
+                                "jdk.combined.JavaErrorThrow",
+                                configuration,
+                                basicJFRWriter,
+                                gcIdPerTimestamp));
+            }
+        }
+        if (configuration.combineG1HeapRegionTypeChangeEvents()) {
+            if (eventType.getName().equals("jdk.G1HeapRegionTypeChange")) {
+                put(
+                        eventType,
+                        new JFREventCombiner.G1HeapRegionTypeChangeCombiner(
+                                "jdk.combined.G1HeapRegionTypeChange",
+                                configuration,
+                                basicJFRWriter,
+                                gcIdPerTimestamp));
+            }
+        }
+        if (configuration.combineBlockingEvents()) {
+            if (eventType.getName().equals("jdk.ThreadPark")) {
+                put(
+                        eventType,
+                        new JFREventCombiner.ThreadParkCombiner(
+                                "jdk.combined.ThreadPark",
+                                configuration,
+                                basicJFRWriter,
+                                gcIdPerTimestamp));
+            }
+            if (eventType.getName().equals("jdk.ThreadSleep")) {
+                put(
+                        eventType,
+                        new JFREventCombiner.ThreadSleepCombiner(
+                                "jdk.combined.ThreadSleep",
+                                configuration,
+                                basicJFRWriter,
+                                gcIdPerTimestamp));
+            }
         }
     }
 
@@ -2090,6 +2840,12 @@ public class JFREventCombiner extends EventCombiner {
                                     new GCPhasePauseLevelReconstitutor(
                                             "jdk.GCPhaseConcurrentLevel1")),
                             Map.entry(
+                                    CombinedEventType.GC_PHASE_PAUSE,
+                                    new GCPhasePauseLevelReconstitutor("jdk.GCPhasePause")),
+                            Map.entry(
+                                    CombinedEventType.GC_PHASE_CONCURRENT,
+                                    new GCPhasePauseLevelReconstitutor("jdk.GCPhaseConcurrent")),
+                            Map.entry(
                                     CombinedEventType.TENURING_DISTRIBUTION,
                                     new TenuringDistributionReconstitutor()),
                             Map.entry(
@@ -2112,7 +2868,36 @@ public class JFREventCombiner extends EventCombiner {
                                     new ObjectCountReconstitutor("jdk.ObjectCountAfterGC")),
                             Map.entry(
                                     CombinedEventType.METASPACE_CHUNK_FREE_LIST_SUMMARY,
-                                    new MetaspaceChunkFreeListSummaryReconstitutor()));
+                                    new MetaspaceChunkFreeListSummaryReconstitutor()),
+                            Map.entry(
+                                    CombinedEventType.JAVA_EXCEPTION_THROW,
+                                    new JavaExceptionThrowReconstitutor("jdk.JavaExceptionThrow")),
+                            Map.entry(
+                                    CombinedEventType.JAVA_ERROR_THROW,
+                                    new JavaExceptionThrowReconstitutor("jdk.JavaErrorThrow")),
+                            Map.entry(
+                                    CombinedEventType.G1_HEAP_REGION_TYPE_CHANGE,
+                                    new G1HeapRegionTypeChangeReconstitutor()),
+                            Map.entry(
+                                    CombinedEventType.GC_HEAP_SUMMARY,
+                                    new GCBeforeAfterSummaryReconstitutor("jdk.GCHeapSummary")),
+                            Map.entry(
+                                    CombinedEventType.G1_HEAP_SUMMARY,
+                                    new GCBeforeAfterSummaryReconstitutor("jdk.G1HeapSummary")),
+                            Map.entry(
+                                    CombinedEventType.METASPACE_SUMMARY,
+                                    new GCBeforeAfterSummaryReconstitutor(
+                                            "jdk.MetaspaceSummary")),
+                            Map.entry(
+                                    CombinedEventType.PS_HEAP_SUMMARY,
+                                    new GCBeforeAfterSummaryReconstitutor(
+                                            "jdk.PSHeapSummary")),
+                            Map.entry(
+                                    CombinedEventType.THREAD_PARK,
+                                    new ThreadParkReconstitutor()),
+                            Map.entry(
+                                    CombinedEventType.THREAD_SLEEP,
+                                    new ThreadSleepReconstitutor()));
 
     static Map<CombinedEventType, AbstractReconstitutor<? extends AbstractCombiner<?, ?>>>
             getRecons() {

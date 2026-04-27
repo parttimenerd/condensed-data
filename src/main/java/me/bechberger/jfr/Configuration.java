@@ -34,7 +34,10 @@ public record Configuration(
         boolean ignoreTooShortGCPauses,
         boolean removeBCIAndLineNumberFromStackFrames,
         boolean removeTypeInformationFromStackFrames,
-        boolean removeUnnecessaryAddresses)
+        boolean removeUnnecessaryAddresses,
+        boolean combineExceptionEvents,
+        boolean combineG1HeapRegionTypeChangeEvents,
+        boolean combineBlockingEvents)
         implements Comparable<Configuration> {
 
     public static final Configuration DEFAULT =
@@ -48,6 +51,9 @@ public record Configuration(
                     -1,
                     true,
                     true,
+                    false,
+                    false,
+                    false,
                     false,
                     false,
                     false,
@@ -78,7 +84,10 @@ public record Configuration(
                     .withSumObjectSizes(true)
                     .withIgnoreUnnecessaryEvents(true)
                     .withRemoveTypeInformationFromStackFrames(true)
-                    .withMaxStackTraceDepth(16);
+                    .withMaxStackTraceDepth(16)
+                    .withCombineExceptionEvents(true)
+                    .withCombineG1HeapRegionTypeChangeEvents(true)
+                    .withCombineBlockingEvents(true);
 
     public Configuration(
             String name,
@@ -108,6 +117,9 @@ public record Configuration(
                 sumObjectSizes,
                 ignoreZeroSizedTenuredAges,
                 ignoreTooShortGCPauses,
+                false,
+                false,
+                false,
                 false,
                 false,
                 false);
@@ -201,6 +213,20 @@ public record Configuration(
         return withFieldValue("removeUnnecessaryAddresses", removeUnnecessaryAddresses);
     }
 
+    public Configuration withCombineExceptionEvents(boolean combineExceptionEvents) {
+        return withFieldValue("combineExceptionEvents", combineExceptionEvents);
+    }
+
+    public Configuration withCombineG1HeapRegionTypeChangeEvents(
+            boolean combineG1HeapRegionTypeChangeEvents) {
+        return withFieldValue(
+                "combineG1HeapRegionTypeChangeEvents", combineG1HeapRegionTypeChangeEvents);
+    }
+
+    public Configuration withCombineBlockingEvents(boolean combineBlockingEvents) {
+        return withFieldValue("combineBlockingEvents", combineBlockingEvents);
+    }
+
     public Configuration withFieldValue(String fieldName, Object value) {
         // use reflection to call the constructor
         try {
@@ -235,7 +261,10 @@ public record Configuration(
     public boolean eventCombinersEnabled() {
         return combinePLABPromotionEvents
                 || combineObjectAllocationSampleEvents
-                || combineEventsWithoutDataLoss;
+                || combineEventsWithoutDataLoss
+                || combineExceptionEvents
+                || combineG1HeapRegionTypeChangeEvents
+                || combineBlockingEvents;
     }
 
     @Override
