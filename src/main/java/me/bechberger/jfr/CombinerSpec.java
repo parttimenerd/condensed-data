@@ -5,7 +5,6 @@ import java.util.*;
 import java.util.Map.Entry;
 import java.util.function.BiFunction;
 import java.util.function.Function;
-import java.util.stream.Collectors;
 import jdk.jfr.EventType;
 import jdk.jfr.consumer.RecordedEvent;
 import me.bechberger.condensed.CondensedOutputStream;
@@ -165,16 +164,21 @@ public class CombinerSpec {
     private ValueDef valueDef;
     private MapEntryReconstitutor mapEntryReconstitutor;
     private FullReconstitutor fullReconstitutor;
+
     @SuppressWarnings("rawtypes")
     private Function mapToListTransform;
+
     // Custom key type creator (for special types like VarInt or duration)
     @SuppressWarnings("rawtypes")
     private BiFunction customKeyTypeCreator;
+
     // Custom key value extractor (for special extractions like getLong)
     private Function<RecordedEvent, ?> customKeyExtractor;
+
     // Custom value type creator (for special types like duration)
     @SuppressWarnings("rawtypes")
     private BiFunction customValueTypeCreator;
+
     // Custom value extractor
     private Function<RecordedEvent, ?> customValueExtractor;
 
@@ -302,9 +306,7 @@ public class CombinerSpec {
             return new SingleValue<>(buildValuePart(writer));
         } else if (valueDef instanceof SumLong) {
             return new SingleValue<>(
-                    buildValuePart(writer),
-                    (BiFunction) (a, b) -> (long) a + (long) b,
-                    () -> 0L);
+                    buildValuePart(writer), (BiFunction) (a, b) -> (long) a + (long) b, () -> 0L);
         } else if (valueDef instanceof CountEvents) {
             return new SingleValue<>(
                     new MapPartValue<RecordedEvent, Long>(
@@ -425,20 +427,14 @@ public class CombinerSpec {
     // ======================== Combiner Creation ========================
 
     AbstractCombiner<?, ?> createCombiner(
-            Configuration configuration,
-            BasicJFRWriter writer,
-            GCIdPerTimestamp gcIdPerTimestamp) {
+            Configuration configuration, BasicJFRWriter writer, GCIdPerTimestamp gcIdPerTimestamp) {
         var mapValue = buildMapValue(writer);
         if (grouping == GroupingStrategy.GC_ID) {
             return new SpecGCIdCombiner(
                     getCombinedEventTypeName(), configuration, writer, mapValue);
         } else {
             return new SpecNextGCIdCombiner(
-                    getCombinedEventTypeName(),
-                    configuration,
-                    writer,
-                    mapValue,
-                    gcIdPerTimestamp);
+                    getCombinedEventTypeName(), configuration, writer, mapValue, gcIdPerTimestamp);
         }
     }
 
@@ -523,8 +519,7 @@ public class CombinerSpec {
         public ObjectAllocationSampleState createInitialState(
                 ObjectAllocationSampleToken token, RecordedEvent event) {
             var state = new DefinedMap<>(getValueDefinition(), event);
-            return new ObjectAllocationSampleState(
-                    token.nextGCId(), state, event.getStartTime());
+            return new ObjectAllocationSampleState(token.nextGCId(), state, event.getStartTime());
         }
 
         @Override
@@ -558,9 +553,7 @@ public class CombinerSpec {
         private final MapEntryReconstitutor reconstitutor;
 
         SpecMapEntryReconstitutor(
-                String eventTypeName,
-                String keyFieldName,
-                MapEntryReconstitutor reconstitutor) {
+                String eventTypeName, String keyFieldName, MapEntryReconstitutor reconstitutor) {
             super(eventTypeName);
             this.keyFieldName = keyFieldName;
             this.reconstitutor = reconstitutor;
@@ -709,7 +702,10 @@ public class CombinerSpec {
                     CombinerSpec.gcIdBased("jdk.TenuringDistribution")
                             .mapKeyValue("age", "size", ValueDef.sumLong())
                             .keyType(
-                                    (BiFunction<CondensedOutputStream, EventType, CondensedType<?, ?>>)
+                                    (BiFunction<
+                                                    CondensedOutputStream,
+                                                    EventType,
+                                                    CondensedType<?, ?>>)
                                             (out, et) -> out.writeAndStoreType(VarIntType::new))
                             .keyExtractor(e -> e.getLong("age"));
             if (config.ignoreZeroSizedTenuredAges()) {
@@ -717,20 +713,24 @@ public class CombinerSpec {
                         (Function<Map<?, ?>, List<?>>)
                                 map ->
                                         map.entrySet().stream()
-                                                .filter(e -> ((Long) ((Entry<?, ?>) e).getValue()) != 0L)
+                                                .filter(
+                                                        e ->
+                                                                ((Long)
+                                                                                ((Entry<?, ?>) e)
+                                                                                        .getValue())
+                                                                        != 0L)
                                                 .toList());
             }
             return spec;
         }
 
         @SuppressWarnings({"unchecked", "rawtypes"})
-        static CombinerSpec gcPhasePauseLevel(String eventTypeName, Configuration config,
-                BasicJFRWriter writer) {
+        static CombinerSpec gcPhasePauseLevel(
+                String eventTypeName, Configuration config, BasicJFRWriter writer) {
             var spec =
                     CombinerSpec.gcIdBased(eventTypeName)
                             .mapKeyValue("name", "duration", ValueDef.eventField())
-                            .valueType(
-                                    (BiFunction) (out, et) -> writer.getDurationType())
+                            .valueType((BiFunction) (out, et) -> writer.getDurationType())
                             .valueExtractor(
                                     e ->
                                             me.bechberger.util.TimeUtil.clamp(
@@ -762,10 +762,7 @@ public class CombinerSpec {
 
         static CombinerSpec gcBeforeAfterSummary(String eventTypeName, String structName) {
             return CombinerSpec.gcIdBased(eventTypeName)
-                    .mapKeyValue(
-                            "when",
-                            "summaryData",
-                            ValueDef.dynamicStruct(structName, "when"));
+                    .mapKeyValue("when", "summaryData", ValueDef.dynamicStruct(structName, "when"));
         }
 
         // --- combineExceptionEvents ---
@@ -798,8 +795,7 @@ public class CombinerSpec {
                     .mapKeyValue(
                             "index",
                             "regionChange",
-                            ValueDef.collectStructArray(
-                                    "G1RegionChange", "index", "start"))
+                            ValueDef.collectStructArray("G1RegionChange", "index", "start"))
                     .keyExtractor(e -> e.getLong("index"));
         }
 

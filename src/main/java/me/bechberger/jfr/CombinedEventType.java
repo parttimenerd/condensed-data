@@ -35,8 +35,7 @@ public enum CombinedEventType {
             "jdk.combined.MetaspaceChunkFreeListSummary", "jdk.MetaspaceChunkFreeListSummary"),
     JAVA_EXCEPTION_THROW("jdk.combined.JavaExceptionThrow", "jdk.JavaExceptionThrow"),
     JAVA_ERROR_THROW("jdk.combined.JavaErrorThrow", "jdk.JavaErrorThrow"),
-    G1_HEAP_REGION_TYPE_CHANGE(
-            "jdk.combined.G1HeapRegionTypeChange", "jdk.G1HeapRegionTypeChange"),
+    G1_HEAP_REGION_TYPE_CHANGE("jdk.combined.G1HeapRegionTypeChange", "jdk.G1HeapRegionTypeChange"),
     GC_PHASE_PAUSE("jdk.combined.GCPhasePause", "jdk.GCPhasePause"),
     GC_PHASE_CONCURRENT("jdk.combined.GCPhaseConcurrent", "jdk.GCPhaseConcurrent"),
     GC_HEAP_SUMMARY("jdk.combined.GCHeapSummary", "jdk.GCHeapSummary"),

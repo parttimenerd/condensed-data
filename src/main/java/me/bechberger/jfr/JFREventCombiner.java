@@ -1,7 +1,6 @@
 package me.bechberger.jfr;
 
 import static me.bechberger.condensed.types.TypeCollection.normalize;
-import static me.bechberger.util.TimeUtil.clamp;
 
 import java.time.Instant;
 import java.util.*;
@@ -986,7 +985,6 @@ public class JFREventCombiner extends EventCombiner {
         }
     }
 
-
     /** Combines per GC id */
     static class GCPhaseParallelCombiner extends GCIdBasedCombiner {
 
@@ -1247,7 +1245,6 @@ public class JFREventCombiner extends EventCombiner {
         }
     }
 
-
     /**
      * Combines ZStatisticsCounter and ZStatisticsSampler by next GC id and statistic id.
      *
@@ -1425,7 +1422,6 @@ public class JFREventCombiner extends EventCombiner {
         }
     }
 
-
     /**
      * Combines MetaspaceChunkFreeListSummary per GC id: gcId -> (when + metadataType) -> struct of
      * all chunk fields
@@ -1575,7 +1571,6 @@ public class JFREventCombiner extends EventCombiner {
                     .toList();
         }
     }
-
 
     enum PSHeapSummaryWhen {
         BEFORE,
@@ -1727,8 +1722,7 @@ public class JFREventCombiner extends EventCombiner {
                             "jdk.GCPhaseConcurrent")) {
                 putSpec(
                         eventType,
-                        CombinerSpec.Specs.gcPhasePauseLevel(
-                                name, configuration, basicJFRWriter));
+                        CombinerSpec.Specs.gcPhasePauseLevel(name, configuration, basicJFRWriter));
             }
             // Complex: kept as hand-written
             if (eventType.getName().equals("jdk.GCPhaseParallel")) {
@@ -1810,7 +1804,9 @@ public class JFREventCombiner extends EventCombiner {
                         AbstractReconstitutor<? extends AbstractCombiner<?, ?>>>();
 
         // Hand-written reconstitutors for complex combiners
-        map.put(CombinedEventType.OBJECT_ALLOCATION_SAMPLE, new ObjectAllocationSampleReconstitutor());
+        map.put(
+                CombinedEventType.OBJECT_ALLOCATION_SAMPLE,
+                new ObjectAllocationSampleReconstitutor());
         map.put(
                 CombinedEventType.OBJECT_ALLOCATION_IN_NEW_TLAB,
                 new BasicObjectAllocationReconstitutor("jdk.ObjectAllocationInNewTLAB"));
@@ -1835,9 +1831,13 @@ public class JFREventCombiner extends EventCombiner {
                 new MetaspaceChunkFreeListSummaryReconstitutor());
 
         // Spec-generated reconstitutors
-        addSpecRecons(map, CombinedEventType.TENURING_DISTRIBUTION,
+        addSpecRecons(
+                map,
+                CombinedEventType.TENURING_DISTRIBUTION,
                 CombinerSpec.Specs.tenuringDistribution(Configuration.DEFAULT));
-        addSpecRecons(map, CombinedEventType.GC_REFERENCE_STATISTICS,
+        addSpecRecons(
+                map,
+                CombinedEventType.GC_REFERENCE_STATISTICS,
                 CombinerSpec.Specs.gcReferenceStatistics());
         for (var entry :
                 Map.of(
@@ -1845,32 +1845,54 @@ public class JFREventCombiner extends EventCombiner {
                                 CombinedEventType.GC_PHASE_PAUSE_LEVEL2, "jdk.GCPhasePauseLevel2",
                                 CombinedEventType.GC_PHASE_PAUSE_LEVEL3, "jdk.GCPhasePauseLevel3",
                                 CombinedEventType.GC_PHASE_PAUSE_LEVEL4, "jdk.GCPhasePauseLevel4",
-                                CombinedEventType.GC_PHASE_CONCURRENT_LEVEL1, "jdk.GCPhaseConcurrentLevel1",
+                                CombinedEventType.GC_PHASE_CONCURRENT_LEVEL1,
+                                        "jdk.GCPhaseConcurrentLevel1",
                                 CombinedEventType.GC_PHASE_PAUSE, "jdk.GCPhasePause",
                                 CombinedEventType.GC_PHASE_CONCURRENT, "jdk.GCPhaseConcurrent")
                         .entrySet()) {
             // Reconstitutors don't use the config-dependent filtering, just the value mapping
-            addSpecRecons(map, entry.getKey(),
+            addSpecRecons(
+                    map,
+                    entry.getKey(),
                     CombinerSpec.gcIdBased(entry.getValue())
                             .mapKeyValue("name", "duration", CombinerSpec.ValueDef.eventField()));
         }
-        addSpecRecons(map, CombinedEventType.OBJECT_COUNT,
+        addSpecRecons(
+                map,
+                CombinedEventType.OBJECT_COUNT,
                 CombinerSpec.Specs.objectCount("jdk.ObjectCount"));
-        addSpecRecons(map, CombinedEventType.OBJECT_COUNT_AFTER_GC,
+        addSpecRecons(
+                map,
+                CombinedEventType.OBJECT_COUNT_AFTER_GC,
                 CombinerSpec.Specs.objectCount("jdk.ObjectCountAfterGC"));
-        addSpecRecons(map, CombinedEventType.GC_HEAP_SUMMARY,
+        addSpecRecons(
+                map,
+                CombinedEventType.GC_HEAP_SUMMARY,
                 CombinerSpec.Specs.gcBeforeAfterSummary("jdk.GCHeapSummary", "GCHeapSummaryEntry"));
-        addSpecRecons(map, CombinedEventType.G1_HEAP_SUMMARY,
+        addSpecRecons(
+                map,
+                CombinedEventType.G1_HEAP_SUMMARY,
                 CombinerSpec.Specs.gcBeforeAfterSummary("jdk.G1HeapSummary", "G1HeapSummaryEntry"));
-        addSpecRecons(map, CombinedEventType.METASPACE_SUMMARY,
-                CombinerSpec.Specs.gcBeforeAfterSummary("jdk.MetaspaceSummary", "MetaspaceSummaryEntry"));
-        addSpecRecons(map, CombinedEventType.PS_HEAP_SUMMARY,
+        addSpecRecons(
+                map,
+                CombinedEventType.METASPACE_SUMMARY,
+                CombinerSpec.Specs.gcBeforeAfterSummary(
+                        "jdk.MetaspaceSummary", "MetaspaceSummaryEntry"));
+        addSpecRecons(
+                map,
+                CombinedEventType.PS_HEAP_SUMMARY,
                 CombinerSpec.Specs.gcBeforeAfterSummary("jdk.PSHeapSummary", "PSHeapSummaryEntry"));
-        addSpecRecons(map, CombinedEventType.JAVA_EXCEPTION_THROW,
+        addSpecRecons(
+                map,
+                CombinedEventType.JAVA_EXCEPTION_THROW,
                 CombinerSpec.Specs.javaExceptionThrow("jdk.JavaExceptionThrow"));
-        addSpecRecons(map, CombinedEventType.JAVA_ERROR_THROW,
+        addSpecRecons(
+                map,
+                CombinedEventType.JAVA_ERROR_THROW,
                 CombinerSpec.Specs.javaExceptionThrow("jdk.JavaErrorThrow"));
-        addSpecRecons(map, CombinedEventType.G1_HEAP_REGION_TYPE_CHANGE,
+        addSpecRecons(
+                map,
+                CombinedEventType.G1_HEAP_REGION_TYPE_CHANGE,
                 CombinerSpec.Specs.g1HeapRegionTypeChange());
         addSpecRecons(map, CombinedEventType.THREAD_PARK, CombinerSpec.Specs.threadPark());
         addSpecRecons(map, CombinedEventType.THREAD_SLEEP, CombinerSpec.Specs.threadSleep());
