@@ -14,9 +14,9 @@ Each file starts with a header:
 - String: Generator name
 - String: Generator version
 - String: compression algorithm
-    - Supported values: NONE, GZIP, XZ, BZIP2, ZSTD
-    - Default: XZ
-    - Note: specific implementations may add additional metadata; XZ and GZIP are natively supported by the tool.
+    - Supported values: NONE, GZIP, LZ4, BZIP2, ZSTD
+    - Default: LZ4
+    - Note: specific implementations may add additional metadata; LZ4 and GZIP are natively supported by the tool.
 
 The following data is organized in messages:
 

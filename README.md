@@ -123,7 +123,7 @@ is designed to be
 
 - simple
 - self-describing (the type information is stored in the file)
-- compressed (supports the following compression algorithms natively: NONE, GZIP, XZ, BZIP2, ZSTD; default: XZ)
+- compressed (supports the following compression algorithms natively: NONE, GZIP, LZ4, BZIP2, ZSTD; default: LZ4)
 - space efficient (e.g. by using varints and caches)
 - streamable
 - allows to reduce event data even further by using reducers and reconstitutors
@@ -142,7 +142,23 @@ bin/update-help.py # updates the help messages in the README
 
 This pre-commit hook also runs the tests via `mvn test`.
 
-Use `./reduce-jar.py` to build the reduced JARs.
+### JAR Size Optimization
+
+The default `target/condensed-data.jar` includes native libraries for all 18+ supported platforms.
+For single-platform deployments, use `reduce-jar.py` to create platform-specific JARs (~80% smaller):
+
+```bash
+# List available platforms
+python3 reduce-jar.py reduce target/condensed-data.jar --list-platforms
+
+# Create platform-specific JAR
+python3 reduce-jar.py reduce target/condensed-data.jar output.jar --platform darwin/aarch64
+
+# Generate all platform variants
+python3 reduce-jar.py matrix target/condensed-data.jar output-jars/
+```
+
+See [README_JAR_SIZE.md](README_JAR_SIZE.md) for detailed guide on JAR reduction and size optimization.
 
 Benchmarking
 ------------
@@ -163,47 +179,47 @@ java -jar target/condensed-data.jar benchmark
 ### Current Results
 
 ```shell
-**Benchmark run on 2025-12-04 16:28:30**
+**Benchmark run on 2026-04-27 16:56:11**
 
-JFR file                                    | runtime (s) | original   | compressed | per-hour | %      | per-hour | default | size      | %      | per-hour | reasonable-default | size      | %      | per-hour | reduced-default | size      | %      | per-hour
-------------------------------------------- | ----------- | ---------- | ---------- | -------- | ------ | -------- | ------- | --------- | ------ | -------- | ------------------ | --------- | ------ | -------- | --------------- | --------- | ------ | --------
-        renaissance-dotty_gc_details_G1.jfr |       70,26 |   12.752MB |    2.959MB |  653.4MB | 23,21% |  151.6MB |  3,45 s |   1.005MB |  7,88% |   51.5MB |             1,72 s | 479.178KB |  3,67% |   24.0MB |          1,34 s | 405.045KB |  3,10% |   20.3MB
-          renaissance-all_gc_details_G1.jfr |     1827,15 |  241.533MB |   55.064MB |  475.9MB | 22,80% |  108.5MB | 64,81 s |  21.465MB |  8,89% |   42.3MB |            31,59 s |   7.522MB |  3,11% |   14.8MB |         28,37 s |   6.908MB |  2,86% |   13.6MB
-                renaissance-dotty_gc_G1.jfr |       70,63 |  603.439KB |  255.816KB |   30.0MB | 42,39% |   12.7MB |  0,14 s | 162.719KB | 26,97% |    8.1MB |             0,12 s |  95.505KB | 15,83% |    4.8MB |          0,12 s |  90.013KB | 14,92% |    4.5MB
-                  renaissance-all_gc_G1.jfr |     1537,39 |   29.324MB |   11.906MB |   68.7MB | 40,60% |   27.9MB |  8,74 s |   7.321MB | 24,97% |   17.1MB |             4,72 s |   3.057MB | 10,42% |    7.2MB |          3,86 s |   2.315MB |  7,90% |    5.4MB
-           renaissance-dotty_default_G1.jfr |       67,83 |    5.973MB |    1.508MB |  317.0MB | 25,25% |   80.0MB |  1,43 s | 576.575KB |  9,43% |   29.9MB |             0,57 s | 272.609KB |  4,46% |   14.1MB |          0,22 s | 145.434KB |  2,38% |    7.5MB
-  renaissance-dotty_gc_details_SerialGC.jfr |       74,30 |    9.038MB |    1.998MB |  437.9MB | 22,11% |   96.8MB |  2,26 s | 651.860KB |  7,04% |   30.8MB |             1,11 s | 372.613KB |  4,03% |   17.6MB |          0,83 s | 321.948KB |  3,48% |   15.2MB
-    renaissance-all_gc_details_SerialGC.jfr |     1587,18 |  242.607MB |   50.445MB |  550.3MB | 20,79% |  114.4MB | 73,52 s |  23.361MB |  9,63% |   53.0MB |            44,56 s |  11.519MB |  4,75% |   26.1MB |         36,01 s |  10.678MB |  4,40% |   24.2MB
-renaissance-dotty_gc_details_ParallelGC.jfr |       71,18 |    5.374MB |    1.251MB |  271.8MB | 23,28% |   63.3MB |  1,24 s | 483.426KB |  8,79% |   23.9MB |             0,72 s | 246.566KB |  4,48% |   12.2MB |          0,59 s | 213.840KB |  3,89% |   10.6MB
-  renaissance-all_gc_details_ParallelGC.jfr |     1443,14 |  244.916MB |   52.440MB |  611.0MB | 21,41% |  130.8MB | 76,84 s |  23.959MB |  9,78% |   59.8MB |            38,89 s |   9.827MB |  4,01% |   24.5MB |         31,27 s |   8.622MB |  3,52% |   21.5MB
-       renaissance-dotty_gc_details_ZGC.jfr |       71,39 |   29.351MB |    5.824MB |    1.4GB | 19,84% |  293.7MB |  8,13 s |   1.313MB |  4,47% |   66.2MB |             3,43 s | 737.294KB |  2,45% |   36.3MB |          2,11 s | 566.965KB |  1,89% |   27.9MB
-         renaissance-all_gc_details_ZGC.jfr |     1917,04 |  249.841MB |   58.992MB |  469.2MB | 23,61% |  110.8MB | 80,19 s |  24.564MB |  9,83% |   46.1MB |            52,38 s |  10.611MB |  4,25% |   19.9MB |         47,23 s |   9.719MB |  3,89% |   18.3MB
-          renaissance-dotty_gc_SerialGC.jfr |       74,36 |  501.309KB |  194.442KB |   23.7MB | 38,79% |    9.2MB |  0,11 s | 113.176KB | 22,58% |    5.4MB |             0,09 s |  74.716KB | 14,90% |    3.5MB |          0,10 s |  77.285KB | 15,42% |    3.7MB
-            renaissance-all_gc_SerialGC.jfr |     1569,44 |   14.241MB |    5.268MB |   32.7MB | 36,99% |   12.1MB |  3,44 s |   3.073MB | 21,58% |    7.0MB |             2,29 s |   1.776MB | 12,47% |    4.1MB |          2,07 s |   1.391MB |  9,77% |    3.2MB
-        renaissance-dotty_gc_ParallelGC.jfr |       71,82 | 1020.327KB |  368.347KB |   49.9MB | 36,10% |   18.0MB |  0,26 s | 207.390KB | 20,33% |   10.2MB |             0,11 s |  75.168KB |  7,37% |    3.7MB |          0,10 s |  65.232KB |  6,39% |    3.2MB
-          renaissance-all_gc_ParallelGC.jfr |     1395,09 |   57.853MB |   17.043MB |  149.3MB | 29,46% |   44.0MB | 20,54 s |   8.560MB | 14,80% |   22.1MB |             3,69 s |   1.738MB |  3,00% |    4.5MB |          2,51 s |   1.047MB |  1,81% |    2.7MB
-               renaissance-dotty_gc_ZGC.jfr |       73,97 |  702.165KB |  301.665KB |   33.4MB | 42,96% |   14.3MB |  0,16 s | 162.692KB | 23,17% |    7.7MB |             0,15 s |  92.313KB | 13,15% |    4.4MB |          0,14 s |  74.660KB | 10,63% |    3.5MB
-                 renaissance-all_gc_ZGC.jfr |     1808,46 |   89.930MB |   38.182MB |  179.0MB | 42,46% |   76.0MB | 33,43 s |  20.788MB | 23,12% |   41.4MB |            27,27 s |  10.265MB | 11,41% |   20.4MB |         26,62 s |   9.291MB | 10,33% |   18.5MB
-        renaissance-scrabble_default_G1.jfr |        8,78 |   10.140MB |    2.181MB |    4.1GB | 21,51% |  894.2MB |  1,78 s | 828.686KB |  7,98% |  331.8MB |             0,19 s |  95.626KB |  0,92% |   38.3MB |          0,18 s |  84.384KB |  0,81% |   33.8MB
-       renaissance-page-rank_default_G1.jfr |       93,91 |   38.742MB |   10.058MB |    1.5GB | 25,96% |  385.6MB |  8,12 s |   3.982MB | 10,28% |  152.7MB |             0,95 s | 419.719KB |  1,06% |   15.7MB |          0,78 s | 314.678KB |  0,79% |   11.8MB
-  renaissance-future-genetic_default_G1.jfr |       62,62 |   11.028MB |    2.645MB |  634.0MB | 23,99% |  152.1MB |  2,12 s |   1.117MB | 10,13% |   64.2MB |             0,35 s | 191.911KB |  1,70% |   10.8MB |          0,29 s | 143.614KB |  1,27% |    8.1MB
-      renaissance-movie-lens_default_G1.jfr |      558,97 |   79.090MB |   23.428MB |  509.4MB | 29,62% |  150.9MB | 19,02 s |  12.370MB | 15,64% |   79.7MB |             8,90 s |   3.984MB |  5,04% |   25.7MB |          7,93 s |   3.400MB |  4,30% |   21.9MB
-      renaissance-scala-doku_default_G1.jfr |       33,58 |    1.363MB |  390.270KB |  146.1MB | 27,96% |   40.9MB |  0,27 s | 196.888KB | 14,11% |   20.6MB |             0,13 s |  85.984KB |  6,16% |    9.0MB |          0,09 s |  71.012KB |  5,09% |    7.4MB
-      renaissance-chi-square_default_G1.jfr |       34,35 |   18.407MB |    4.174MB |    1.9GB | 22,68% |  437.5MB |  3,48 s |   1.666MB |  9,05% |  174.6MB |             0,51 s | 277.301KB |  1,47% |   28.4MB |          0,45 s | 221.942KB |  1,18% |   22.7MB
-       renaissance-fj-kmeans_default_G1.jfr |       61,99 |   40.407MB |    8.556MB |    2.3GB | 21,17% |  496.9MB |  8,76 s |   3.385MB |  8,38% |  196.6MB |             0,95 s | 270.638KB |  0,65% |   15.3MB |          0,73 s | 209.533KB |  0,51% |   11.9MB
-     renaissance-rx-scrabble_default_G1.jfr |        8,05 |    1.973MB |  502.029KB |  882.0MB | 24,84% |  219.1MB |  0,34 s | 233.669KB | 11,56% |  102.0MB |             0,12 s |  87.549KB |  4,33% |   38.2MB |          0,10 s |  75.323KB |  3,73% |   32.9MB
- renaissance-neo4j-analytics_default_G1.jfr |       42,44 |   11.148MB |    2.537MB |  945.6MB | 22,76% |  215.2MB |  2,16 s |   1.119MB | 10,03% |   94.9MB |             0,56 s | 309.822KB |  2,71% |   25.7MB |          0,34 s | 214.675KB |  1,88% |   17.8MB
-        renaissance-reactors_default_G1.jfr |       63,61 |    7.692MB |    1.925MB |  435.3MB | 25,02% |  108.9MB |  1,39 s | 887.656KB | 11,27% |   49.1MB |             0,37 s | 225.111KB |  2,86% |   12.4MB |          0,32 s | 195.146KB |  2,48% |   10.8MB
-        renaissance-dec-tree_default_G1.jfr |       31,36 |   10.728MB |    2.821MB |    1.2GB | 26,29% |  323.8MB |  2,18 s |   1.393MB | 12,98% |  159.9MB |             0,72 s | 442.184KB |  4,03% |   49.6MB |          0,52 s | 330.688KB |  3,01% |   37.1MB
-renaissance-scala-stm-bench7_default_G1.jfr |       52,75 |    9.709MB |    2.455MB |  662.6MB | 25,29% |  167.6MB |  1,79 s |   1.085MB | 11,17% |   74.0MB |             0,30 s | 184.809KB |  1,86% |   12.3MB |          0,24 s | 146.286KB |  1,47% |    9.8MB
-     renaissance-naive-bayes_default_G1.jfr |       60,24 |   46.098MB |    9.593MB |    2.7GB | 20,81% |  573.3MB |  9,26 s |   3.529MB |  7,66% |  210.9MB |             0,96 s | 407.568KB |  0,86% |   23.8MB |          0,88 s | 331.204KB |  0,70% |   19.3MB
-             renaissance-als_default_G1.jfr |      128,23 |   21.656MB |    5.516MB |  608.0MB | 25,47% |  154.9MB |  4,62 s |   2.673MB | 12,34% |   75.0MB |             1,61 s | 861.205KB |  3,88% |   23.6MB |          1,23 s | 660.516KB |  2,98% |   18.1MB
-   renaissance-par-mnemonics_default_G1.jfr |       30,44 |   13.985MB |    3.017MB |    1.6GB | 21,57% |  356.8MB |  2,48 s |   1.081MB |  7,73% |  127.8MB |             0,27 s | 125.951KB |  0,88% |   14.5MB |          0,26 s | 113.788KB |  0,79% |   13.1MB
-    renaissance-scala-kmeans_default_G1.jfr |       10,15 |    1.070MB |  307.848KB |  379.3MB | 28,11% |  106.6MB |  0,18 s | 150.917KB | 13,78% |   52.3MB |             0,09 s |  70.042KB |  6,40% |   24.3MB |          0,08 s |  63.495KB |  5,80% |   22.0MB
-    renaissance-philosophers_default_G1.jfr |       28,20 |    7.071MB |    1.808MB |  902.6MB | 25,57% |  230.8MB |  1,28 s | 802.138KB | 11,08% |  100.0MB |             0,22 s | 153.850KB |  2,12% |   19.2MB |          0,21 s | 127.770KB |  1,76% |   15.9MB
-  renaissance-log-regression_default_G1.jfr |       34,37 |    9.486MB |    2.426MB |  993.7MB | 25,57% |  254.1MB |  2,00 s |   1.284MB | 13,54% |  134.5MB |             0,75 s | 468.495KB |  4,82% |   47.9MB |          0,57 s | 359.345KB |  3,70% |   36.8MB
-       renaissance-gauss-mix_default_G1.jfr |       23,42 |    7.383MB |    2.204MB |    1.1GB | 29,85% |  338.7MB |  1,53 s |   1.217MB | 16,49% |  187.1MB |             0,84 s | 492.606KB |  6,52% |   73.9MB |          0,74 s | 429.833KB |  5,69% |   64.5MB
-       renaissance-mnemonics_default_G1.jfr |       36,81 |   14.320MB |    3.218MB |    1.4GB | 22,47% |  314.7MB |  2,66 s |   1.234MB |  8,62% |  120.6MB |             0,29 s | 139.534KB |  0,95% |   13.3MB |          0,29 s | 131.905KB |  0,90% |   12.6MB
+JFR file                                    | runtime (s) | original     | compressed  | per-hour      | %      | per-hour      | default | size        | %      | per-hour     | reasonable-default | size         | %      | per-hour     | reduced-default | size        | %      | per-hour    
+------------------------------------------- | ----------- | ------------ | ----------- | ------------- | ------ | ------------- | ------- | ----------- | ------ | ------------ | ------------------ | ------------ | ------ | ------------ | --------------- | ----------- | ------ | ------------
+        renaissance-dotty_gc_details_G1.jfr |       70,26 |  12.752287MB |  2.959194MB |  653.363342MB | 23,21% |  151.614288MB |  2,68 s |  1.019384MB |  7,99% |  52.228149MB |             2,04 s |    639.008KB |  4,89% |  31.972227MB |          0,77 s |   163.620KB |  1,25% |   8.186597MB
+          renaissance-all_gc_details_G1.jfr |     1827,15 | 241.533397MB | 55.063511MB |  475.890076MB | 22,80% |  108.490906MB | 47,64 s | 20.522795MB |  8,50% |  40.435791MB |            38,20 s | 10.9037285MB |  4,51% |  21.483473MB |          4,83 s |  2.177089MB |  0,90% |   4.289489MB
+                renaissance-dotty_gc_G1.jfr |       70,63 |    603.439KB |   255.816KB |   30.036728MB | 42,39% |   12.733486MB |  0,12 s |   182.868KB | 30,30% |   9.102424MB |             0,10 s |    111.881KB | 18,54% |   5.568968MB |          0,07 s |    94.592KB | 15,68% |   4.708389MB
+                  renaissance-all_gc_G1.jfr |     1537,39 |  29.324034MB | 11.906271MB |   68.665947MB | 40,60% |   27.880043MB |  6,05 s |  8.321565MB | 28,38% |  19.485998MB |             3,02 s |   3.508536MB | 11,96% |   8.215682MB |          2,31 s | 2.5080185MB |  8,55% |   5.872843MB
+           renaissance-dotty_default_G1.jfr |       67,83 |   5.972811MB |  1.507894MB |  316.978638MB | 25,25% |     80.0243MB |  0,49 s |   450.754KB |  7,37% |  23.360964MB |             0,34 s |    334.394KB |  5,47% |  17.330423MB |          0,16 s |   157.546KB |  2,58% |   8.165041MB
+  renaissance-dotty_gc_details_SerialGC.jfr |       74,30 |   9.037703MB |  1.998353MB |  437.903717MB | 22,11% |  96.8261795MB |  1,87 s |   813.609KB |  8,79% |  38.497856MB |             1,27 s |    490.643KB |  5,30% |  23.215918MB |          0,16 s |   142.389KB |  1,54% |   6.737458MB
+    renaissance-all_gc_details_SerialGC.jfr |     1587,18 | 242.606878MB | 50.445438MB |  550.273926MB | 20,79% |  114.418877MB | 67,30 s |  29.61804MB | 12,21% |   67.17878MB |            54,30 s |  16.324868MB |  6,73% |  37.027592MB |          4,36 s |  3.915626MB |  1,61% |   8.881309MB
+renaissance-dotty_gc_details_ParallelGC.jfr |       71,18 |   5.373575MB |  1.250996MB |  271.769348MB | 23,28% |   63.269287MB |  1,53 s |   616.900KB | 11,21% |  30.468584MB |             0,99 s |    303.316KB |  5,51% |  14.980734MB |          0,10 s |    84.286KB |  1,53% |   4.162874MB
+  renaissance-all_gc_details_ParallelGC.jfr |     1443,14 | 244.915904MB | 52.439739MB |  610.957275MB | 21,41% |  130.814041MB | 73,59 s | 30.594476MB | 12,49% |  76.319733MB |            51,38 s |  13.012482MB |  5,31% |  32.460407MB |          4,31 s |  2.739314MB |  1,12% |   6.833382MB
+       renaissance-dotty_gc_details_ZGC.jfr |       71,39 |  29.350696MB |  5.824309MB | 1.445422173GB | 19,84% |  293.711334MB |  4,64 s |   1.60335MB |  5,46% |  80.854561MB |             3,15 s |    1.02967MB |  3,51% |  51.924728MB |          0,56 s |   159.401KB |  0,53% |   7.849977MB
+         renaissance-all_gc_details_ZGC.jfr |     1917,04 | 249.840623MB | 58.992313MB |  469.173279MB | 23,61% |  110.781097MB | 83,88 s | 32.487244MB | 13,00% |  61.007481MB |            66,36 s |  16.975392MB |  6,79% |  31.877924MB |          9,99 s |  4.405986MB |  1,76% |   8.273958MB
+          renaissance-dotty_gc_SerialGC.jfr |       74,36 |    501.309KB |   194.442KB |   23.700899MB | 38,79% |    9.192859MB |  0,08 s |   125.914KB | 25,12% |   5.952972MB |             0,08 s |     89.785KB | 17,91% |   4.244868MB |          0,07 s |    80.645KB | 16,09% |   3.812717MB
+            renaissance-all_gc_SerialGC.jfr |     1569,44 |  14.241157MB |  5.267843MB |   32.666573MB | 36,99% |   12.083456MB |  1,98 s |  3.259761MB | 22,89% |   7.477287MB |             1,58 s |   2.081347MB | 14,62% |   4.774225MB |          1,19 s |  1.514347MB | 10,63% |   3.473631MB
+        renaissance-dotty_gc_ParallelGC.jfr |       71,82 |   1020.327KB |   368.347KB |   49.942814MB | 36,10% |   18.029776MB |  0,22 s |  255.8955KB | 25,08% |  12.525534MB |             0,07 s |     80.946KB |  7,93% |   3.962146MB |          0,06 s |    67.560KB |  6,62% |   3.306895MB
+          renaissance-all_gc_ParallelGC.jfr |     1395,09 |   57.85318MB | 17.042738MB |  149.288635MB | 29,46% |   43.978348MB | 13,94 s | 11.612105MB | 20,07% |  29.964737MB |             2,60 s |   1.920723MB |  3,32% |   4.956376MB |          1,56 s |  1.046277MB |  1,81% |    2.69989MB
+               renaissance-dotty_gc_ZGC.jfr |       73,97 |    702.165KB |   301.665KB |   33.373402MB | 42,96% |   14.337924MB |  0,13 s |   197.385KB | 28,11% |   9.381557MB |             0,12 s |    127.474KB | 18,15% |   6.058731MB |          0,10 s |   104.539KB | 14,89% |   4.968667MB
+                 renaissance-all_gc_ZGC.jfr |     1808,46 |  89.929731MB | 38.182118MB |  179.018402MB | 42,46% |   76.007141MB | 19,86 s | 25.898249MB | 28,80% |  51.554283MB |            19,41 s |  13.779075MB | 15,32% |  27.429279MB |         18,83 s | 12.601996MB | 14,01% |  25.086132MB
+        renaissance-scrabble_default_G1.jfr |        8,78 |  10.139577MB | 2.1809845MB | 4.059794903GB | 21,51% |  894.204407MB |  0,18 s |   136.727KB |  1,32% |   54.74408MB |             0,17 s |    107.229KB |  1,03% |  42.933327MB |          0,16 s |    91.330KB |  0,88% |  36.567738MB
+       renaissance-page-rank_default_G1.jfr |       93,91 |   38.74173MB | 10.057923MB | 1.450346589GB | 25,96% |  385.568085MB |  0,87 s |   688.555KB |  1,74% |  25.776932MB |             0,82 s |    478.910KB |  1,21% |  17.928619MB |          0,66 s |   308.617KB |  0,78% |  11.553483MB
+  renaissance-future-genetic_default_G1.jfr |       62,62 |   11.02812MB |  2.645244MB |   634.01593MB | 23,99% |  152.077286MB |  0,37 s |   335.991KB |  2,98% | 18.8636875MB |             0,30 s |    224.164KB |  1,99% |  12.585332MB |          0,21 s |   157.422KB |  1,39% |   8.838199MB
+      renaissance-movie-lens_default_G1.jfr |      558,97 |  79.089788MB | 23.428468MB |  509.370758MB | 29,62% |  150.888962MB |  6,25 s |   7.24066MB |  9,15% |  46.632824MB |             5,20 s |   4.188781MB |  5,30% |   26.97747MB |          2,28 s | 2.1497755MB |  2,72% |  13.845438MB
+      renaissance-scala-doku_default_G1.jfr |       33,58 |   1.362984MB |   390.270KB |  146.116058MB | 27,96% |   40.857517MB |  0,10 s |   120.752KB |  8,65% |  12.641583MB |             0,09 s |     98.261KB |  7,04% |  10.286967MB |          0,05 s |    75.078KB |  5,38% |   7.859967MB
+      renaissance-chi-square_default_G1.jfr |       34,35 |  18.406825MB |  4.174436MB |  1.88377738GB | 22,68% |  437.470154MB |  0,39 s |   433.953KB |  2,30% |  44.411304MB |             0,35 s |    308.681KB |  1,64% |  31.590763MB |          0,27 s |   216.275KB |  1,15% |  22.133892MB
+       renaissance-fj-kmeans_default_G1.jfr |       61,99 |  40.407334MB |  8.556082MB | 2.291518211GB | 21,17% |  496.864532MB |  0,83 s |   548.898KB |  1,33% |  31.128279MB |             0,64 s |    326.920KB |  0,79% |  18.539778MB |          0,63 s |   252.650KB |  0,61% |  14.327918MB
+     renaissance-rx-scrabble_default_G1.jfr |        8,05 |   1.973365MB |   502.029KB |  882.008606MB | 24,84% |  219.126312MB |  0,08 s |   119.997KB |  5,94% |  52.376457MB |             0,07 s |     94.241KB |  4,66% |   41.13451MB |          0,05 s |    73.820KB |  3,65% |  32.221172MB
+ renaissance-neo4j-analytics_default_G1.jfr |       42,44 |   11.14803MB |   2.53684MB |  945.583923MB | 22,76% |  215.176636MB |  0,48 s |   484.761KB |  4,25% |  40.154057MB |             0,36 s |    358.208KB |  3,14% | 29.6713505MB |          0,23 s |   229.067KB |  2,01% |  18.974279MB
+        renaissance-reactors_default_G1.jfr |       63,61 |   7.692236MB |  1.924967MB |  435.349152MB | 25,02% |  108.945267MB |  0,32 s |   388.408KB |  4,93% |  21.467108MB |             0,29 s |    261.673KB |  3,32% |  14.462515MB |          0,22 s |   211.649KB |  2,69% |  11.697747MB
+        renaissance-dec-tree_default_G1.jfr |       31,36 |  10.728335MB |  2.820837MB | 1.202545881GB | 26,29% |  323.777954MB |  0,59 s |   713.500KB |  6,49% |  79.976669MB |             0,49 s |    479.114KB |  4,36% |   53.70422MB |          0,27 s |   272.359KB |  2,48% |  30.528936MB
+renaissance-scala-stm-bench7_default_G1.jfr |       52,75 |   9.708675MB |   2.45492MB | 662.6414795MB | 25,29% |  167.554428MB |  0,31 s |   293.138KB |  2,95% |   19.53846MB |             0,26 s |    206.726KB |  2,08% |  13.778847MB |          0,20 s |   154.865KB |  1,56% |  10.322207MB
+     renaissance-naive-bayes_default_G1.jfr |       60,24 | 46.0981865MB |  9.592987MB | 2.690302372GB | 20,81% |  573.285645MB |  0,76 s |  674.6875KB |  1,43% |  39.374943MB |             0,67 s |    458.838KB |  0,97% |  26.777901MB |          0,66 s |   337.878KB |  0,72% |  19.718647MB
+             renaissance-als_default_G1.jfr |      128,23 |  21.656352MB |  5.515587MB |  608.004395MB | 25,47% |  154.850693MB |  1,36 s |  1.388979MB |  6,41% |  38.995731MB |             1,12 s |    896.857KB |  4,04% |  24.589226MB |          0,50 s |   430.641KB |  1,94% |  11.806914MB
+   renaissance-par-mnemonics_default_G1.jfr |       30,44 |  13.984857MB | 3.0166235MB | 1.615321159GB | 21,57% |  356.797638MB |  0,25 s |   199.840KB |  1,40% |  23.082508MB |             0,22 s |    147.032KB |  1,03% |  16.982962MB |          0,21 s |   122.740KB |  0,86% | 14.1771145MB
+    renaissance-scala-kmeans_default_G1.jfr |       10,15 |   1.069575MB |   307.848KB |  379.322998MB | 28,11% |  106.618774MB |  0,06 s |    98.159KB |  8,96% |  33.996075MB |             0,06 s |     78.861KB |  7,20% |  27.312529MB |          0,04 s |    67.282KB |  6,14% |  23.302267MB
+    renaissance-philosophers_default_G1.jfr |       28,20 |   7.070744MB |   1.80775MB |   902.56073MB | 25,57% |  230.754227MB |  0,20 s |   254.479KB |  3,51% |  31.722143MB |             0,19 s |    178.619KB |  2,47% |  22.265856MB |          0,18 s |   144.693KB |  2,00% |  18.036821MB
+  renaissance-log-regression_default_G1.jfr |       34,37 |    9.48615MB |   2.42593MB |  993.684814MB | 25,57% | 254.1188965MB |  0,62 s |   749.733KB |  7,72% |   76.69474MB |             0,51 s |   486.3955KB |  5,01% |  49.756325MB |          0,20 s |   211.705KB |  2,18% |  21.656588MB
+       renaissance-gauss-mix_default_G1.jfr |       23,42 |   7.383413MB |  2.204135MB | 1.108117223GB | 29,85% |  338.740143MB |  0,61 s |   913.976KB | 12,09% | 137.171265MB |             0,49 s |    548.839KB |  7,26% |  82.370819MB |          0,30 s |   374.258KB |  4,95% | 56.1693535MB
+       renaissance-mnemonics_default_G1.jfr |       36,81 |  14.319726MB |  3.218011MB | 1.367453456GB | 22,47% |  314.677216MB |  0,32 s |   238.131KB |  1,62% |   22.74016MB |             0,27 s |   166.6455KB |  1,14% |  15.913711MB |          0,27 s |   146.554KB |  1,00% |  13.995057MB
 ```
 
 The generated JFR files are probably larger than real-world files, but smaller than dedicated GC benchmarks.

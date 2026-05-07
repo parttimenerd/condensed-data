@@ -253,8 +253,8 @@ def main():
                         help='Regex pattern to filter benchmark files (e.g., "dotty.*" for smaller files)')
     parser.add_argument('--small', '-s', action='store_true',
                         help='Shortcut for --filter-regex "dotty.*" (smaller/faster files)')
-    parser.add_argument('--baseline', '-b', default='XZ',
-                        help='Baseline compression for relative comparison (default: XZ)')
+    parser.add_argument('--baseline', '-b', default='LZ4',
+                        help='Baseline compression for relative comparison (default: LZ4)')
 
     args = parser.parse_args()
 

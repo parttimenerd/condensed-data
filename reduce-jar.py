@@ -11,6 +11,10 @@ Usage examples:
     ./reduce-jar.py reduce input.jar output.jar --platform darwin/aarch64
     ./reduce-jar.py reduce input.jar --list-platforms
 
+    # Reduce with femtojar compression
+    ./reduce-jar.py reduce input.jar output.jar --platform darwin/aarch64 --femtojar
+    ./reduce-jar.py reduce input.jar output.jar --platform darwin/aarch64 --femtojar --femtojar-proguard
+
     # Generate matrix of all platform variants into a folder
     ./reduce-jar.py matrix input.jar out-dir/
     ./reduce-jar.py matrix input.jar out-dir/ --platforms darwin/aarch64,linux/amd64
@@ -40,6 +44,7 @@ from typing import List, Optional
 # ---------------------------------------------------------------------------
 
 NATIVE_LIB_PREFIX = "net/jpountz/util/"
+ZSTD_NATIVE_LIB_PREFIX = ""  # ZSTD libraries are at the root level
 REDUCTION_INFO_PATH = "jar-reduction-info.json"
 
 # Prefixes removed in inflaterless (without-JMC) builds
@@ -71,13 +76,18 @@ def discover_platforms(zf: zipfile.ZipFile) -> List[str]:
     """Return sorted list of platform paths like 'darwin/aarch64'."""
     platforms = set()
     for entry in zf.namelist():
-        if not entry.startswith(NATIVE_LIB_PREFIX):
-            continue
-        rel = entry[len(NATIVE_LIB_PREFIX):]
-        parts = PurePosixPath(rel).parts
-        # Expect os/arch/lib or os/arch/ or os/
-        if len(parts) >= 2:
-            platforms.add(f"{parts[0]}/{parts[1]}")
+        # Check LZ4 native libraries
+        if entry.startswith(NATIVE_LIB_PREFIX):
+            rel = entry[len(NATIVE_LIB_PREFIX):]
+            parts = PurePosixPath(rel).parts
+            # Expect os/arch/lib or os/arch/ or os/
+            if len(parts) >= 2:
+                platforms.add(f"{parts[0]}/{parts[1]}")
+        # Check ZSTD native libraries at root level (darwin/aarch64/libzstd-*.so/dylib/dll)
+        elif entry.endswith((".dylib", ".so", ".dll")) and entry.count("/") == 2:
+            parts = PurePosixPath(entry).parts
+            if len(parts) == 3:  # e.g., ['darwin', 'aarch64', 'libzstd-jni-1.5.6-4.dylib']
+                platforms.add(f"{parts[0]}/{parts[1]}")
     return sorted(platforms)
 
 
@@ -100,6 +110,8 @@ def reduce_platform(
     for p in available:
         if p != platform:
             removed_prefixes.append(NATIVE_LIB_PREFIX + p + "/")
+            # Also remove ZSTD libraries for other platforms (e.g., "darwin/x86_64/")
+            removed_prefixes.append(p + "/")
 
     return ReductionResult(
         name="platform",
@@ -317,6 +329,24 @@ def cmd_reduce(args: argparse.Namespace) -> None:
         sys.exit(1)
 
     reduce_jar(args.input, args.output, reductions)
+
+    # Optionally apply femtojar compression
+    if args.femtojar:
+        print(f"\nApplying femtojar compression to {os.path.basename(args.output)} …")
+        cli_jar = _ensure_femtojar_cli()
+        compression = args.femtojar_compression or "default"
+        ok = _run_femtojar(
+            cli_jar,
+            args.output,
+            args.output,
+            compression,
+            args.femtojar_proguard,
+            CONDENSED_DATA_PROGUARD_OPTIONS if args.femtojar_proguard else [],
+            args.femtojar_verbose,
+        )
+        if not ok:
+            print(f"Error: femtojar compression failed", file=sys.stderr)
+            sys.exit(1)
 
 
 def cmd_matrix(args: argparse.Namespace) -> None:
@@ -773,6 +803,27 @@ def main() -> None:
         "--list-platforms",
         action="store_true",
         help="List available platforms in the JAR and exit",
+    )
+    p_reduce.add_argument(
+        "--femtojar",
+        action="store_true",
+        help="Apply femtojar compression to the reduced JAR",
+    )
+    p_reduce.add_argument(
+        "--femtojar-compression",
+        choices=["default", "zopfli"],
+        default="default",
+        help="Compression algorithm for femtojar (default: default)",
+    )
+    p_reduce.add_argument(
+        "--femtojar-proguard",
+        action="store_true",
+        help="Apply ProGuard optimization with femtojar",
+    )
+    p_reduce.add_argument(
+        "--femtojar-verbose",
+        action="store_true",
+        help="Show femtojar verbose output",
     )
     add_common_options(p_reduce)
     p_reduce.set_defaults(func=cmd_reduce)
