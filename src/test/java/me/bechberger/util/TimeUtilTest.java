@@ -35,30 +35,21 @@ public class TimeUtilTest {
     }
 
     @Test
-    public void testWithoutDate() {
-        var instant = TimeUtil.parseInstant("12:34:56");
-        var expected =
-                ZonedDateTime.ofInstant(instant, ZoneId.systemDefault())
-                        .format(DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ssXXX"));
-        assertEquals(expected, TimeUtil.formatInstant(instant));
+    public void testWithoutDateIsRejected() {
+        org.junit.jupiter.api.Assertions.assertThrows(
+                IllegalArgumentException.class, () -> TimeUtil.parseInstant("12:34:56"));
     }
 
     @Test
-    public void testWithoutDateAndSeconds() {
-        var instant = TimeUtil.parseInstant("12:34");
-        var expected =
-                ZonedDateTime.ofInstant(instant, ZoneId.systemDefault())
-                        .format(DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ssXXX"));
-        assertEquals(expected, TimeUtil.formatInstant(instant));
+    public void testWithoutDateAndSecondsIsRejected() {
+        org.junit.jupiter.api.Assertions.assertThrows(
+                IllegalArgumentException.class, () -> TimeUtil.parseInstant("12:34"));
     }
 
     @Test
-    public void testWithoutDateAndSeconds2() {
-        var instant = TimeUtil.parseInstant("2:34");
-        var expected =
-                ZonedDateTime.ofInstant(instant, ZoneId.systemDefault())
-                        .format(DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ssXXX"));
-        assertEquals(expected, TimeUtil.formatInstant(instant));
+    public void testWithoutDateAndSeconds2IsRejected() {
+        org.junit.jupiter.api.Assertions.assertThrows(
+                IllegalArgumentException.class, () -> TimeUtil.parseInstant("2:34"));
     }
 
     @Property
@@ -80,9 +71,9 @@ public class TimeUtilTest {
 
     @ParameterizedTest
     @CsvSource({
-        "3s,3s",
+        "3s,3.0s",
         "1.5s,1.5s",
-        "100ms,0.1s",
+        "100ms,100.0ms",
         "1500ms,1.5s",
         "1m30s,1m 30s",
         "1h,1h",
@@ -285,8 +276,8 @@ public class TimeUtilTest {
     @CsvSource({
         "1H30M, 1h 30m",
         "1H 30M, 1h 30m",
-        "3S, 3s",
-        "500MS, 0.5s",
+        "3S, 3.0s",
+        "500MS, 500.0ms",
     })
     public void testParseDurationCaseInsensitive(String input, String expectedFormatted) {
         var duration = TimeUtil.parseDuration(input);
@@ -339,7 +330,7 @@ public class TimeUtilTest {
     @ParameterizedTest
     @CsvSource({
         "0, 0s",
-        "1, 1s",
+        "1, 1.0s",
         "60, 1m",
         "61, 1m 1s",
         "3600, 1h",
@@ -364,5 +355,17 @@ public class TimeUtilTest {
         // Within range: unchanged
         var oneHour = Duration.ofHours(1);
         assertEquals(oneHour, TimeUtil.clamp(oneHour));
+    }
+
+    // ========== Bug 42/63/193/208: time-only format rejected ==========
+
+    @ParameterizedTest
+    @ValueSource(strings = {"12:34:56", "12:34", "2:34", "0:0:0", "23:59:59"})
+    public void testTimeOnlyFormatIsRejected(String input) {
+        var ex =
+                org.junit.jupiter.api.Assertions.assertThrows(
+                        IllegalArgumentException.class, () -> TimeUtil.parseInstant(input));
+        org.assertj.core.api.Assertions.assertThat(ex.getMessage())
+                .contains("Time-only format is not supported");
     }
 }

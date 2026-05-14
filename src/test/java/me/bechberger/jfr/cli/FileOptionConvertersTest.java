@@ -149,6 +149,35 @@ public class FileOptionConvertersTest {
     }
 
     @Test
+    public void testCJFRFileConverterNonExistentDirectory() {
+        var converter = new FileOptionConverters.CJFRFileConverter();
+        Path result = converter.convert("/tmp/nonexistent_dir_xyz/output.cjfr");
+        assertEquals(Path.of("/tmp/nonexistent_dir_xyz/output.cjfr"), result);
+    }
+
+    @Test
+    public void testJFRFileConverterNonExistentDirectory() {
+        var converter = new FileOptionConverters.JFRFileConverter();
+        Path result = converter.convert("/tmp/nonexistent_dir_xyz/output.jfr");
+        assertEquals(Path.of("/tmp/nonexistent_dir_xyz/output.jfr"), result);
+    }
+
+    @Test
+    public void testFileConverterExistingDirectoryAccepted() throws IOException {
+        var converter = new FileOptionConverters.CJFRFileConverter();
+        Path result = converter.convert(tempDir.resolve("output.cjfr").toString());
+        assertEquals(tempDir.resolve("output.cjfr"), result);
+    }
+
+    @Test
+    public void testFileConverterNoParentAccepted() {
+        // Simple filename with no directory component should still work
+        var converter = new FileOptionConverters.CJFRFileConverter();
+        Path result = converter.convert("output.cjfr");
+        assertEquals(Path.of("output.cjfr"), result);
+    }
+
+    @Test
     public void testHTMLFileConverterValid() {
         var converter = new FileOptionConverters.HTMLFileConverter();
         assertEquals(Path.of("report.html"), converter.convert("report.html"));
@@ -292,5 +321,29 @@ public class FileOptionConvertersTest {
         assertTrue(
                 FileOptionConverters.isZipAllowed(
                         FileOptionConverters.ExistingCJFRFileOrZipOrFolderConverter.class));
+    }
+
+    @Test
+    public void testLz4CompressedJfrGivesHelpfulError() throws Exception {
+        // Create a dummy .jfr.lz4 file
+        var tmpDir = java.nio.file.Files.createTempDirectory("jfr-cli-test");
+        var lz4File = tmpDir.resolve("test.jfr.lz4");
+        java.nio.file.Files.writeString(lz4File, "dummy");
+        try {
+            var converter = new FileOptionConverters.ExistingJFRFileOrZipOrFolderConverter();
+            var ex =
+                    assertThrows(
+                            IllegalArgumentException.class,
+                            () -> converter.convert(lz4File.toString()));
+            assertTrue(
+                    ex.getMessage().contains("Compressed LZ4 files are not supported"),
+                    "Expected LZ4 hint, got: " + ex.getMessage());
+            assertTrue(
+                    ex.getMessage().contains("unlz4"),
+                    "Expected decompress command hint, got: " + ex.getMessage());
+        } finally {
+            java.nio.file.Files.deleteIfExists(lz4File);
+            java.nio.file.Files.deleteIfExists(tmpDir);
+        }
     }
 }

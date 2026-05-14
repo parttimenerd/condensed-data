@@ -733,8 +733,7 @@ public class CombinerSpec {
                             .valueType((BiFunction) (out, et) -> writer.getDurationType())
                             .valueExtractor(
                                     e ->
-                                            me.bechberger.util.TimeUtil.clamp(
-                                                            e.getDuration("duration"))
+                                            me.bechberger.util.TimeUtil.clamp(e.getDuration())
                                                     .toNanos());
             if (config.ignoreTooShortGCPauses()) {
                 spec.mapToList(

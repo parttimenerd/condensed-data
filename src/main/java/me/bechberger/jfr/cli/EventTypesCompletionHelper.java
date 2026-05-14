@@ -196,7 +196,7 @@ public class EventTypesCompletionHelper {
             return;
         }
         Arrays.stream(cacheFiles)
-                .sorted(Comparator.comparing(File::lastModified))
+                .sorted(Comparator.comparing(File::lastModified).reversed())
                 .skip(MAX_CACHE_ENTRIES)
                 .forEach(File::delete);
     }

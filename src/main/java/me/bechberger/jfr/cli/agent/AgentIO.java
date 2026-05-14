@@ -123,6 +123,33 @@ public class AgentIO {
         return getTmpFileName("is.closed");
     }
 
+    public Path getExitCodeFile() {
+        return getTmpFileName("exit.code");
+    }
+
+    /** Write the exit code of the agent command */
+    public void writeExitCode(int exitCode) {
+        try {
+            Files.writeString(getExitCodeFile(), String.valueOf(exitCode), CREATE);
+        } catch (IOException e) {
+            // best effort
+        }
+    }
+
+    /** Read and delete the exit code file. Returns 0 if not found. */
+    public int readExitCode() {
+        try {
+            if (Files.exists(getExitCodeFile())) {
+                int code = Integer.parseInt(Files.readString(getExitCodeFile()).trim());
+                Files.deleteIfExists(getExitCodeFile());
+                return code;
+            }
+        } catch (IOException | NumberFormatException e) {
+            // best effort
+        }
+        return 0;
+    }
+
     public void writeSevereError(String message) {
         println("Severe Error: " + message);
     }

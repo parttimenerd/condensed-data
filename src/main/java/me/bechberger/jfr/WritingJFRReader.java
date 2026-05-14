@@ -3,7 +3,9 @@ package me.bechberger.jfr;
 import static me.bechberger.condensed.Util.toNanoSeconds;
 import static me.bechberger.jfr.TypeUtil.getTypedPrimitiveValue;
 
+import java.io.BufferedOutputStream;
 import java.io.ByteArrayOutputStream;
+import java.io.FilterOutputStream;
 import java.io.IOException;
 import java.io.OutputStream;
 import java.nio.file.Files;
@@ -24,6 +26,10 @@ import me.bechberger.condensed.types.StructType;
 import me.bechberger.jfr.JFREventTypedValueCombiner.JFREventTypedValuedReconstitutor;
 import org.jetbrains.annotations.Nullable;
 import org.openjdk.jmc.flightrecorder.writer.RecordingImpl;
+import org.openjdk.jmc.flightrecorder.writer.TypeImpl;
+import org.openjdk.jmc.flightrecorder.writer.TypedFieldImpl;
+import org.openjdk.jmc.flightrecorder.writer.TypedFieldValueImpl;
+import org.openjdk.jmc.flightrecorder.writer.TypedValueImpl;
 import org.openjdk.jmc.flightrecorder.writer.api.*;
 import org.openjdk.jmc.flightrecorder.writer.api.Types.Builtin;
 import org.openjdk.jmc.flightrecorder.writer.api.Types.JDK;
@@ -31,6 +37,22 @@ import org.openjdk.jmc.flightrecorder.writer.api.Types.Predefined;
 
 @JMCDependent
 public class WritingJFRReader {
+
+    /**
+     * Wraps an OutputStream to prevent {@code close()} from propagating. Used so that {@link
+     * RecordingImpl#close()} flushes its data without closing the underlying output stream,
+     * allowing subsequent recordings to write to the same stream.
+     */
+    private static class NonClosingOutputStream extends FilterOutputStream {
+        NonClosingOutputStream(OutputStream out) {
+            super(out);
+        }
+
+        @Override
+        public void close() throws IOException {
+            flush(); // flush but don't close the underlying stream
+        }
+    }
 
     private final JFRReader reader;
     private final OutputStream outputStream;
@@ -41,6 +63,19 @@ public class WritingJFRReader {
             new JFREventTypedValuedReconstitutor(this);
     private final Queue<TypedValue> eventsToEmit = new ArrayDeque<>();
     private final Map<String, Integer> combinedEventCount = new HashMap<>();
+
+    /**
+     * Cache for sub-struct TypedValue conversions. The condensed format's universe cache returns
+     * the same ReadStruct instance for identical cached values (threads, stack traces, etc.), so
+     * identity-based lookup avoids redundant conversions and allows the JMC writer to reuse
+     * constant pool entries.
+     */
+    private final IdentityHashMap<ReadStruct, TypedValue> subStructCache = new IdentityHashMap<>();
+
+    private int eventCount = 0;
+
+    /** Rotate JMC recording chunks every N events to bound per-chunk memory */
+    private static final int CHUNK_ROTATION_INTERVAL = 100_000;
 
     /** Add default values for removed fields that are not handled by the Java JFR API */
     private final boolean shouldAddDefaultValuesIfNecessary;
@@ -77,7 +112,7 @@ public class WritingJFRReader {
         this.recording =
                 (RecordingImpl)
                         Recordings.newRecording(
-                                outputStream,
+                                new NonClosingOutputStream(outputStream),
                                 r -> {
                                     r.withStartTicks(1);
                                     r.withTimestamp(1);
@@ -88,6 +123,7 @@ public class WritingJFRReader {
         if (!eventsToEmit.isEmpty()) {
             var event = eventsToEmit.poll();
             recording.writeEvent(event);
+            maybeRotateChunk();
             return event;
         }
         var event = reader.readNextEvent();
@@ -104,9 +140,33 @@ public class WritingJFRReader {
             eventsToEmit.addAll(reconstitutor.reconstitute(this.reader.getInputStream(), event));
             return readNextJFREvent(); // comes in handy when the combined events
         }
-        var evt = toTypedValue(event, true, new ReadStructPath());
+        var evt = toTypedValue(event, true, ROOT_PATH);
         recording.writeEvent(evt);
+        maybeRotateChunk();
         return evt;
+    }
+
+    private void maybeRotateChunk() {
+        if (++eventCount % CHUNK_ROTATION_INTERVAL == 0) {
+            // Close the current recording to flush all buffered data (events, constant pools,
+            // metadata) to the output stream. This bounds memory by releasing the JMC
+            // LEB128Writer buffer (which holds all serialized data) and the constant pools.
+            // Each closed recording produces a complete JFR chunk; multiple chunks
+            // concatenated form a valid multi-chunk JFR file.
+            try {
+                recording.close();
+            } catch (IOException e) {
+                throw new RuntimeException(e);
+            }
+            // Clear all caches that reference old recording's JMC types/values
+            typeMap.clear();
+            realTypeMap.clear();
+            customAnnotationTypes.clear();
+            jmcFieldsCache.clear();
+            subStructCache.clear();
+            // Create a new recording for the next batch of events
+            initRecording();
+        }
     }
 
     public Map<String, Integer> getCombinedEventCount() {
@@ -120,7 +180,7 @@ public class WritingJFRReader {
 
     /** Turn a read struct with a known event type into a typed value */
     public TypedValue fromReadStruct(ReadStruct struct) {
-        return toTypedValue(struct, true, new ReadStructPath());
+        return toTypedValue(struct, true, ROOT_PATH);
     }
 
     public List<TypedValue> readAllJFREvents() {
@@ -133,12 +193,14 @@ public class WritingJFRReader {
     }
 
     private Predefined getPredefType(CondensedType<?, ?> type, boolean isEvent) {
-        if (typeMap.containsKey(type)) {
-            return typeMap.get(type);
+        var existing = typeMap.get(type);
+        if (existing != null) {
+            return existing;
         }
-        typeMap.put(type, type::getName);
+        Predefined predef = type::getName;
+        typeMap.put(type, predef);
         realTypeMap.put(type, createType(type, isEvent));
-        return typeMap.get(type);
+        return predef;
     }
 
     private Type getRealType(CondensedType<?, ?> type, boolean isEvent) {
@@ -169,10 +231,182 @@ public class WritingJFRReader {
     }
 
     private @Nullable Predefined getPredefinedJDKType(String name) {
-        return Arrays.stream(JDK.values())
-                .filter(jdk -> jdk.name().equals(name))
-                .findFirst()
-                .orElse(null);
+        return JDK_TYPE_CACHE.get(name);
+    }
+
+    private final Map<String, Type> customAnnotationTypes = new HashMap<>();
+
+    /** Cache parsed field descriptions to avoid re-parsing JSON per event */
+    private final Map<String, BasicJFRWriter.ParsedFieldDescription> parsedFieldDescriptionCache =
+            new HashMap<>();
+
+    /** Cache JDK type lookups to avoid linear scan of JDK.values() */
+    private static final Map<String, Predefined> JDK_TYPE_CACHE;
+
+    static {
+        JDK_TYPE_CACHE = new HashMap<>();
+        for (var jdk : JDK.values()) {
+            JDK_TYPE_CACHE.put(jdk.getTypeName(), jdk);
+        }
+    }
+
+    /** Reusable root ReadStructPath to avoid allocation per event */
+    private static final ReadStructPath ROOT_PATH = new ReadStructPath();
+
+    /** Pre-computed field processing info to avoid repeated lookups per event */
+    private enum FieldCategory {
+        NORMAL,
+        TIMESTAMP,
+        TIMESPAN
+    }
+
+    /** Pre-computed unit divisor for timestamp/timespan conversion (avoids stream per event) */
+    private enum UnitDivisor {
+        NANOS(1),
+        MICROS(1_000),
+        MILLIS(1_000_000),
+        SECONDS(1_000_000_000);
+        final long divisor;
+
+        UnitDivisor(long divisor) {
+            this.divisor = divisor;
+        }
+    }
+
+    private record FieldPlanEntry(
+            StructType.Field<?, ?, ?> condensedField,
+            FieldCategory category,
+            UnitDivisor unitDivisor,
+            boolean isTimespanArray) {}
+
+    private final IdentityHashMap<CondensedType<?, ?>, Map<String, FieldPlanEntry>> fieldPlanCache =
+            new IdentityHashMap<>();
+
+    /** Pre-computed JMC field info per type to bypass TypedValueBuilderImpl */
+    private final IdentityHashMap<Type, List<TypedFieldImpl>> jmcFieldsCache =
+            new IdentityHashMap<>();
+
+    private List<TypedFieldImpl> getJmcFields(Type type) {
+        return jmcFieldsCache.computeIfAbsent(type, t -> ((TypeImpl) t).getFields());
+    }
+
+    private static UnitDivisor computeTimespanUnit(BasicJFRWriter.ParsedFieldDescription parsed) {
+        String unit = "NANOSECONDS";
+        for (var a : parsed.annotations()) {
+            if (a.type().equals("jdk.jfr.Timespan")) {
+                unit = a.values().isEmpty() ? "NANOSECONDS" : (String) a.values().get(0);
+                break;
+            }
+        }
+        return switch (unit) {
+            case "MICROSECONDS" -> UnitDivisor.MICROS;
+            case "MILLISECONDS" -> UnitDivisor.MILLIS;
+            case "SECONDS" -> UnitDivisor.SECONDS;
+            default -> UnitDivisor.NANOS; // NANOSECONDS, TICKS
+        };
+    }
+
+    private static UnitDivisor computeTimestampUnit(BasicJFRWriter.ParsedFieldDescription parsed) {
+        for (var a : parsed.annotations()) {
+            if (a.type().equals("jdk.jfr.Timestamp")) {
+                String unit = a.values().isEmpty() ? "TICKS" : (String) a.values().get(0);
+                if ("MILLISECONDS_SINCE_EPOCH".equals(unit)) {
+                    return UnitDivisor.MILLIS;
+                }
+                break;
+            }
+        }
+        return UnitDivisor.NANOS;
+    }
+
+    private FieldPlanEntry getFieldPlan(StructType<?, ?> structType, String fieldName) {
+        Map<String, FieldPlanEntry> plan = fieldPlanCache.get(structType);
+        if (plan == null) {
+            plan = new HashMap<>();
+            for (var f : structType.getFields()) {
+                String typeName = f.getTypeName();
+                FieldCategory cat;
+                UnitDivisor unit = UnitDivisor.NANOS;
+                boolean isTimespanArr = false;
+                if (typeName.equals("timestamp")) {
+                    cat = FieldCategory.TIMESTAMP;
+                    unit = computeTimestampUnit(getCachedParsedDescription(f.description()));
+                } else if (typeName.equals("timespan")) {
+                    cat = FieldCategory.TIMESPAN;
+                    unit = computeTimespanUnit(getCachedParsedDescription(f.description()));
+                    isTimespanArr = f.type() instanceof ArrayType;
+                } else {
+                    cat = FieldCategory.NORMAL;
+                }
+                plan.put(f.name(), new FieldPlanEntry(f, cat, unit, isTimespanArr));
+            }
+            fieldPlanCache.put(structType, plan);
+        }
+        return plan.get(fieldName);
+    }
+
+    /**
+     * Get or create a custom annotation type. We can't use the predefined JDK annotation types
+     * because they are not initialized in the recording (to avoid conflicts with custom types from
+     * CJFR).
+     */
+    private Type getOrCreateAnnotationType(String name, boolean hasValue) {
+        return customAnnotationTypes.computeIfAbsent(
+                name,
+                n ->
+                        recording.registerAnnotationType(
+                                n,
+                                builder -> {
+                                    if (hasValue) {
+                                        builder.addField("value", Builtin.STRING);
+                                    }
+                                }));
+    }
+
+    /**
+     * Convert a Duration to the unit specified by the @Timespan annotation in the field
+     * description. The condensed format always stores durations in nanoseconds, but the JFR file
+     * may expect a different unit (MILLISECONDS, MICROSECONDS, SECONDS).
+     */
+    private BasicJFRWriter.ParsedFieldDescription getCachedParsedDescription(
+            String fieldDescription) {
+        return parsedFieldDescriptionCache.computeIfAbsent(
+                fieldDescription, BasicJFRWriter::parseFieldDescription);
+    }
+
+    static long convertTimespanToUnit(Duration duration, String fieldDescription) {
+        return convertTimespanToUnit(
+                duration, BasicJFRWriter.parseFieldDescription(fieldDescription));
+    }
+
+    private static long convertTimespanToUnit(
+            Duration duration, BasicJFRWriter.ParsedFieldDescription parsed) {
+        return duration.toNanos() / computeTimespanUnit(parsed).divisor;
+    }
+
+    /** Fast path: pre-computed unit divisor, no stream/filter allocation */
+    private static long convertTimespanToUnit(Duration duration, UnitDivisor unit) {
+        return duration.toNanos() / unit.divisor;
+    }
+
+    /**
+     * Convert an Instant to the unit specified by the @Timestamp annotation in the field
+     * description. The condensed format always stores timestamps as epoch nanoseconds, but the JFR
+     * file may expect epoch milliseconds for @Timestamp("MILLISECONDS_SINCE_EPOCH") fields.
+     */
+    static long convertTimestampToUnit(Instant instant, String fieldDescription) {
+        return convertTimestampToUnit(
+                instant, BasicJFRWriter.parseFieldDescription(fieldDescription));
+    }
+
+    private static long convertTimestampToUnit(
+            Instant instant, BasicJFRWriter.ParsedFieldDescription parsed) {
+        return toNanoSeconds(instant) / computeTimestampUnit(parsed).divisor;
+    }
+
+    /** Fast path: pre-computed unit divisor, no stream/filter allocation */
+    private static long convertTimestampToUnit(Instant instant, UnitDivisor unit) {
+        return toNanoSeconds(instant) / unit.divisor;
     }
 
     private boolean putJFRTypeIntoConstantPool(CondensedType<?, ?> type) {
@@ -197,14 +431,15 @@ public class WritingJFRReader {
                                             b.asArray();
                                         }
                                         for (var ann : parsed.annotations()) {
-                                            Predefined jdk = getPredefinedJDKAnnotation(ann.type());
-                                            if (jdk != null) {
-                                                if (!ann.values().isEmpty()) {
-                                                    b.addAnnotation(
-                                                            jdk, ann.values().get(0).toString());
-                                                } else {
-                                                    b.addAnnotation(jdk);
-                                                }
+                                            boolean hasValue = !ann.values().isEmpty();
+                                            Type annotationType =
+                                                    getOrCreateAnnotationType(ann.type(), hasValue);
+                                            if (hasValue) {
+                                                b.addAnnotation(
+                                                        annotationType,
+                                                        ann.values().get(0).toString());
+                                            } else {
+                                                b.addAnnotation(annotationType);
                                             }
                                         }
                                     };
@@ -233,12 +468,16 @@ public class WritingJFRReader {
                     }
                     throw new IllegalArgumentException("Unsupported type: " + type);
                 };
-        return isEvent
-                ? recording.registerType(type.getName(), "jdk.jfr.Event", builderConsumer)
-                : recording
-                        .getTypes()
-                        .getOrAdd(
-                                type.getName(), putJFRTypeIntoConstantPool(type), builderConsumer);
+        var result =
+                isEvent
+                        ? recording.registerType(type.getName(), "jdk.jfr.Event", builderConsumer)
+                        : recording
+                                .getTypes()
+                                .getOrAdd(
+                                        type.getName(),
+                                        putJFRTypeIntoConstantPool(type),
+                                        builderConsumer);
+        return result;
     }
 
     // stackTrace, eventThread, startTime
@@ -268,76 +507,111 @@ public class WritingJFRReader {
         }
     }
 
+    private static final TypedValueImpl[] EMPTY_TYPED_VALUE_ARRAY = new TypedValueImpl[0];
+
     private TypedValue toTypedValue(ReadStruct struct, boolean isEvent, ReadStructPath visited) {
-        getPredefType(struct.getType(), isEvent);
+        if (!isEvent) {
+            TypedValue cached = subStructCache.get(struct);
+            if (cached != null) {
+                return cached;
+            }
+        }
+        var structType = struct.getType();
+        getPredefType(structType, isEvent);
         if (visited.contains(struct, 1)) {
-            return getRealType(struct.getType(), isEvent).nullValue();
+            return getRealType(structType, isEvent).nullValue();
         }
         var curVisited = visited.add(struct);
-        return getRealType(struct.getType(), isEvent)
-                .asValue(
-                        builder -> {
-                            for (var field : builder.getType().getFields()) {
-                                var value = struct.get(field.getName());
-                                if (value == null) {
-                                    builder.putField(field.getName(), field.getType().nullValue());
-                                    continue;
-                                }
-                                if (field.isArray() && !(value instanceof ReadList<?>)) {
-                                    throw new IllegalArgumentException(
-                                            "Expected array, got: " + value);
-                                }
-                                if (!field.isArray() && value instanceof ReadList<?>) {
-                                    throw new IllegalArgumentException(
-                                            "Expected non-array, got: "
-                                                    + ((ReadList<?>) value).size()
-                                                    + " elements for field "
-                                                    + field.getName());
-                                }
-                                if (value instanceof ReadList<?>) {
-                                    List<TypedValue> values = new ArrayList<>();
-                                    for (var val : (ReadList<?>) value) {
-                                        var prim = getTypedPrimitiveValue(field, val);
-                                        if (prim != null) {
-                                            values.add(prim);
-                                        } else {
-                                            values.add(
-                                                    toTypedValue(
-                                                            (ReadStruct) val, false, curVisited));
-                                        }
-                                    }
-                                    builder.putField(
-                                            field.getName(), values.toArray(new TypedValue[0]));
-                                } else {
-                                    if (struct.getType()
-                                            .getField(field.getName())
-                                            .getTypeName()
-                                            .equals("timestamp")) {
-                                        if (value instanceof Instant) {
-                                            value = toNanoSeconds((Instant) value);
-                                        } else if (value instanceof Duration) {
-                                            value = ((Duration) value).toNanos();
-                                        } else if (!(value instanceof Long)) {
-                                            throw new IllegalArgumentException(
-                                                    "Expected Instant, Duration or Long"
-                                                            + " (nanoseconds) for "
-                                                            + field.getName()
-                                                            + ", got: "
-                                                            + value);
-                                        }
-                                    }
-                                    var prim = getTypedPrimitiveValue(field, value);
-                                    if (prim != null) {
-                                        builder.putField(field.getName(), prim);
-                                    } else {
-                                        builder.putField(
-                                                field.getName(),
-                                                toTypedValue(
-                                                        (ReadStruct) value, false, curVisited));
-                                    }
-                                }
-                            }
-                        });
+        // Bypass TypedValueBuilderImpl (which does stream().collect() per call)
+        // by constructing TypedValueImpl directly from a field value map.
+        TypeImpl jmcType = (TypeImpl) getRealType(structType, isEvent);
+        List<TypedFieldImpl> jmcFields = getJmcFields(jmcType);
+        Map<String, TypedFieldValueImpl> fieldValues = new HashMap<>(jmcFields.size() * 4 / 3 + 1);
+        for (TypedFieldImpl field : jmcFields) {
+            String fieldName = field.getName();
+            Object value = struct.get(fieldName);
+            if (value == null) {
+                fieldValues.put(
+                        fieldName,
+                        new TypedFieldValueImpl(
+                                field, (TypedValueImpl) field.getType().nullValue()));
+                continue;
+            }
+            FieldPlanEntry plan = getFieldPlan(structType, fieldName);
+            if (value instanceof ReadList<?> readList) {
+                if (!field.isArray()) {
+                    throw new IllegalArgumentException(
+                            "Expected non-array, got: "
+                                    + readList.size()
+                                    + " elements for field "
+                                    + fieldName);
+                }
+                if (readList.isEmpty()) {
+                    fieldValues.put(
+                            fieldName, new TypedFieldValueImpl(field, EMPTY_TYPED_VALUE_ARRAY));
+                } else {
+                    TypedValueImpl[] arr = new TypedValueImpl[readList.size()];
+                    boolean isTimespanArr = plan != null && plan.isTimespanArray();
+                    UnitDivisor timespanUnit = isTimespanArr ? plan.unitDivisor() : null;
+                    int i = 0;
+                    for (var val : readList) {
+                        Object element = val;
+                        if (element instanceof Duration && isTimespanArr) {
+                            element = convertTimespanToUnit((Duration) element, timespanUnit);
+                        }
+                        var prim = getTypedPrimitiveValue(field, element);
+                        if (prim != null) {
+                            arr[i++] = (TypedValueImpl) prim;
+                        } else {
+                            arr[i++] =
+                                    (TypedValueImpl)
+                                            toTypedValue((ReadStruct) element, false, curVisited);
+                        }
+                    }
+                    fieldValues.put(fieldName, new TypedFieldValueImpl(field, arr));
+                }
+            } else {
+                if (field.isArray()) {
+                    throw new IllegalArgumentException("Expected array, got: " + value);
+                }
+                if (plan != null) {
+                    FieldCategory cat = plan.category();
+                    if (cat == FieldCategory.TIMESTAMP) {
+                        if (value instanceof Instant) {
+                            value = convertTimestampToUnit((Instant) value, plan.unitDivisor());
+                        } else if (value instanceof Duration) {
+                            value = ((Duration) value).toNanos();
+                        } else if (!(value instanceof Long)) {
+                            throw new IllegalArgumentException(
+                                    "Expected Instant, Duration or Long (nanoseconds) for "
+                                            + fieldName
+                                            + ", got: "
+                                            + value);
+                        }
+                    } else if (cat == FieldCategory.TIMESPAN && value instanceof Duration) {
+                        value = convertTimespanToUnit((Duration) value, plan.unitDivisor());
+                    }
+                }
+                var prim = getTypedPrimitiveValue(field, value);
+                if (prim != null) {
+                    fieldValues.put(
+                            fieldName, new TypedFieldValueImpl(field, (TypedValueImpl) prim));
+                } else {
+                    fieldValues.put(
+                            fieldName,
+                            new TypedFieldValueImpl(
+                                    field,
+                                    (TypedValueImpl)
+                                            toTypedValue((ReadStruct) value, false, curVisited)));
+                }
+            }
+        }
+        @SuppressWarnings("unchecked")
+        var result = (TypedValueImpl) jmcType.asValue((Object) fieldValues);
+        if (!isEvent) {
+            subStructCache.put(struct, result);
+        }
+        return result;
     }
 
     public void close() {
@@ -352,6 +626,10 @@ public class WritingJFRReader {
     public static void toJFRFile(JFRReader reader, Path output) {
         Path path = toJFRFile(reader);
         try {
+            Path parent = output.getParent();
+            if (parent != null) {
+                Files.createDirectories(parent);
+            }
             Files.move(path, output, java.nio.file.StandardCopyOption.REPLACE_EXISTING);
         } catch (IOException e) {
             throw new RuntimeException(e);
@@ -367,11 +645,21 @@ public class WritingJFRReader {
             Path tmp = Files.createTempFile("recording", ".jfr");
             WritingJFRReader writingJFRReader =
                     new WritingJFRReader(
-                            reader, Files.newOutputStream(tmp), shouldAddDefaultValuesIfNecessary);
+                            reader,
+                            new BufferedOutputStream(Files.newOutputStream(tmp), 65536),
+                            shouldAddDefaultValuesIfNecessary);
+            long lastProgressTime = System.nanoTime();
+            int count = 0;
             while (true) {
                 var event = writingJFRReader.readNextJFREvent();
                 if (event == null) {
                     break;
+                }
+                count++;
+                long now = System.nanoTime();
+                if (now - lastProgressTime >= 10_000_000_000L) { // every 10 seconds
+                    System.err.printf("  inflate progress: %,d events written...%n", count);
+                    lastProgressTime = now;
                 }
             }
             writingJFRReader.close();

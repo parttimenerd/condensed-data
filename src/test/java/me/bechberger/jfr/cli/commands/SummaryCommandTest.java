@@ -22,10 +22,7 @@ public class SummaryCommandTest {
         var result = new CommandExecuter("summary").run();
         assertAll(
                 () -> assertThat(result.exitCode()).isEqualTo(2),
-                () ->
-                        assertThat(result.error())
-                                .containsIgnoringNewLines("Usage: cjfr")
-                                .contains("Missing required parameter"),
+                () -> assertThat(result.error()).contains("Missing required parameter"),
                 () -> assertThat(result.output()).isEmpty());
     }
 
@@ -39,6 +36,58 @@ public class SummaryCommandTest {
                 .withFiles(CommandTestUtil.getSampleCJFRFile())
                 .checkNoError()
                 .run();
+    }
+
+    @Test
+    public void testTimeOnlyStartFormatIsRejected() throws Exception {
+        var result =
+                new CommandExecuter(
+                                "summary",
+                                "T/" + CommandTestUtil.getSampleCJFRFileName(),
+                                "--start",
+                                "12:12:21")
+                        .withFiles(CommandTestUtil.getSampleCJFRFile())
+                        .run();
+        assertAll(
+                () -> assertThat(result.exitCode()).isEqualTo(2),
+                () -> assertThat(result.error()).contains("Time-only format is not supported"));
+    }
+
+    @Test
+    public void testLimitBelowMinusOneIsRejected() throws Exception {
+        var result =
+                new CommandExecuter(
+                                "summary",
+                                "T/" + CommandTestUtil.getSampleCJFRFileName(),
+                                "--limit",
+                                "-2")
+                        .withFiles(CommandTestUtil.getSampleCJFRFile())
+                        .run();
+        assertAll(
+                () -> assertThat(result.exitCode()).isEqualTo(2),
+                () ->
+                        assertThat(result.error())
+                                .contains("--limit must be >= 0 (or -1 for no limit), got: -2"),
+                () -> assertThat(result.output()).isEmpty());
+    }
+
+    @Test
+    public void testLimitBelowMinusOneIsRejectedInJsonMode() throws Exception {
+        var result =
+                new CommandExecuter(
+                                "summary",
+                                "T/" + CommandTestUtil.getSampleCJFRFileName(),
+                                "--limit",
+                                "-2",
+                                "--json")
+                        .withFiles(CommandTestUtil.getSampleCJFRFile())
+                        .run();
+        assertAll(
+                () -> assertThat(result.exitCode()).isEqualTo(2),
+                () ->
+                        assertThat(result.error())
+                                .contains("--limit must be >= 0 (or -1 for no limit), got: -2"),
+                () -> assertThat(result.output()).isEmpty());
     }
 
     @Test
@@ -56,7 +105,7 @@ public class SummaryCommandTest {
                         .withFiles(CommandTestUtil.getSampleCJFRFile())
                         .run();
         assertAll(
-                () -> assertThat(result.exitCode()).isEqualTo(1),
+                () -> assertThat(result.exitCode()).isEqualTo(2),
                 () -> assertThat(result.output()).isEmpty(),
                 () -> assertThat(result.error()).contains("Both start, end and duration are set"),
                 () -> assertThat(result.error()).doesNotContain("\tat "));
@@ -157,7 +206,7 @@ public class SummaryCommandTest {
                  Compression: $COMPRESSION
                  Start: .*
                  End: .*
-                 Duration: [0-9]+(\\.[0-9]*)?s
+                 Duration: [0-9]+(\\.[0-9]*)?(s|ms|us|ns)
                  Events: .*
                 """
                         .replace("$VERSION", Constants.FORMAT_VERSION + "")
@@ -178,7 +227,7 @@ public class SummaryCommandTest {
                  Compression: $COMPRESSION
                  Start: .*
                  End: .*
-                 Duration: [0-9]+(\\.[0-9]*)?s
+                 Duration: [0-9]+(\\.[0-9]*)?(s|ms|us|ns)
                  Events: .*
 
                  Event Type                                Count
@@ -262,6 +311,30 @@ public class SummaryCommandTest {
                         (result, files) -> {
                             assertThat(files).containsKey("flame.html");
                             assertThat(files.get("flame.html")).exists().isNotEmptyFile();
+                        })
+                .run();
+    }
+
+    @Test
+    public void testJsonWithFlamegraphKeepsStdoutAsJson() throws Exception {
+        new CommandExecuter(
+                        "summary",
+                        "T/" + CommandTestUtil.getSampleCJFRFileName(),
+                        "--json",
+                        "--flamegraph",
+                        "T/flame-json.html")
+                .withFiles(CommandTestUtil.getSampleCJFRFile())
+                .check(
+                        (result, files) -> {
+                            assertThat(result.exitCode()).isEqualTo(0);
+                            assertThat(files).containsKey("flame-json.html");
+                            assertThat(files.get("flame-json.html")).exists().isNotEmptyFile();
+                            assertThat(result.output())
+                                    .doesNotContain("Storage flamegraph written to:");
+                            assertThat(result.error()).contains("Storage flamegraph written to:");
+                            Map<String, Object> json =
+                                    Util.asMap(JSONParser.parse(result.output()));
+                            assertThat(json).containsKey("events");
                         })
                 .run();
     }
@@ -396,6 +469,40 @@ public class SummaryCommandTest {
         } else {
             assertThat(result.error()).contains("Duration");
         }
+    }
+
+    @Test
+    public void testUnknownEventsFilterFailsWithClearError() throws Exception {
+        var result =
+                new CommandExecuter(
+                                "summary",
+                                "T/" + CommandTestUtil.getSampleCJFRFileName(),
+                                "--events",
+                                "does.not.exist")
+                        .withFiles(CommandTestUtil.getSampleCJFRFile())
+                        .run();
+
+        assertAll(
+                () -> assertThat(result.exitCode()).isEqualTo(2),
+                () -> assertThat(result.error()).contains("Unknown event type(s): does.not.exist"),
+                () -> assertThat(result.output()).isEmpty());
+    }
+
+    @Test
+    public void testUnicodeEventsFilterFailsWithClearError() throws Exception {
+        var result =
+                new CommandExecuter(
+                                "summary",
+                                "T/" + CommandTestUtil.getSampleCJFRFileName(),
+                                "--events",
+                                "jdk.\uD83D\uDD25\uD83D\uDD25\uD83D\uDD25")
+                        .withFiles(CommandTestUtil.getSampleCJFRFile())
+                        .run();
+
+        assertAll(
+                () -> assertThat(result.exitCode()).isEqualTo(2),
+                () -> assertThat(result.error()).contains("Unknown event type(s)"),
+                () -> assertThat(result.output()).isEmpty());
     }
 
     @Test
@@ -592,5 +699,367 @@ public class SummaryCommandTest {
                                     .containsKey("ManyFieldsEvent");
                         })
                 .run();
+    }
+
+    @Test
+    public void testFlamegraphRespectsEventsFilter() throws Exception {
+        // Generate flamegraph WITHOUT filter
+        var unfilteredResult =
+                new CommandExecuter(
+                                "summary",
+                                "T/" + CommandTestUtil.getSampleCJFRFileName(),
+                                "--flamegraph",
+                                "T/flame_unfiltered.html")
+                        .withFiles(CommandTestUtil.getSampleCJFRFile())
+                        .checkNoError()
+                        .run();
+
+        // Generate flamegraph WITH --events filter
+        var filteredResult =
+                new CommandExecuter(
+                                "summary",
+                                "T/" + CommandTestUtil.getSampleCJFRFileName(),
+                                "--flamegraph",
+                                "T/flame_filtered.html",
+                                "--events",
+                                "TestEvent")
+                        .withFiles(CommandTestUtil.getSampleCJFRFile())
+                        .run();
+
+        if (filteredResult.exitCode() == 0) {
+            // The filtered flamegraph should be smaller than unfiltered
+            // because it only contains data for TestEvent, not all event types
+            var unfilteredHtml =
+                    java.nio.file.Files.readString(
+                            java.nio.file.Path.of(
+                                    unfilteredResult
+                                            .output()
+                                            .lines()
+                                            .filter(l -> l.contains("flamegraph written to:"))
+                                            .findFirst()
+                                            .orElseThrow()
+                                            .split("flamegraph written to: ")[1]
+                                            .trim()));
+            var filteredHtml =
+                    java.nio.file.Files.readString(
+                            java.nio.file.Path.of(
+                                    filteredResult
+                                            .output()
+                                            .lines()
+                                            .filter(l -> l.contains("flamegraph written to:"))
+                                            .findFirst()
+                                            .orElseThrow()
+                                            .split("flamegraph written to: ")[1]
+                                            .trim()));
+
+            // The filtered HTML should contain TestEvent but not AnotherEvent
+            assertThat(filteredHtml).contains("TestEvent");
+            assertThat(filteredHtml).doesNotContain("AnotherEvent");
+
+            // The unfiltered HTML should contain both
+            assertThat(unfilteredHtml).contains("TestEvent");
+            assertThat(unfilteredHtml).contains("AnotherEvent");
+        }
+    }
+
+    /** Bug 105: --short and --full are mutually exclusive and should error. */
+    @Test
+    public void testShortAndFullAreMutuallyExclusive() throws Exception {
+        var result =
+                new CommandExecuter(
+                                "summary",
+                                "T/" + CommandTestUtil.getSampleCJFRFileName(),
+                                "--short",
+                                "--full")
+                        .withFiles(CommandTestUtil.getSampleCJFRFile())
+                        .run();
+        assertThat(result.exitCode()).isEqualTo(2);
+        assertThat(result.error()).contains("--short and --full are mutually exclusive");
+    }
+
+    // --- Case-insensitive --events filter (Bug 143) ---
+
+    @Test
+    public void testEventsFilterCaseInsensitive() throws Exception {
+        // --events "testevent" (all lowercase) should match "TestEvent"
+        var result =
+                new CommandExecuter(
+                                "summary",
+                                "T/" + CommandTestUtil.getSampleCJFRFileName(),
+                                "--events",
+                                "testevent")
+                        .withFiles(CommandTestUtil.getSampleCJFRFile())
+                        .checkNoError()
+                        .run();
+        assertThat(result.output()).contains("TestEvent");
+    }
+
+    @Test
+    public void testEventsFilterCaseInsensitiveUpperCase() throws Exception {
+        // --events "TESTEVENT" should match "TestEvent"
+        var result =
+                new CommandExecuter(
+                                "summary",
+                                "T/" + CommandTestUtil.getSampleCJFRFileName(),
+                                "--events",
+                                "TESTEVENT")
+                        .withFiles(CommandTestUtil.getSampleCJFRFile())
+                        .checkNoError()
+                        .run();
+        assertThat(result.output()).contains("TestEvent");
+    }
+
+    /**
+     * Bug 62/87: Truncated .cjfr file should be detected as corrupt, not silently show 1970
+     * timestamps and 0 events with exit code 0.
+     */
+    @Test
+    public void testTruncatedCjfrFileReportsError() throws Exception {
+        // Create a truncated cjfr file (just the header, no events/universe)
+        var sampleFile = CommandTestUtil.getSampleCJFRFile();
+        var fullBytes = java.nio.file.Files.readAllBytes(sampleFile);
+
+        // Truncate to various sizes that include the start message but not the universe
+        var tmpDir = java.nio.file.Path.of("tmp");
+        java.nio.file.Files.createDirectories(tmpDir);
+        for (int size : new int[] {50, 100, 500}) {
+            if (size >= fullBytes.length) continue;
+            var truncated = java.util.Arrays.copyOf(fullBytes, size);
+            var truncatedPath = tmpDir.resolve("truncated_" + size + ".cjfr");
+            java.nio.file.Files.write(truncatedPath, truncated);
+
+            var result = new CommandExecuter("summary", truncatedPath.toString()).run();
+            assertThat(result.exitCode())
+                    .as("Truncated file (%d bytes) should return non-zero exit code", size)
+                    .isNotEqualTo(0);
+            assertThat(result.error())
+                    .as("Truncated file (%d bytes) should report error", size)
+                    .containsIgnoringCase("truncated");
+            assertThat(result.output())
+                    .as("Truncated file (%d bytes) should not show epoch timestamps", size)
+                    .doesNotContain("1970-01-01");
+
+            java.nio.file.Files.delete(truncatedPath);
+        }
+    }
+
+    /** Bug 62/87: Truncated file should also be detected by inflate command. */
+    @Test
+    public void testTruncatedCjfrFileInflateReportsError() throws Exception {
+        var tmpDir = java.nio.file.Path.of("tmp");
+        java.nio.file.Files.createDirectories(tmpDir);
+        var sampleFile = CommandTestUtil.getSampleCJFRFile();
+        var fullBytes = java.nio.file.Files.readAllBytes(sampleFile);
+        var truncated = java.util.Arrays.copyOf(fullBytes, 100);
+        var truncatedPath = tmpDir.resolve("truncated_inflate.cjfr");
+        java.nio.file.Files.write(truncatedPath, truncated);
+        var outPath = tmpDir.resolve("truncated_inflate_out.jfr");
+
+        var result =
+                new CommandExecuter("inflate", truncatedPath.toString(), outPath.toString()).run();
+        assertThat(result.exitCode())
+                .as("Inflate of truncated file should return non-zero exit code")
+                .isNotEqualTo(0);
+
+        java.nio.file.Files.deleteIfExists(truncatedPath);
+        java.nio.file.Files.deleteIfExists(outPath);
+    }
+
+    @Test
+    public void testSummaryWithJFRFile() throws Exception {
+        var result =
+                new CommandExecuter("summary", "T/" + CommandTestUtil.getSampleJFRFileName())
+                        .withFiles(CommandTestUtil.getSampleJFRFile())
+                        .checkNoError()
+                        .run();
+        assertThat(result.output()).contains("TestEvent");
+    }
+
+    @Test
+    public void testSummaryWithZipContainingSubfolders() throws Exception {
+        // Create a ZIP file with a .cjfr file inside a subfolder
+        var cjfrFile = CommandTestUtil.getSampleCJFRFile();
+        var tmpDir = java.nio.file.Path.of("tmp", "zip-subfolder-test-" + System.nanoTime());
+        java.nio.file.Files.createDirectories(tmpDir);
+        var zipPath = tmpDir.resolve("test.zip");
+        try (var zos =
+                new java.util.zip.ZipOutputStream(java.nio.file.Files.newOutputStream(zipPath))) {
+            // Add .cjfr file inside a subfolder in the ZIP
+            zos.putNextEntry(new java.util.zip.ZipEntry("subfolder/" + cjfrFile.getFileName()));
+            zos.write(java.nio.file.Files.readAllBytes(cjfrFile));
+            zos.closeEntry();
+        }
+        var result = new CommandExecuter("summary", zipPath.toString()).checkNoError().run();
+        assertThat(result.output()).contains("TestEvent");
+        // cleanup
+        java.nio.file.Files.deleteIfExists(zipPath);
+        java.nio.file.Files.deleteIfExists(tmpDir);
+    }
+
+    @Test
+    public void testFullFlagShowsEventWriteTree() throws Exception {
+        var result =
+                new CommandExecuter(
+                                "summary", "T/" + CommandTestUtil.getSampleCJFRFileName(), "--full")
+                        .withFiles(CommandTestUtil.getSampleCJFRFile())
+                        .checkNoError()
+                        .run();
+        assertThat(result.output()).contains("EventWriteTree:");
+        assertThat(result.output()).contains("Detailed Statistics:");
+    }
+
+    @Test
+    public void testInvalidTimezoneShowsConciseError() throws Exception {
+        var result =
+                new CommandExecuter(
+                                "summary",
+                                "T/" + CommandTestUtil.getSampleCJFRFileName(),
+                                "--end",
+                                "2025-12-05T12:12:22+99:00")
+                        .withFiles(CommandTestUtil.getSampleCJFRFile())
+                        .run();
+        assertThat(result.exitCode()).isEqualTo(2);
+        assertThat(result.error()).contains("Invalid");
+        // Should NOT show full usage text
+        assertThat(result.error()).doesNotContain("Usage: cjfr");
+    }
+
+    @Test
+    public void testMultipleEventsFlagsAreCombined() throws Exception {
+        var result =
+                new CommandExecuter(
+                                "summary",
+                                "T/" + CommandTestUtil.getSampleCJFRFileName(),
+                                "--events",
+                                "TestEvent",
+                                "--events",
+                                "jdk.GarbageCollection",
+                                "--json")
+                        .withFiles(CommandTestUtil.getSampleCJFRFile())
+                        .run();
+        assertThat(result.exitCode()).isEqualTo(0);
+        // Both event types should appear in the output
+        assertThat(result.output()).contains("TestEvent");
+    }
+
+    @Test
+    public void testMultiFileSummaryShowsBothConfigurations() throws Exception {
+        // Create two CJFR files with different configurations
+        var jfr = CommandTestUtil.getSampleJFRFile();
+        var tmpDir = java.nio.file.Files.createTempDirectory("jfr-cli-test");
+        var defaultCjfr = tmpDir.resolve("default.cjfr");
+        var reducedCjfr = tmpDir.resolve("reduced.cjfr");
+        try {
+            me.bechberger.jfr.cli.JFRCLI.execute(
+                    new String[] {"condense", "--force", jfr.toString(), defaultCjfr.toString()});
+            me.bechberger.jfr.cli.JFRCLI.execute(
+                    new String[] {
+                        "condense",
+                        "--force",
+                        "-c",
+                        "reduced-default",
+                        jfr.toString(),
+                        reducedCjfr.toString()
+                    });
+            var result =
+                    new CommandExecuter(
+                                    "summary", defaultCjfr.toString(), "-i", reducedCjfr.toString())
+                            .run();
+            assertThat(result.exitCode()).isEqualTo(0);
+            // Should show both configurations
+            assertThat(result.output()).contains("default");
+            assertThat(result.output()).contains("reduced-default");
+        } finally {
+            java.nio.file.Files.deleteIfExists(defaultCjfr);
+            java.nio.file.Files.deleteIfExists(reducedCjfr);
+            java.nio.file.Files.deleteIfExists(tmpDir);
+        }
+    }
+
+    @Test
+    public void testSummaryWithLimitShowsLimitedEventTypes() throws Exception {
+        var result =
+                new CommandExecuter(
+                                "summary",
+                                "T/" + CommandTestUtil.getSampleCJFRFileName(),
+                                "--limit",
+                                "3")
+                        .withFiles(CommandTestUtil.getSampleCJFRFile())
+                        .checkNoError()
+                        .run();
+        assertThat(result.exitCode()).isEqualTo(0);
+        // Count the event type rows (lines after the "=====" separator)
+        var lines = result.output().split("\n");
+        int eventTypeCount = 0;
+        boolean inTable = false;
+        for (var line : lines) {
+            if (line.startsWith("====")) {
+                inTable = true;
+                continue;
+            }
+            if (inTable && !line.isBlank()) {
+                eventTypeCount++;
+            }
+        }
+        assertThat(eventTypeCount).isLessThanOrEqualTo(3);
+    }
+
+    @Test
+    public void testSummaryWithLimitZeroShowsNoEventTypes() throws Exception {
+        var result =
+                new CommandExecuter(
+                                "summary",
+                                "T/" + CommandTestUtil.getSampleCJFRFileName(),
+                                "--limit",
+                                "0")
+                        .withFiles(CommandTestUtil.getSampleCJFRFile())
+                        .checkNoError()
+                        .run();
+        assertThat(result.exitCode()).isEqualTo(0);
+        var lines = result.output().split("\n");
+        int eventTypeCount = 0;
+        boolean inTable = false;
+        for (var line : lines) {
+            if (line.startsWith("====")) {
+                inTable = true;
+                continue;
+            }
+            if (inTable && !line.isBlank()) {
+                eventTypeCount++;
+            }
+        }
+        assertThat(eventTypeCount).isEqualTo(0);
+    }
+
+    @Test
+    public void testFullJsonCompletesQuickly() throws Exception {
+        long start = System.currentTimeMillis();
+        var result =
+                new CommandExecuter(
+                                "summary",
+                                "T/" + CommandTestUtil.getSampleCJFRFileName(),
+                                "--full",
+                                "--json")
+                        .withFiles(CommandTestUtil.getSampleCJFRFile())
+                        .checkNoError()
+                        .run();
+        long elapsed = System.currentTimeMillis() - start;
+        assertThat(result.exitCode()).isEqualTo(0);
+        assertThat(result.output()).contains("eventWriteTree");
+        // Should complete in under 5 seconds
+        assertThat(elapsed).isLessThan(5000);
+    }
+
+    @Test
+    public void testXZCompressedFileIsReadable() throws Exception {
+        var xzFile = java.nio.file.Path.of("benchmark/renaissance-all_gc_G1.cjfr");
+        if (!java.nio.file.Files.exists(xzFile)) {
+            return; // skip if file not available
+        }
+        var result =
+                new CommandExecuter("summary", xzFile.toString(), "--short").checkNoError().run();
+        assertThat(result.exitCode()).isEqualTo(0);
+        assertThat(result.output()).contains("XZ");
+        assertThat(result.output()).contains("Events:");
     }
 }

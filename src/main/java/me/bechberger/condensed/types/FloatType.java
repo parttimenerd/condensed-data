@@ -6,12 +6,15 @@ import me.bechberger.condensed.CondensedInputStream;
 import me.bechberger.condensed.CondensedOutputStream;
 
 /** A floating point type */
-public class FloatType extends CondensedType<Float, Float> {
+public class FloatType extends CondensedType<Number, Number> {
 
     public enum Type {
         FLOAT32(32),
+        FLOAT64(64),
         /** Same range as float32 but less precision */
-        BFLOAT16(16);
+        BFLOAT16(16),
+        /** IEEE 754 binary16 */
+        FLOAT16(16);
 
         public final int width;
 
@@ -70,18 +73,22 @@ public class FloatType extends CondensedType<Float, Float> {
     }
 
     @Override
-    public void writeTo(CondensedOutputStream out, Float value) {
+    public void writeTo(CondensedOutputStream out, Number value) {
         switch (type) {
-            case FLOAT32 -> out.writeFloat(value);
-            case BFLOAT16 -> out.writeBFloat16(value);
+            case FLOAT32 -> out.writeFloat(value.floatValue());
+            case FLOAT64 -> out.writeDouble(value.doubleValue());
+            case BFLOAT16 -> out.writeBFloat16(value.floatValue());
+            case FLOAT16 -> out.writeFloat16(value.floatValue());
         }
     }
 
     @Override
-    public Float readFrom(CondensedInputStream in) {
+    public Number readFrom(CondensedInputStream in) {
         return switch (type) {
             case FLOAT32 -> in.readFloat();
+            case FLOAT64 -> in.readDouble();
             case BFLOAT16 -> in.readBFloat16();
+            case FLOAT16 -> in.readFloat16();
         };
     }
 

@@ -205,8 +205,9 @@ public class EventTypesCompletionHelperTest {
             remaining = stream.count();
         }
         assertEquals(EventTypesCompletionHelper.MAX_CACHE_ENTRIES, remaining);
-        // Current implementation keeps oldest entries and removes newest ones.
-        assertFalse(Files.exists(tempDir.resolve("cache-101")));
+        assertFalse(Files.exists(tempDir.resolve("cache-0")));
+        assertFalse(Files.exists(tempDir.resolve("cache-1")));
+        assertTrue(Files.exists(tempDir.resolve("cache-101")));
     }
 
     @Test

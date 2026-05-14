@@ -40,7 +40,9 @@ public class CommandExecuter {
                     "WARNING: If a serviceability tool is not in use, please run with"
                             + " -Djdk.instrument.traceUsage for more information",
                     "WARNING: Dynamic loading of agents will be disallowed by default in a future"
-                            + " release");
+                            + " release",
+                    "Condensed to ",
+                    "Inflated to ");
 
     @FunctionalInterface
     public interface ConsumerWithException<T> {
@@ -120,7 +122,7 @@ public class CommandExecuter {
         if (testJar != null) {
             result = runViaJar(testJar, modifiedArgs);
         } else {
-            result = JFRCLI.builder().runCaptured(new JFRCLI(), modifiedArgs);
+            result = JFRCLI.runCapturedWithDispatch(modifiedArgs);
         }
         var filteredError = stripIgnoredStderrWarnings(result.err());
         if (checkNoError) {

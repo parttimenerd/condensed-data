@@ -19,7 +19,7 @@ import me.bechberger.jfr.CombiningJFRReader;
 import me.bechberger.jfr.cli.CLIUtils;
 import me.bechberger.jfr.cli.EventFilter.EventFilterOptionMixin;
 import me.bechberger.jfr.cli.FileOptionConverters;
-import me.bechberger.jfr.cli.FileOptionConverters.ExistingCJFRFileOrZipOrFolderConverter;
+import me.bechberger.jfr.cli.FileOptionConverters.ExistingCJFROrJFRFileOrZipOrFolderConverter;
 import me.bechberger.util.TimeUtil;
 import me.bechberger.util.json.PrettyPrinter;
 
@@ -30,14 +30,14 @@ import me.bechberger.util.json.PrettyPrinter;
 public class SummaryCommand implements Callable<Integer> {
 
     @Parameters(
-            description = "The input .cjfr file, can be a folder, or a zip",
-            converter = ExistingCJFRFileOrZipOrFolderConverter.class)
+            description = "The input .cjfr or .jfr file, can be a folder, or a zip",
+            converter = ExistingCJFROrJFRFileOrZipOrFolderConverter.class)
     private Path inputFile;
 
     @Option(
             names = {"-i", "--inputs"},
             description = "Additional input files",
-            converter = ExistingCJFRFileOrZipOrFolderConverter.class)
+            converter = ExistingCJFROrJFRFileOrZipOrFolderConverter.class)
     private List<Path> inputFiles = new ArrayList<>();
 
     @Option(
@@ -58,13 +58,29 @@ public class SummaryCommand implements Callable<Integer> {
 
     @Option(
             names = {"--flamegraph"},
-            description = "Write flamegraph HTML to the specified file",
+            description =
+                    "Write storage flamegraph HTML to the specified file"
+                            + " (shows byte distribution across event types, not CPU profiling)",
             converter = FileOptionConverters.HTMLFileConverter.class)
     private Path flamegraphPath;
 
     @Mixin private EventFilterOptionMixin eventFilterOptionMixin;
 
+    @Option(
+            names = "--limit",
+            description = "Limit the number of event types shown (table and JSON), -1 for all",
+            defaultValue = "-1")
+    private int limit;
+
     public Integer call() {
+        if (shortSummary && full) {
+            System.err.println("Error: --short and --full are mutually exclusive");
+            return 2;
+        }
+        if (limit < -1) {
+            System.err.println("Error: --limit must be >= 0 (or -1 for no limit), got: " + limit);
+            return 2;
+        }
         inputFiles.add(0, inputFile);
         try {
             Statistic statistic = new Statistic();
@@ -77,25 +93,34 @@ public class SummaryCommand implements Callable<Integer> {
 
             var summary = computeSummary(jfrReader);
 
+            // Filter the EventWriteTree if --events is specified
+            var contextRoot = statistic.getContextRoot();
+            if (eventFilterOptionMixin.getEventTypes() != null
+                    && !eventFilterOptionMixin.getEventTypes().isEmpty()) {
+                contextRoot =
+                        contextRoot.filtered(
+                                new java.util.HashSet<>(eventFilterOptionMixin.getEventTypes()));
+            }
+
             if (json) {
-                Map<String, Object> output = summary.toJSON(shortSummary);
+                Map<String, Object> output = summary.toJSON(shortSummary, limit);
 
                 // Add EventWriteTree data if --full is specified
                 if (full) {
-                    var flamegraphGenerator = new FlamegraphGenerator(statistic.getContextRoot());
+                    var flamegraphGenerator = new FlamegraphGenerator(contextRoot);
                     output.put("eventWriteTree", flamegraphGenerator.toJSON());
                 }
 
                 System.out.println(PrettyPrinter.prettyPrint(output));
             } else {
                 // Always print the basic summary
-                System.out.println(summary.toString(shortSummary));
+                System.out.println(summary.toString(shortSummary, limit));
 
                 // Print full statistics if requested
                 if (full) {
                     System.out.println("\nEventWriteTree:");
                     System.out.println("===============");
-                    var flamegraphGenerator = new FlamegraphGenerator(statistic.getContextRoot());
+                    var flamegraphGenerator = new FlamegraphGenerator(contextRoot);
                     flamegraphGenerator.writeTable(System.out);
 
                     System.out.println("\nDetailed Statistics:");
@@ -106,10 +131,21 @@ public class SummaryCommand implements Callable<Integer> {
 
             // Write flamegraph if path is provided
             if (flamegraphPath != null) {
-                var flamegraphGenerator = new FlamegraphGenerator(statistic.getContextRoot());
+                if (contextRoot.getCount() == 0) {
+                    System.err.println("Warning: No events found, flamegraph will be empty");
+                }
+                var flamegraphGenerator = new FlamegraphGenerator(contextRoot);
                 flamegraphGenerator.writeHTML(flamegraphPath);
-                System.out.println("\nFlamegraph written to: " + flamegraphPath);
+                var flamegraphMessage = "Storage flamegraph written to: " + flamegraphPath;
+                if (json) {
+                    System.err.println(flamegraphMessage);
+                } else {
+                    System.out.println("\n" + flamegraphMessage);
+                }
             }
+        } catch (IllegalArgumentException e) {
+            System.err.println("Error: " + e.getMessage());
+            return 2;
         } catch (Exception e) {
             return CLIUtils.printError(e);
         }
@@ -148,6 +184,10 @@ public class SummaryCommand implements Callable<Integer> {
         }
 
         public String toString(boolean shortSummary) {
+            return toString(shortSummary, -1);
+        }
+
+        public String toString(boolean shortSummary, int limit) {
             StringBuilder sb = new StringBuilder();
             sb.append("\n");
             sb.append(" Format Version: ").append(version()).append("\n");
@@ -170,10 +210,13 @@ public class SummaryCommand implements Callable<Integer> {
                 sb.append("\n");
                 sb.append(" Event Type                                Count\n");
                 sb.append("=================================================\n");
-                for (var entry :
+                var sorted =
                         this.eventCounts().entrySet().stream()
-                                .sorted(Comparator.comparing(e -> -e.getValue()))
-                                .toList()) {
+                                .sorted(Comparator.comparing(e -> -e.getValue()));
+                if (limit >= 0) {
+                    sorted = sorted.limit(limit);
+                }
+                for (var entry : sorted.toList()) {
                     sb.append(String.format(" %-40s %6d%n", entry.getKey(), entry.getValue()));
                 }
             }
@@ -181,6 +224,10 @@ public class SummaryCommand implements Callable<Integer> {
         }
 
         public Map<String, Object> toJSON(boolean shortSummary) {
+            return toJSON(shortSummary, -1);
+        }
+
+        public Map<String, Object> toJSON(boolean shortSummary, int limit) {
             Map<String, Object> json = new LinkedHashMap<>();
             json.put("format version", version());
             json.put("generator", generatorName());
@@ -200,10 +247,13 @@ public class SummaryCommand implements Callable<Integer> {
 
             if (!shortSummary) {
                 Map<String, Object> events = new LinkedHashMap<>();
-                for (var entry :
+                var sorted =
                         eventCounts().entrySet().stream()
-                                .sorted(Comparator.comparing(e -> -e.getValue()))
-                                .toList()) {
+                                .sorted(Comparator.comparing(e -> -e.getValue()));
+                if (limit >= 0) {
+                    sorted = sorted.limit(limit);
+                }
+                for (var entry : sorted.toList()) {
                     events.put(entry.getKey(), entry.getValue());
                 }
                 json.put("events", events);
@@ -220,9 +270,18 @@ public class SummaryCommand implements Callable<Integer> {
             eventCounts.merge(struct.getType().getName(), 1, Integer::sum);
         }
         var startMessage = reader.getStartMessage();
+        var duration = reader.getDuration();
+        // Warn if combined duration seems unreasonably long (> 7 days),
+        // which likely means unrelated recordings were combined
+        if (reader instanceof CombiningJFRReader && duration.toDays() > 7) {
+            System.err.println(
+                    "Warning: Combined recording duration spans "
+                            + TimeUtil.formatDuration(duration)
+                            + ". The input files may be from unrelated recordings.");
+        }
         return new Summary(
                 eventCounts.values().stream().mapToInt(Integer::intValue).sum(),
-                reader.getDuration(),
+                duration,
                 startMessage.version(),
                 startMessage.generatorName(),
                 startMessage.generatorVersion(),

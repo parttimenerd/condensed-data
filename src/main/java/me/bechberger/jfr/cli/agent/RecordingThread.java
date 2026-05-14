@@ -233,6 +233,9 @@ public abstract class RecordingThread implements Runnable {
         if (maxFiles < 0) {
             throw new IllegalArgumentException("Max files must be at least 0");
         }
+        if (rotating && maxFiles < 1) {
+            throw new IllegalArgumentException("Max files must be at least 1 when rotating files");
+        }
         dynSettings.maxFiles = maxFiles;
         dynSettings.validate(rotating);
     }

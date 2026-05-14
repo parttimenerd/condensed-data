@@ -59,8 +59,10 @@ public class FlamegraphGenerator {
                 <head>
                   <link rel="stylesheet" type="text/css" href="https://cdn.jsdelivr.net/npm/d3-flame-graph@4.1.3/dist/d3-flamegraph.css">
                   <link rel="stylesheet" type="text/css" href="misc/d3-flamegraph.css">
+                  <title>CJFR Storage Flamegraph</title>
                 </head>
                 <body>
+                  <h3 style="text-align:center;color:#555">Storage Flamegraph — byte distribution across event types (not CPU profiling)</h3>
                   <div id="chart"></div>
                   <script type="text/javascript" src="https://d3js.org/d3.v7.js"></script>
                   <script type="text/javascript" src="misc/d3.v7.js"></script>

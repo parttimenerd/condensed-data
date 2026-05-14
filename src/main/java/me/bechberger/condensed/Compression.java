@@ -12,6 +12,9 @@ import net.jpountz.lz4.LZ4Factory;
 import net.jpountz.lz4.LZ4FrameInputStream;
 import net.jpountz.lz4.LZ4FrameOutputStream;
 import net.jpountz.xxhash.XXHashFactory;
+import org.tukaani.xz.LZMA2Options;
+import org.tukaani.xz.XZInputStream;
+import org.tukaani.xz.XZOutputStream;
 
 public enum Compression {
     NONE(
@@ -90,6 +93,26 @@ public enum Compression {
                 @Override
                 public InputStream wrap(InputStream in) throws IOException {
                     return new ZstdInputStream(in);
+                }
+            }),
+    XZ(
+            new CompressionFactory() {
+                @Override
+                public OutputStream wrap(OutputStream out, CompressionLevel level)
+                        throws IOException {
+                    int preset =
+                            switch (level) {
+                                case FAST -> 1;
+                                case MEDIUM -> 3;
+                                case HIGH_COMPRESSION -> 6;
+                                case MAX_COMPRESSION -> 9;
+                            };
+                    return new XZOutputStream(out, new LZMA2Options(preset));
+                }
+
+                @Override
+                public InputStream wrap(InputStream in) throws IOException {
+                    return new XZInputStream(in);
                 }
             });
 

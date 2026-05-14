@@ -109,4 +109,30 @@ public class FlamegraphGeneratorTest {
         assertTrue(html.contains("d3"), "HTML should reference d3.js");
         assertTrue(html.contains("flamegraph"), "HTML should reference flamegraph");
     }
+
+    @Test
+    public void testFilteredTreeKeepsOnlyMatchingChildren() {
+        var root = buildSimpleTree(); // has TypeA (150 bytes) and TypeB (200 bytes)
+        var filtered = root.filtered(java.util.Set.of("TypeA"));
+
+        var gen = new FlamegraphGenerator(filtered);
+        var baos = new ByteArrayOutputStream();
+        gen.writeTable(new PrintStream(baos));
+        String output = baos.toString();
+        assertTrue(output.contains("TypeA"), "Filtered tree should contain TypeA");
+        assertFalse(output.contains("TypeB"), "Filtered tree should NOT contain TypeB");
+    }
+
+    @Test
+    public void testFilteredTreeEmptyFilter() {
+        var root = buildSimpleTree();
+        var filtered = root.filtered(java.util.Set.of("NonExistent"));
+
+        var gen = new FlamegraphGenerator(filtered);
+        var baos = new ByteArrayOutputStream();
+        gen.writeTable(new PrintStream(baos));
+        String output = baos.toString();
+        assertFalse(output.contains("TypeA"), "Filtered tree should not contain TypeA");
+        assertFalse(output.contains("TypeB"), "Filtered tree should not contain TypeB");
+    }
 }

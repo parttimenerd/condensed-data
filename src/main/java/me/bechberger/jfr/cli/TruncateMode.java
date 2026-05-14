@@ -6,7 +6,7 @@ public enum TruncateMode {
 
     public static TruncateMode fromCliValue(String value) {
         return switch (value.strip().toLowerCase()) {
-            case "begin", "beginning", "begining" -> BEGIN;
+            case "begin", "beginning" -> BEGIN;
             case "end" -> END;
             default ->
                     throw new IllegalArgumentException(

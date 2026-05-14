@@ -78,6 +78,31 @@ public class AgentCommandsTest {
         }
     }
 
+    private static final class ValidatingStubRecordingThread extends RecordingThread {
+        private ValidatingStubRecordingThread(boolean rotating)
+                throws ParseException, java.io.IOException {
+            super(
+                    Configuration.REASONABLE_DEFAULT,
+                    false,
+                    "default",
+                    "",
+                    () -> {},
+                    createSettings(),
+                    rotating);
+        }
+
+        @Override
+        void onEvent(RecordedEvent event) {}
+
+        @Override
+        List<Map.Entry<String, String>> getMiscStatus() {
+            return List.of(Map.entry("mode", "validating-stub"));
+        }
+
+        @Override
+        public void close() {}
+    }
+
     private static DynamicallyChangeableSettings createSettings() {
         var settings = new DynamicallyChangeableSettings();
         settings.maxDuration = Duration.ZERO;
@@ -113,6 +138,14 @@ public class AgentCommandsTest {
         field.set(instance, value);
     }
 
+    private static String ensureRotatingPathHasPlaceholder(String path) throws Exception {
+        var method =
+                StartCommand.class.getDeclaredMethod(
+                        "ensureRotatingPathHasPlaceholder", String.class);
+        method.setAccessible(true);
+        return (String) method.invoke(null, path);
+    }
+
     @AfterEach
     public void tearDown() {
         Agent.setCurrentRecordingThread(null);
@@ -124,13 +157,9 @@ public class AgentCommandsTest {
         setField(command, "duration", Duration.ofSeconds(5));
         var output = new StringBuilder();
 
-        captureStdout(
-                () -> {
-                    command.run();
-                    return null;
-                },
-                output);
+        int result = captureStdout(command::call, output);
 
+        assertEquals(1, result);
         assertTrue(output.toString().contains("No recording running"));
     }
 
@@ -141,7 +170,7 @@ public class AgentCommandsTest {
         var command = new SetDurationCommand();
         setField(command, "duration", Duration.ofSeconds(5));
 
-        command.run();
+        assertEquals(0, command.call());
 
         assertEquals(Duration.ofSeconds(5), thread.lastDuration);
     }
@@ -152,13 +181,9 @@ public class AgentCommandsTest {
         setField(command, "maxDuration", Duration.ofSeconds(2));
         var output = new StringBuilder();
 
-        captureStdout(
-                () -> {
-                    command.run();
-                    return null;
-                },
-                output);
+        int result = captureStdout(command::call, output);
 
+        assertEquals(1, result);
         assertTrue(output.toString().contains("No recording running"));
     }
 
@@ -169,7 +194,7 @@ public class AgentCommandsTest {
         var command = new SetMaxDurationCommand();
         setField(command, "maxDuration", Duration.ofSeconds(2));
 
-        command.run();
+        assertEquals(0, command.call());
 
         assertEquals(Duration.ofSeconds(2), thread.lastMaxDuration);
     }
@@ -180,13 +205,9 @@ public class AgentCommandsTest {
         setField(command, "maxFiles", 3);
         var output = new StringBuilder();
 
-        captureStdout(
-                () -> {
-                    command.run();
-                    return null;
-                },
-                output);
+        int result = captureStdout(command::call, output);
 
+        assertEquals(1, result);
         assertTrue(output.toString().contains("No recording running"));
     }
 
@@ -197,9 +218,21 @@ public class AgentCommandsTest {
         var command = new SetMaxFilesCommand();
         setField(command, "maxFiles", 3);
 
-        command.run();
+        assertEquals(0, command.call());
 
         assertEquals(3, thread.lastMaxFiles);
+    }
+
+    @Test
+    public void testSetMaxFilesCommandRejectsZeroForRotatingRecording() throws Exception {
+        var thread = new ValidatingStubRecordingThread(true);
+        Agent.setCurrentRecordingThread(thread);
+        var command = new SetMaxFilesCommand();
+        setField(command, "maxFiles", 0);
+
+        var exception = assertThrows(IllegalArgumentException.class, command::call);
+        assertTrue(exception.getMessage().contains("Max files must be at least 1 when rotating"));
+        assertEquals(10, thread.getMaxFiles());
     }
 
     @Test
@@ -208,13 +241,9 @@ public class AgentCommandsTest {
         setField(command, "maxSize", 2048L);
         var output = new StringBuilder();
 
-        captureStdout(
-                () -> {
-                    command.run();
-                    return null;
-                },
-                output);
+        int result = captureStdout(command::call, output);
 
+        assertEquals(1, result);
         assertTrue(output.toString().contains("No recording running"));
     }
 
@@ -225,7 +254,7 @@ public class AgentCommandsTest {
         var command = new SetMaxSizeCommand();
         setField(command, "maxSize", 2048L);
 
-        command.run();
+        assertEquals(0, command.call());
 
         assertEquals(2048L, thread.lastMaxSize);
     }
@@ -256,7 +285,7 @@ public class AgentCommandsTest {
         var output = new StringBuilder();
         var command = new StatusCommand();
 
-        assertEquals(0, captureStdout(command::call, output));
+        assertEquals(1, captureStdout(command::call, output));
         assertTrue(output.toString().contains("No recording running"));
     }
 
@@ -320,5 +349,32 @@ public class AgentCommandsTest {
 
         assertEquals(1, captureStdout(command::call, output));
         assertTrue(output.toString().contains("max-size or max-duration required"));
+    }
+
+    @Test
+    public void testEnsureRotatingPathHasPlaceholderReplacesSuffix() {
+        assertDoesNotThrow(
+                () ->
+                        assertEquals(
+                                "tmp/recording_$index.cjfr",
+                                ensureRotatingPathHasPlaceholder("tmp/recording.cjfr")));
+    }
+
+    @Test
+    public void testEnsureRotatingPathHasPlaceholderAppendsForPathWithoutSuffix() {
+        assertDoesNotThrow(
+                () ->
+                        assertEquals(
+                                "tmp/recording_$index.cjfr",
+                                ensureRotatingPathHasPlaceholder("tmp/recording")));
+    }
+
+    @Test
+    public void testEnsureRotatingPathHasPlaceholderKeepsExistingPlaceholder() {
+        assertDoesNotThrow(
+                () ->
+                        assertEquals(
+                                "tmp/recording_$date.cjfr",
+                                ensureRotatingPathHasPlaceholder("tmp/recording_$date.cjfr")));
     }
 }

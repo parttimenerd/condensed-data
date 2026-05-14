@@ -51,8 +51,7 @@ public class BenchmarkCommand implements Callable<Integer> {
     @Option(
             names = {"-c", "--configuration"},
             description =
-                    "The generatorConfiguration to use, possible values:"
-                            + " ${COMPLETION-CANDIDATES}",
+                    "The configuration to use, possible values:" + " ${COMPLETION-CANDIDATES}",
             converter = ConfigurationConverter.class,
             arity = "1..*")
     private List<Configuration> configurations =

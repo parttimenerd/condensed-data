@@ -107,6 +107,16 @@ public class MemoryUtilTest {
         assertEquals("1.0GB", MemoryUtil.formatMemory(1073741824L, 1));
     }
 
+    @Test
+    public void testFormatMemoryNegativeLargeValueScalesUnit() {
+        assertEquals("-1.00GB", MemoryUtil.formatMemory(-1073741824L));
+    }
+
+    @Test
+    public void testFormatMemoryNegativeSmallValueStaysBytes() {
+        assertEquals("-10B", MemoryUtil.formatMemory(-10, 1));
+    }
+
     @ParameterizedTest
     @ValueSource(strings = {"", "xyz", "KB"})
     public void testParseMemoryInvalidInputs(String input) {
@@ -155,5 +165,47 @@ public class MemoryUtilTest {
                 result,
                 "Sub-1024 value with BITS unit should use 'b' suffix, not 'B'. "
                         + "The early return 'bytes + \"B\"' ignores the unit parameter.");
+    }
+
+    // ========== Bug 153/154: formatMemory with maxDecimals caps output length ==========
+
+    /**
+     * Bug 153/154: formatMemory with unbounded decimals produces very long strings that get
+     * truncated by table column widths, cutting off the unit suffix (e.g. "670.590027" instead of
+     * "670.59MB"). With maxDecimals=2, output should always include the unit suffix.
+     */
+    @Test
+    public void testFormatMemoryWithMaxDecimalsCapsLength() {
+        // 82,403,442 bytes ≈ 78.59 MB — exact representation needs 6+ decimals
+        String result = MemoryUtil.formatMemory(82_403_442, 1, 2, MemoryUtil.MemoryUnit.BYTES);
+        assertTrue(result.endsWith("MB"), "Should always end with unit suffix, got: " + result);
+        assertEquals("78.59MB", result);
+    }
+
+    @Test
+    public void testFormatMemoryWithMaxDecimalsExactValue() {
+        // 1 MB exactly — should match within 1 decimal
+        String result = MemoryUtil.formatMemory(1048576, 1, 2, MemoryUtil.MemoryUnit.BYTES);
+        assertEquals("1.0MB", result);
+    }
+
+    @Test
+    public void testFormatMemoryWithMaxDecimalsLargeValue() {
+        // ~670 MB — exact would need many decimals, capped at 2
+        long bytes = (long) (670.590027 * 1024 * 1024);
+        String result = MemoryUtil.formatMemory(bytes, 1, 2, MemoryUtil.MemoryUnit.BYTES);
+        assertTrue(result.endsWith("MB"), "Should always end with unit suffix, got: " + result);
+        assertTrue(
+                result.length() <= 10,
+                "With maxDecimals=2, result should fit in 10-char column, got: " + result);
+    }
+
+    @Test
+    public void testFormatMemoryMaxDecimalsPreservesExactRoundtrip() {
+        // Old behavior: 3-arg overload delegates to 4-arg with maxDecimals=20
+        long bytes = 82_403_442;
+        String exact = MemoryUtil.formatMemory(bytes, 1, MemoryUtil.MemoryUnit.BYTES);
+        long parsed = MemoryUtil.parseMemory(exact);
+        assertEquals(bytes, parsed, "3-arg overload should still do exact round-trip");
     }
 }

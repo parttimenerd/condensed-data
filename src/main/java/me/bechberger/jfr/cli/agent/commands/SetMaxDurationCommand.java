@@ -1,6 +1,7 @@
 package me.bechberger.jfr.cli.agent.commands;
 
 import java.time.Duration;
+import java.util.concurrent.Callable;
 import me.bechberger.femtocli.annotations.Command;
 import me.bechberger.femtocli.annotations.Parameters;
 import me.bechberger.jfr.cli.CLIUtils.DurationConverter;
@@ -11,7 +12,7 @@ import me.bechberger.jfr.cli.agent.AgentIO;
         name = "set-max-duration",
         description = "Set the max duration of each individual recording when rotating files",
         mixinStandardHelpOptions = true)
-public class SetMaxDurationCommand implements Runnable {
+public class SetMaxDurationCommand implements Callable<Integer> {
 
     @Parameters(
             description = "The maximum duration of the recording (>= 1ms), 0 means unlimited",
@@ -19,11 +20,12 @@ public class SetMaxDurationCommand implements Runnable {
     private Duration maxDuration;
 
     @Override
-    public void run() {
+    public Integer call() {
         if (Agent.getCurrentRecordingThread() == null) {
             AgentIO.getAgentInstance().println("No recording running");
-            return;
+            return 1;
         }
         Agent.getCurrentRecordingThread().setMaxDuration(maxDuration);
+        return 0;
     }
 }

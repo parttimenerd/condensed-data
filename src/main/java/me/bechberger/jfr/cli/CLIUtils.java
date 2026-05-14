@@ -5,11 +5,18 @@ import static me.bechberger.util.TimeUtil.parseDuration;
 import static me.bechberger.util.TimeUtil.parseInstant;
 
 import java.lang.reflect.Method;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.StandardCopyOption;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.List;
+import java.util.function.Predicate;
 import java.util.stream.Collectors;
+import java.util.zip.ZipEntry;
+import java.util.zip.ZipInputStream;
 import me.bechberger.femtocli.TypeConverter;
 import me.bechberger.jfr.Configuration;
 import me.bechberger.jfr.cli.commands.InflateCommand;
@@ -45,6 +52,15 @@ public class CLIUtils {
                             + " (built without JMC support).");
             return 1;
         } catch (Exception e) {
+            Throwable cause = e;
+            while (cause instanceof java.lang.reflect.InvocationTargetException
+                    || (cause instanceof RuntimeException && cause.getCause() != null)) {
+                cause = cause.getCause();
+            }
+            if (cause instanceof IllegalArgumentException) {
+                System.err.println("Error: " + cause.getMessage());
+                return 2;
+            }
             return printError(e);
         }
         return 0;
@@ -62,8 +78,52 @@ public class CLIUtils {
                         || current instanceof RuntimeException)) {
             current = current.getCause();
         }
+        if (current instanceof java.nio.file.NoSuchFileException nsfe) {
+            return "No such file or directory: " + nsfe.getFile();
+        }
+        if (current instanceof java.nio.file.AccessDeniedException ade) {
+            return "Permission denied: " + ade.getFile();
+        }
         String message = current.getMessage();
         return (message == null || message.isBlank()) ? current.toString() : message;
+    }
+
+    /**
+     * Check if the output file can be written. Throws IllegalArgumentException if the file exists
+     * and is not writable, or if the file exists and force is false.
+     */
+    public static void checkOutputFileWritable(Path outputFile) {
+        checkOutputFileWritable(outputFile, false);
+    }
+
+    /**
+     * Check if the output file can be written.
+     *
+     * @param force if true, allow overwriting existing files (but still refuse read-only files)
+     */
+    public static void checkOutputFileWritable(Path outputFile, boolean force) {
+        if (Files.exists(outputFile)) {
+            if (!Files.isWritable(outputFile)) {
+                throw new IllegalArgumentException(
+                        "Cannot write to " + outputFile + " (file is read-only)");
+            }
+            if (!force) {
+                throw new IllegalArgumentException(
+                        "Output file already exists: "
+                                + outputFile
+                                + " (use --force to overwrite)");
+            }
+        }
+    }
+
+    /** Format a byte size into a human-readable string (e.g. "1.2 MB"). */
+    public static String formatFileSize(long bytes) {
+        if (bytes < 1024) return bytes + " B";
+        if (bytes < 1024 * 1024)
+            return String.format(java.util.Locale.ROOT, "%.1f KB", bytes / 1024.0);
+        if (bytes < 1024L * 1024 * 1024)
+            return String.format(java.util.Locale.ROOT, "%.1f MB", bytes / (1024.0 * 1024));
+        return String.format(java.util.Locale.ROOT, "%.1f GB", bytes / (1024.0 * 1024 * 1024));
     }
 
     public static class ConfigurationConverter implements TypeConverter<Configuration> {
@@ -73,9 +133,9 @@ public class CLIUtils {
         public Configuration convert(String value) {
             if (!Configuration.configurations.containsKey(value)) {
                 throw new IllegalArgumentException(
-                        "Unknown generatorConfiguration: "
+                        "Unknown configuration: "
                                 + value
-                                + " use one of "
+                                + ", use one of "
                                 + Configuration.configurations.keySet());
             }
             return Configuration.configurations.get(value);
@@ -184,5 +244,72 @@ public class CLIUtils {
                             return escaped;
                         })
                 .collect(Collectors.joining(" "));
+    }
+
+    /**
+     * Extract matching entries from a ZIP file into a temp folder while preserving entry paths.
+     *
+     * <p>Preserving entry paths avoids basename collisions like {@code a/same.jfr} and {@code
+     * b/same.jfr} that would otherwise overwrite each other when flattened.
+     */
+    public static List<Path> extractMatchingZipEntries(
+            Path zipPath, Predicate<String> entryMatcher, String tempPrefix)
+            throws java.io.IOException {
+        var extractedFiles = new ArrayList<Path>();
+        var tmpFolder = Files.createTempDirectory(tempPrefix);
+        Runtime.getRuntime()
+                .addShutdownHook(
+                        new Thread(
+                                () -> {
+                                    try {
+                                        for (var file : extractedFiles) {
+                                            Files.deleteIfExists(file);
+                                        }
+                                        if (Files.exists(tmpFolder)) {
+                                            try (var paths = Files.walk(tmpFolder)) {
+                                                paths.sorted(Comparator.reverseOrder())
+                                                        .forEach(
+                                                                path -> {
+                                                                    try {
+                                                                        Files.deleteIfExists(path);
+                                                                    } catch (
+                                                                            java.io.IOException e) {
+                                                                        throw new RuntimeException(
+                                                                                e);
+                                                                    }
+                                                                });
+                                            }
+                                        }
+                                    } catch (java.io.IOException e) {
+                                        throw new RuntimeException(e);
+                                    }
+                                }));
+
+        try (var is = Files.newInputStream(zipPath);
+                var zipReader = new ZipInputStream(is)) {
+            ZipEntry entry;
+            while ((entry = zipReader.getNextEntry()) != null) {
+                if (entry.isDirectory()) {
+                    continue;
+                }
+                var entryName = entry.getName();
+                if (!entryMatcher.test(entryName)) {
+                    continue;
+                }
+                // Keep relative paths to avoid basename collisions across directories.
+                var target = tmpFolder.resolve(entryName).normalize();
+                if (!target.startsWith(tmpFolder)) {
+                    throw new java.io.IOException("Invalid ZIP entry path: " + entryName);
+                }
+                var parent = target.getParent();
+                if (parent != null) {
+                    Files.createDirectories(parent);
+                }
+                Files.copy(zipReader, target, StandardCopyOption.REPLACE_EXISTING);
+                extractedFiles.add(target);
+            }
+        }
+
+        return extractedFiles;
     }
 }

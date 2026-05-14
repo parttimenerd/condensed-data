@@ -59,7 +59,7 @@ public class Benchmark {
         }
 
         public String getStringForRow(T row) {
-            return String.format(format(), getter.apply(row));
+            return String.format(java.util.Locale.ROOT, format(), getter.apply(row));
         }
     }
 
@@ -301,7 +301,7 @@ public class Benchmark {
                                         size,
                                         compressedSize);
                             })
-                    .filter(jfrFile -> jfrFile.name().matches(fileRegex + ".*"))
+                    .filter(jfrFile -> jfrFile.name().matches(".*" + fileRegex + ".*"))
                     .collect(Collectors.toList());
         } catch (IOException e) {
             throw new RuntimeException(e);
@@ -333,9 +333,6 @@ public class Benchmark {
                             configuration,
                             (System.nanoTime() - start) / 1_000_000_000f,
                             Files.size(cjfrFile));
-            if (!keepCondensedFile) {
-                Files.delete(cjfrFile);
-            }
             if (inflateCondensedFile) {
                 try (var in = new CondensedInputStream(Files.newInputStream(cjfrFile))) {
                     Path inflated =
@@ -345,6 +342,9 @@ public class Benchmark {
                         Files.delete(inflated);
                     }
                 }
+            }
+            if (!keepCondensedFile) {
+                Files.delete(cjfrFile);
             }
             System.out.println(
                     "Benchmarked "

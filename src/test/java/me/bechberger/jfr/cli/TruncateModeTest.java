@@ -17,8 +17,12 @@ public class TruncateModeTest {
     }
 
     @Test
-    public void testFromCliValueBeginingTypo() {
-        assertEquals(TruncateMode.BEGIN, TruncateMode.fromCliValue("begining"));
+    public void testFromCliValueBeginingTypoIsRejected() {
+        var ex =
+                assertThrows(
+                        IllegalArgumentException.class,
+                        () -> TruncateMode.fromCliValue("begining"));
+        assertTrue(ex.getMessage().contains("Unknown truncate mode"));
     }
 
     @Test

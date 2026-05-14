@@ -44,7 +44,7 @@ public class BenchmarkCommandTest {
 
         assertAll(
                 () -> assertThat(result.exitCode()).isNotEqualTo(0),
-                () -> assertThat(result.error()).contains("Unknown generatorConfiguration"));
+                () -> assertThat(result.error()).contains("Unknown configuration"));
     }
 
     @Test

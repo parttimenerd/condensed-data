@@ -213,11 +213,11 @@ public class TypeCollection {
                 return (R) floats;
             }
             if (value instanceof double[]) {
-                List<Float> floats = new ArrayList<>();
+                List<Double> doubles = new ArrayList<>();
                 for (double d : (double[]) value) {
-                    floats.add((float) d);
+                    doubles.add(d);
                 }
-                return (R) floats;
+                return (R) doubles;
             }
             if (value instanceof char[]) {
                 List<Long> longs = new ArrayList<>();
@@ -232,7 +232,7 @@ public class TypeCollection {
             return (R) value;
         }
         if (value instanceof Double) {
-            return (R) (Float) (float) (double) value;
+            return (R) value;
         }
         if (value instanceof Character) {
             return (R) (Long) (long) (char) value;

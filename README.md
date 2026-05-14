@@ -28,9 +28,6 @@ Commands:
   agent                Use the included Java agent on a specific JVM process
   summary              Print a summary of the condensed JFR file
   view                 View a specific event of a condensed JFR file as a table
-  generate-completion  Generate an auto-completion script for bash and zsh for
-                         cjfr
-  help                 Print help information
 ```
 But you can also use its built-in Java agent to directly record condensed JFR files:
 ```shell
@@ -83,11 +80,23 @@ Start the recording
       --verbose              Be verbose
 ```
 
-Autocompletion:
+  Third-party Bug Hunting
+  -----------------------
 
-```
-. <(./cjfr generate-completion)
-```
+  You can use condensed-data as a differential bug-finding tool against third-party JFR corpora.
+
+  Run the automated harness:
+  ```shell
+  python3 bin/third_party_bug_hunt.py /path/to/third-party-jfrs
+  ```
+
+  This runs `condense -> summary -> inflate -> summary` across multiple configurations and
+  compression algorithms, and reports event-count/event-type mismatches in
+  `tmp/third_party_bug_hunt/report.json`.
+
+  See [THIRD_PARTY_BUG_HUNT.md](THIRD_PARTY_BUG_HUNT.md) for extensive workflows.
+
+Autocompletion is not yet supported.
 
 TODO:
 - javaagent

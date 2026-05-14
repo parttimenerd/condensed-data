@@ -170,6 +170,27 @@ public class CLIUtilsTest {
         assertThat(CLIUtils.userErrorMessage(wrapper)).isEqualTo("inner cause");
     }
 
+    @Test
+    public void testUserErrorMessageNoSuchFileException() {
+        var ex = new java.nio.file.NoSuchFileException("/tmp/nonexistent/output.cjfr");
+        assertThat(CLIUtils.userErrorMessage(ex)).contains("No such file or directory");
+        assertThat(CLIUtils.userErrorMessage(ex)).contains("/tmp/nonexistent/output.cjfr");
+    }
+
+    @Test
+    public void testUserErrorMessageWrappedNoSuchFileException() {
+        var cause = new java.nio.file.NoSuchFileException("/tmp/missing/file.jfr");
+        var wrapper = new RuntimeException("wrapper", cause);
+        assertThat(CLIUtils.userErrorMessage(wrapper)).contains("No such file or directory");
+    }
+
+    @Test
+    public void testUserErrorMessageAccessDeniedException() {
+        var ex = new java.nio.file.AccessDeniedException("/tmp/protected.cjfr");
+        assertThat(CLIUtils.userErrorMessage(ex)).contains("Permission denied");
+        assertThat(CLIUtils.userErrorMessage(ex)).contains("/tmp/protected.cjfr");
+    }
+
     // --- combineArgs tests ---
 
     @Test
@@ -198,7 +219,7 @@ public class CLIUtilsTest {
     public void testConfigurationConverterRejectsUnknownConfiguration() {
         assertThatThrownBy(() -> new CLIUtils.ConfigurationConverter().convert("unknown-config"))
                 .isInstanceOf(IllegalArgumentException.class)
-                .hasMessageContaining("Unknown generatorConfiguration");
+                .hasMessageContaining("Unknown configuration");
     }
 
     @Test

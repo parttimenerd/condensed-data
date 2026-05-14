@@ -136,14 +136,18 @@ public class ReadStruct implements Map<String, Object>, ReadContainer<ReadStruct
 
     @Override
     public Object get(Object key) {
-        if (!(key instanceof String) || !type.hasField((String) key)) {
-            return null;
-        }
-        if (!map.containsKey(key)) {
-            assert accessor != null;
-            map.put((String) key, getDirectly((String) key));
-        }
-        return map.get(key);
+        if (!(key instanceof String)) return null;
+        String skey = (String) key;
+        // Fast path: single map lookup for already-loaded non-null fields
+        Object val = map.get(skey);
+        if (val != null) return val;
+        // Slow path: check if explicitly null or needs lazy loading
+        if (map.containsKey(skey)) return null;
+        if (!type.hasField(skey)) return null;
+        if (accessor == null) return null;
+        val = getDirectly(skey);
+        map.put(skey, val);
+        return val;
     }
 
     public Object getOrThrow(Object key) {

@@ -24,10 +24,7 @@ public class InflateCommandTest {
         var result = new CommandExecuter("inflate").run();
         assertAll(
                 () -> assertThat(result.exitCode()).isEqualTo(2),
-                () ->
-                        assertThat(result.error())
-                                .containsIgnoringNewLines("Usage: cjfr")
-                                .contains("Missing required parameter"),
+                () -> assertThat(result.error()).contains("Missing required parameter"),
                 () -> assertThat(result.output()).isEmpty());
     }
 
@@ -170,6 +167,76 @@ public class InflateCommandTest {
                         (result, map) -> {
                             checkSampleFile(map.get("out.jfr"));
                         })
+                .run();
+    }
+
+    @Test
+    public void testDataAmountBytesOddValuesPreservedAfterCondenseAndInflate() throws Exception {
+        new CommandExecuter(
+                        "condense",
+                        "T/byte_count.jfr",
+                        "T/byte_count.cjfr",
+                        "--condenser-config",
+                        "reasonable-default")
+                .withFiles(CommandTestUtil.getByteCountJFRFile())
+                .checkNoError()
+                .checkNoOutput()
+                .check(
+                        (condenseResult, files) -> {
+                            new CommandExecuter(
+                                            "inflate",
+                                            files.get("byte_count.cjfr").toString(),
+                                            "T/out.jfr")
+                                    .checkNoError()
+                                    .checkNoOutput()
+                                    .check(
+                                            (inflateResult, inflateFiles) -> {
+                                                var events =
+                                                        RecordingFile.readAllEvents(
+                                                                inflateFiles.get("out.jfr"));
+                                                var event =
+                                                        events.stream()
+                                                                .filter(
+                                                                        e ->
+                                                                                e.getEventType()
+                                                                                        .getName()
+                                                                                        .equals(
+                                                                                                "ByteCountEvent"))
+                                                                .findFirst()
+                                                                .orElseThrow();
+                                                assertThat(event.getLong("bytesReadAligned"))
+                                                        .isEqualTo(16L);
+                                                assertThat(event.getLong("bytesReadOdd"))
+                                                        .isEqualTo(15L);
+                                                assertThat(event.getLong("bytesReadTiny"))
+                                                        .isEqualTo(3L);
+                                            })
+                                    .run();
+                        })
+                .run();
+    }
+
+    @Test
+    public void testWithZIPFileDuplicateBasenamesInDifferentFolders() throws Exception {
+        var tmpFolder = Files.newTemporaryFolder();
+        var zipFile = tmpFolder.toPath().resolve("sample-dup.zip");
+        CommandTestUtil.createZipWithFiles(
+                zipFile,
+                java.util.Map.of(
+                        "a/same.cjfr", CommandTestUtil.getSampleCJFRFile(),
+                        "b/same.cjfr", CommandTestUtil.getSampleCJFRFile(1)));
+
+        new CommandExecuter("inflate", "T/sample-dup.zip", "T/out.jfr")
+                .withFiles(zipFile)
+                .checkNoError()
+                .checkNoOutput()
+                .check(
+                        (result, map) ->
+                                checkSampleFile(
+                                        map.get("out.jfr"),
+                                        List.of(
+                                                CommandTestUtil.getSampleJFRFile(),
+                                                CommandTestUtil.getSampleJFRFile(1))))
                 .run();
     }
 
@@ -377,6 +444,23 @@ public class InflateCommandTest {
     }
 
     @Test
+    public void testUnknownEventsFilterFailsWithClearError() throws Exception {
+        var result =
+                new CommandExecuter(
+                                "inflate",
+                                "T/" + CommandTestUtil.getSampleCJFRFileName(),
+                                "T/out.jfr",
+                                "--events",
+                                "does.not.exist")
+                        .withFiles(CommandTestUtil.getSampleCJFRFile())
+                        .run();
+
+        assertThat(result.exitCode()).isEqualTo(2);
+        assertThat(result.error()).contains("Unknown event type(s): does.not.exist");
+        assertThat(result.output()).isEmpty();
+    }
+
+    @Test
     public void testNoReconstitution() throws Exception {
         // --no-reconstitution should still produce a JFR file
         new CommandExecuter(
@@ -555,5 +639,64 @@ public class InflateCommandTest {
                             assertThat(inflateResult.exitCode()).isEqualTo(0);
                         })
                 .run();
+    }
+
+    @Test
+    public void testInflateCreatesParentDirectories() throws Exception {
+        new CommandExecuter(
+                        "condense", "T/" + CommandTestUtil.getSampleJFRFileName(), "T/sample.cjfr")
+                .withFiles(CommandTestUtil.getSampleJFRFile())
+                .check(
+                        (condenseResult, map) -> {
+                            var nestedOutput =
+                                    map.get("sample.cjfr")
+                                            .getParent()
+                                            .resolve("deeply")
+                                            .resolve("nested")
+                                            .resolve("out.jfr");
+                            var inflateResult =
+                                    new CommandExecuter(
+                                                    "inflate",
+                                                    map.get("sample.cjfr").toString(),
+                                                    nestedOutput.toString())
+                                            .run();
+                            assertThat(inflateResult.exitCode()).isEqualTo(0);
+                            assertThat(nestedOutput.toFile()).exists();
+                        })
+                .run();
+    }
+
+    @Test
+    public void testInflateRefusesReadOnlyOutputFile() throws Exception {
+        new CommandExecuter(
+                        "inflate", "T/" + CommandTestUtil.getSampleCJFRFileName(), "T/readonly.jfr")
+                .withFiles(CommandTestUtil.getSampleCJFRFile())
+                .check(
+                        (result, files) -> {
+                            // First create the output file as read-only
+                            var outPath = files.get("readonly.jfr");
+                            // This is the first run, it should succeed
+                        })
+                .run();
+
+        // Now do a second run with a pre-created read-only file
+        var tempDir = java.nio.file.Files.createTempDirectory("jfr-cli-test");
+        var cjfrPath = tempDir.resolve(CommandTestUtil.getSampleCJFRFileName());
+        java.nio.file.Files.copy(CommandTestUtil.getSampleCJFRFile(), cjfrPath);
+        var readOnlyOut = tempDir.resolve("readonly.jfr");
+        java.nio.file.Files.writeString(readOnlyOut, "dummy");
+        readOnlyOut.toFile().setReadOnly();
+        try {
+            var result =
+                    new CommandExecuter("inflate", cjfrPath.toString(), readOnlyOut.toString())
+                            .run();
+            assertThat(result.exitCode()).isNotEqualTo(0);
+            assertThat(result.error()).contains("read-only");
+        } finally {
+            readOnlyOut.toFile().setWritable(true);
+            try (var stream = java.nio.file.Files.walk(tempDir)) {
+                stream.sorted(Comparator.reverseOrder()).forEach(p -> p.toFile().delete());
+            }
+        }
     }
 }

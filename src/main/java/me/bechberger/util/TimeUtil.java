@@ -6,6 +6,7 @@ import java.time.LocalDateTime;
 import java.time.ZoneId;
 import java.time.ZonedDateTime;
 import java.time.format.DateTimeFormatter;
+import java.util.Locale;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.stream.IntStream;
@@ -21,7 +22,52 @@ public class TimeUtil {
         if (duration.isNegative()) {
             return "-" + formatDuration(duration.negated());
         }
-        return duration.toString().substring(2).replaceAll("(\\d[HMS])(?!$)", "$1 ").toLowerCase();
+        long totalNanos = duration.toNanos();
+        if (totalNanos == 0) {
+            return "0s";
+        }
+        long seconds = duration.getSeconds();
+        if (seconds >= 60) {
+            // Use h/m/s for >= 1 minute
+            return duration.toString()
+                    .substring(2)
+                    .replaceAll("(\\d[HMS])(?!$)", "$1 ")
+                    .toLowerCase();
+        }
+        if (seconds >= 1) {
+            // Use seconds with ms precision
+            long millis = duration.toMillis();
+            double secs = millis / 1000.0;
+            String formatted = String.valueOf(secs);
+            // Remove trailing zeros after decimal point but keep at least one
+            formatted = formatted.replaceAll("(\\.[0-9]*?)0+$", "$1");
+            formatted = formatted.replaceAll("\\.$", ".0");
+            return formatted + "s";
+        }
+        long nanos = duration.toNanos();
+        if (nanos >= 1_000_000) {
+            // Use milliseconds
+            double ms = nanos / 1_000_000.0;
+            if (ms >= 100) {
+                return String.format(Locale.ROOT, "%.1fms", ms);
+            } else if (ms >= 10) {
+                return String.format(Locale.ROOT, "%.2fms", ms);
+            } else {
+                return String.format(Locale.ROOT, "%.3fms", ms);
+            }
+        }
+        if (nanos >= 1000) {
+            // Use microseconds
+            double us = nanos / 1000.0;
+            if (us >= 100) {
+                return String.format(Locale.ROOT, "%.1fus", us);
+            } else if (us >= 10) {
+                return String.format(Locale.ROOT, "%.2fus", us);
+            } else {
+                return String.format(Locale.ROOT, "%.3fus", us);
+            }
+        }
+        return nanos + "ns";
     }
 
     public static String formatInstant(Instant instant) {
@@ -39,12 +85,11 @@ public class TimeUtil {
      */
     public static Instant parseInstant(String time) {
         time = time.strip();
-        if (time.matches("\\d{1,2}:\\d{1,2}:\\d{1,2}")) { // parse HH:mm:ss
-            time = LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyy-MM-dd " + time));
-        } else if (time.matches("\\d{1,2}:\\d{1,2}")) { // parse HH:mm
-            time =
-                    LocalDateTime.now()
-                            .format(DateTimeFormatter.ofPattern("yyyy-MM-dd " + time + ":00"));
+        if (time.matches("\\d{1,2}:\\d{1,2}(:\\d{1,2})?")) {
+            throw new IllegalArgumentException(
+                    "Time-only format is not supported for '"
+                            + time
+                            + "'. Please include a date, e.g. yyyy-MM-ddTHH:mm:ss");
         }
         try {
             return Instant.parse(time);

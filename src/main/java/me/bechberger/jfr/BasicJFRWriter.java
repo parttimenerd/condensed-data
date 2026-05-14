@@ -268,7 +268,8 @@ public class BasicJFRWriter {
             case "long", "int" -> new VarIntType(id, name, "", !isUnsigned);
             case "java.lang.String" ->
                     new StringType(id, name, "", Charset.defaultCharset().toString());
-            case "float", "double" -> new FloatType(id, name, "");
+            case "float" -> new FloatType(id, name, "", Type.FLOAT32);
+            case "double" -> new FloatType(id, name, "", getDoubleStorageType());
             default ->
                     throw new IllegalArgumentException(
                             "Unsupported type: "
@@ -276,6 +277,16 @@ public class BasicJFRWriter {
                                     + ", content type: "
                                     + field.getContentType());
         };
+    }
+
+    private Type getDoubleStorageType() {
+        if (Configuration.REDUCED_DEFAULT.name().equals(configuration.name())) {
+            return Type.FLOAT16;
+        }
+        if (configuration.memoryAsBFloat16()) {
+            return Type.FLOAT32;
+        }
+        return Type.FLOAT64;
     }
 
     @NotNull
@@ -459,15 +470,150 @@ public class BasicJFRWriter {
                 .map(a -> (String) a.getValue("value"));
     }
 
+    private static long getIntBackedFieldAsLong(RecordedObject event, ValueDescriptor field) {
+        return ((Number) getValueOrDefault(event, field, e -> e.getInt(field.getName())))
+                .longValue();
+    }
+
+    private static long getLongBackedFieldAsLong(RecordedObject event, ValueDescriptor field) {
+        return ((Number) getValueOrDefault(event, field, e -> e.getLong(field.getName())))
+                .longValue();
+    }
+
+    private @Nullable GetterAndCachedType getLosslessBytesDataAmountType(
+            ValueDescriptor field, Optional<String> dataAmount) {
+        if (dataAmount.isEmpty() || !"BYTES".equals(dataAmount.get())) {
+            return null;
+        }
+        var varIntType = getMemoryVarIntType(dataAmount.get());
+        return switch (field.getTypeName()) {
+            case "byte", "short", "int" ->
+                    new GetterAndCachedType(
+                            event -> getIntBackedFieldAsLong(event, field),
+                            varIntType,
+                            JFRReduction.DATA_AMOUNT_BYTES_REDUCTION);
+            case "long" ->
+                    new GetterAndCachedType(
+                            event -> getLongBackedFieldAsLong(event, field),
+                            varIntType,
+                            JFRReduction.DATA_AMOUNT_BYTES_REDUCTION);
+            default -> null;
+        };
+    }
+
+    private @Nullable GetterAndCachedType getBFloat16DataAmountType(
+            ValueDescriptor field, Optional<String> dataAmount) {
+        if (!configuration.memoryAsBFloat16() || dataAmount.isEmpty()) {
+            return null;
+        }
+        return switch (field.getTypeName()) {
+            case "int" ->
+                    new GetterAndCachedType(
+                            event -> (float) getIntBackedFieldAsLong(event, field),
+                            getMemoryFloatType(dataAmount.get()));
+            case "long" ->
+                    new GetterAndCachedType(
+                            event -> (float) getLongBackedFieldAsLong(event, field),
+                            getMemoryFloatType(dataAmount.get()));
+            default -> null;
+        };
+    }
+
+    private @Nullable GetterAndCachedType getVarIntDataAmountType(
+            ValueDescriptor field, Optional<String> dataAmount) {
+        if (dataAmount.isEmpty()) {
+            return null;
+        }
+        var varIntType = getMemoryVarIntType(dataAmount.get());
+        return switch (field.getTypeName()) {
+            case "int" ->
+                    new GetterAndCachedType(
+                            event ->
+                                    getValueOrDefault(event, field, e -> e.getInt(field.getName())),
+                            varIntType);
+            case "short" ->
+                    new GetterAndCachedType(
+                            event ->
+                                    (short)
+                                            (int)
+                                                    getValueOrDefault(
+                                                            event,
+                                                            field,
+                                                            e -> e.getInt(field.getName())),
+                            varIntType);
+            case "byte" ->
+                    new GetterAndCachedType(
+                            event ->
+                                    (byte)
+                                            (int)
+                                                    getValueOrDefault(
+                                                            event,
+                                                            field,
+                                                            e -> e.getInt(field.getName())),
+                            varIntType);
+            case "long" ->
+                    new GetterAndCachedType(
+                            event ->
+                                    getValueOrDefault(
+                                            event, field, e -> e.getLong(field.getName())),
+                            varIntType);
+            default -> null;
+        };
+    }
+
+    private static boolean hasField(RecordedObject event, String fieldName) {
+        return event.getFields().stream().anyMatch(f -> f.getName().equals(fieldName));
+    }
+
+    private static Object getDefaultValueForMissingField(ValueDescriptor field) {
+        return switch (field.getTypeName()) {
+            case "boolean" -> false;
+            case "byte" -> (byte) 0;
+            case "char" -> (char) 0;
+            case "short" -> (short) 0;
+            case "int" -> 0;
+            case "long" -> 0L;
+            case "float" -> 0.0f;
+            case "double" -> 0.0d;
+            default -> null;
+        };
+    }
+
+    private static Object getValueOrDefault(
+            RecordedObject event, ValueDescriptor field, Function<RecordedObject, Object> getter) {
+        if (!hasField(event, field.getName())) {
+            return getDefaultValueForMissingField(field);
+        }
+        return getter.apply(event);
+    }
+
     private GetterAndCachedType gettObjectFunction(ValueDescriptor field, boolean topLevel) {
         String contentType = field.getContentType();
         if (contentType != null && contentType.equals("jdk.jfr.Timestamp")) {
             return new GetterAndCachedType(
-                    event -> event.getInstant(field.getName()),
+                    event -> getValueOrDefault(event, field, e -> e.getInstant(field.getName())),
+                    timeStampType,
+                    JFRReduction.TIMESTAMP_REDUCTION);
+        }
+        // Fallback: newer JDK JFR files may have null contentType / missing annotations.
+        // Use RecordedEvent.getStartTime() which works regardless of annotations.
+        if (contentType == null
+                && field.getName().equals("startTime")
+                && topLevel
+                && field.getTypeName().equals("long")) {
+            return new GetterAndCachedType(
+                    event -> ((RecordedEvent) event).getStartTime(),
                     timeStampType,
                     JFRReduction.TIMESTAMP_REDUCTION);
         }
         if (contentType != null && contentType.equals("jdk.jfr.Timespan")) {
+            return getTimespanType(field, topLevel);
+        }
+        // Fallback: duration field without @Timespan annotation
+        if (contentType == null
+                && field.getName().equals("duration")
+                && topLevel
+                && field.getTypeName().equals("long")) {
             return getTimespanType(field, topLevel);
         }
         // BFloat16 for @Percentage floats (e.g., ThreadCPULoad, CPULoad)
@@ -476,57 +622,28 @@ public class BasicJFRWriter {
                 && contentType != null
                 && contentType.equals("jdk.jfr.Percentage")) {
             return new GetterAndCachedType(
-                    event -> event.getFloat(field.getName()), getPercentageFloatType());
+                    event -> getValueOrDefault(event, field, e -> e.getFloat(field.getName())),
+                    getPercentageFloatType());
         }
-        if ((field.getTypeName().equals("long") || field.getTypeName().equals("int"))
-                && configuration.memoryAsBFloat16()) {
-            var dataAmount = getDataAmountAnnotationValue(field);
-            if (dataAmount.isPresent()) {
-                switch (field.getTypeName()) {
-                    case "int" -> {
-                        return new GetterAndCachedType(
-                                event -> (float) event.getInt(field.getName()),
-                                getMemoryFloatType(dataAmount.get()));
-                    }
-                    case "long" -> {
-                        return new GetterAndCachedType(
-                                event -> (float) event.getLong(field.getName()),
-                                getMemoryFloatType(dataAmount.get()));
-                    }
-                }
-            }
-        } else {
-            var dataAmount = getDataAmountAnnotationValue(field);
-            if (dataAmount.isPresent()) {
-                switch (field.getTypeName()) {
-                    case "int" -> {
-                        return new GetterAndCachedType(
-                                event -> event.getInt(field.getName()),
-                                getMemoryVarIntType(dataAmount.get()));
-                    }
-                    case "short" -> {
-                        return new GetterAndCachedType(
-                                event -> (short) event.getInt(field.getName()),
-                                getMemoryVarIntType(dataAmount.get()));
-                    }
-                    case "byte" -> {
-                        return new GetterAndCachedType(
-                                event -> (byte) event.getInt(field.getName()),
-                                getMemoryVarIntType(dataAmount.get()));
-                    }
-                    case "long" -> {
-                        return new GetterAndCachedType(
-                                event -> event.getLong(field.getName()),
-                                getMemoryVarIntType(dataAmount.get()));
-                    }
-                }
-            }
+        var dataAmount = getDataAmountAnnotationValue(field);
+        var losslessBytesType = getLosslessBytesDataAmountType(field, dataAmount);
+        if (losslessBytesType != null) {
+            return losslessBytesType;
+        }
+        var bFloat16DataAmountType = getBFloat16DataAmountType(field, dataAmount);
+        if (bFloat16DataAmountType != null) {
+            return bFloat16DataAmountType;
+        }
+        var varIntDataAmountType = getVarIntDataAmountType(field, dataAmount);
+        if (varIntDataAmountType != null) {
+            return varIntDataAmountType;
         }
         JFRReduction reduction = JFRReduction.NONE;
         if (field.getTypeName().equals("jdk.types.StackTrace")) {
             return new GetterAndCachedType(
                     event -> {
-                        var trace = event.getValue(field.getName());
+                        var trace =
+                                getValueOrDefault(event, field, e -> e.getValue(field.getName()));
                         // doing this in reductions is wasteful
                         return trace == null
                                 ? null
@@ -537,7 +654,9 @@ public class BasicJFRWriter {
                     getReducedStackTraceType(field));
         }
         return new GetterAndCachedType(
-                event -> normalize(event.getValue(field.getName())),
+                event ->
+                        normalize(
+                                getValueOrDefault(event, field, e -> e.getValue(field.getName()))),
                 getTypeOrNull(TypeIdent.of(field)),
                 reduction);
     }
@@ -605,8 +724,9 @@ public class BasicJFRWriter {
         return memoryVarIntTypes.computeIfAbsent(
                 kind,
                 k -> {
-                    // JVM objects are 8-byte aligned, so BYTES values can be divided by 8
-                    long multiplier = "BYTES".equals(k) ? 8 : 1;
+                    // DataAmount(BYTES) is used by many counters (for example I/O bytesRead)
+                    // that are not guaranteed to be 8-byte aligned.
+                    long multiplier = 1;
                     return out.writeAndStoreType(
                             id -> new VarIntType(id, "memory varint " + k, "", true, multiplier));
                 });
@@ -626,8 +746,15 @@ public class BasicJFRWriter {
                         field.getName().equals("duration") && topLevel
                                 ? configuration.timeStampTicksPerSecond()
                                 : configuration.durationTicksPerSecond());
+        // Use the no-arg getDuration() for the built-in event duration field,
+        // because getDuration("duration") requires @Timespan annotation which
+        // may be missing in some JFR file chunks.
+        Function<RecordedObject, Object> getter =
+                field.getName().equals("duration") && topLevel
+                        ? event -> ((RecordedEvent) event).getDuration()
+                        : event -> event.getDuration(field.getName());
         return new GetterAndCachedType(
-                event -> event.getDuration(field.getName()),
+                getter,
                 getCachedTimespanType(1_000_000_000 / ticksPerSec),
                 JFRReduction.TIMESPAN_REDUCTION);
     }
@@ -783,7 +910,11 @@ public class BasicJFRWriter {
         eventTypeMap.computeIfAbsent(eventType, this::createAndRegisterEventStructType);
     }
 
-    /** Be sure to close the output stream after writing all events */
+    /** Reset deduplication state, call between processing different JFR files */
+    public void resetDeduplication() {
+        deduplication.reset();
+    }
+
     public void processJFRFile(RecordingFile r) {
         while (r.hasMoreEvents()) {
             try {
@@ -795,8 +926,24 @@ public class BasicJFRWriter {
         close();
     }
 
+    /**
+     * Reads the recording start time (nanos since epoch) from the JFR chunk header. The chunk
+     * header stores the actual recording start at byte offset 32.
+     */
+    public static long readChunkStartTimeNanos(Path jfrFile) throws IOException {
+        try (var raf = new java.io.RandomAccessFile(jfrFile.toFile(), "r")) {
+            raf.seek(32); // skip magic(4) + version(4) + chunkSize(8) + cpOffset(8) + metaOffset(8)
+            return raf.readLong();
+        }
+    }
+
     /** Be sure to close the output stream after writing all events */
     public void processJFRFile(Path file) {
+        try {
+            writeConfigurationAndUniverseIfNeeded(readChunkStartTimeNanos(file));
+        } catch (IOException e) {
+            // fall back to first-event start time
+        }
         try (var r = new RecordingFile(file)) {
             processJFRFile(r);
         } catch (IOException e) {

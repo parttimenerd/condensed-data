@@ -175,7 +175,7 @@ public interface EventFilter<C> {
 
         @Option(
                 names = {"--events"},
-                description = "The event types to include",
+                description = "The event types to include (repeatable, comma-separated)",
                 split = ",")
         List<String> eventTypes;
 
@@ -189,7 +189,7 @@ public interface EventFilter<C> {
                 description =
                         "Filter out events that happened in the seconds before and after the GC's"
                             + " with >= n-th percentile duration, e.g. --gc-percentile 90 gives you"
-                            + " all events before, during and after the longest 10%% of GC's")
+                            + " all events before, during and after the longest 10% of GC's")
         int gcPercentile = 0;
 
         @Option(
@@ -202,17 +202,27 @@ public interface EventFilter<C> {
         Duration gcPercentileContext;
 
         /** Create a basic event filter that checks a time window and the event types */
-        static @Nullable SinglePhaseEventFilter<Void> createBasicFilter(
+        static @Nullable EventFilter<?> createBasicFilter(
                 Instant start, Instant end, Duration duration, List<String> eventTypes) {
             if (start == null && end == null && duration == null && eventTypes == null) {
                 return null;
             }
+            if (duration != null && (duration.isNegative() || duration.isZero())) {
+                throw new IllegalArgumentException("--duration must be positive, got: " + duration);
+            }
             if (start != null && end != null && duration != null) {
                 throw new IllegalArgumentException(
-                        "Both start, end and duration are set, ignoring duration");
+                        "Both start, end and duration are set; cannot specify all three together");
+            }
+            if (start != null && end != null && start.isAfter(end)) {
+                throw new IllegalArgumentException(
+                        "Start time " + start + " is after end time " + end);
             }
             if (start == null) {
                 if (end == null) {
+                    if (duration != null) {
+                        throw new IllegalArgumentException("--duration requires --start or --end");
+                    }
                     start = Instant.MIN;
                     end = Instant.MAX;
                 } else if (duration != null) {
@@ -225,23 +235,98 @@ public interface EventFilter<C> {
             }
             Instant fixedStart = start;
             Instant fixedEnd = end;
-            return (event, context) -> {
-                if (fixedStart != null || fixedEnd != null) {
-                    var startTime = getInstant(event, "startTime");
-                    if (fixedStart != null) { // startTime should be present for almost all events
-                        if (startTime == null || startTime.isBefore(fixedStart)) {
-                            return false;
-                        }
-                    }
-                    var endTime = getInstant(event, "endTime");
-                    if (fixedEnd != null && endTime != null) {
-                        if (endTime.isAfter(fixedEnd)) {
-                            return false;
-                        }
-                    }
+            if (eventTypes == null) {
+                return (SinglePhaseEventFilter<Void>)
+                        (event, context) -> matchesTimeWindow(event, fixedStart, fixedEnd);
+            }
+
+            // Warn about wildcard characters in event type names
+            for (String eventType : eventTypes) {
+                if (eventType.contains("*") || eventType.contains("?")) {
+                    System.err.println(
+                            "Warning: Wildcard patterns are not supported in --events."
+                                    + " '"
+                                    + eventType
+                                    + "' will be treated as a literal name.");
                 }
-                return eventTypes == null || eventTypes.contains(event.getType().getName());
+            }
+
+            record BasicFilterContext(Set<String> knownEventTypes) {}
+
+            // Build a lowercase set for case-insensitive matching
+            Set<String> eventTypesLower =
+                    eventTypes.stream().map(String::toLowerCase).collect(Collectors.toSet());
+
+            return new TwoPhaseEventFilter<BasicFilterContext>() {
+                @Override
+                public boolean test(ReadStruct struct, BasicFilterContext context) {
+                    return matchesTimeWindow(struct, fixedStart, fixedEnd)
+                            && (eventTypes.contains(struct.getType().getName())
+                                    || eventTypesLower.contains(
+                                            struct.getType().getName().toLowerCase()));
+                }
+
+                @Override
+                public void analyze(ReadStruct struct, BasicFilterContext context) {
+                    context.knownEventTypes().add(struct.getType().getName());
+                }
+
+                @Override
+                public BasicFilterContext createContext() {
+                    return new BasicFilterContext(new HashSet<>());
+                }
+
+                @Override
+                public EventFilterInstance createTestFilter(BasicFilterContext context) {
+                    List<String> unknownEventTypes =
+                            eventTypes.stream()
+                                    .filter(
+                                            eventType ->
+                                                    !context.knownEventTypes().contains(eventType)
+                                                            && context.knownEventTypes().stream()
+                                                                    .noneMatch(
+                                                                            k ->
+                                                                                    k
+                                                                                            .equalsIgnoreCase(
+                                                                                                    eventType)))
+                                    .distinct()
+                                    .sorted()
+                                    .toList();
+                    if (!unknownEventTypes.isEmpty()) {
+                        throw new IllegalArgumentException(
+                                "Unknown event type(s): "
+                                        + String.join(", ", unknownEventTypes)
+                                        + ". Known event types include: "
+                                        + context.knownEventTypes().stream()
+                                                .sorted()
+                                                .limit(10)
+                                                .collect(Collectors.joining(", ")));
+                    }
+                    return struct -> test(struct, context);
+                }
             };
+        }
+
+        private static boolean matchesTimeWindow(
+                ReadStruct event, Instant fixedStart, Instant fixedEnd) {
+            if (fixedStart == null && fixedEnd == null) {
+                return true;
+            }
+            Instant startTime = getInstant(event, "startTime");
+            if (startTime == null) {
+                return true;
+            }
+            if (fixedStart != null && startTime.isBefore(fixedStart)) {
+                return false;
+            }
+            if (fixedEnd != null) {
+                Instant endTime = getInstant(event, "endTime");
+                Instant effectiveEnd = endTime != null ? endTime : startTime;
+                if (effectiveEnd.isAfter(fixedEnd)) {
+                    return false;
+                }
+            }
+            return true;
         }
 
         static class GCPercentileContext {
@@ -269,14 +354,27 @@ public interface EventFilter<C> {
             void add(ReadStruct struct) {
                 String name = struct.getType().getName();
                 if (name.equals("jdk.GarbageCollection")) {
+                    var startInstant = getInstant(struct, "startTime");
+                    if (startInstant == null) return;
+                    var rawDuration = struct.get("duration");
+                    long durationNanos;
+                    if (rawDuration instanceof Duration d) {
+                        durationNanos = d.toNanos();
+                    } else if (rawDuration instanceof Long nanos) {
+                        durationNanos = nanos;
+                    } else {
+                        return;
+                    }
                     gcInfos.add(
                             new GCInfo(
                                     struct.get("gcId", Long.class),
-                                    toNanoSeconds(getInstant(struct, "startTime")),
-                                    struct.get("duration", Duration.class).toNanos()));
+                                    toNanoSeconds(startInstant),
+                                    durationNanos));
                 } else if (HEAP_SUMMARY_EVENTS.contains(name) && struct.containsKey("gcId")) {
+                    var startInstant = getInstant(struct, "startTime");
+                    if (startInstant == null) return;
                     long gcId = struct.get("gcId", Long.class);
-                    long startNanos = toNanoSeconds(getInstant(struct, "startTime"));
+                    long startNanos = toNanoSeconds(startInstant);
                     heapSummaryBounds.compute(
                             gcId,
                             (k, bounds) -> {
@@ -302,30 +400,43 @@ public interface EventFilter<C> {
                         gcInfos.add(new GCInfo(entry.getKey(), bounds[0], duration));
                     }
                 }
-                int percentileIndex = (int) Math.ceil(gcInfos.size() * (1 - percentile / 100.0));
+                if (gcInfos.isEmpty()) {
+                    // No GC data at all — create empty sets, filter will exclude everything
+                    percentileStartTimeNanos = new TreeSet<>();
+                    percentileEndTimeNanos = new TreeSet<>();
+                    return;
+                }
+                int percentileIndex;
+                if (percentile == 100) {
+                    percentileIndex = gcInfos.size() - 1;
+                } else {
+                    percentileIndex =
+                            Math.max(
+                                    0,
+                                    Math.min(
+                                            gcInfos.size() - 1,
+                                            (int) Math.floor(gcInfos.size() * percentile / 100.0)));
+                }
                 gcInfos.sort(Comparator.comparingLong(GCInfo::durationNanos));
                 percentileStartTimeNanos =
                         gcInfos.subList(percentileIndex, gcInfos.size()).stream()
                                 .map(GCInfo::startTimeNanos)
                                 .collect(Collectors.toCollection(TreeSet::new));
                 percentileEndTimeNanos =
-                        gcInfos.subList(0, percentileIndex).stream()
+                        gcInfos.subList(percentileIndex, gcInfos.size()).stream()
                                 .map(gc -> gc.startTimeNanos() + gc.durationNanos())
                                 .collect(Collectors.toCollection(TreeSet::new));
-                if (percentileStartTimeNanos.isEmpty() || percentileEndTimeNanos.isEmpty()) {
-                    throw new IllegalStateException("No jdk.GarbageCollection events found");
-                }
             }
 
             long getTimeDiffToLongGC(long startTimeNanos, long endTimeNanos) {
                 calculatePercentileIfNeeded();
-                long startDiff =
-                        Objects.requireNonNull(percentileStartTimeNanos.floor(startTimeNanos))
-                                - startTimeNanos;
-                long endDiff =
-                        endTimeNanos
-                                - Objects.requireNonNull(
-                                        percentileEndTimeNanos.ceiling(endTimeNanos));
+                if (percentileStartTimeNanos.isEmpty()) {
+                    return Long.MAX_VALUE; // no long GCs found, exclude everything
+                }
+                Long floorVal = percentileStartTimeNanos.floor(startTimeNanos);
+                Long ceilVal = percentileEndTimeNanos.ceiling(endTimeNanos);
+                long startDiff = floorVal != null ? startTimeNanos - floorVal : Long.MAX_VALUE;
+                long endDiff = ceilVal != null ? ceilVal - endTimeNanos : Long.MAX_VALUE;
                 return Math.min(startDiff, endDiff);
             }
         }
@@ -339,14 +450,20 @@ public interface EventFilter<C> {
             if (gcPercentile == 0) {
                 return null;
             }
+            if (gcPercentile < 0 || gcPercentile > 100) {
+                throw new IllegalArgumentException(
+                        "--gc-percentile must be between 0 and 100, got: " + gcPercentile);
+            }
             return new TwoPhaseEventFilter<>() {
                 @Override
                 public boolean test(ReadStruct struct, GCPercentileContext context) {
-                    var startTimeNanos = toNanoSeconds(getInstant(struct, "startTime"));
+                    var startInstant = getInstant(struct, "startTime");
+                    if (startInstant == null) return false;
+                    var startTimeNanos = toNanoSeconds(startInstant);
+                    var endInstant =
+                            struct.containsKey("endTime") ? getInstant(struct, "endTime") : null;
                     var endTimeNanos =
-                            struct.containsKey("endTime")
-                                    ? toNanoSeconds(getInstant(struct, "endTime"))
-                                    : startTimeNanos;
+                            endInstant != null ? toNanoSeconds(endInstant) : startTimeNanos;
                     return context.getTimeDiffToLongGC(startTimeNanos, endTimeNanos)
                             <= gcPercentileContext.toNanos();
                 }
@@ -384,6 +501,24 @@ public interface EventFilter<C> {
 
         public boolean noReconstitution() {
             return noReconstitution;
+        }
+
+        public @Nullable List<String> getEventTypes() {
+            return eventTypes;
+        }
+
+        /**
+         * Ensures the given event type is included in the --events filter list. If --events is set
+         * but doesn't contain the given type (case-insensitive), adds it so it won't be filtered
+         * out at the reader level.
+         */
+        public void ensureEventTypeIncluded(String eventType) {
+            if (eventTypes != null
+                    && !eventTypes.isEmpty()
+                    && eventTypes.stream().noneMatch(t -> t.equalsIgnoreCase(eventType))) {
+                eventTypes = new ArrayList<>(eventTypes);
+                eventTypes.add(eventType);
+            }
         }
     }
 }

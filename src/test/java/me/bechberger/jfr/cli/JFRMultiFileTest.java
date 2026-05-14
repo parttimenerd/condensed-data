@@ -209,6 +209,7 @@ public class JFRMultiFileTest {
         args = new ArrayList<>(args);
         args.addAll(1, List.of(tmpJfrFile.toString()));
         args.add(0, "inflate");
+        args.add(1, "--force");
         JFRCLI.execute(args.toArray(String[]::new));
         var events = RecordingFile.readAllEvents(tmpJfrFile);
         for (int i = 0; i < 4; i++) {

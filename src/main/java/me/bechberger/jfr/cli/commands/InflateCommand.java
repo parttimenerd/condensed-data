@@ -38,6 +38,11 @@ public class InflateCommand implements Callable<Integer> {
             converter = ExistingCJFRFileOrZipOrFolderConverter.class)
     private List<Path> inputFiles = new ArrayList<>();
 
+    @Option(
+            names = {"-f", "--force"},
+            description = "Overwrite existing output file")
+    private boolean force = false;
+
     @Mixin EventFilterOptionMixin eventFilterOptionMixin;
 
     Spec spec;
@@ -73,12 +78,17 @@ public class InflateCommand implements Callable<Integer> {
     @JMCDependent
     public static class Impl {
         public static void run(InflateCommand cmd) throws Exception {
+            CLIUtils.checkOutputFileWritable(cmd.getOutputFile(), cmd.force);
             var jfrReader =
                     me.bechberger.jfr.CombiningJFRReader.fromPaths(
                             cmd.inputs(),
                             cmd.eventFilterOptionMixin.createFilter(),
                             !cmd.eventFilterOptionMixin.noReconstitution());
             me.bechberger.jfr.WritingJFRReader.toJFRFile(jfrReader, cmd.getOutputFile());
+            System.err.printf(
+                    "Inflated to %s (%s)%n",
+                    cmd.getOutputFile(),
+                    CLIUtils.formatFileSize(java.nio.file.Files.size(cmd.getOutputFile())));
         }
     }
 }

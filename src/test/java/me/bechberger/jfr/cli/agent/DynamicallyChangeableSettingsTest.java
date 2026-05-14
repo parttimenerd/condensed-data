@@ -87,6 +87,24 @@ public class DynamicallyChangeableSettingsTest {
     }
 
     @Test
+    public void testZeroMaxFilesRejectedWhenRotating() {
+        var settings = createSettings();
+        settings.maxFiles = 0;
+        var exception =
+                assertThrows(
+                        DynamicallyChangeableSettings.ValidationException.class,
+                        () -> settings.validate(true));
+        assertTrue(exception.getMessage().contains("Max files must be at least 1 when rotating"));
+    }
+
+    @Test
+    public void testZeroMaxFilesAllowedWhenNotRotating() {
+        var settings = createSettings();
+        settings.maxFiles = 0;
+        assertDoesNotThrow(() -> settings.validate(false));
+    }
+
+    @Test
     public void testNegativeMaxSize() {
         var settings = createSettings();
         settings.maxSize = -1;

@@ -42,6 +42,11 @@ public class AgentIOTest {
         return new AgentIO("test-agent", 12345L, logToFile, AgentIO.LogLevel.ALL);
     }
 
+    private AgentIO newFileBackedAgentIOInTempDir() {
+        useTempDir();
+        return newAgentIO(true);
+    }
+
     @AfterEach
     public void tearDown() throws Exception {
         if (previousTmpDir != null) {
@@ -96,8 +101,7 @@ public class AgentIOTest {
 
     @Test
     public void testCloseCreatesMarkerAndReadOutputCleansFiles() throws Exception {
-        useTempDir();
-        var io = newAgentIO(true);
+        var io = newFileBackedAgentIOInTempDir();
         io.writeOutput("hello");
         io.close();
 
@@ -106,6 +110,18 @@ public class AgentIOTest {
         assertFalse(Files.exists(io.getOutputFile()));
         assertFalse(Files.exists(io.getReadBytesFile()));
         assertFalse(Files.exists(io.getIsClosedFile()));
+    }
+
+    @Test
+    public void testReadOutputAfterCloseDoesNotDeleteExitCode() {
+        var io = newFileBackedAgentIOInTempDir();
+        io.writeOutput("hello");
+        io.writeExitCode(7);
+        io.close();
+
+        assertEquals("hello", io.readOutput());
+        // AgentCommand reads output first and exit code afterwards.
+        assertEquals(7, io.readExitCode());
     }
 
     @Test
@@ -215,5 +231,22 @@ public class AgentIOTest {
             System.setOut(previous);
         }
         assertEquals("b", output.toString());
+    }
+
+    @Test
+    public void testExitCodeWriteAndRead() {
+        useTempDir();
+        var io = newAgentIO(true);
+        io.writeExitCode(1);
+        assertEquals(1, io.readExitCode());
+        // second read returns 0 (file was deleted)
+        assertEquals(0, io.readExitCode());
+    }
+
+    @Test
+    public void testExitCodeDefaultsToZero() {
+        useTempDir();
+        var io = newAgentIO(true);
+        assertEquals(0, io.readExitCode());
     }
 }

@@ -25,7 +25,7 @@ public class TypeCollectionTest {
                 Arguments.of(List.of(1L), new long[] {1}),
                 Arguments.of(List.of(1L), new Long[] {1L}),
                 Arguments.of(List.of(1f), new float[] {1f}),
-                Arguments.of(List.of(1f), new double[] {1}),
+                Arguments.of(List.of(1d), new double[] {1}),
                 Arguments.of(List.of(1L), new char[] {1}),
                 Arguments.of(List.of(1L), new Character[] {1}),
                 Arguments.of(List.of(1L), new byte[] {1}),
@@ -33,7 +33,7 @@ public class TypeCollectionTest {
                 Arguments.of(List.of(1L), new short[] {1}),
                 Arguments.of(List.of(true), new boolean[] {true}),
                 Arguments.of(1f, 1f),
-                Arguments.of(1f, (double) 1));
+                Arguments.of(1d, (double) 1));
     }
 
     @ParameterizedTest

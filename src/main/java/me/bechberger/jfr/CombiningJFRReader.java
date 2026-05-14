@@ -6,24 +6,21 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Instant;
 import java.util.*;
-import java.util.logging.Logger;
-import java.util.zip.ZipEntry;
-import java.util.zip.ZipInputStream;
 import me.bechberger.JFRReader;
 import me.bechberger.condensed.Compression;
 import me.bechberger.condensed.CondensedInputStream;
 import me.bechberger.condensed.Message.StartMessage;
+import me.bechberger.condensed.RIOException;
 import me.bechberger.condensed.ReadStruct;
 import me.bechberger.condensed.stats.BasicStatistic;
 import me.bechberger.condensed.stats.Statistic;
+import me.bechberger.jfr.cli.CLIUtils;
 import me.bechberger.jfr.cli.EventFilter;
 import me.bechberger.jfr.cli.EventFilter.EventFilterInstance;
 import org.jetbrains.annotations.Nullable;
 
 /** Combines non-overlapping condensed JFR files */
 public class CombiningJFRReader implements JFRReader {
-
-    private static final Logger LOGGER = Logger.getLogger(CombiningJFRReader.class.getName());
 
     private record ReaderAndReadEvents(
             BasicJFRReader reader, StartMessage startMessage, List<ReadStruct> alreadyReadEvents) {}
@@ -108,15 +105,21 @@ public class CombiningJFRReader implements JFRReader {
                                 Comparator.comparingLong(
                                         a -> a.reader().getUniverse().getStartTimeNanos()))
                         .toList();
-        // remove all readers that have the same start time and log a warning
-        var startTimes = new HashSet<Long>();
+        // remove all readers that have the same start time and configuration, log a warning
+        var seen = new HashSet<String>();
         var uniqueReaders = new ArrayList<ReaderAndReadEvents>();
         for (var reader : sorted) {
             reader.reader().readTillFirstEvent();
-            if (startTimes.add(reader.reader().getUniverse().getStartTimeNanos())) {
+            var key =
+                    reader.reader().getUniverse().getStartTimeNanos()
+                            + ":"
+                            + reader.startMessage().generatorConfiguration();
+            if (seen.add(key)) {
                 uniqueReaders.add(reader);
             } else {
-                LOGGER.warning("Multiple files with the same start time, only using the first one");
+                System.err.println(
+                        "Warning: Multiple files with the same start time and configuration, only"
+                                + " using the first one");
             }
         }
         return uniqueReaders;
@@ -126,7 +129,7 @@ public class CombiningJFRReader implements JFRReader {
             Path path, boolean reconstitute, Statistic statistics) {
         if (Files.isDirectory(path)) {
             return Arrays.stream(Objects.requireNonNull(path.toFile().listFiles()))
-                    .filter(f -> f.getName().endsWith(".cjfr"))
+                    .filter(f -> f.getName().endsWith(".cjfr") || f.getName().endsWith(".jfr"))
                     .map(f -> readersForPath(f.toPath(), reconstitute, statistics))
                     .flatMap(List::stream)
                     .toList();
@@ -138,6 +141,9 @@ public class CombiningJFRReader implements JFRReader {
             } catch (IOException e) {
                 throw new RuntimeException(e);
             }
+        }
+        if (Files.isRegularFile(path) && path.toString().endsWith(".jfr")) {
+            return List.of(readerForJFRFile(path, reconstitute, statistics));
         }
         // check if file is zip or tar.gz file
         if (isZip(path)) {
@@ -157,41 +163,68 @@ public class CombiningJFRReader implements JFRReader {
         var event = reader.readNextEvent();
         if (event != null) {
             alreadyReadEvents.add(event);
+        } else if (reader.getUniverse().getStartTimeNanos() == -1) {
+            // No events and no valid universe metadata — file is truncated or corrupt
+            throw new RIOException(
+                    "File appears to be truncated or corrupt: "
+                            + "no events or valid metadata found");
         }
         var startMessage = reader.getStartMessage();
         return new ReaderAndReadEvents(reader, startMessage, alreadyReadEvents);
     }
 
+    /**
+     * Configuration for on-the-fly condensation of JFR files. Disables dedup ({@code
+     * ignoreUnnecessaryEvents}) and event combining so that events whose field values were made
+     * identical by lossy compression (e.g. BFloat16) are not incorrectly dropped as duplicates when
+     * re-reading, and the combiner doesn't crash on unfamiliar event types.
+     */
+    private static final Configuration ON_THE_FLY_CONFIG =
+            Configuration.DEFAULT
+                    .withIgnoreUnnecessaryEvents(false)
+                    .withCombineEventsWithoutDataLoss(false);
+
+    /** Condense a .jfr file on-the-fly and return a reader for the condensed data */
+    private static ReaderAndReadEvents readerForJFRFile(
+            Path jfrPath, boolean reconstitute, Statistic statistics) {
+        try {
+            var baos = new java.io.ByteArrayOutputStream();
+            try (var out =
+                    new me.bechberger.condensed.CondensedOutputStream(
+                            baos,
+                            new me.bechberger.condensed.Message.StartMessage(
+                                    me.bechberger.jfr.cli.Constants.FORMAT_VERSION,
+                                    "condensed jfr cli",
+                                    me.bechberger.jfr.cli.Constants.VERSION,
+                                    ON_THE_FLY_CONFIG.name(),
+                                    Compression.DEFAULT))) {
+                var writer = new BasicJFRWriter(out, ON_THE_FLY_CONFIG);
+                try (var recording = new jdk.jfr.consumer.RecordingFile(jfrPath)) {
+                    while (recording.hasMoreEvents()) {
+                        writer.processEvent(recording.readEvent());
+                    }
+                }
+                writer.close();
+            }
+            return readerForInputStream(
+                    new java.io.ByteArrayInputStream(baos.toByteArray()), reconstitute, statistics);
+        } catch (IOException e) {
+            throw new RuntimeException("Failed to condense JFR file: " + jfrPath, e);
+        }
+    }
+
     private static List<ReaderAndReadEvents> readersForZip(
             Path path, boolean reconstitute, Statistic statistics) {
-        // unpack all .cjfr files to the folder
-        // reading directly from the zip file is not possible because the individual files are not
-        // read in order
-        var cjfrFiles = new ArrayList<Path>();
-        try (var is = Files.newInputStream(path)) {
-            var tmpFolder = Files.createTempDirectory("jfr-cli");
-            Runtime.getRuntime()
-                    .addShutdownHook(
-                            new Thread(
-                                    () -> {
-                                        try {
-                                            for (var cjfrFile : cjfrFiles) {
-                                                Files.delete(cjfrFile);
-                                            }
-                                            Files.delete(tmpFolder);
-                                        } catch (IOException e) {
-                                            throw new RuntimeException(e);
-                                        }
-                                    }));
-            var zipReader = new ZipInputStream(is);
-            ZipEntry entry;
-            while ((entry = zipReader.getNextEntry()) != null) {
-                if (entry.getName().endsWith(".cjfr")) {
-                    var tmpFile = tmpFolder.resolve(entry.getName());
-                    Files.copy(zipReader, tmpFile);
-                    cjfrFiles.add(tmpFile);
-                }
-            }
+        // unpack all .cjfr/.jfr files to a temp folder
+        // reading directly from the zip file is not possible because individual files are read
+        // independently and may need random access
+        List<Path> cjfrFiles;
+        try {
+            cjfrFiles =
+                    CLIUtils.extractMatchingZipEntries(
+                            path,
+                            entryName -> entryName.endsWith(".cjfr") || entryName.endsWith(".jfr"),
+                            "jfr-cli");
         } catch (IOException e) {
             throw new RuntimeException(e);
         }
@@ -283,7 +316,11 @@ public class CombiningJFRReader implements JFRReader {
 
     @Override
     public CondensedInputStream getInputStream() {
-        return readers.get(currentReaderIndex).reader().getInputStream();
+        if (currentReader != null) {
+            return currentReader.reader().getInputStream();
+        }
+        int index = Math.min(currentReaderIndex, readers.size() - 1);
+        return readers.get(index).reader().getInputStream();
     }
 
     /**

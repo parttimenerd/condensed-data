@@ -4,6 +4,9 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.text.ParseException;
+import java.util.Map;
+import java.util.zip.ZipEntry;
+import java.util.zip.ZipOutputStream;
 import jdk.jfr.*;
 import jdk.jfr.consumer.RecordingStream;
 import me.bechberger.jfr.cli.JFRCLI;
@@ -98,6 +101,20 @@ public class CommandTestUtil {
         long time1 = System.nanoTime();
     }
 
+    @Name("ByteCountEvent")
+    @Label("Byte Count Event")
+    @StackTrace(false)
+    static class ByteCountEvent extends Event {
+        @DataAmount(DataAmount.BYTES)
+        long bytesReadAligned = 16;
+
+        @DataAmount(DataAmount.BYTES)
+        long bytesReadOdd = 15;
+
+        @DataAmount(DataAmount.BYTES)
+        long bytesReadTiny = 3;
+    }
+
     /** Event with uninitialized (null) String fields — tests null-safety in condense pipeline. */
     @Name("NullStringEvent")
     @StackTrace(false)
@@ -115,6 +132,12 @@ public class CommandTestUtil {
         double posInfinity = Double.POSITIVE_INFINITY;
         double negInfinity = Double.NEGATIVE_INFINITY;
         double negZero = -0.0;
+    }
+
+    @Name("PreciseDoubleEvent")
+    @StackTrace(false)
+    static class PreciseDoubleEvent extends Event {
+        double preciseValue = 1.23456789012345d;
     }
 
     /** Lightweight event committed at high frequency to stress buffering. */
@@ -254,6 +277,23 @@ public class CommandTestUtil {
         return getEmptyCJFRFile().getFileName().toString();
     }
 
+    /** Create a ZIP file with the given mapping of entry path -> source file path. */
+    public static void createZipWithFiles(Path zipFile, Map<String, Path> entryToSource)
+            throws IOException {
+        var parent = zipFile.getParent();
+        if (parent != null) {
+            Files.createDirectories(parent);
+        }
+        try (var zipOutputStream = Files.newOutputStream(zipFile);
+                var zip = new ZipOutputStream(zipOutputStream)) {
+            for (var entry : entryToSource.entrySet()) {
+                zip.putNextEntry(new ZipEntry(entry.getKey()));
+                Files.copy(entry.getValue(), zip);
+                zip.closeEntry();
+            }
+        }
+    }
+
     // Methods to create JFR files with custom edge-case events
     private static void recordLargeStringJFRFile(Path jfrFile) throws IOException {
         try (RecordingStream rs = new RecordingStream()) {
@@ -368,6 +408,32 @@ public class CommandTestUtil {
         return file;
     }
 
+    private static void recordByteCountJFRFile(Path jfrFile) throws IOException {
+        try (RecordingStream rs = new RecordingStream()) {
+            rs.enable("ByteCountEvent");
+            rs.onEvent("ByteCountEvent", event -> {});
+            rs.startAsync();
+            new ByteCountEvent().commit();
+            Thread.sleep(100);
+            rs.dump(jfrFile);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            throw new IOException(e);
+        }
+    }
+
+    public static Path getByteCountJFRFile() {
+        var file = TEMP_FOLDER.resolve("byte_count.jfr");
+        if (!Files.exists(file)) {
+            try {
+                recordByteCountJFRFile(file);
+            } catch (IOException e) {
+                throw new RuntimeException(e);
+            }
+        }
+        return file;
+    }
+
     private static void recordNullStringJFRFile(Path jfrFile) throws IOException {
         try (RecordingStream rs = new RecordingStream()) {
             rs.enable("NullStringEvent");
@@ -417,6 +483,34 @@ public class CommandTestUtil {
         if (!Files.exists(file)) {
             try {
                 recordSpecialDoubleJFRFile(file);
+            } catch (IOException e) {
+                throw new RuntimeException(e);
+            }
+        }
+        return file;
+    }
+
+    private static void recordPreciseDoubleJFRFile(Path jfrFile) throws IOException {
+        try (RecordingStream rs = new RecordingStream()) {
+            rs.enable("PreciseDoubleEvent");
+            rs.onEvent("PreciseDoubleEvent", event -> {});
+            rs.startAsync();
+            for (int i = 0; i < 5; i++) {
+                new PreciseDoubleEvent().commit();
+            }
+            Thread.sleep(100);
+            rs.dump(jfrFile);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            throw new IOException(e);
+        }
+    }
+
+    public static Path getPreciseDoubleJFRFile() {
+        var file = TEMP_FOLDER.resolve("precise_double.jfr");
+        if (!Files.exists(file)) {
+            try {
+                recordPreciseDoubleJFRFile(file);
             } catch (IOException e) {
                 throw new RuntimeException(e);
             }

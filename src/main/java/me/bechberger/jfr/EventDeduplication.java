@@ -121,4 +121,9 @@ public class EventDeduplication {
         dedup.store(newEvent);
         return false;
     }
+
+    /** Reset all stored state so that deduplication starts fresh */
+    public void reset() {
+        deduplicators.values().forEach(d -> d.tokenToLastEvent.clear());
+    }
 }

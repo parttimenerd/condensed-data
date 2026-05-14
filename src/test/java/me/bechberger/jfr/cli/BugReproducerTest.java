@@ -156,9 +156,9 @@ public class BugReproducerTest {
     // Bug 2: --truncate option help says 'begining' which crashes
     // =========================================================================
 
-    /** The CLI should accept the historically documented typo as well as the corrected spelling. */
+    /** The CLI should reject the typo 'begining' and only accept correct spellings. */
     @Test
-    public void testTruncateOptionAcceptsDocumentedValue() throws Exception {
+    public void testTruncateOptionRejectsTypo() throws Exception {
         var result =
                 new CommandExecuter(
                                 "view",
@@ -169,7 +169,8 @@ public class BugReproducerTest {
                         .withFiles(CommandTestUtil.getSampleCJFRFile())
                         .run();
 
-        assertThat(result.exitCode()).isEqualTo(0);
+        assertThat(result.exitCode()).isEqualTo(2);
+        assertThat(result.error()).contains("Unknown truncate mode");
     }
 
     /** The CLI should accept all supported user-facing spellings. */
@@ -179,7 +180,7 @@ public class BugReproducerTest {
                 () -> TruncateMode.fromCliValue("end"), "'end' should be a valid TruncateMode");
         assertDoesNotThrow(() -> TruncateMode.fromCliValue("begin"));
         assertDoesNotThrow(() -> TruncateMode.fromCliValue("beginning"));
-        assertDoesNotThrow(() -> TruncateMode.fromCliValue("begining"));
+        assertThrows(IllegalArgumentException.class, () -> TruncateMode.fromCliValue("begining"));
     }
 
     // =========================================================================

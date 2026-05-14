@@ -9,7 +9,9 @@ import java.time.LocalDateTime;
 import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
 import me.bechberger.condensed.ReadStruct;
 import me.bechberger.condensed.types.CondensedType;
 import me.bechberger.condensed.types.StructType;
@@ -18,6 +20,8 @@ import me.bechberger.util.MemoryUtil;
 
 /** Tabular view for JFR events */
 public class JFRView {
+
+    private static final Set<String> warnedTypes = new HashSet<>();
 
     enum Alignment {
         LEFT,
@@ -69,9 +73,17 @@ public class JFRView {
 
         @Override
         public List<String> format(ReadStruct event, int rows) {
-            var val = event.get(property, Duration.class);
-            if (val == null) {
+            var raw = event.get(property);
+            if (raw == null) {
                 return List.of("-");
+            }
+            Duration val;
+            if (raw instanceof Duration d) {
+                val = d;
+            } else if (raw instanceof Long nanos) {
+                val = Duration.ofNanos(nanos);
+            } else {
+                return List.of(raw.toString());
             }
             return List.of(formatDuration(val));
         }
@@ -97,9 +109,17 @@ public class JFRView {
 
         @Override
         public List<String> format(ReadStruct event, int rows) {
-            var value = event.get(property, Instant.class);
-            if (value == null) {
+            var raw = event.get(property);
+            if (raw == null) {
                 return List.of("-");
+            }
+            Instant value;
+            if (raw instanceof Instant inst) {
+                value = inst;
+            } else if (raw instanceof Long nanos) {
+                value = Instant.ofEpochSecond(0, nanos);
+            } else {
+                return List.of(raw.toString());
             }
             return List.of(
                     formatter.format(LocalDateTime.ofInstant(value, ZoneId.systemDefault())));
@@ -137,7 +157,7 @@ public class JFRView {
             if (name == null) {
                 name = value.get("osName", String.class);
             }
-            return List.of(name);
+            return List.of(name != null ? name : "-");
         }
 
         @Override
@@ -161,8 +181,11 @@ public class JFRView {
         @Override
         public List<String> format(ReadStruct event, int rows) {
             var prop = event.get(property);
-            var value = prop instanceof Long ? (long) prop : (long) (float) prop;
-            return List.of(formatMemory(value, 1));
+            if (prop == null) {
+                return List.of("-");
+            }
+            var value = prop instanceof Number ? ((Number) prop).longValue() : (long) prop;
+            return List.of(formatMemory(value, 1, 2, unit));
         }
 
         @Override
@@ -184,7 +207,8 @@ public class JFRView {
 
         @Override
         public List<String> format(ReadStruct event, int rows) {
-            return List.of(event.get(property, String.class));
+            var val = event.get(property, String.class);
+            return List.of(val != null ? val : "-");
         }
 
         @Override
@@ -206,7 +230,8 @@ public class JFRView {
 
         @Override
         public List<String> format(ReadStruct event, int rows) {
-            return List.of(String.valueOf(event.get(property)));
+            var val = event.get(property);
+            return List.of(val != null ? String.valueOf(val) : "-");
         }
 
         @Override
@@ -228,7 +253,11 @@ public class JFRView {
 
         @Override
         public List<String> format(ReadStruct event, int rows) {
-            return List.of(String.format("%." + precision + "f", event.get(property)));
+            var val = event.get(property);
+            if (val == null) {
+                return List.of("-");
+            }
+            return List.of(String.format(java.util.Locale.ROOT, "%." + precision + "f", val));
         }
 
         @Override
@@ -250,12 +279,75 @@ public class JFRView {
 
         @Override
         public List<String> format(ReadStruct event, int rows) {
-            return List.of(event.get(property, Boolean.class) ? "true" : "false");
+            var val = event.get(property, Boolean.class);
+            return List.of(val != null ? (val ? "true" : "false") : "-");
         }
 
         @Override
         public Alignment alignment() {
             return Alignment.LEFT;
+        }
+    }
+
+    record PercentageColumn(String header, String property) implements Column {
+
+        public PercentageColumn(String property) {
+            this(propertyToHeader(property), property);
+        }
+
+        @Override
+        public int width() {
+            return Math.max(8, header.length());
+        }
+
+        @Override
+        public List<String> format(ReadStruct event, int rows) {
+            var val = event.get(property);
+            if (val == null) {
+                return List.of("-");
+            }
+            double d = val instanceof Double ? (double) val : ((Number) val).doubleValue();
+            return List.of(String.format(java.util.Locale.ROOT, "%.2f%%", d * 100));
+        }
+
+        @Override
+        public Alignment alignment() {
+            return Alignment.RIGHT;
+        }
+    }
+
+    record FrequencyColumn(String header, String property) implements Column {
+
+        public FrequencyColumn(String property) {
+            this(propertyToHeader(property), property);
+        }
+
+        @Override
+        public int width() {
+            return Math.max(12, header.length());
+        }
+
+        @Override
+        public List<String> format(ReadStruct event, int rows) {
+            var val = event.get(property);
+            if (val == null) {
+                return List.of("-");
+            }
+            long hz = val instanceof Long ? (long) val : ((Number) val).longValue();
+            if (hz >= 1_000_000_000L) {
+                return List.of(
+                        String.format(java.util.Locale.ROOT, "%.2f GHz", hz / 1_000_000_000.0));
+            } else if (hz >= 1_000_000L) {
+                return List.of(String.format(java.util.Locale.ROOT, "%.2f MHz", hz / 1_000_000.0));
+            } else if (hz >= 1_000L) {
+                return List.of(String.format(java.util.Locale.ROOT, "%.2f kHz", hz / 1_000.0));
+            }
+            return List.of(hz + " Hz");
+        }
+
+        @Override
+        public Alignment alignment() {
+            return Alignment.RIGHT;
         }
     }
 
@@ -276,13 +368,23 @@ public class JFRView {
             if (klass == null) {
                 return List.of("-");
             }
-            var pkg = event.get("package", String.class);
-            var klassName = klass.get("name", String.class).replace('/', '.');
+            String pkg = null;
+            var pkgStruct = klass.getStruct("package");
+            if (pkgStruct != null) {
+                pkg = pkgStruct.get("name", String.class);
+            }
+            if (pkg == null) {
+                pkg = klass.get("package", String.class);
+            }
+            var rawName = klass.get("name", String.class);
+            var klassName = rawName != null ? rawName.replace('/', '.') : "-";
             if (pkg == null) {
                 return List.of(klassName);
-            } else {
-                return List.of(pkg + "." + klassName);
             }
+            if (klassName.startsWith(pkg + ".") || klassName.contains(".")) {
+                return List.of(klassName);
+            }
+            return List.of(pkg + "." + klassName);
         }
 
         @Override
@@ -308,7 +410,8 @@ public class JFRView {
             if (cl == null) {
                 return List.of("-");
             }
-            return List.of(cl.get("name", String.class));
+            var name = cl.get("name", String.class);
+            return List.of(name != null ? name : "-");
         }
 
         @Override
@@ -336,8 +439,11 @@ public class JFRView {
             if (method == null) {
                 return List.of("-");
             }
+            var methodName = method.get("name", String.class);
             return List.of(
-                    CLASS_COLUMN.format(method, 1).get(0) + "." + method.get("name", String.class));
+                    CLASS_COLUMN.format(method, 1).get(0)
+                            + "."
+                            + (methodName != null ? methodName : "?"));
         }
 
         @Override
@@ -402,7 +508,7 @@ public class JFRView {
         }
 
         static Column of(String property, CondensedType<?, ?> type, int avDepth) {
-            if (avDepth == 0 || !(type instanceof StructType<?, ?> structType)) {
+            if (avDepth <= 0 || !(type instanceof StructType<?, ?> structType)) {
                 return new Column() {
                     @Override
                     public String header() {
@@ -443,7 +549,8 @@ public class JFRView {
 
         @Override
         public int rows(ReadStruct event) {
-            return event.getStruct(property).size();
+            var struct = event.getStruct(property);
+            return struct != null ? struct.size() : 1;
         }
 
         @Override
@@ -453,7 +560,14 @@ public class JFRView {
                 return List.of("-");
             }
             if (rows == 1) {
-                return parts.get(0).format(struct, rows);
+                if (parts.size() == 1) {
+                    return parts.get(0).format(struct, 1);
+                }
+                // Show all fields comma-separated for a compact single-row summary
+                return List.of(
+                        parts.stream()
+                                .map(p -> p.format(struct, 1).get(0))
+                                .collect(java.util.stream.Collectors.joining(", ")));
             }
             List<String> ret = new ArrayList<>();
             for (var part : parts) {
@@ -477,8 +591,45 @@ public class JFRView {
         return fieldToColumn(field, 2);
     }
 
+    /** Check if the field description JSON contains a specific annotation type */
+    private static boolean hasAnnotation(Field<?, ?, ?> field, String annotationType) {
+        var desc = field.description();
+        return desc != null && desc.contains("\"" + annotationType + "\"");
+    }
+
+    /**
+     * Heuristic to detect fields that should be @DataAmount but lost their annotation in newer JDK
+     * JFR files (same annotation stripping issue as Bug 168).
+     */
+    private static boolean isLikelyDataAmountField(String name) {
+        return name.endsWith("Size")
+                || name.endsWith("Used")
+                || name.endsWith("Capacity")
+                || name.endsWith("Bytes")
+                || name.endsWith("Memory")
+                || name.equals("committed")
+                || name.equals("reserved")
+                || name.equals("used")
+                || name.equals("total")
+                || name.equals("empty")
+                || name.equals("uncommitted")
+                || name.equals("unmapped")
+                || name.equals("gcThreshold")
+                || name.equals("heapUsed")
+                || name.equals("lastKnownHeapUsage");
+    }
+
     private static Column fieldToColumn(Field<?, ?, ?> field, int avDepth) {
         var typeName = field.type().getName();
+        // Check for fields where @Unsigned shadows @Timespan or @Timestamp in the type name
+        if (typeName.equals("jdk.jfr.Unsigned")) {
+            if (hasAnnotation(field, "jdk.jfr.Timespan")) {
+                return new JFRView.DurationColumn(field.name());
+            }
+            if (hasAnnotation(field, "jdk.jfr.Timestamp")) {
+                return new JFRView.InstantColumn(field.name());
+            }
+        }
         return switch (typeName) {
             case "millis", "nanos", "tickspan", "microseconds", "timespan" ->
                     new JFRView.DurationColumn(field.name());
@@ -488,17 +639,40 @@ public class JFRView {
             case "memory BITS", "memory varint BITS" ->
                     new JFRView.MemoryColumn(field.name(), MemoryUtil.MemoryUnit.BITS);
             case "java.lang.String" -> new JFRView.StringColumn(field.name());
-            case "int", "jdk.jfr.Unsigned" -> new JFRView.IntegerColumn(field.name(), 10);
-            case "long" -> new JFRView.IntegerColumn(field.name(), 20);
-            case "float" -> new JFRView.FloatColumn(field.name(), 10, 2);
+            case "int", "jdk.jfr.Unsigned", "uint1", "uint2", "int1" ->
+                    new JFRView.IntegerColumn(field.name(), 10);
+            case "long" -> {
+                // Fallback for fields that should be timestamp/duration but lost their
+                // type info due to missing annotations in the original JFR file (Bug 168)
+                if (field.name().equals("startTime")) {
+                    yield new JFRView.InstantColumn(field.name());
+                }
+                if (field.name().equals("duration")) {
+                    yield new JFRView.DurationColumn(field.name());
+                }
+                // Fallback for @DataAmount fields that lost their annotation (Bug 212)
+                if (isLikelyDataAmountField(field.name())) {
+                    yield new JFRView.MemoryColumn(field.name(), MemoryUtil.MemoryUnit.BYTES);
+                }
+                yield new JFRView.IntegerColumn(field.name(), 20);
+            }
+            case "float", "double" -> new JFRView.FloatColumn(field.name(), 10, 2);
             case "boolean" -> new JFRView.BooleanColumn(field.name());
-            case "jdk.types.Class" -> new JFRView.ClassColumn(field.name());
+            case "jdk.jfr.Percentage", "percentage" -> new JFRView.PercentageColumn(field.name());
+            case "jdk.jfr.Frequency" -> new JFRView.FrequencyColumn(field.name());
+            case "jdk.types.Class", "java.lang.Class" -> new JFRView.ClassColumn(field.name());
             case "jdk.types.ClassLoader" -> new JFRView.ClassLoaderColumn(field.name());
             case "jdk.types.Method" -> new JFRView.MethodColumn(field.name());
             case "jdk.types.StackTrace" -> new JFRView.StackTraceColumn(field.name());
             case "java.lang.Thread" -> new JFRView.ThreadColumn(field.name());
             default -> {
-                System.err.println("Warning: potentially unknown type: " + typeName);
+                if (field.type() instanceof StructType<?, ?>) {
+                    // Known struct types are handled via StructColumn
+                    yield StructColumn.of(field.name(), field.type(), avDepth - 1);
+                }
+                if (warnedTypes.add(typeName)) {
+                    System.err.println("Warning: potentially unknown type: " + typeName);
+                }
                 yield StructColumn.of(field.name(), field.type(), avDepth - 1);
             }
         };
@@ -583,8 +757,12 @@ public class JFRView {
             var column = view.columns.get(i);
             var width = columnWidths.get(i);
             if (width > 0) {
-                headerLine.append(column.header());
-                headerLine.append(" ".repeat(width - column.header().length()));
+                var hdr = column.header();
+                if (hdr.length() > width) {
+                    hdr = hdr.substring(0, width);
+                }
+                headerLine.append(hdr);
+                headerLine.append(" ".repeat(width - hdr.length()));
                 sepLine.append("-".repeat(width));
             }
             if (i < view.columns.size() - 1) {
@@ -592,7 +770,7 @@ public class JFRView {
                 sepLine.append(" ");
             }
         }
-        var padding = (headerLine.length() - name.length()) / 2;
+        var padding = Math.max(0, (headerLine.length() - name.length()) / 2);
         List<String> header = new ArrayList<>(List.of("", " ".repeat(padding) + name, ""));
         header.add(headerLine.toString());
         header.add(sepLine.toString());

@@ -30,10 +30,27 @@ public class CustomJFREventBreakingTest {
      * file. Asserts both steps exit with code 0.
      */
     private static List<RecordedEvent> roundTrip(Path jfrInput, String baseName) throws Exception {
+        return roundTrip(jfrInput, baseName, null);
+    }
+
+    private static List<RecordedEvent> roundTrip(
+            Path jfrInput, String baseName, String condenserConfig) throws Exception {
         AtomicReference<List<RecordedEvent>> result = new AtomicReference<>();
 
-        new CommandExecuter("condense", "T/" + jfrInput.getFileName(), "T/" + baseName + ".cjfr")
-                .withFiles(jfrInput)
+        var condense =
+                condenserConfig == null
+                        ? new CommandExecuter(
+                                "condense",
+                                "T/" + jfrInput.getFileName(),
+                                "T/" + baseName + ".cjfr")
+                        : new CommandExecuter(
+                                "condense",
+                                "T/" + jfrInput.getFileName(),
+                                "T/" + baseName + ".cjfr",
+                                "--condenser-config",
+                                condenserConfig);
+
+        condense.withFiles(jfrInput)
                 .checkNoError()
                 .check(
                         (condenseResult, condenseMap) -> {
@@ -158,6 +175,80 @@ public class CustomJFREventBreakingTest {
             assertThat(e.getDouble("negInfinity"))
                     .as("negInfinity must survive as -Inf")
                     .isEqualTo(Double.NEGATIVE_INFINITY);
+        }
+    }
+
+    @InflaterRelated
+    @Test
+    public void testPreciseDoublePreservedInRoundTrip() throws Exception {
+        var events = roundTrip(CommandTestUtil.getPreciseDoubleJFRFile(), "precise_double");
+
+        var preciseEvents =
+                events.stream()
+                        .filter(e -> e.getEventType().getName().equals("PreciseDoubleEvent"))
+                        .collect(Collectors.toList());
+
+        assertThat(preciseEvents)
+                .as("PreciseDoubleEvent instances must survive the round-trip")
+                .isNotEmpty();
+
+        for (var e : preciseEvents) {
+            assertThat(e.getDouble("preciseValue"))
+                    .as("preciseValue must keep full double precision")
+                    .isEqualTo(1.23456789012345d);
+        }
+    }
+
+    @InflaterRelated
+    @Test
+    public void testPreciseDoubleReducedToFloatInReasonableDefault() throws Exception {
+        var events =
+                roundTrip(
+                        CommandTestUtil.getPreciseDoubleJFRFile(),
+                        "precise_double_reasonable",
+                        "reasonable-default");
+
+        var preciseEvents =
+                events.stream()
+                        .filter(e -> e.getEventType().getName().equals("PreciseDoubleEvent"))
+                        .collect(Collectors.toList());
+
+        assertThat(preciseEvents)
+                .as("PreciseDoubleEvent instances must survive the round-trip")
+                .isNotEmpty();
+
+        double expected = (double) (float) 1.23456789012345d;
+        for (var e : preciseEvents) {
+            assertThat(e.getDouble("preciseValue"))
+                    .as("reasonable-default should reduce double precision to float32")
+                    .isEqualTo(expected);
+        }
+    }
+
+    @InflaterRelated
+    @Test
+    public void testPreciseDoubleReducedToFloat16InReducedDefault() throws Exception {
+        var events =
+                roundTrip(
+                        CommandTestUtil.getPreciseDoubleJFRFile(),
+                        "precise_double_reduced",
+                        "reduced-default");
+
+        var preciseEvents =
+                events.stream()
+                        .filter(e -> e.getEventType().getName().equals("PreciseDoubleEvent"))
+                        .collect(Collectors.toList());
+
+        assertThat(preciseEvents)
+                .as("PreciseDoubleEvent instances must survive the round-trip")
+                .isNotEmpty();
+
+        double float32Expected = (double) (float) 1.23456789012345d;
+        for (var e : preciseEvents) {
+            assertThat(e.getDouble("preciseValue"))
+                    .as("reduced-default should reduce double precision to float16")
+                    .isNotEqualTo(1.23456789012345d)
+                    .isNotEqualTo(float32Expected);
         }
     }
 

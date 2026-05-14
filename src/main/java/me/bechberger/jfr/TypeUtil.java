@@ -40,7 +40,7 @@ public class TypeUtil {
             case "int" -> type.asValue((int) toLong(value));
             case "long" -> type.asValue(toLong(value));
             case "float" -> type.asValue((float) value);
-            case "double" -> type.asValue((double) (float) value);
+            case "double" -> type.asValue(((Number) value).doubleValue());
             case "String", "java.lang.String" -> type.asValue((String) value);
             default -> {
                 if (value instanceof String) {

@@ -10,6 +10,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Comparator;
 import java.util.List;
+import java.util.Set;
 import java.util.stream.Collectors;
 import java.util.zip.ZipFile;
 import me.bechberger.femtocli.TypeConverter;
@@ -211,12 +212,18 @@ public class FileOptionConverters {
      */
     public static class ExistingFileWithExtensionOrZipOrFolderConverter
             implements TypeConverter<Path> {
-        private final String extension;
+        private final List<String> extensions;
         private final boolean allowEmpty;
 
         public ExistingFileWithExtensionOrZipOrFolderConverter(
                 String extension, boolean allowEmpty) {
-            this.extension = extension;
+            this.extensions = List.of(extension);
+            this.allowEmpty = allowEmpty;
+        }
+
+        public ExistingFileWithExtensionOrZipOrFolderConverter(
+                List<String> extensions, boolean allowEmpty) {
+            this.extensions = extensions;
             this.allowEmpty = allowEmpty;
         }
 
@@ -230,16 +237,18 @@ public class FileOptionConverters {
                 }
             }
             Path file = Path.of(value);
-            String error = checkAllowFolderOrZIP(file, extension);
+            String error = checkAllowFolderOrZIP(file, extensions);
             if (error != null) {
-                String suggestion = buildSuggestions(file, extension, true);
+                String suggestion = buildSuggestions(file, extensions.get(0), true);
                 throw new IllegalArgumentException(error + (suggestion != null ? suggestion : ""));
             }
             return file;
         }
     }
 
-    private static @Nullable String checkAllowFolderOrZIP(Path file, String expectedExtension) {
+    private static @Nullable String checkAllowFolderOrZIP(
+            Path file, List<String> expectedExtensions) {
+        String extensionList = String.join(" or ", expectedExtensions);
         boolean exists = Files.exists(file);
         if (!Files.isDirectory(file) && !file.getFileName().toString().contains(".")) {
             return "File does not have an extension: " + file;
@@ -248,7 +257,7 @@ public class FileOptionConverters {
                 Files.isDirectory(file)
                         ? ""
                         : file.toString().substring(file.toString().lastIndexOf('.'));
-        boolean hasCorrectExtension = extension.equals(expectedExtension);
+        boolean hasCorrectExtension = expectedExtensions.contains(extension);
 
         boolean isZip = extension.equals(".zip");
         boolean isFolder = Files.isDirectory(file);
@@ -256,7 +265,7 @@ public class FileOptionConverters {
         if (!exists) {
             if (!isZip && !hasCorrectExtension && !isFolder) {
                 return "File does not exist and does not have the correct extension: expected "
-                        + expectedExtension
+                        + extensionList
                         + " or .zip, but got "
                         + file;
             } else if (!isZip) {
@@ -267,10 +276,17 @@ public class FileOptionConverters {
         if (isZip) {
             try (var zip = new ZipFile(file.toFile())) {
                 boolean hasCorrectFile =
-                        zip.stream().anyMatch(entry -> entry.getName().endsWith(expectedExtension));
+                        zip.stream()
+                                .anyMatch(
+                                        entry ->
+                                                expectedExtensions.stream()
+                                                        .anyMatch(
+                                                                ext ->
+                                                                        entry.getName()
+                                                                                .endsWith(ext)));
                 if (!hasCorrectFile) {
                     return "ZIP file does not contain a file with the correct extension: expected "
-                            + expectedExtension
+                            + extensionList
                             + ", but got "
                             + file;
                 }
@@ -283,10 +299,13 @@ public class FileOptionConverters {
         if (isFolder) {
             try (var stream = Files.list(file)) {
                 boolean hasCorrectFile =
-                        stream.anyMatch(p -> p.toString().endsWith(expectedExtension));
+                        stream.anyMatch(
+                                p ->
+                                        expectedExtensions.stream()
+                                                .anyMatch(ext -> p.toString().endsWith(ext)));
                 if (!hasCorrectFile) {
                     return "Folder does not contain a file with the correct extension: expected "
-                            + expectedExtension;
+                            + extensionList;
                 }
             } catch (IOException e) {
                 return "Error while checking folder: " + e.getMessage();
@@ -295,11 +314,36 @@ public class FileOptionConverters {
         }
 
         if (!hasCorrectExtension) {
+            // Check for compressed file formats (e.g., .jfr.lz4, .cjfr.gz)
+            String fileName = file.getFileName().toString();
+            Set<String> compressionExtensions = Set.of(".lz4", ".gz", ".zst", ".bz2", ".xz");
+            if (compressionExtensions.contains(extension)) {
+                String baseName = fileName.substring(0, fileName.lastIndexOf('.'));
+                String baseExtension =
+                        baseName.contains(".") ? baseName.substring(baseName.lastIndexOf('.')) : "";
+                if (expectedExtensions.contains(baseExtension)) {
+                    return "Compressed "
+                            + extension.substring(1).toUpperCase()
+                            + " files are not supported. Decompress first, e.g.: "
+                            + decompressCommand(extension, fileName);
+                }
+            }
             return "File does not have the correct extension: expected "
-                    + expectedExtension
+                    + extensionList
                     + " or .zip or a folder with such files";
         }
         return null;
+    }
+
+    private static String decompressCommand(String compressionExt, String fileName) {
+        return switch (compressionExt) {
+            case ".lz4" -> "unlz4 " + fileName;
+            case ".gz" -> "gunzip " + fileName;
+            case ".zst" -> "unzstd " + fileName;
+            case ".bz2" -> "bunzip2 " + fileName;
+            case ".xz" -> "unxz " + fileName;
+            default -> "decompress " + fileName;
+        };
     }
 
     @FileEndingAnnotation(ending = ".cjfr", allowZip = true, allowFolder = true)
@@ -315,6 +359,14 @@ public class FileOptionConverters {
             extends ExistingFileWithExtensionOrZipOrFolderConverter {
         public ExistingJFRFileOrZipOrFolderConverter() {
             super(".jfr", true);
+        }
+    }
+
+    /** Accepts both .cjfr and .jfr files (and zips/folders containing them) */
+    public static class ExistingCJFROrJFRFileOrZipOrFolderConverter
+            extends ExistingFileWithExtensionOrZipOrFolderConverter {
+        public ExistingCJFROrJFRFileOrZipOrFolderConverter() {
+            super(List.of(".cjfr", ".jfr"), true);
         }
     }
 }

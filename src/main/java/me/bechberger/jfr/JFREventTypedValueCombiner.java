@@ -1,5 +1,6 @@
 package me.bechberger.jfr;
 
+import java.util.HashMap;
 import java.util.List;
 import java.util.stream.Collectors;
 import me.bechberger.condensed.ReadStruct;
@@ -29,7 +30,8 @@ public class JFREventTypedValueCombiner {
         @Override
         public TypedValue build() {
             var condensedType = jfrWriter.getCondensedType(getEventTypeName());
-            ReadStruct reconstructed = new ReadStruct(checkType(condensedType), getMap());
+            ReadStruct reconstructed =
+                    new ReadStruct(checkType(condensedType), new HashMap<>(getMap()));
             return jfrWriter.fromReadStruct(reconstructed);
         }
     }

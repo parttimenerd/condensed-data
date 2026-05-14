@@ -6,8 +6,14 @@ import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.OutputStream;
 import java.nio.file.Files;
+import java.nio.file.Path;
+import java.time.Duration;
+import java.time.Instant;
+import jdk.jfr.consumer.RecordingFile;
 import me.bechberger.condensed.CondensedInputStream;
+import me.bechberger.jfr.cli.commands.CommandExecuter;
 import me.bechberger.jfr.cli.commands.CommandTestUtil;
+import me.bechberger.jfr.cli.commands.InflaterRelated;
 import org.junit.jupiter.api.Test;
 
 public class WritingJFRReaderTest {
@@ -97,5 +103,179 @@ public class WritingJFRReaderTest {
         assertFalse(
                 (boolean) field.get(writingReader2),
                 "shouldAddDefaultValuesIfNecessary should default to false");
+    }
+
+    @Test
+    public void testConvertTimespanToUnit() {
+        // MILLISECONDS: 201,000,000 ns → 201 ms
+        assertEquals(
+                201,
+                WritingJFRReader.convertTimespanToUnit(
+                        Duration.ofNanos(201_000_000),
+                        "[\"long\",\"jdk.jfr.Timespan\","
+                                + "[[\"jdk.jfr.Timespan\",[\"MILLISECONDS\"]]],"
+                                + "\"label\",\"desc\",false]"));
+
+        // NANOSECONDS: value unchanged
+        assertEquals(
+                201_000_000,
+                WritingJFRReader.convertTimespanToUnit(
+                        Duration.ofNanos(201_000_000),
+                        "[\"long\",\"jdk.jfr.Timespan\","
+                                + "[[\"jdk.jfr.Timespan\",[\"NANOSECONDS\"]]],"
+                                + "\"label\",\"desc\",false]"));
+
+        // MICROSECONDS: 201,000,000 ns → 201,000 µs
+        assertEquals(
+                201_000,
+                WritingJFRReader.convertTimespanToUnit(
+                        Duration.ofNanos(201_000_000),
+                        "[\"long\",\"jdk.jfr.Timespan\","
+                                + "[[\"jdk.jfr.Timespan\",[\"MICROSECONDS\"]]],"
+                                + "\"label\",\"desc\",false]"));
+
+        // SECONDS: 2,000,000,000 ns → 2 s
+        assertEquals(
+                2,
+                WritingJFRReader.convertTimespanToUnit(
+                        Duration.ofNanos(2_000_000_000L),
+                        "[\"long\",\"jdk.jfr.Timespan\","
+                                + "[[\"jdk.jfr.Timespan\",[\"SECONDS\"]]],"
+                                + "\"label\",\"desc\",false]"));
+
+        // TICKS: treated same as NANOSECONDS
+        assertEquals(
+                201_000_000,
+                WritingJFRReader.convertTimespanToUnit(
+                        Duration.ofNanos(201_000_000),
+                        "[\"long\",\"jdk.jfr.Timespan\","
+                                + "[[\"jdk.jfr.Timespan\",[\"TICKS\"]]],"
+                                + "\"label\",\"desc\",false]"));
+    }
+
+    @Test
+    public void testConvertTimestampToUnit() {
+        Instant instant = Instant.ofEpochSecond(1764933140, 354000000);
+        long expectedNanos = instant.getEpochSecond() * 1_000_000_000L + instant.getNano();
+        long expectedMillis = expectedNanos / 1_000_000;
+
+        // TICKS → nanoseconds
+        assertEquals(
+                expectedNanos,
+                WritingJFRReader.convertTimestampToUnit(
+                        instant,
+                        "[\"long\",\"jdk.jfr.Timestamp\","
+                                + "[[\"jdk.jfr.Timestamp\",[\"TICKS\"]]],"
+                                + "\"label\",\"desc\",false]"));
+
+        // MILLISECONDS_SINCE_EPOCH → epoch millis
+        assertEquals(
+                expectedMillis,
+                WritingJFRReader.convertTimestampToUnit(
+                        instant,
+                        "[\"long\",\"jdk.jfr.Timestamp\","
+                                + "[[\"jdk.jfr.Timestamp\",[\"MILLISECONDS_SINCE_EPOCH\"]]],"
+                                + "\"label\",\"desc\",false]"));
+    }
+
+    /**
+     * Bug 216: Inflated JFR files had wrong timespan and timestamp values because the condensed
+     * format stores values in nanoseconds, but the JFR annotation may specify a different unit
+     * (MILLISECONDS, MICROSECONDS, MILLISECONDS_SINCE_EPOCH).
+     *
+     * <p>This end-to-end test verifies that condense → inflate produces correct values for events
+     * with non-TICKS/NANOSECONDS annotations, by comparing with the original.
+     */
+    @Test
+    @InflaterRelated
+    public void testInflatedTimespanValuesMatchOriginal() throws Exception {
+        Path profileJfr = Path.of("profile.jfr");
+        if (!Files.exists(profileJfr)) {
+            System.err.println("Skipping: profile.jfr not found");
+            return;
+        }
+
+        new CommandExecuter("condense", "T/profile.jfr", "T/test.cjfr")
+                .withFiles(profileJfr)
+                .checkNoError()
+                .check(
+                        (result, map) -> {
+                            assertNotNull(map.get("test.cjfr"));
+                            new CommandExecuter("inflate", "T/test.cjfr", "T/inflated.jfr")
+                                    .withFiles(map.get("test.cjfr"))
+                                    .checkNoError()
+                                    .check(
+                                            (r2, m2) -> {
+                                                Path inflated = m2.get("inflated.jfr");
+                                                checkTimespanValues(profileJfr, inflated);
+                                                checkTimestampValues(profileJfr, inflated);
+                                            })
+                                    .run();
+                        })
+                .run();
+    }
+
+    private static void checkTimespanValues(Path original, Path inflated) throws Exception {
+        // Compare G1MMU timeSlice (MILLISECONDS) values
+        var origEvents =
+                RecordingFile.readAllEvents(original).stream()
+                        .filter(e -> e.getEventType().getName().equals("jdk.G1MMU"))
+                        .toList();
+        var inflatedEvents =
+                RecordingFile.readAllEvents(inflated).stream()
+                        .filter(e -> e.getEventType().getName().equals("jdk.G1MMU"))
+                        .toList();
+
+        assertFalse(origEvents.isEmpty(), "Should have G1MMU events");
+        assertEquals(
+                origEvents.size(),
+                inflatedEvents.size(),
+                "Should have same number of G1MMU events");
+
+        for (int i = 0; i < origEvents.size(); i++) {
+            var orig = origEvents.get(i);
+            var inf = inflatedEvents.get(i);
+            // timeSlice is @Timespan("MILLISECONDS")
+            Duration origSlice = orig.getDuration("timeSlice");
+            Duration infSlice = inf.getDuration("timeSlice");
+            assertEquals(
+                    origSlice.toMillis(),
+                    infSlice.toMillis(),
+                    "G1MMU timeSlice[" + i + "] should match");
+        }
+    }
+
+    private static void checkTimestampValues(Path original, Path inflated) throws Exception {
+        // Compare ActiveRecording recordingStart (MILLISECONDS_SINCE_EPOCH) values
+        var origEvents =
+                RecordingFile.readAllEvents(original).stream()
+                        .filter(e -> e.getEventType().getName().equals("jdk.ActiveRecording"))
+                        .toList();
+        var inflatedEvents =
+                RecordingFile.readAllEvents(inflated).stream()
+                        .filter(e -> e.getEventType().getName().equals("jdk.ActiveRecording"))
+                        .toList();
+
+        assertFalse(origEvents.isEmpty(), "Should have ActiveRecording events");
+        assertEquals(
+                origEvents.size(),
+                inflatedEvents.size(),
+                "Should have same number of ActiveRecording events");
+
+        for (int i = 0; i < origEvents.size(); i++) {
+            var orig = origEvents.get(i);
+            var inf = inflatedEvents.get(i);
+            Instant origStart = orig.getInstant("recordingStart");
+            Instant infStart = inf.getInstant("recordingStart");
+            // Allow 1ms tolerance due to unit conversion
+            assertTrue(
+                    Math.abs(origStart.toEpochMilli() - infStart.toEpochMilli()) <= 1,
+                    "recordingStart["
+                            + i
+                            + "] should match: orig="
+                            + origStart
+                            + " inflated="
+                            + infStart);
+        }
     }
 }

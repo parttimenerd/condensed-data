@@ -85,7 +85,7 @@ public class MainCommandTest {
         assertAll(
                 () -> assertThat(result.exitCode()).isEqualTo(2),
                 () -> assertThat(result.output()).isEmpty(),
-                () -> assertThat(result.error()).contains("Usage: cjfr"));
+                () -> assertThat(result.error()).contains("Unknown option"));
     }
 
     @ParameterizedTest

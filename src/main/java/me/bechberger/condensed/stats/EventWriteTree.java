@@ -97,4 +97,31 @@ public class EventWriteTree {
         this.directBytesWritten += bytes;
         this.count += 1;
     }
+
+    /**
+     * Returns a filtered copy of this tree, keeping only direct children whose cause name is in the
+     * given set. Non-matching children are excluded entirely. Structural nodes (non-root ancestors)
+     * are preserved.
+     */
+    public EventWriteTree filtered(java.util.Set<String> allowedNames) {
+        EventWriteTree copy = new EventWriteTree();
+        copy.directBytesWritten = this.directBytesWritten;
+        copy.count = this.count;
+        for (var entry : this.children.entrySet()) {
+            if (allowedNames.contains(entry.getKey().getName())) {
+                copy.children.put(entry.getKey(), entry.getValue().deepCopyWithParent(copy));
+            }
+        }
+        return copy;
+    }
+
+    private EventWriteTree deepCopyWithParent(EventWriteTree newParent) {
+        EventWriteTree copy = new EventWriteTree(newParent, this.cause);
+        copy.directBytesWritten = this.directBytesWritten;
+        copy.count = this.count;
+        for (var entry : this.children.entrySet()) {
+            copy.children.put(entry.getKey(), entry.getValue().deepCopyWithParent(copy));
+        }
+        return copy;
+    }
 }

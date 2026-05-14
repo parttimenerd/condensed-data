@@ -321,8 +321,10 @@ public class TypeSpecificationTest {
     }
 
     @Provide
-    Arbitrary<TypeCreatorAndValue<Float, FloatType>> floatType() {
-        return Arbitraries.just(TypeCreatorAndValue.forId(FloatType::new, Arbitraries.floats()));
+    Arbitrary<TypeCreatorAndValue<Number, FloatType>> floatType() {
+        return Arbitraries.just(
+                TypeCreatorAndValue.forId(
+                        FloatType::new, Arbitraries.floats().map(v -> (Number) v)));
     }
 
     @Provide

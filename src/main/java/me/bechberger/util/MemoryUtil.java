@@ -11,20 +11,28 @@ public class MemoryUtil {
     }
 
     public static String formatMemory(long bytes, int decimals, MemoryUnit unit) {
+        return formatMemory(bytes, decimals, 20, unit);
+    }
+
+    public static String formatMemory(
+            long bytes, int minDecimals, int maxDecimals, MemoryUnit unit) {
         String suffix = unit == MemoryUnit.BITS ? "b" : "B";
-        if (bytes < 1024) {
+        double absBytes = Math.abs((double) bytes);
+        if (absBytes < 1024) {
             return bytes + suffix;
         }
-        int exp = Math.min((int) (Math.log(bytes) / Math.log(1024)), 4);
+        int exp = Math.min((int) (Math.log(absBytes) / Math.log(1024)), 4);
         double divisor = Math.pow(1024, exp);
         char unitChar = "KMGT".charAt(exp - 1);
-        for (int d = decimals; d <= 20; d++) {
+        for (int d = minDecimals; d <= maxDecimals; d++) {
             String numberStr = String.format(Locale.ENGLISH, "%." + d + "f", bytes / divisor);
             if (Math.round(Double.parseDouble(numberStr) * divisor) == bytes) {
                 return numberStr + unitChar + suffix;
             }
         }
-        return bytes + suffix;
+        // No exact round-trip within maxDecimals, use maxDecimals (lossy)
+        String numberStr = String.format(Locale.ENGLISH, "%." + maxDecimals + "f", bytes / divisor);
+        return numberStr + unitChar + suffix;
     }
 
     public static String formatMemory(long bytes, int decimals) {

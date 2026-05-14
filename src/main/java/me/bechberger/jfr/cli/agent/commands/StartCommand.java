@@ -62,7 +62,6 @@ public class StartCommand implements Callable<Integer> {
                     .writeSevereError("Recording already running, please stop it first");
             return 1;
         }
-        dynSettings.validate(rotating);
         if (rotating) {
             if (dynSettings.maxFiles < 1) {
                 AgentIO.getAgentInstance().writeSevereError("max-files must be at least 1");
@@ -73,9 +72,15 @@ public class StartCommand implements Callable<Integer> {
                         .writeSevereError("max-size or max-duration required when rotating files");
                 return 1;
             }
-            if (!RotatingRecordingThread.containsPlaceholder(path)) {
-                path = path.replace(".cjfr", "_$index.cjfr");
-            }
+            path = ensureRotatingPathHasPlaceholder(path);
+        }
+        try {
+            dynSettings.validate(rotating);
+        } catch (DynamicallyChangeableSettings.ValidationException e) {
+            AgentIO.getAgentInstance().writeSevereError(e.getMessage());
+            return 1;
+        }
+        if (rotating) {
             Agent.setCurrentRecordingThread(
                     new RotatingRecordingThread(
                             path,
@@ -110,5 +115,15 @@ public class StartCommand implements Callable<Integer> {
         t.setDaemon(true);
         t.start();
         return 0;
+    }
+
+    static String ensureRotatingPathHasPlaceholder(String path) {
+        if (RotatingRecordingThread.containsPlaceholder(path)) {
+            return path;
+        }
+        if (path.endsWith(".cjfr")) {
+            return path.replace(".cjfr", "_$index.cjfr");
+        }
+        return path + "_$index.cjfr";
     }
 }

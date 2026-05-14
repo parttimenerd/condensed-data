@@ -1,5 +1,6 @@
 package me.bechberger.jfr.cli.agent.commands;
 
+import java.util.concurrent.Callable;
 import me.bechberger.femtocli.annotations.Command;
 import me.bechberger.femtocli.annotations.Parameters;
 import me.bechberger.jfr.cli.CLIUtils.ByteSizeConverter;
@@ -10,7 +11,7 @@ import me.bechberger.jfr.cli.agent.AgentIO;
         name = "set-max-size",
         description = "Set the max file size",
         mixinStandardHelpOptions = true)
-public class SetMaxSizeCommand implements Runnable {
+public class SetMaxSizeCommand implements Callable<Integer> {
 
     @Parameters(
             description =
@@ -20,11 +21,12 @@ public class SetMaxSizeCommand implements Runnable {
     private long maxSize;
 
     @Override
-    public void run() {
+    public Integer call() {
         if (Agent.getCurrentRecordingThread() == null) {
             AgentIO.getAgentInstance().println("No recording running");
-            return;
+            return 1;
         }
         Agent.getCurrentRecordingThread().setMaxSize(maxSize);
+        return 0;
     }
 }

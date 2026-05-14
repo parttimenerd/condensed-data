@@ -63,6 +63,9 @@ public class DynamicallyChangeableSettings {
         if (maxFiles < 0) {
             errors.add("Max files must be at least 0");
         }
+        if (rotating && maxFiles < 1) {
+            errors.add("Max files must be at least 1 when rotating files");
+        }
         if (maxSize < 0) {
             errors.add("Max size must be at least 0");
         }

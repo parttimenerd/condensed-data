@@ -45,13 +45,24 @@ public enum JFRReduction {
                 public Long reduce(Configuration configuration, Universe universe, Instant value) {
                     long l = toNanoSeconds(value);
                     // difference from last in condensed time units
-                    long reduced =
-                            (long) (l / (1_000_000_000.0 / configuration.timeStampTicksPerSecond()))
-                                    - (long)
-                                            (universe.getLastStartTimeNanos()
-                                                    / (1_000_000_000.0
-                                                            / configuration
-                                                                    .timeStampTicksPerSecond()));
+                    long reduced;
+                    if (configuration.timeStampTicksPerSecond() == 1_000_000_000L) {
+                        // Default config uses nanosecond ticks, so direct long subtraction is
+                        // exact.
+                        reduced = l - universe.getLastStartTimeNanos();
+                    } else {
+                        reduced =
+                                (long)
+                                                (l
+                                                        / (1_000_000_000.0
+                                                                / configuration
+                                                                        .timeStampTicksPerSecond()))
+                                        - (long)
+                                                (universe.getLastStartTimeNanos()
+                                                        / (1_000_000_000.0
+                                                                / configuration
+                                                                        .timeStampTicksPerSecond()));
+                    }
                     universe.setLastStartTimeNanos(l);
                     return reduced;
                 }
@@ -60,12 +71,18 @@ public enum JFRReduction {
                 public Instant inflate(
                         Configuration configuration, Universe universe, Long reduced) {
                     // difference from last in condensed nanoseconds
-                    long nanoSeconds =
-                            (long)
-                                    (reduced
-                                            * (1_000_000_000.0
-                                                    / configuration.timeStampTicksPerSecond()));
-                    nanoSeconds += universe.getLastStartTimeNanos();
+                    long nanoSeconds;
+                    if (configuration.timeStampTicksPerSecond() == 1_000_000_000L) {
+                        nanoSeconds = universe.getLastStartTimeNanos() + reduced;
+                    } else {
+                        nanoSeconds =
+                                (long)
+                                                (reduced
+                                                        * (1_000_000_000.0
+                                                                / configuration
+                                                                        .timeStampTicksPerSecond()))
+                                        + universe.getLastStartTimeNanos();
+                    }
                     universe.setLastStartTimeNanos(nanoSeconds);
                     return Instant.ofEpochSecond(0, nanoSeconds);
                 }
@@ -83,6 +100,56 @@ public enum JFRReduction {
                 public Duration inflate(
                         Configuration configuration, Universe universe, Long reduced) {
                     return Duration.ofNanos(reduced);
+                }
+            }),
+    DATA_AMOUNT_BYTES_REDUCTION(
+            Long.class,
+            Long.class,
+            new ReductionFunction<>() {
+                private static final long ALIGNMENT = 8L;
+                private static final long COMPRESSED_RANGE_SIZE = 1L << 60;
+                private static final long NON_NEGATIVE_FALLBACK_COUNT =
+                        Long.MAX_VALUE - (COMPRESSED_RANGE_SIZE - 1);
+
+                private long countAlignedLt(long value) {
+                    if (value <= 0) {
+                        return 0;
+                    }
+                    return ((value - 1) >>> 3) + 1;
+                }
+
+                @Override
+                public Long reduce(Configuration configuration, Universe universe, Long value) {
+                    if (value >= 0 && value % ALIGNMENT == 0) {
+                        return value / ALIGNMENT;
+                    }
+
+                    // Map all remaining values bijectively into the complement of [0, 2^60).
+                    long rank;
+                    if (value >= 0) {
+                        rank = value - countAlignedLt(value);
+                    } else {
+                        long negativeIndex = value - Long.MIN_VALUE;
+                        rank = NON_NEGATIVE_FALLBACK_COUNT + negativeIndex;
+                    }
+                    return COMPRESSED_RANGE_SIZE + rank;
+                }
+
+                @Override
+                public Long inflate(Configuration configuration, Universe universe, Long reduced) {
+                    if (reduced >= 0 && reduced < COMPRESSED_RANGE_SIZE) {
+                        return reduced * ALIGNMENT;
+                    }
+
+                    long rank = reduced - COMPRESSED_RANGE_SIZE;
+                    if (Long.compareUnsigned(rank, NON_NEGATIVE_FALLBACK_COUNT) < 0) {
+                        long block = Long.divideUnsigned(rank, 7);
+                        long remainder = Long.remainderUnsigned(rank, 7);
+                        return block * ALIGNMENT + (remainder + 1);
+                    }
+
+                    long negativeIndex = rank - NON_NEGATIVE_FALLBACK_COUNT;
+                    return Long.MIN_VALUE + negativeIndex;
                 }
             });
 

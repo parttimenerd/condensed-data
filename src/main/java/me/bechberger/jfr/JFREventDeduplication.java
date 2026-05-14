@@ -102,11 +102,12 @@ public class JFREventDeduplication extends EventDeduplication {
         // CPULoad: singleton periodic, may repeat between chunks
         putSingleton("jdk.CPULoad");
 
-        // ThreadAllocationStatistics: per-thread, ~52% duplicate rate
-        put("jdk.ThreadAllocationStatistics", "thread", "allocated");
+        // ThreadAllocationStatistics can repeat with identical payload across
+        // periodic emissions. Keeping all entries preserves strict round-trips.
 
-        // FinalizerStatistics: per-class, ~89% duplicate rate
-        put("jdk.FinalizerStatistics", "finalizableClass", "objects", "totalFinalizersRun");
+        // FinalizerStatistics can legitimately repeat with identical payload across
+        // different timestamps/chunks. Dropping these observations changes event counts
+        // after condense+inflate roundtrips, so keep all entries.
 
         // JavaMonitorStatistics: singleton periodic event
         putSingleton("jdk.JavaMonitorStatistics");
@@ -118,29 +119,8 @@ public class JFREventDeduplication extends EventDeduplication {
         // DeprecatedInvocation: endChunk, same methods across chunks
         put("jdk.DeprecatedInvocation", "method", "forRemoval");
 
-        // ClassLoaderStatistics: per classLoader, most don't change between chunks
-        put(
-                "jdk.ClassLoaderStatistics",
-                e -> {
-                    try {
-                        return e.getValue("classLoaderData");
-                    } catch (Exception ex) {
-                        return e.getValue("classLoader");
-                    }
-                },
-                (a, b) -> {
-                    var type = a.getEventType();
-                    for (var field : type.getFields()) {
-                        var fieldName = field.getName();
-                        if (fieldName.equals("startTime") || fieldName.equals("endTime")) {
-                            continue;
-                        }
-                        if (!Objects.equals(a.getValue(fieldName), b.getValue(fieldName))) {
-                            return false;
-                        }
-                    }
-                    return true;
-                });
+        // ClassLoaderStatistics can also repeat unchanged across chunks and those
+        // observations are still semantically relevant in strict round-trips.
 
         // CodeCacheStatistics: per code blob type
         put(

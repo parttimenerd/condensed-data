@@ -260,7 +260,7 @@ public class JFRViewTest {
     }
 
     @Test
-    public void testStructColumnFormatSingleRowUsesOnlyFirstPart() {
+    public void testStructColumnFormatSingleRowShowsAllParts() {
         var nestedType = createType("nested", "name", "count");
         var nested = new ReadStruct(nestedType, Map.of("name", "alpha", "count", 7L));
         var outerType = createType("outer", "nested");
@@ -274,7 +274,7 @@ public class JFRViewTest {
 
         var rows = column.format(event, 1);
         assertEquals(1, rows.size());
-        assertEquals("alpha", rows.get(0));
+        assertEquals("alpha, 7", rows.get(0));
     }
 
     @Test
@@ -335,5 +335,395 @@ public class JFRViewTest {
         assertEquals(List.of("app-loader"), column.format(eventWithLoader, 1));
         assertEquals(List.of("-"), column.format(eventWithoutLoader, 1));
         assertEquals(JFRView.Alignment.LEFT, column.alignment());
+    }
+
+    @Test
+    public void testClassColumnUsesNestedPackageStruct() {
+        var packageType = createType("pkg", "name");
+        var classType = createType("klass", "name", "package");
+        var eventType = createType("event", "klass");
+
+        var pkg = new ReadStruct(packageType, Map.of("name", "java.lang"));
+        var klass = new ReadStruct(classType, Map.of("name", "Class", "package", pkg));
+        var event = new ReadStruct(eventType, Map.of("klass", klass));
+
+        var column = new JFRView.ClassColumn("klass");
+        assertEquals(List.of("java.lang.Class"), column.format(event, 1));
+    }
+
+    @Test
+    public void testClassColumnDoesNotDuplicatePackagePrefix() {
+        var packageType = createType("pkg", "name");
+        var classType = createType("klass", "name", "package");
+        var eventType = createType("event", "klass");
+
+        var pkg = new ReadStruct(packageType, Map.of("name", "java.lang"));
+        var klass = new ReadStruct(classType, Map.of("name", "java/lang/Class", "package", pkg));
+        var event = new ReadStruct(eventType, Map.of("klass", klass));
+
+        var column = new JFRView.ClassColumn("klass");
+        assertEquals(List.of("java.lang.Class"), column.format(event, 1));
+    }
+
+    // ========== Null-safety tests (Bugs 161, 162, 165, 173-176) ==========
+
+    @Test
+    public void testStringColumnReturnsHyphenForNull() {
+        var eventType = createType("event", "name");
+        var values = new java.util.HashMap<String, Object>();
+        values.put("name", null);
+        var event = new ReadStruct(eventType, values);
+        var column = new JFRView.StringColumn("name");
+        assertEquals(List.of("-"), column.format(event, 1));
+    }
+
+    @Test
+    public void testIntegerColumnReturnsHyphenForNull() {
+        var eventType = createType("event", "count");
+        var values = new java.util.HashMap<String, Object>();
+        values.put("count", null);
+        var event = new ReadStruct(eventType, values);
+        var column = new JFRView.IntegerColumn("count", 10);
+        assertEquals(List.of("-"), column.format(event, 1));
+    }
+
+    @Test
+    public void testFloatColumnReturnsHyphenForNull() {
+        var eventType = createType("event", "rate");
+        var values = new java.util.HashMap<String, Object>();
+        values.put("rate", null);
+        var event = new ReadStruct(eventType, values);
+        var column = new JFRView.FloatColumn("rate", 10, 2);
+        assertEquals(List.of("-"), column.format(event, 1));
+    }
+
+    @Test
+    public void testBooleanColumnReturnsHyphenForNull() {
+        var eventType = createType("event", "active");
+        var values = new java.util.HashMap<String, Object>();
+        values.put("active", null);
+        var event = new ReadStruct(eventType, values);
+        var column = new JFRView.BooleanColumn("active");
+        assertEquals(List.of("-"), column.format(event, 1));
+    }
+
+    @Test
+    public void testMemoryColumnReturnsHyphenForNull() {
+        var eventType = createType("event", "size");
+        var values = new java.util.HashMap<String, Object>();
+        values.put("size", null);
+        var event = new ReadStruct(eventType, values);
+        var column =
+                new JFRView.MemoryColumn("size", me.bechberger.util.MemoryUtil.MemoryUnit.BYTES);
+        assertEquals(List.of("-"), column.format(event, 1));
+    }
+
+    @Test
+    public void testMemoryColumnHandlesDoubleValue() {
+        var eventType = createType("event", "size");
+        var event = new ReadStruct(eventType, Map.of("size", 1024.5d));
+        var column =
+                new JFRView.MemoryColumn("size", me.bechberger.util.MemoryUtil.MemoryUnit.BYTES);
+        var formatted = column.format(event, 1);
+        assertEquals(1, formatted.size());
+        assertFalse(formatted.get(0).equals("-"));
+    }
+
+    @Test
+    public void testMemoryColumnHandlesIntegerValue() {
+        var eventType = createType("event", "size");
+        var event = new ReadStruct(eventType, Map.of("size", 2048));
+        var column =
+                new JFRView.MemoryColumn("size", me.bechberger.util.MemoryUtil.MemoryUnit.BYTES);
+        var formatted = column.format(event, 1);
+        assertEquals(1, formatted.size());
+        assertFalse(formatted.get(0).equals("-"));
+    }
+
+    @Test
+    public void testDurationColumnReturnsHyphenForNull() {
+        var eventType = createType("event", "duration");
+        var values = new java.util.HashMap<String, Object>();
+        values.put("duration", null);
+        var event = new ReadStruct(eventType, values);
+        var column = new JFRView.DurationColumn("duration");
+        assertEquals(List.of("-"), column.format(event, 1));
+    }
+
+    @Test
+    public void testInstantColumnReturnsHyphenForNull() {
+        var eventType = createType("event", "startTime");
+        var values = new java.util.HashMap<String, Object>();
+        values.put("startTime", null);
+        var event = new ReadStruct(eventType, values);
+        var column = new JFRView.InstantColumn("startTime");
+        assertEquals(List.of("-"), column.format(event, 1));
+    }
+
+    // ========== Long value handling (Bug 18 — combined events) ==========
+
+    @Test
+    public void testDurationColumnHandlesLongNanos() {
+        var eventType = createType("event", "duration");
+        var event = new ReadStruct(eventType, Map.of("duration", 4_102_250L));
+        var column = new JFRView.DurationColumn("duration");
+        var result = column.format(event, 1);
+        assertEquals(1, result.size());
+        // Should be formatted as a duration, not a raw number
+        assertNotEquals("4102250", result.get(0));
+        assertFalse(result.get(0).matches("\\d+"), "Should format as duration, not raw number");
+    }
+
+    @Test
+    public void testInstantColumnHandlesLongNanos() {
+        var eventType = createType("event", "startTime");
+        long nanos = java.time.Instant.now().getEpochSecond() * 1_000_000_000L;
+        var event = new ReadStruct(eventType, Map.of("startTime", nanos));
+        var column = new JFRView.InstantColumn("startTime");
+        var result = column.format(event, 1);
+        assertEquals(1, result.size());
+        assertFalse(result.get(0).equals("-"), "Should not be null marker");
+        // Should contain time format like HH:mm:ss
+        assertTrue(
+                result.get(0).matches("\\d{2}:\\d{2}:\\d{2}"),
+                "Expected time format HH:mm:ss, got: " + result.get(0));
+    }
+
+    // ========== Annotation shadowing (Bugs 3, 4) ==========
+
+    @SuppressWarnings({"unchecked", "rawtypes"})
+    private static StructType<?, ReadStruct> createTypeWithFieldDesc(
+            String typeName, String fieldName, String fieldTypeName, String fieldDesc) {
+        var intType = IntType.SPECIFIED_TYPE.getDefaultType(IntType.SPECIFIED_TYPE.id());
+        // Create a custom VarIntType-like type with the specified name
+        var fieldType = new me.bechberger.condensed.types.VarIntType(999, fieldTypeName, "", false);
+        List<Field<Object, ?, ?>> fields =
+                List.of(
+                        new Field<>(
+                                fieldName, fieldDesc, fieldType, o -> null, EmbeddingType.INLINE));
+        return new StructType<>(1000, typeName, fields);
+    }
+
+    @Test
+    public void testFieldToColumnDispatchesUnsignedTimespanToDurationColumn() {
+        // Simulate a field typed as "jdk.jfr.Unsigned" but with @Timespan annotation in description
+        String desc =
+                "[\"long\",\"jdk.jfr.Unsigned\",[[\"jdk.jfr.Unsigned\",[]],[\"jdk.jfr.Timespan\",[\"TICKS\"]]],\"Sum"
+                    + " of Pauses\",null,false]";
+        var type = createTypeWithFieldDesc("event", "sumOfPauses", "jdk.jfr.Unsigned", desc);
+        var field = type.getFields().get(0);
+        var column = JFRView.fieldToColumn(field);
+        assertInstanceOf(
+                JFRView.DurationColumn.class,
+                column,
+                "Field with @Unsigned + @Timespan should dispatch to DurationColumn");
+    }
+
+    @Test
+    public void testFieldToColumnDispatchesPlainUnsignedToIntegerColumn() {
+        // Simulate a plain @Unsigned field without @Timespan
+        String desc =
+                "[\"int\",\"jdk.jfr.Unsigned\",[[\"jdk.jfr.Unsigned\",[]]],\"GC"
+                        + " Identifier\",null,false]";
+        var type = createTypeWithFieldDesc("event", "gcId", "jdk.jfr.Unsigned", desc);
+        var field = type.getFields().get(0);
+        var column = JFRView.fieldToColumn(field);
+        assertInstanceOf(
+                JFRView.IntegerColumn.class,
+                column,
+                "Field with only @Unsigned (no @Timespan) should dispatch to IntegerColumn");
+    }
+
+    @Test
+    public void testUnsignedTimespanFieldRendersAsDuration() {
+        // End-to-end test: create event with @Unsigned+@Timespan field, verify it renders as
+        // duration
+        String desc =
+                "[\"long\",\"jdk.jfr.Unsigned\",[[\"jdk.jfr.Unsigned\",[]],[\"jdk.jfr.Timespan\",[\"TICKS\"]]],\"Sum"
+                    + " of Pauses\",null,false]";
+        var type = createTypeWithFieldDesc("event", "sumOfPauses", "jdk.jfr.Unsigned", desc);
+        var field = type.getFields().get(0);
+        var column = JFRView.fieldToColumn(field);
+        var event = new ReadStruct(type, Map.of("sumOfPauses", 4_102_250L));
+        var result = column.format(event, 1);
+        assertFalse(
+                result.get(0).matches("\\d+"),
+                "Unsigned timespan should render as duration, not raw number: " + result.get(0));
+    }
+
+    /**
+     * Bug 163/164/177: When an event type has many fixed-width columns, variable-width columns can
+     * get widths smaller than their header text. This caused header() to call
+     * String.repeat(negative), throwing IllegalArgumentException "count is negative".
+     */
+    @Test
+    public void testNarrowWidthDoesNotCrashWithManyColumns() {
+        // Create a type with many fields to exhaust the available width at width=160
+        var stringType =
+                new me.bechberger.condensed.types.StringType(998, "java.lang.String", "", "UTF-8");
+        List<Field<Object, ?, ?>> fields = new java.util.ArrayList<>();
+        var intType = IntType.SPECIFIED_TYPE.getDefaultType(IntType.SPECIFIED_TYPE.id());
+        // 12 integer fields (each 10 chars wide) = 120 chars of fixed width
+        for (int i = 0; i < 12; i++) {
+            fields.add(new Field<>("field" + i, "", intType, o -> null, EmbeddingType.INLINE));
+        }
+        // 3 string fields with long names (variable width, will be squeezed)
+        for (String name : List.of("longFieldName", "anotherLongName", "stackTraceLike")) {
+            fields.add(new Field<>(name, "", stringType, o -> null, EmbeddingType.INLINE));
+        }
+        var type = new StructType<>(1001, "ManyColumnEvent", fields);
+        var config = new PrintConfig(160, 1, TruncateMode.END);
+        // This previously threw IllegalArgumentException: count is negative
+        @SuppressWarnings({"unchecked", "rawtypes"})
+        JFRView view = new JFRView(new JFRViewConfig((StructType) type), config);
+        assertDoesNotThrow(() -> view.header());
+        // Also verify rows work
+        java.util.Map<String, Object> values = new java.util.HashMap<>();
+        for (int i = 0; i < 12; i++) {
+            values.put("field" + i, i);
+        }
+        values.put("longFieldName", "val1");
+        values.put("anotherLongName", "val2");
+        values.put("stackTraceLike", "val3");
+        @SuppressWarnings({"unchecked", "rawtypes"})
+        var event = new ReadStruct((StructType) type, values);
+        assertDoesNotThrow(() -> view.rows(event));
+    }
+
+    /**
+     * Bug 168: When a JFR file from a newer JDK has missing annotations (contentType=null), the
+     * startTime field is stored as a plain 'long' instead of 'timestamp'. JFRView should still
+     * display it as a formatted time, not raw nanosecond ticks.
+     *
+     * <p>This test verifies that InstantColumn handles Long values correctly (converting
+     * nanoseconds from epoch to formatted time).
+     */
+    @Test
+    public void testInstantColumnFormatsLongNanosAsTime() {
+        // Simulate what happens when startTime is stored as Long (missing @Timestamp annotation)
+        var col = new JFRView.InstantColumn("startTime");
+        // 2024-05-24T14:06:58Z as nanoseconds from epoch
+        long nanosFromEpoch = 1716559618353857958L;
+
+        var intType =
+                new IntType(
+                        999,
+                        "long",
+                        "",
+                        8,
+                        true,
+                        me.bechberger.condensed.CondensedOutputStream.OverflowMode.ERROR);
+        @SuppressWarnings("unchecked")
+        var type =
+                new StructType<>(
+                        1000,
+                        "TestEvent",
+                        List.of(
+                                new Field<>(
+                                        "startTime",
+                                        "",
+                                        intType,
+                                        o -> null,
+                                        EmbeddingType.INLINE)));
+        @SuppressWarnings({"unchecked", "rawtypes"})
+        var event = new ReadStruct((StructType) type, Map.of("startTime", nanosFromEpoch));
+
+        var result = col.format(event, 1);
+        assertNotNull(result);
+        assertEquals(1, result.size());
+        // Should be a formatted time, not raw ticks
+        assertFalse(
+                result.get(0).contains("1716559618"),
+                "Should not show raw nanosecond ticks: " + result.get(0));
+        assertTrue(
+                result.get(0).matches("\\d{2}:\\d{2}:\\d{2}"),
+                "Should show HH:mm:ss format: " + result.get(0));
+    }
+
+    /**
+     * Bug 168: fieldToColumn should map 'timestamp' type name to InstantColumn. This verifies the
+     * existing behavior works.
+     */
+    @Test
+    public void testFieldToColumnMapsTimestampType() {
+        var timestampType =
+                new me.bechberger.condensed.types.VarIntType(100, "timestamp", "", false, 1);
+        var field = new Field<>("startTime", "", timestampType, o -> null, EmbeddingType.INLINE, 1);
+        var column = JFRView.fieldToColumn(field);
+        assertInstanceOf(JFRView.InstantColumn.class, column);
+    }
+
+    /**
+     * Bug 59/212: StructColumn single-row rendering should show all sub-fields, not just the first
+     * one. This prevents raw address numbers from hiding useful memory-formatted values in
+     * VirtualSpace structs.
+     */
+    @Test
+    public void testStructColumnSingleRowShowsAllFields() {
+        // Create a struct type with two fields: a raw long and a memory-typed field
+        var longType =
+                new me.bechberger.condensed.types.IntType(
+                        900,
+                        "long",
+                        "",
+                        8,
+                        true,
+                        me.bechberger.condensed.CondensedOutputStream.OverflowMode.ERROR);
+        var memType =
+                new me.bechberger.condensed.types.VarIntType(
+                        901, "memory varint BYTES", "", false, 1);
+
+        @SuppressWarnings("unchecked")
+        var innerStructType =
+                new StructType<>(
+                        902,
+                        "jdk.types.VirtualSpace",
+                        List.of(
+                                new Field<>("start", "", longType, o -> null, EmbeddingType.INLINE),
+                                new Field<>(
+                                        "committedSize",
+                                        "",
+                                        memType,
+                                        o -> null,
+                                        EmbeddingType.INLINE)));
+
+        var outerField =
+                new Field<>("heapSpace", "", innerStructType, o -> null, EmbeddingType.INLINE);
+
+        var column = JFRView.fieldToColumn(outerField);
+
+        // Create test data: struct with a raw address and a formatted memory value
+        @SuppressWarnings({"unchecked", "rawtypes"})
+        var innerStruct =
+                new ReadStruct(
+                        (StructType) innerStructType,
+                        Map.of("start", 21474836480L, "committedSize", 822083584L));
+
+        @SuppressWarnings("unchecked")
+        var outerType =
+                new StructType<>(
+                        903,
+                        "TestEvent",
+                        List.of(
+                                new Field<>(
+                                        "heapSpace",
+                                        "",
+                                        innerStructType,
+                                        o -> null,
+                                        EmbeddingType.INLINE)));
+        @SuppressWarnings({"unchecked", "rawtypes"})
+        var event = new ReadStruct((StructType) outerType, Map.of("heapSpace", innerStruct));
+
+        var result = column.format(event, 1);
+        assertNotNull(result);
+        assertEquals(1, result.size());
+        // Should contain comma-separated values, showing both fields
+        assertTrue(
+                result.get(0).contains(","),
+                "Single-row struct should show comma-separated fields: " + result.get(0));
+        // Should contain a formatted memory value (not just raw numbers)
+        assertTrue(
+                result.get(0).contains("MB"),
+                "Should include formatted memory value: " + result.get(0));
     }
 }
