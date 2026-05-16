@@ -1144,7 +1144,7 @@ public class JFREventCombiner extends EventCombiner {
                                             basicJFRWriter.getTypeCached(
                                                     eventType.getField("name")),
                             e -> e.getString("name")),
-                    new SingleValue<>(gcWorkerDuration),
+                    new ArrayValue<>(gcWorkerDuration),
                     map -> new ArrayList<>(map.entrySet()));
         }
     }
@@ -1156,20 +1156,44 @@ public class JFREventCombiner extends EventCombiner {
         }
 
         @Override
+        @SuppressWarnings("unchecked")
         public <E> List<E> reconstitute(
                 StructType<?, ?> resultEventType,
                 ReadStruct combinedReadEvent,
                 EventBuilder<E, ?> builder) {
             builder.put("gcId").addStandardFieldsIfNeeded();
             return combinedReadEvent.asMapEntryList("name").stream()
-                    .map(
+                    .flatMap(
                             e -> {
-                                ReadStruct struct = (ReadStruct) e.getValue();
-                                return builder.put("name", e.getKey())
-                                        .put("eventThread", struct.get("eventThread"))
-                                        .put("gcWorkerId", struct.get("gcWorkerId"))
-                                        .put("duration", struct.get("duration"))
-                                        .build();
+                                Object value = e.getValue();
+                                // Handle both old format (single ReadStruct) and new format
+                                // (List<ReadStruct>)
+                                if (value instanceof List<?> structs) {
+                                    return structs.stream()
+                                            .map(
+                                                    s -> {
+                                                        ReadStruct struct = (ReadStruct) s;
+                                                        return builder.put("name", e.getKey())
+                                                                .put(
+                                                                        "eventThread",
+                                                                        struct.get("eventThread"))
+                                                                .put(
+                                                                        "gcWorkerId",
+                                                                        struct.get("gcWorkerId"))
+                                                                .put(
+                                                                        "duration",
+                                                                        struct.get("duration"))
+                                                                .build();
+                                                    });
+                                } else {
+                                    ReadStruct struct = (ReadStruct) value;
+                                    return java.util.stream.Stream.of(
+                                            builder.put("name", e.getKey())
+                                                    .put("eventThread", struct.get("eventThread"))
+                                                    .put("gcWorkerId", struct.get("gcWorkerId"))
+                                                    .put("duration", struct.get("duration"))
+                                                    .build());
+                                }
                             })
                     .toList();
         }
