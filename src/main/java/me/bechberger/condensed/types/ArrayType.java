@@ -6,7 +6,6 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
 import java.util.function.Function;
-import java.util.stream.IntStream;
 import me.bechberger.condensed.CondensedInputStream;
 import me.bechberger.condensed.CondensedOutputStream;
 import me.bechberger.condensed.ReadList;
@@ -96,7 +95,11 @@ public class ArrayType<V, R> extends CondensedType<List<V>, List<R>> {
 
     @Override
     public List<R> readFrom(CondensedInputStream in) {
-        int size = (int) in.readUnsignedVarint();
+        long sizeL = in.readUnsignedVarint();
+        if (sizeL > Integer.MAX_VALUE) {
+            throw new me.bechberger.condensed.RIOException("Array size too large: " + sizeL);
+        }
+        int size = (int) sizeL;
         switch (embedding) {
             case INLINE, NULLABLE_INLINE -> {
                 List<R> list = new ArrayList<>(size);
@@ -106,16 +109,11 @@ public class ArrayType<V, R> extends CondensedType<List<V>, List<R>> {
                 return new ReadList<>(this, list);
             }
             case REFERENCE, REFERENCE_PER_TYPE -> {
-                var ids =
-                        IntStream.range(0, size)
-                                .mapToObj(
-                                        i -> {
-                                            int val =
-                                                    getValueType()
-                                                            .readReference(in, this, embedding);
-                                            return val == -1 ? null : val;
-                                        })
-                                .toList();
+                List<Integer> ids = new ArrayList<>(size);
+                for (int i = 0; i < size; i++) {
+                    int val = getValueType().readReference(in, this, embedding);
+                    ids.add(val == -1 ? null : val);
+                }
                 return new ReadList<>(
                         this, ids, id -> getValueType().getViaReference(in, this, embedding, id));
             }
@@ -125,9 +123,12 @@ public class ArrayType<V, R> extends CondensedType<List<V>, List<R>> {
 
     @Override
     public boolean equals(Object obj) {
+        if (!(obj instanceof ArrayType<?, ?> other)) {
+            return false;
+        }
         return super.equals(obj)
-                && Objects.equals(valueType, ((ArrayType<?, ?>) obj).valueType)
-                && embedding == ((ArrayType<?, ?>) obj).embedding;
+                && Objects.equals(valueType, other.valueType)
+                && embedding == other.embedding;
     }
 
     @Override

@@ -30,7 +30,9 @@ public class EventDeduplication {
     }
 
     static class DeduplicationForEvent {
+        @SuppressWarnings("unused") // stored for debugging
         private final String eventType;
+
         private final Deduplicator deduplicator;
         private final Map<Object, RecordedEvent> tokenToLastEvent = new HashMap<>();
 
@@ -49,7 +51,7 @@ public class EventDeduplication {
         }
 
         void store(RecordedEvent event) {
-            tokenToLastEvent.put(deduplicator.obtainToken().apply(event), event);
+            tokenToLastEvent.put(deduplicator.obtainToken.apply(event), event);
         }
     }
 
@@ -98,8 +100,9 @@ public class EventDeduplication {
                                             try {
                                                 return Objects.equals(a.getValue(f), b.getValue(f));
                                             } catch (IllegalArgumentException e) {
-                                                System.exit(1);
-                                                throw e;
+                                                // Field not present in event - treat as not
+                                                // duplicate
+                                                return false;
                                             }
                                         }));
     }

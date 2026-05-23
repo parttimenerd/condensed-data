@@ -25,7 +25,7 @@ import org.jetbrains.annotations.Nullable;
  *
  * <p>Writes data that can be read by {@see CondensedInputStream}
  */
-public class CondensedOutputStream extends OutputStream implements AutoCloseable {
+public class CondensedOutputStream extends OutputStream {
 
     private final Universe universe;
 
@@ -254,6 +254,7 @@ public class CondensedOutputStream extends OutputStream implements AutoCloseable
 
     /** Returns a bitmask that can be used to mask the lower n bytes of a long. */
     private long bitMask(int bytes) {
+        if (bytes == 8) return -1L;
         return (1L << (bytes * 8)) - 1;
     }
 

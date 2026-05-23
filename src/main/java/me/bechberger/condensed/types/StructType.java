@@ -167,6 +167,7 @@ public class StructType<T, R> extends CondensedType<T, R> {
     private final StructType<?, ReadStruct> readStructType;
     private final int reductionId;
     private final int hashCode;
+    private final boolean hasReferenceFields;
 
     @SuppressWarnings("unchecked")
     private StructType(
@@ -186,6 +187,12 @@ public class StructType<T, R> extends CondensedType<T, R> {
                 readStructType == null ? (StructType<?, ReadStruct>) this : readStructType;
         this.reductionId = reductionId;
         this.hashCode = Objects.hash(super.hashCode(), fields, creator, reductionId);
+        this.hasReferenceFields =
+                fields.stream()
+                        .anyMatch(
+                                f ->
+                                        f.embedding() != EmbeddingType.INLINE
+                                                && f.embedding() != EmbeddingType.NULLABLE_INLINE);
     }
 
     public StructType(
@@ -280,8 +287,9 @@ public class StructType<T, R> extends CondensedType<T, R> {
     @SuppressWarnings("unchecked")
     public R readFrom(CondensedInputStream in) {
         try (var t = in.getStatistics().withWriteCauseContext(this)) {
-            Map<String, Object> values = new HashMap<>();
-            Map<String, @Nullable Integer> idsOrNull = new HashMap<>();
+            Map<String, Object> values = new HashMap<>(fields.size() * 4 / 3 + 1);
+            Map<String, @Nullable Integer> idsOrNull =
+                    hasReferenceFields ? new HashMap<>(fields.size() * 4 / 3 + 1) : null;
             for (Field<T, ?, ?> field : fields) {
                 if (field.embedding() == EmbeddingType.INLINE
                         || field.embedding() == EmbeddingType.NULLABLE_INLINE) {
@@ -295,7 +303,7 @@ public class StructType<T, R> extends CondensedType<T, R> {
                 }
             }
             ReadStruct readStruct;
-            if (idsOrNull.isEmpty()) {
+            if (idsOrNull == null || idsOrNull.isEmpty()) {
                 readStruct = new ReadStruct(readStructType, values);
             } else {
                 readStruct =
@@ -359,7 +367,12 @@ public class StructType<T, R> extends CondensedType<T, R> {
                 public StructType<Map<String, Object>, Map<String, Object>>
                         readInnerTypeSpecification(
                                 CondensedInputStream in, int id, String name, String description) {
-                    int size = (int) in.readUnsignedVarint();
+                    long sizeL = in.readUnsignedVarint();
+                    if (sizeL > Integer.MAX_VALUE) {
+                        throw new me.bechberger.condensed.RIOException(
+                                "Struct field count too large: " + sizeL);
+                    }
+                    int size = (int) sizeL;
                     List<Field<?, ?, ?>> fields = new ArrayList<>(size);
                     for (int i = 0; i < size; i++) {
                         String fieldName = in.readString(null);

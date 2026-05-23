@@ -40,6 +40,7 @@ public class CondensedInputStream extends InputStream {
     private InputStream inputStream;
     private Reductions reductions = Reductions.NONE;
     private boolean startStringRead = false;
+    private boolean skipRecursiveCompletion = false;
 
     private Statistic statistic = new BasicStatistic();
 
@@ -69,6 +70,14 @@ public class CondensedInputStream extends InputStream {
 
     public TypeCollection getTypeCollection() {
         return typeCollection;
+    }
+
+    /**
+     * Skip recursive completion of ReadStructs on read. Use when the caller will traverse all
+     * fields anyway (e.g. toTypedValue in inflate).
+     */
+    public void setSkipRecursiveCompletion(boolean skip) {
+        this.skipRecursiveCompletion = skip;
     }
 
     /**
@@ -152,9 +161,11 @@ public class CondensedInputStream extends InputStream {
     @SuppressWarnings("unchecked")
     private Message readAndProcessInstanceMessage(int typeId) {
         var type = typeCollection.getType(typeId);
-        return new ReadInstance<>(
-                (CondensedType<Object, Object>) type,
-                ensureRecursivelyComplete(type.readFrom(this)));
+        var value = type.readFrom(this);
+        if (!skipRecursiveCompletion) {
+            value = ensureRecursivelyComplete(value);
+        }
+        return new ReadInstance<>((CondensedType<Object, Object>) type, value);
     }
 
     /**
@@ -169,7 +180,13 @@ public class CondensedInputStream extends InputStream {
         do {
             b = read();
             if (b < 0) {
+                if (shift > 0) {
+                    throw new RIOException.UnexpectedEOFException();
+                }
                 return -1;
+            }
+            if (shift >= 64) {
+                throw new RIOException("Varint too long");
             }
             result |= (long) (b & 0x7F) << shift;
             shift += 7;
@@ -192,6 +209,9 @@ public class CondensedInputStream extends InputStream {
             b = read();
             if (b < 0) {
                 throw new RIOException.UnexpectedEOFException();
+            }
+            if (shift >= 64) {
+                throw new RIOException("Varint too long");
             }
             result |= (long) (b & 0x7F) << shift;
             shift += 7;
@@ -223,13 +243,14 @@ public class CondensedInputStream extends InputStream {
     public String readString(@Nullable String encoding) {
         try (var t = statistic.withWriteCauseContext(WriteCause.String)) {
             long bytesBefore = statistic.getBytes();
-            int length = (int) readUnsignedVarint();
+            long lengthL = readUnsignedVarint();
+            if (lengthL > Integer.MAX_VALUE) {
+                throw new RIOException("String length too large: " + lengthL);
+            }
+            int length = (int) lengthL;
             if (length == 0) {
                 statistic.recordString(statistic.getBytes() - bytesBefore);
                 return "";
-            }
-            if (length < 0) {
-                throw new RIOException("Invalid string length: " + length);
             }
             byte[] data = new byte[length];
             try {

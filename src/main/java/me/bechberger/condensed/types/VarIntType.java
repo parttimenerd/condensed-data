@@ -16,6 +16,9 @@ public class VarIntType extends CondensedType<Long, Long> {
 
     public VarIntType(int id, String name, String description, boolean signed, long multiplier) {
         super(id, name, description);
+        if (multiplier == 0) {
+            throw new IllegalArgumentException("VarIntType multiplier must not be zero");
+        }
         this.signed = signed;
         this.multiplier = multiplier;
     }
@@ -79,9 +82,13 @@ public class VarIntType extends CondensedType<Long, Long> {
 
     @Override
     public boolean equals(Object obj) {
-        return super.equals(obj)
-                && signed == ((VarIntType) obj).signed
-                && multiplier == ((VarIntType) obj).multiplier;
+        if (this == obj) {
+            return true;
+        }
+        if (!(obj instanceof VarIntType other)) {
+            return false;
+        }
+        return super.equals(obj) && signed == other.signed && multiplier == other.multiplier;
     }
 
     @Override
@@ -122,6 +129,12 @@ public class VarIntType extends CondensedType<Long, Long> {
                 @Override
                 public VarIntType readInnerTypeSpecification(
                         CondensedInputStream in, int id, String name, String description) {
+                    boolean signed = in.readFlags()[0];
+                    long multiplier = in.readUnsignedVarint();
+                    if (multiplier == 0) {
+                        throw new me.bechberger.condensed.RIOException(
+                                "VarIntType multiplier must not be zero");
+                    }
                     return (VarIntType)
                             in.getTypeCollection()
                                     .addType(
@@ -129,8 +142,8 @@ public class VarIntType extends CondensedType<Long, Long> {
                                                     id,
                                                     name,
                                                     description,
-                                                    in.readFlags()[0],
-                                                    in.readUnsignedVarint()));
+                                                    signed,
+                                                    multiplier));
                 }
             };
 
