@@ -1,6 +1,7 @@
 package me.bechberger.condensed;
 
 import static org.junit.jupiter.api.Assertions.*;
+
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import org.junit.jupiter.api.Test;

@@ -6,8 +6,8 @@ import java.time.Duration;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
 import java.util.*;
-import java.util.concurrent.Callable;
 import java.util.Locale;
+import java.util.concurrent.Callable;
 import me.bechberger.JFRReader;
 import me.bechberger.condensed.CJFRFooter;
 import me.bechberger.condensed.CJFRFooter.AllocStats;
@@ -99,7 +99,8 @@ public class SummaryCommand implements Callable<Integer> {
                 if (footer.isPresent()) {
                     var summary = summaryFromFooter(footer.get());
                     if (json) {
-                        System.out.println(PrettyPrinter.prettyPrint(summary.toJSON(shortSummary, limit)));
+                        System.out.println(
+                                PrettyPrinter.prettyPrint(summary.toJSON(shortSummary, limit)));
                     } else {
                         System.out.println(summary.toString(shortSummary, limit, full));
                     }
@@ -186,7 +187,9 @@ public class SummaryCommand implements Callable<Integer> {
         Path f = inputFiles.get(0);
         var startMessage = readStartMessage(f);
         Instant start = Instant.ofEpochSecond(0, footer.startTimeMicros() * 1000);
-        Instant end = Instant.ofEpochSecond(0, (footer.startTimeMicros() + footer.durationMicros()) * 1000);
+        Instant end =
+                Instant.ofEpochSecond(
+                        0, (footer.startTimeMicros() + footer.durationMicros()) * 1000);
         return new Summary(
                 footer.totalEvents(),
                 Duration.ofNanos(footer.durationMicros() * 1000),
@@ -204,9 +207,12 @@ public class SummaryCommand implements Callable<Integer> {
     }
 
     private static me.bechberger.condensed.Message.StartMessage readStartMessage(Path path) {
-        try (var in = new CondensedInputStream(
-                new java.io.BufferedInputStream(java.nio.file.Files.newInputStream(path), 4096))) {
-            in.readNextMessageAndProcess(); // triggers start-string read; result may be null (footer sentinel)
+        try (var in =
+                new CondensedInputStream(
+                        new java.io.BufferedInputStream(
+                                java.nio.file.Files.newInputStream(path), 4096))) {
+            in.readNextMessageAndProcess(); // triggers start-string read; result may be null
+            // (footer sentinel)
             return in.getUniverse().getStartMessage();
         } catch (Exception e) {
             throw new RuntimeException("Failed to read header from " + path, e);
@@ -304,13 +310,17 @@ public class SummaryCommand implements Callable<Integer> {
         private static void appendGcSummary(StringBuilder sb, GcStats g) {
             sb.append(" GC Summary\n");
             sb.append(" ==========\n");
-            String collectorSuffix = g.collectorName() != null ? "  Collector: " + g.collectorName() : "";
-            sb.append(String.format(" GC runs:        %d  (young: %d, old: %d)%s%n",
-                    g.gcCount(), g.youngGcCount(), g.oldGcCount(), collectorSuffix));
+            String collectorSuffix =
+                    g.collectorName() != null ? "  Collector: " + g.collectorName() : "";
+            sb.append(
+                    String.format(
+                            " GC runs:        %d  (young: %d, old: %d)%s%n",
+                            g.gcCount(), g.youngGcCount(), g.oldGcCount(), collectorSuffix));
             if (!g.causeCounts().isEmpty()) {
-                var causes = g.causeCounts().entrySet().stream()
-                        .sorted(Comparator.comparingLong(e -> -e.getValue()))
-                        .toList();
+                var causes =
+                        g.causeCounts().entrySet().stream()
+                                .sorted(Comparator.comparingLong(e -> -e.getValue()))
+                                .toList();
                 StringBuilder causeStr = new StringBuilder();
                 for (var e : causes) {
                     if (causeStr.length() > 0) causeStr.append(", ");
@@ -318,59 +328,82 @@ public class SummaryCommand implements Callable<Integer> {
                 }
                 sb.append(" Causes:         ").append(causeStr).append("\n");
             }
-            sb.append(String.format(" Total GC time:  %s   GC CPU: user %s, sys %s%n",
-                    formatMicros(g.totalGcMicros()),
-                    formatMicros(g.totalGcCpuUserMicros()),
-                    formatMicros(g.totalGcCpuSystemMicros())));
-            sb.append(String.format(" Max pause:      %s   Median: %s   P95: %s%n",
-                    formatMicros(g.maxGcMicros()),
-                    formatMicros(g.medianGcMicros()),
-                    formatMicros(g.p95GcMicros())));
+            sb.append(
+                    String.format(
+                            " Total GC time:  %s   GC CPU: user %s, sys %s%n",
+                            formatMicros(g.totalGcMicros()),
+                            formatMicros(g.totalGcCpuUserMicros()),
+                            formatMicros(g.totalGcCpuSystemMicros())));
+            sb.append(
+                    String.format(
+                            " Max pause:      %s   Median: %s   P95: %s%n",
+                            formatMicros(g.maxGcMicros()),
+                            formatMicros(g.medianGcMicros()),
+                            formatMicros(g.p95GcMicros())));
             if (g.maxGcPhasePauseMicros() > 0) {
-                sb.append(String.format(" Max phase pause: %s%n",
-                        formatMicros(g.maxGcPhasePauseMicros())));
+                sb.append(
+                        String.format(
+                                " Max phase pause: %s%n", formatMicros(g.maxGcPhasePauseMicros())));
             }
             if (g.maxHeapUsedBeforeGcBytes() > 0) {
-                sb.append(String.format(" Heap before GC: max %s%n",
-                        formatBytes(g.maxHeapUsedBeforeGcBytes())));
+                sb.append(
+                        String.format(
+                                " Heap before GC: max %s%n",
+                                formatBytes(g.maxHeapUsedBeforeGcBytes())));
             }
             if (g.maxHeapUsedAfterGcBytes() > 0) {
-                sb.append(String.format(" Heap after GC:  max %s%n",
-                        formatBytes(g.maxHeapUsedAfterGcBytes())));
+                sb.append(
+                        String.format(
+                                " Heap after GC:  max %s%n",
+                                formatBytes(g.maxHeapUsedAfterGcBytes())));
             }
             if (g.maxMetaspaceUsedBytes() > 0) {
-                sb.append(String.format(" Metaspace:      max %s%n",
-                        formatBytes(g.maxMetaspaceUsedBytes())));
+                sb.append(
+                        String.format(
+                                " Metaspace:      max %s%n",
+                                formatBytes(g.maxMetaspaceUsedBytes())));
             }
         }
 
         private static void appendAllocSummary(StringBuilder sb, AllocStats a, Duration duration) {
             sb.append(" Allocation Summary\n");
             sb.append(" ==================\n");
-            sb.append(String.format(" Allocated:      %s total%n",
-                    formatBytes(a.totalAllocationBytes())));
+            sb.append(
+                    String.format(
+                            " Allocated:      %s total%n", formatBytes(a.totalAllocationBytes())));
             if (duration.toMillis() > 0) {
                 double secs = duration.toMillis() / 1000.0;
-                sb.append(String.format(" Alloc rate:     %s/s%n",
-                        formatBytes((long) (a.totalAllocationBytes() / secs))));
+                sb.append(
+                        String.format(
+                                " Alloc rate:     %s/s%n",
+                                formatBytes((long) (a.totalAllocationBytes() / secs))));
             }
             if (a.totalPromotionBytes() > 0) {
-                sb.append(String.format(" Promoted:       %s total%n",
-                        formatBytes(a.totalPromotionBytes())));
+                sb.append(
+                        String.format(
+                                " Promoted:       %s total%n",
+                                formatBytes(a.totalPromotionBytes())));
                 if (duration.toMillis() > 0) {
                     double secs = duration.toMillis() / 1000.0;
-                    sb.append(String.format(" Promo rate:     %s/s%n",
-                            formatBytes((long) (a.totalPromotionBytes() / secs))));
+                    sb.append(
+                            String.format(
+                                    " Promo rate:     %s/s%n",
+                                    formatBytes((long) (a.totalPromotionBytes() / secs))));
                 }
             }
         }
 
         private static void appendBucketTable(
-                StringBuilder sb, @Nullable GcStats gc, @Nullable CpuStats cpu,
+                StringBuilder sb,
+                @Nullable GcStats gc,
+                @Nullable CpuStats cpu,
                 @Nullable AllocStats alloc) {
-            long bucketSeconds = gc != null ? gc.bucketSeconds()
-                    : (cpu != null ? cpu.bucketSeconds()
-                    : (alloc != null ? alloc.bucketSeconds() : 10L));
+            long bucketSeconds =
+                    gc != null
+                            ? gc.bucketSeconds()
+                            : (cpu != null
+                                    ? cpu.bucketSeconds()
+                                    : (alloc != null ? alloc.bucketSeconds() : 10L));
             int gcBuckets = gc != null ? gc.buckets().length : 0;
             int cpuBuckets = cpu != null ? cpu.jvmUser().length : 0;
             int allocBuckets = alloc != null ? alloc.allocatedBytesPerBucket().length : 0;
@@ -404,39 +437,53 @@ public class SummaryCommand implements Callable<Integer> {
                 long toSec = fromSec + bucketSeconds;
                 timeCol[i] = fromSec + "–" + toSec + " s";
 
-                gcRunsCol[i] = "—"; totalGcCol[i] = "—"; maxPauseCol[i] = "—";
-                heapBeforeCol[i] = "—"; heapAfterCol[i] = "—";
+                gcRunsCol[i] = "—";
+                totalGcCol[i] = "—";
+                maxPauseCol[i] = "—";
+                heapBeforeCol[i] = "—";
+                heapAfterCol[i] = "—";
                 if (hasGc && i < gcBuckets) {
                     GcBucket b = gc.buckets()[i];
                     if (b.gcCount() > 0) {
-                        gcRunsCol[i] = String.valueOf(b.gcCount()); anyGcRuns = true;
-                        totalGcCol[i] = formatMicros(b.totalGcMicros()); anyTotalGc = true;
-                        maxPauseCol[i] = formatMicros(b.maxGcMicros()); anyMaxPause = true;
+                        gcRunsCol[i] = String.valueOf(b.gcCount());
+                        anyGcRuns = true;
+                        totalGcCol[i] = formatMicros(b.totalGcMicros());
+                        anyTotalGc = true;
+                        maxPauseCol[i] = formatMicros(b.maxGcMicros());
+                        anyMaxPause = true;
                     }
                     if (b.heapUsedBeforeGcBytes() > 0) {
-                        heapBeforeCol[i] = formatBytes(b.heapUsedBeforeGcBytes()); anyHeapBefore = true;
+                        heapBeforeCol[i] = formatBytes(b.heapUsedBeforeGcBytes());
+                        anyHeapBefore = true;
                     }
                     if (b.heapUsedAfterGcBytes() > 0) {
-                        heapAfterCol[i] = formatBytes(b.heapUsedAfterGcBytes()); anyHeapAfter = true;
+                        heapAfterCol[i] = formatBytes(b.heapUsedAfterGcBytes());
+                        anyHeapAfter = true;
                     }
                 }
 
-                jvmCpuCol[i] = "—"; machineCpuCol[i] = "—";
+                jvmCpuCol[i] = "—";
+                machineCpuCol[i] = "—";
                 if (hasCpu && i < cpuBuckets) {
-                    jvmCpuCol[i] = String.format("%.1f%%",
-                            (cpu.jvmUser()[i] + cpu.jvmSystem()[i]) * 100); anyJvmCpu = true;
-                    machineCpuCol[i] = String.format("%.1f%%",
-                            cpu.machineTotal()[i] * 100); anyMachineCpu = true;
+                    jvmCpuCol[i] =
+                            String.format("%.1f%%", (cpu.jvmUser()[i] + cpu.jvmSystem()[i]) * 100);
+                    anyJvmCpu = true;
+                    machineCpuCol[i] = String.format("%.1f%%", cpu.machineTotal()[i] * 100);
+                    anyMachineCpu = true;
                 }
 
-                allocCol[i] = "—"; promoCol[i] = "—";
+                allocCol[i] = "—";
+                promoCol[i] = "—";
                 if (hasAlloc && i < allocBuckets) {
                     if (alloc.allocatedBytesPerBucket()[i] > 0) {
-                        allocCol[i] = formatBytes(alloc.allocatedBytesPerBucket()[i]); anyAlloc = true;
+                        allocCol[i] = formatBytes(alloc.allocatedBytesPerBucket()[i]);
+                        anyAlloc = true;
                     }
-                    if (hasPromo && i < alloc.promotedBytesPerBucket().length
+                    if (hasPromo
+                            && i < alloc.promotedBytesPerBucket().length
                             && alloc.promotedBytesPerBucket()[i] > 0) {
-                        promoCol[i] = formatBytes(alloc.promotedBytesPerBucket()[i]); anyPromo = true;
+                        promoCol[i] = formatBytes(alloc.promotedBytesPerBucket()[i]);
+                        anyPromo = true;
                     }
                 }
             }
@@ -445,15 +492,15 @@ public class SummaryCommand implements Callable<Integer> {
             record Col(String header, int width, String[] data) {}
             List<Col> cols = new ArrayList<>();
             cols.add(new Col("Time", 12, timeCol));
-            if (anyGcRuns)    cols.add(new Col("GC runs", 8, gcRunsCol));
-            if (anyTotalGc)   cols.add(new Col("Total GC", 10, totalGcCol));
-            if (anyMaxPause)  cols.add(new Col("Max pause", 10, maxPauseCol));
+            if (anyGcRuns) cols.add(new Col("GC runs", 8, gcRunsCol));
+            if (anyTotalGc) cols.add(new Col("Total GC", 10, totalGcCol));
+            if (anyMaxPause) cols.add(new Col("Max pause", 10, maxPauseCol));
             if (anyHeapBefore) cols.add(new Col("Heap before", 12, heapBeforeCol));
-            if (anyHeapAfter)  cols.add(new Col("Heap after", 11, heapAfterCol));
-            if (anyJvmCpu)    cols.add(new Col("JVM CPU", 8, jvmCpuCol));
+            if (anyHeapAfter) cols.add(new Col("Heap after", 11, heapAfterCol));
+            if (anyJvmCpu) cols.add(new Col("JVM CPU", 8, jvmCpuCol));
             if (anyMachineCpu) cols.add(new Col("Machine CPU", 12, machineCpuCol));
-            if (anyAlloc)     cols.add(new Col("Allocated", 11, allocCol));
-            if (anyPromo)     cols.add(new Col("Promoted", 10, promoCol));
+            if (anyAlloc) cols.add(new Col("Allocated", 11, allocCol));
+            if (anyPromo) cols.add(new Col("Promoted", 10, promoCol));
 
             // Header line
             sb.append(" ");
@@ -534,7 +581,8 @@ public class SummaryCommand implements Callable<Integer> {
             m.put("maxMicros", g.maxGcMicros());
             m.put("medianMicros", g.medianGcMicros());
             m.put("p95Micros", g.p95GcMicros());
-            if (g.maxGcPhasePauseMicros() > 0) m.put("maxPhasePauseMicros", g.maxGcPhasePauseMicros());
+            if (g.maxGcPhasePauseMicros() > 0)
+                m.put("maxPhasePauseMicros", g.maxGcPhasePauseMicros());
             m.put("maxHeapBeforeBytes", g.maxHeapUsedBeforeGcBytes());
             m.put("maxHeapAfterBytes", g.maxHeapUsedAfterGcBytes());
             m.put("maxMetaspaceBytes", g.maxMetaspaceUsedBytes());

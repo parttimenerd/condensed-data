@@ -10,6 +10,7 @@ import org.jetbrains.annotations.Nullable;
  * Precomputed summary stored as a zlib-compressed footer at the end of a .cjfr file.
  *
  * <p>Layout appended after the compressed main stream:
+ *
  * <pre>
  *   [ zlib-compressed footer payload ][ 4-byte little-endian uint32 = payload length ]
  * </pre>
@@ -65,9 +66,8 @@ public record CJFRFooter(
             long bucketSeconds, float[] jvmUser, float[] jvmSystem, float[] machineTotal) {}
 
     /**
-     * Allocation and promotion statistics.
-     * Collected from jdk.ObjectAllocationInNewTLAB, jdk.ObjectAllocationOutsideTLAB,
-     * jdk.PromoteObjectInNewPLAB, jdk.PromoteObjectOutsidePLAB.
+     * Allocation and promotion statistics. Collected from jdk.ObjectAllocationInNewTLAB,
+     * jdk.ObjectAllocationOutsideTLAB, jdk.PromoteObjectInNewPLAB, jdk.PromoteObjectOutsidePLAB.
      */
     public record AllocStats(
             long totalAllocationBytes,
@@ -187,8 +187,15 @@ public record CJFRFooter(
         CpuStats cpuStats = hasCpu ? readCpuStats(in) : null;
         AllocStats allocStats = hasAlloc ? readAllocStats(in) : null;
 
-        return new CJFRFooter(version, totalEvents, startTimeMicros, durationMicros,
-                Collections.unmodifiableMap(eventCounts), gcStats, cpuStats, allocStats);
+        return new CJFRFooter(
+                version,
+                totalEvents,
+                startTimeMicros,
+                durationMicros,
+                Collections.unmodifiableMap(eventCounts),
+                gcStats,
+                cpuStats,
+                allocStats);
     }
 
     private static GcStats readGcStats(DataInputStream in) throws IOException {
@@ -223,11 +230,24 @@ public record CJFRFooter(
             long bhb = readSignedLong8(in);
             buckets[i] = new GcStats.GcBucket(bc, bt, bm, bha, bhb);
         }
-        return new GcStats(gcCount, youngGcCount, oldGcCount, totalGcMicros, maxGcMicros,
-                medianGcMicros, p95GcMicros, maxGcPhasePauseMicros,
-                Collections.unmodifiableMap(causeCounts), collectorName,
-                maxHeapBefore, maxHeapAfter, maxMetaspace, totalGcCpuUser, totalGcCpuSystem,
-                bucketSeconds, buckets);
+        return new GcStats(
+                gcCount,
+                youngGcCount,
+                oldGcCount,
+                totalGcMicros,
+                maxGcMicros,
+                medianGcMicros,
+                p95GcMicros,
+                maxGcPhasePauseMicros,
+                Collections.unmodifiableMap(causeCounts),
+                collectorName,
+                maxHeapBefore,
+                maxHeapAfter,
+                maxMetaspace,
+                totalGcCpuUser,
+                totalGcCpuSystem,
+                bucketSeconds,
+                buckets);
     }
 
     private static CpuStats readCpuStats(DataInputStream in) throws IOException {
@@ -254,7 +274,8 @@ public record CJFRFooter(
         int np = (int) readUnsignedVarint(in);
         long[] promoPerBucket = new long[np];
         for (int i = 0; i < np; i++) promoPerBucket[i] = readSignedLong8(in);
-        return new AllocStats(totalAlloc, totalPromo, bucketSeconds, allocPerBucket, promoPerBucket);
+        return new AllocStats(
+                totalAlloc, totalPromo, bucketSeconds, allocPerBucket, promoPerBucket);
     }
 
     // -------------------------------------------------------------------------
@@ -287,7 +308,8 @@ public record CJFRFooter(
     public static @Nullable CJFRFooter fromCompressedBytes(byte[] zlibBytes) {
         try {
             byte[] payload;
-            try (InflaterInputStream iis = new InflaterInputStream(new ByteArrayInputStream(zlibBytes))) {
+            try (InflaterInputStream iis =
+                    new InflaterInputStream(new ByteArrayInputStream(zlibBytes))) {
                 payload = iis.readAllBytes();
             }
             DataInputStream in = new DataInputStream(new ByteArrayInputStream(payload));

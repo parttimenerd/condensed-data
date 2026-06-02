@@ -39,7 +39,8 @@ public class BasicJFRReader implements JFRReader {
 
         public static Options DEFAULT = new Options(true, false, false);
 
-        private Options(boolean reconstitute, boolean ignoreCloseErrors, boolean skipRecursiveCompletion) {
+        private Options(
+                boolean reconstitute, boolean ignoreCloseErrors, boolean skipRecursiveCompletion) {
             this.reconstitute = reconstitute;
             this.ignoreCloseErrors = ignoreCloseErrors;
             this.skipRecursiveCompletion = skipRecursiveCompletion;

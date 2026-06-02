@@ -12,9 +12,9 @@ import me.bechberger.condensed.CJFRFooter.GcStats;
 import me.bechberger.condensed.CJFRFooter.GcStats.GcBucket;
 
 /**
- * Side-channel accumulator for {@link CJFRFooter} statistics.
- * {@link #collect(RecordedEvent)} is called from {@link BasicJFRWriter#processEvent} after the
- * ignore-filter, adding negligible overhead. Call {@link #build} after all events to get the footer.
+ * Side-channel accumulator for {@link CJFRFooter} statistics. {@link #collect(RecordedEvent)} is
+ * called from {@link BasicJFRWriter#processEvent} after the ignore-filter, adding negligible
+ * overhead. Call {@link #build} after all events to get the footer.
  */
 public final class FooterCollector {
 
@@ -37,7 +37,8 @@ public final class FooterCollector {
     private long maxGcPhasePauseMicros = 0;
     private String collectorName = null;
 
-    // GC bucketing: key = bucket index, value = long[5]{count, totalMicros, maxMicros, heapAfterBytes, heapBeforeBytes}
+    // GC bucketing: key = bucket index, value = long[5]{count, totalMicros, maxMicros,
+    // heapAfterBytes, heapBeforeBytes}
     private long firstGcMicros = Long.MIN_VALUE;
     private final Map<Long, long[]> gcBuckets = new HashMap<>();
 
@@ -49,7 +50,8 @@ public final class FooterCollector {
     private long totalAllocationBytes = 0;
     private long totalPromotionBytes = 0;
     private long firstAllocMicros = Long.MIN_VALUE;
-    private final Map<Long, long[]> allocBuckets = new HashMap<>(); // value = long[2]{allocBytes, promoBytes}
+    private final Map<Long, long[]> allocBuckets =
+            new HashMap<>(); // value = long[2]{allocBytes, promoBytes}
 
     public FooterCollector(long bucketSeconds) {
         this.bucketSeconds = bucketSeconds;
@@ -90,7 +92,8 @@ public final class FooterCollector {
         if (e.hasField("cause")) {
             try {
                 gcCauseCounts.merge(e.getString("cause"), 1L, Long::sum);
-            } catch (IllegalArgumentException ignored) {}
+            } catch (IllegalArgumentException ignored) {
+            }
         }
         if (firstGcMicros == Long.MIN_VALUE) firstGcMicros = startMicros;
         long bucketIdx = (startMicros - firstGcMicros) / ((long) bucketSeconds * 1_000_000L);
@@ -126,14 +129,16 @@ public final class FooterCollector {
         if ("Before GC".equals(when)) {
             if (usedBytes > maxHeapUsedBeforeGcBytes) maxHeapUsedBeforeGcBytes = usedBytes;
             if (firstGcMicros != Long.MIN_VALUE) {
-                long bucketIdx = (startMicros - firstGcMicros) / ((long) bucketSeconds * 1_000_000L);
+                long bucketIdx =
+                        (startMicros - firstGcMicros) / ((long) bucketSeconds * 1_000_000L);
                 long[] slot = gcBuckets.get(bucketIdx);
                 if (slot != null) slot[4] = Math.max(slot[4], usedBytes);
             }
         } else if ("After GC".equals(when)) {
             if (usedBytes > maxHeapUsedAfterGcBytes) maxHeapUsedAfterGcBytes = usedBytes;
             if (firstGcMicros != Long.MIN_VALUE) {
-                long bucketIdx = (startMicros - firstGcMicros) / ((long) bucketSeconds * 1_000_000L);
+                long bucketIdx =
+                        (startMicros - firstGcMicros) / ((long) bucketSeconds * 1_000_000L);
                 long[] slot = gcBuckets.get(bucketIdx);
                 if (slot != null) slot[3] = Math.max(slot[3], usedBytes);
             }
@@ -158,18 +163,21 @@ public final class FooterCollector {
         try {
             long bytes = ms.getLong("used");
             if (bytes > maxMetaspaceUsedBytes) maxMetaspaceUsedBytes = bytes;
-        } catch (IllegalArgumentException ignored) {}
+        } catch (IllegalArgumentException ignored) {
+        }
     }
 
     private void collectGcCpu(RecordedEvent e) {
         try {
             if (e.hasField("userTime"))
                 totalGcCpuUserMicros += e.getDuration("userTime").toNanos() / 1000;
-        } catch (IllegalArgumentException ignored) {}
+        } catch (IllegalArgumentException ignored) {
+        }
         try {
             if (e.hasField("systemTime"))
                 totalGcCpuSystemMicros += e.getDuration("systemTime").toNanos() / 1000;
-        } catch (IllegalArgumentException ignored) {}
+        } catch (IllegalArgumentException ignored) {
+        }
     }
 
     private void collectGcPhasePause(RecordedEvent e) {
@@ -183,7 +191,8 @@ public final class FooterCollector {
         try {
             String name = e.getString("youngCollector");
             if (name != null && !name.isEmpty()) collectorName = name;
-        } catch (IllegalArgumentException ignored) {}
+        } catch (IllegalArgumentException ignored) {
+        }
     }
 
     private void collectCpu(RecordedEvent e, long startMicros) {
@@ -195,7 +204,8 @@ public final class FooterCollector {
             slot[1] += e.getFloat("jvmSystem");
             slot[2] += e.getFloat("machineTotal");
             slot[3] += 1f;
-        } catch (IllegalArgumentException ignored) {}
+        } catch (IllegalArgumentException ignored) {
+        }
     }
 
     private void collectAllocation(RecordedEvent e, long startMicros) {
@@ -203,7 +213,8 @@ public final class FooterCollector {
         if (e.hasField("allocationSize")) {
             try {
                 bytes = e.getLong("allocationSize");
-            } catch (IllegalArgumentException ignored) {}
+            } catch (IllegalArgumentException ignored) {
+            }
         }
         if (bytes <= 0) return;
         totalAllocationBytes += bytes;
@@ -218,7 +229,8 @@ public final class FooterCollector {
         if (e.hasField("promotionSize")) {
             try {
                 bytes = e.getLong("promotionSize");
-            } catch (IllegalArgumentException ignored) {}
+            } catch (IllegalArgumentException ignored) {
+            }
         }
         if (bytes <= 0) return;
         totalPromotionBytes += bytes;
@@ -319,7 +331,11 @@ public final class FooterCollector {
             allocPerBucket[i] = s[0];
             promoPerBucket[i] = s[1];
         }
-        return new AllocStats(totalAllocationBytes, totalPromotionBytes,
-                bucketSeconds, allocPerBucket, promoPerBucket);
+        return new AllocStats(
+                totalAllocationBytes,
+                totalPromotionBytes,
+                bucketSeconds,
+                allocPerBucket,
+                promoPerBucket);
     }
 }

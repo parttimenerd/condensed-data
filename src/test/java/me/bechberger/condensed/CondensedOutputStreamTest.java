@@ -156,9 +156,11 @@ public class CondensedOutputStreamTest {
                 break;
             }
         }
-        assertTrue(sentinelPos >= 0,
-            "Sentinel byte 7 should appear before zlib magic 0x78 in the output. "
-            + "File bytes (last 20): " + bytesToHex(bytes, Math.max(0, bytes.length - 20), bytes.length));
+        assertTrue(
+                sentinelPos >= 0,
+                "Sentinel byte 7 should appear before zlib magic 0x78 in the output. "
+                        + "File bytes (last 20): "
+                        + bytesToHex(bytes, Math.max(0, bytes.length - 20), bytes.length));
         // Also verify that CondensedInputStream stops at the sentinel
         var in = new CondensedInputStream(bytes);
         while (in.readNextMessageAndProcess() != null) {}

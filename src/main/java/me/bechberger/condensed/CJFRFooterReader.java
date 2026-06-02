@@ -11,10 +11,11 @@ public class CJFRFooterReader {
      * Try to read the footer from {@code path}.
      *
      * <p>Returns {@link Optional#empty()} if:
+     *
      * <ul>
-     *   <li>the file has no footer (old format),</li>
-     *   <li>the footer bytes are corrupt or have wrong magic/version,</li>
-     *   <li>the path is not a regular file (directory, ZIP, etc.).</li>
+     *   <li>the file has no footer (old format),
+     *   <li>the footer bytes are corrupt or have wrong magic/version,
+     *   <li>the path is not a regular file (directory, ZIP, etc.).
      * </ul>
      */
     public static Optional<CJFRFooter> tryRead(Path path) {
