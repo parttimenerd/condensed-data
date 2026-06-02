@@ -9,9 +9,12 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
 import jdk.jfr.consumer.RecordedFrame;
+import jdk.jfr.consumer.RecordedMethod;
 import jdk.jfr.consumer.RecordedStackTrace;
 import me.bechberger.condensed.ReadStruct;
 import me.bechberger.condensed.types.Reductions;
+import me.bechberger.jfr.UnsafeRecordedObjectAccessor.FieldAccessor;
+import me.bechberger.jfr.UnsafeRecordedObjectAccessor.IntFieldAccessor;
 import org.jetbrains.annotations.Nullable;
 
 /**
@@ -155,6 +158,16 @@ public enum JFRReduction {
 
     static class ReducedStackTrace {
 
+        // Fast field accessors — resolve index once, then direct array read
+        private static final IntFieldAccessor LINE_NUMBER =
+                UnsafeRecordedObjectAccessor.intField("lineNumber", -1);
+        private static final IntFieldAccessor BYTECODE_INDEX =
+                UnsafeRecordedObjectAccessor.intField("bytecodeIndex", -1);
+        private static final FieldAccessor<RecordedMethod> METHOD =
+                UnsafeRecordedObjectAccessor.field("method", null);
+        private static final FieldAccessor<String> FRAME_TYPE =
+                UnsafeRecordedObjectAccessor.field("type", null);
+
         // Snapshot of a frame's comparison-relevant data, taken at construction time
         // to avoid stale reads from JFR's reusable internal buffers
         private record FrameSnapshot(
@@ -166,48 +179,51 @@ public enum JFRReduction {
                 @Nullable String frameType) {}
 
         private final List<RecordedFrame> frames;
-        private final List<FrameSnapshot> frameSnapshots;
+        private final FrameSnapshot[] frameSnapshots;
         private final boolean truncated;
         private final int contentHash;
 
         private ReducedStackTrace(RecordedStackTrace stackTrace) {
             this.frames = stackTrace.getFrames();
             this.truncated = stackTrace.isTruncated();
-            this.frameSnapshots = snapshotFrames(this.frames);
-            this.contentHash = computeContentHash();
+            this.frameSnapshots = new FrameSnapshot[this.frames.size()];
+            this.contentHash = snapshotAndHash();
         }
 
         private ReducedStackTrace(
                 RecordedStackTrace stackTrace, List<RecordedFrame> frames, boolean truncated) {
             this.frames = frames;
             this.truncated = truncated;
-            this.frameSnapshots = snapshotFrames(this.frames);
-            this.contentHash = computeContentHash();
+            this.frameSnapshots = new FrameSnapshot[frames.size()];
+            this.contentHash = snapshotAndHash();
         }
 
-        private static List<FrameSnapshot> snapshotFrames(List<RecordedFrame> frames) {
-            return frames.stream()
-                    .map(
-                            f ->
-                                    new FrameSnapshot(
-                                            f.getLineNumber(),
-                                            f.getBytecodeIndex(),
-                                            f.getMethod().getType().getId(),
-                                            f.getMethod().getName(),
-                                            f.getMethod().getDescriptor(),
-                                            f.getType()))
-                    .toList();
-        }
-
-        private int computeContentHash() {
+        /** Snapshots all frames and computes the content hash in a single pass */
+        private int snapshotAndHash() {
             int h = Boolean.hashCode(truncated);
-            for (var f : frameSnapshots) {
-                h = h * 31 + Long.hashCode(f.classId);
-                h = h * 31 + f.methodName.hashCode();
-                h = h * 31 + f.methodDescriptor.hashCode();
-                h = h * 31 + f.lineNumber;
-                h = h * 31 + f.bytecodeIndex;
-                h = h * 31 + (f.frameType != null ? f.frameType.hashCode() : 0);
+            for (int i = 0; i < frames.size(); i++) {
+                var f = frames.get(i);
+                int lineNumber = LINE_NUMBER.get(f);
+                int bytecodeIndex = BYTECODE_INDEX.get(f);
+                var method = METHOD.get(f);
+                long classId = method.getType().getId();
+                String methodName = method.getName();
+                String methodDescriptor = method.getDescriptor();
+                String frameType = FRAME_TYPE.get(f);
+                frameSnapshots[i] =
+                        new FrameSnapshot(
+                                lineNumber,
+                                bytecodeIndex,
+                                classId,
+                                methodName,
+                                methodDescriptor,
+                                frameType);
+                h = h * 31 + Long.hashCode(classId);
+                h = h * 31 + methodName.hashCode();
+                h = h * 31 + methodDescriptor.hashCode();
+                h = h * 31 + lineNumber;
+                h = h * 31 + bytecodeIndex;
+                h = h * 31 + (frameType != null ? frameType.hashCode() : 0);
             }
             return h;
         }
@@ -245,18 +261,18 @@ public enum JFRReduction {
             if (other.contentHash != contentHash || other.truncated != truncated) {
                 return false;
             }
-            if (other.frameSnapshots.size() != frameSnapshots.size()) {
+            if (other.frameSnapshots.length != frameSnapshots.length) {
                 return false;
             }
-            for (int i = 0; i < frameSnapshots.size(); i++) {
-                var a = frameSnapshots.get(i);
-                var b = other.frameSnapshots.get(i);
-                if (a.lineNumber != b.lineNumber
-                        || a.bytecodeIndex != b.bytecodeIndex
-                        || a.classId != b.classId
-                        || !a.methodName.equals(b.methodName)
-                        || !a.methodDescriptor.equals(b.methodDescriptor)
-                        || !Objects.equals(a.frameType, b.frameType)) {
+            for (int i = 0; i < frameSnapshots.length; i++) {
+                var a = frameSnapshots[i];
+                var b = other.frameSnapshots[i];
+                if (a.lineNumber() != b.lineNumber()
+                        || a.bytecodeIndex() != b.bytecodeIndex()
+                        || a.classId() != b.classId()
+                        || !a.methodName().equals(b.methodName())
+                        || !a.methodDescriptor().equals(b.methodDescriptor())
+                        || !Objects.equals(a.frameType(), b.frameType())) {
                     return false;
                 }
             }

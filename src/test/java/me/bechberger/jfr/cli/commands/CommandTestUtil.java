@@ -153,6 +153,7 @@ public class CommandTestUtil {
 
     private static final int SAMPLE_JFR_FILE_DURATION = 2;
 
+    @SuppressWarnings("unused") // prevents dead-code elimination of allocation
     private static int counter = 0;
 
     private static void recordSampleJFRFile(Path jfrFile) throws IOException, ParseException {
@@ -174,6 +175,7 @@ public class CommandTestUtil {
 
             // waste some CPU
 
+            @SuppressWarnings("unused") // prevent loop elimination by JIT
             double waste = 0.0;
             while (System.currentTimeMillis() - start < SAMPLE_JFR_FILE_DURATION * 1000) {
                 for (int i = 0; i < 1000000; i++) {

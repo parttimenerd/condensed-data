@@ -560,7 +560,6 @@ public class CombinerSpec {
         }
 
         @Override
-        @SuppressWarnings("unchecked")
         public <E> List<E> reconstitute(
                 StructType<?, ?> resultEventType,
                 ReadStruct combinedReadEvent,
@@ -605,7 +604,6 @@ public class CombinerSpec {
                     .toList();
         }
 
-        @SuppressWarnings("unchecked")
         private <E> List<E> reconstituteEntry(EventBuilder<E, ?> builder, Entry<?, ?> entry) {
             if (valueDef instanceof FieldValue || valueDef instanceof SumLong) {
                 return List.of(
@@ -724,7 +722,7 @@ public class CombinerSpec {
             return spec;
         }
 
-        @SuppressWarnings({"unchecked", "rawtypes"})
+        @SuppressWarnings("rawtypes")
         static CombinerSpec gcPhasePauseLevel(
                 String eventTypeName, Configuration config, BasicJFRWriter writer) {
             var spec =

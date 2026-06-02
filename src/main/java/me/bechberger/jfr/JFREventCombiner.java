@@ -3,6 +3,7 @@ package me.bechberger.jfr;
 import static me.bechberger.condensed.types.TypeCollection.normalize;
 import static me.bechberger.util.TimeUtil.clamp;
 
+import java.time.Duration;
 import java.time.Instant;
 import java.util.*;
 import java.util.Map.Entry;
@@ -440,6 +441,11 @@ public class JFREventCombiner extends EventCombiner {
         }
 
         public S put(String field, Object value) {
+            // Convert Long nanosecond values back to Duration for duration fields
+            // so that ViewCommand JSON and WritingJFRReader handle them consistently
+            if (field.equals("duration") && value instanceof Number n) {
+                value = Duration.ofNanos(n.longValue());
+            }
             map.put(field, normalize(value));
             return thisBuilder();
         }
@@ -506,7 +512,7 @@ public class JFREventCombiner extends EventCombiner {
                     if (combinedReadEvent.hasField(fieldName)) {
                         map.put(fieldName, combinedReadEvent.get(fieldName));
                     } else if (fieldName.equals("duration")) {
-                        map.put(fieldName, 0L);
+                        map.put(fieldName, Duration.ZERO);
                     } else {
                         map.put(fieldName, null);
                     }
@@ -807,7 +813,6 @@ public class JFREventCombiner extends EventCombiner {
         }
 
         @Override
-        @SuppressWarnings("unchecked")
         public <E> List<E> reconstitute(
                 StructType<?, ?> resultEventType,
                 ReadStruct combinedReadEvent,
@@ -1120,7 +1125,7 @@ public class JFREventCombiner extends EventCombiner {
                     createValueDefinition(basicJFRWriter, configuration));
         }
 
-        @SuppressWarnings("unchecked")
+        @SuppressWarnings({"rawtypes", "unchecked"})
         private static MapValue<RecordedEvent, ?, ?> createValueDefinition(
                 BasicJFRWriter basicJFRWriter, Configuration configuration) {
 
@@ -1156,7 +1161,6 @@ public class JFREventCombiner extends EventCombiner {
         }
 
         @Override
-        @SuppressWarnings("unchecked")
         public <E> List<E> reconstitute(
                 StructType<?, ?> resultEventType,
                 ReadStruct combinedReadEvent,

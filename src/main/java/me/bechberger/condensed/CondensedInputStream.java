@@ -41,6 +41,7 @@ public class CondensedInputStream extends InputStream {
     private Reductions reductions = Reductions.NONE;
     private boolean startStringRead = false;
     private boolean skipRecursiveCompletion = false;
+    private boolean footerSentinelSeen = false;
 
     private Statistic statistic = new BasicStatistic();
 
@@ -91,8 +92,16 @@ public class CondensedInputStream extends InputStream {
                 readAndProcessStartString();
             }
         }
+        if (footerSentinelSeen) {
+            return null;
+        }
         int typeId = (int) readUnsignedVarintOrEnd();
         if (typeId == -1) {
+            return null;
+        }
+        // Footer sentinel: stop reading here (the remaining bytes are the compressed footer blob)
+        if (typeId == CJFRFooter.FOOTER_TYPE_ID) {
+            footerSentinelSeen = true;
             return null;
         }
         if (TypeCollection.isSpecifiedType(typeId)) {

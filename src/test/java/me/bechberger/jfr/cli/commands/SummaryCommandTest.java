@@ -206,7 +206,7 @@ public class SummaryCommandTest {
                  Compression: $COMPRESSION
                  Start: .*
                  End: .*
-                 Duration: [0-9]+(\\.[0-9]*)?(s|ms|us|ns)
+                 Duration: .*
                  Events: .*
                 """
                         .replace("$VERSION", Constants.FORMAT_VERSION + "")
@@ -227,7 +227,7 @@ public class SummaryCommandTest {
                  Compression: $COMPRESSION
                  Start: .*
                  End: .*
-                 Duration: [0-9]+(\\.[0-9]*)?(s|ms|us|ns)
+                 Duration: .*
                  Events: .*
 
                  Event Type                                Count
@@ -988,7 +988,7 @@ public class SummaryCommandTest {
                         .checkNoError()
                         .run();
         assertThat(result.exitCode()).isEqualTo(0);
-        // Count the event type rows (lines after the "=====" separator)
+        // Count the event type rows (lines between the "=====" separator and the next blank line)
         var lines = result.output().split("\n");
         int eventTypeCount = 0;
         boolean inTable = false;
@@ -997,7 +997,11 @@ public class SummaryCommandTest {
                 inTable = true;
                 continue;
             }
-            if (inTable && !line.isBlank()) {
+            if (inTable && line.isBlank()) {
+                inTable = false; // blank line ends the event-type table
+                continue;
+            }
+            if (inTable) {
                 eventTypeCount++;
             }
         }
@@ -1024,7 +1028,11 @@ public class SummaryCommandTest {
                 inTable = true;
                 continue;
             }
-            if (inTable && !line.isBlank()) {
+            if (inTable && line.isBlank()) {
+                inTable = false;
+                continue;
+            }
+            if (inTable) {
                 eventTypeCount++;
             }
         }

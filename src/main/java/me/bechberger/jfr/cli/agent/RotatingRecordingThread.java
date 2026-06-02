@@ -199,7 +199,11 @@ public class RotatingRecordingThread extends RecordingThread {
                         formatMemory(state.jfrWriter.getUncompressedStatistic().getBytes(), 3)),
                 Map.entry("path", currentPath.toAbsolutePath().toString()),
                 Map.entry("current-file-start", formatInstant(state.start)),
-                Map.entry("stored-start", formatInstant(currentlyStoredStarts.get(0))));
+                Map.entry(
+                        "stored-start",
+                        currentlyStoredStarts.isEmpty()
+                                ? "none"
+                                : formatInstant(currentlyStoredStarts.get(0))));
     }
 
     private static final Map<String, Function<Integer, String>> rotatingFileNamePlaceholder =

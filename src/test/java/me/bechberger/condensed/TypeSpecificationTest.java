@@ -72,6 +72,7 @@ public class TypeSpecificationTest {
         }
     }
 
+    @SuppressWarnings("rawtypes") // generic type erasure in test cast
     @Property
     public void testBooleanRoundTrip(@ForAll boolean value) {
         try (var in =
@@ -323,7 +324,7 @@ public class TypeSpecificationTest {
     @Provide
     Arbitrary<TypeCreatorAndValue<Number, FloatType>> floatType() {
         return Arbitraries.just(
-                TypeCreatorAndValue.forId(
+                TypeCreatorAndValue.<Number, FloatType>forId(
                         FloatType::new, Arbitraries.floats().map(v -> (Number) v)));
     }
 
@@ -619,7 +620,6 @@ public class TypeSpecificationTest {
             for (var value : values) {
                 var msg = in.readNextInstance();
                 assertNotNull(msg);
-                var origMap = ((ReadStruct) msg.value()).copy();
                 assertEquals(value, msg.value());
                 assertEquals(typeRef.get(), msg.type());
             }
@@ -960,7 +960,6 @@ public class TypeSpecificationTest {
                 new Reductions() {
 
                     @Override
-                    @SuppressWarnings("unchecked")
                     public <R, F> R reduce(int id, F value) {
                         if (id == 0) {
                             return (R) value;
@@ -972,7 +971,6 @@ public class TypeSpecificationTest {
                     }
 
                     @Override
-                    @SuppressWarnings("unchecked")
                     public <R, F> F inflate(int id, R reduced) {
                         if (id == 0) {
                             return (F) reduced;
@@ -1020,7 +1018,9 @@ public class TypeSpecificationTest {
                             out.writeMessage(type, new TestStruct("abc", 3));
                         },
                         true);
-        try (var in = new CondensedInputStream(outBytes).setReductions(reductions)) {
+        @SuppressWarnings("resource") // setReductions returns 'this'
+        var in = new CondensedInputStream(outBytes).setReductions(reductions);
+        try (in) {
             var value = in.readNextInstance();
             assertNotNull(value);
             assertEquals(Map.of("a", "XXX", "b", (long) 3), value.value());
@@ -1107,8 +1107,10 @@ public class TypeSpecificationTest {
                             out.writeMessageReduced(type, new TestStruct("abc", 3));
                         },
                         true);
-        try (var in = new CondensedInputStream(outBytes).setReductions(reductions)) {
-            var value = in.readNextInstance();
+        @SuppressWarnings("resource") // setReductions returns 'this'
+        var in2 = new CondensedInputStream(outBytes).setReductions(reductions);
+        try (in2) {
+            var value = in2.readNextInstance();
             assertNotNull(value);
             assertEquals(new TestStruct("XXX", 3), value.value());
         }

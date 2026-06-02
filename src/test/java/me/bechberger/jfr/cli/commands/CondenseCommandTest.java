@@ -869,6 +869,7 @@ public class CondenseCommandTest {
                 .run();
     }
 
+    @SuppressWarnings("unchecked")
     @Test
     public void testMultiFileCondensePreservesAllEvents() throws Exception {
         // Condense the same JFR file twice as separate inputs

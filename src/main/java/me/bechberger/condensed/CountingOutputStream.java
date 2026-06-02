@@ -43,4 +43,8 @@ class CountingOutputStream extends OutputStream {
     public long writtenBytes() {
         return count;
     }
+
+    public void reset() {
+        count = 0;
+    }
 }

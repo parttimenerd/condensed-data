@@ -21,6 +21,7 @@ import me.bechberger.util.Cache;
  */
 public abstract class EventCombiner {
 
+    @SuppressWarnings("unused") // reserved for future typed combiner events
     private static final String EVENT_COMBINER_TYPE_NAME = "condensed.EventCombiner";
 
     /**

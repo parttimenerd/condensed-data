@@ -38,5 +38,12 @@ build/
 ### Mac OS ###
 .DS_Store
 
+### Local temp/profiling ###
+tmp/
+
 benchmark
 benchmark_old
+
+### test-order ###
+.test-order/
+target/test-order-dashboard/

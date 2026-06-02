@@ -35,36 +35,70 @@ package org.openjdk.jmc.flightrecorder.writer;
 
 import java.lang.invoke.MethodHandles;
 import java.lang.invoke.VarHandle;
+import java.util.Arrays;
+import java.util.Map;
 import java.util.function.Consumer;
 import org.openjdk.jmc.flightrecorder.writer.api.Types;
 
 /**
  * A representation of JFR chunk - self contained set of JFR data.
  *
- * <p>This is an optimized version that reuses the per-event LEB128Writer instead of allocating a
- * new 32KB byte array for every single event. Uses VarHandle to reset the writer's internal pointer
- * without the costly Arrays.fill zero operation.
+ * <p>Optimized version that eliminates per-event allocations:
+ *
+ * <ul>
+ *   <li>Reuses a single per-chunk event buffer (no 32KB alloc per event)
+ *   <li>Reads TypedValueImpl.fields directly to avoid getFieldValues() ArrayList
+ *   <li>Reads TypedFieldValueImpl.values directly to avoid getValues() defensive copy
+ *   <li>Copies event bytes directly into the main writer's backing array (no slice copy)
+ * </ul>
  */
 final class Chunk {
-    private static final VarHandle POINTER_HANDLE;
-    private static final VarHandle ARRAY_HANDLE;
+    // VarHandles for LEB128ByteArrayWriter fields (shared for both eventWriter and writer
+    // instances)
+    private static final VarHandle POINTER_HANDLE; // LEB128ByteArrayWriter.pointer: int
+    private static final VarHandle ARRAY_HANDLE; // LEB128ByteArrayWriter.array: byte[]
+
+    // VarHandles to bypass allocation-heavy public API methods
+    private static final VarHandle FIELDS_HANDLE; // TypedValueImpl.fields: Map
+    private static final VarHandle
+            FIELD_VALUES_HANDLE; // TypedFieldValueImpl.values: TypedValueImpl[]
 
     static {
-        VarHandle ph = null, ah = null;
+        VarHandle ph = null, ah = null, fh = null, fvh = null;
         try {
-            var lookup =
+            var writerLookup =
                     MethodHandles.privateLookupIn(
                             LEB128ByteArrayWriter.class, MethodHandles.lookup());
-            ph = lookup.findVarHandle(LEB128ByteArrayWriter.class, "pointer", int.class);
-            ah = lookup.findVarHandle(LEB128ByteArrayWriter.class, "array", byte[].class);
+            ph = writerLookup.findVarHandle(LEB128ByteArrayWriter.class, "pointer", int.class);
+            ah = writerLookup.findVarHandle(LEB128ByteArrayWriter.class, "array", byte[].class);
         } catch (Exception e) {
-            // Fall back to creating new writers each time
+            // Fall back — writeEvent uses original behavior
+        }
+        try {
+            var tvLookup =
+                    MethodHandles.privateLookupIn(TypedValueImpl.class, MethodHandles.lookup());
+            fh = tvLookup.findVarHandle(TypedValueImpl.class, "fields", Map.class);
+        } catch (Exception e) {
+            // Fall back to getFieldValues()
+        }
+        try {
+            var tfvLookup =
+                    MethodHandles.privateLookupIn(
+                            TypedFieldValueImpl.class, MethodHandles.lookup());
+            fvh =
+                    tfvLookup.findVarHandle(
+                            TypedFieldValueImpl.class, "values", TypedValueImpl[].class);
+        } catch (Exception e) {
+            // Fall back to getValues()
         }
         POINTER_HANDLE = ph;
         ARRAY_HANDLE = ah;
+        FIELDS_HANDLE = fh;
+        FIELD_VALUES_HANDLE = fvh;
     }
 
     private final LEB128Writer writer = LEB128Writer.getInstance();
+    // Reusable per-event buffer — reset between events by zeroing the pointer only
     private final LEB128Writer eventWriter = LEB128Writer.getInstance();
     private final long startTicks;
     private final long startNanos;
@@ -96,15 +130,41 @@ final class Chunk {
         }
     }
 
+    @SuppressWarnings("unchecked")
     private void writeFields(LEB128Writer writer, TypedValueImpl value) {
-        for (TypedFieldValueImpl fieldValue : value.getFieldValues()) {
-            if (fieldValue.getField().isArray()) {
-                writer.writeInt(fieldValue.getValues().length); // array size
-                for (TypedValueImpl tValue : fieldValue.getValues()) {
-                    writeTypedValue(writer, tValue);
+        if (FIELDS_HANDLE != null && FIELD_VALUES_HANDLE != null) {
+            // Fast path: access fields map directly, avoid getFieldValues() ArrayList allocation
+            Map<String, TypedFieldValueImpl> fields =
+                    (Map<String, TypedFieldValueImpl>) FIELDS_HANDLE.get(value);
+            for (TypedFieldImpl field : value.getType().getFields()) {
+                TypedFieldValueImpl fieldValue =
+                        fields != null ? fields.get(field.getName()) : null;
+                if (fieldValue == null) {
+                    writeTypedValue(writer, field.getType().nullValue());
+                } else if (fieldValue.getField().isArray()) {
+                    // Access values array directly, avoid Arrays.copyOf in getValues()
+                    TypedValueImpl[] values =
+                            (TypedValueImpl[]) FIELD_VALUES_HANDLE.get(fieldValue);
+                    int len = values != null ? values.length : 0;
+                    writer.writeInt(len);
+                    for (int i = 0; i < len; i++) {
+                        writeTypedValue(writer, values[i]);
+                    }
+                } else {
+                    writeTypedValue(writer, fieldValue.getValue());
                 }
-            } else {
-                writeTypedValue(writer, fieldValue.getValue());
+            }
+        } else {
+            // Fallback: use public API (allocates ArrayList per call)
+            for (TypedFieldValueImpl fieldValue : value.getFieldValues()) {
+                if (fieldValue.getField().isArray()) {
+                    writer.writeInt(fieldValue.getValues().length);
+                    for (TypedValueImpl tValue : fieldValue.getValues()) {
+                        writeTypedValue(writer, tValue);
+                    }
+                } else {
+                    writeTypedValue(writer, fieldValue.getValue());
+                }
             }
         }
     }
@@ -187,22 +247,29 @@ final class Chunk {
             throw new IllegalArgumentException();
         }
 
-        if (POINTER_HANDLE != null) {
-            // Fast path: reuse cached eventWriter, reset pointer without zeroing array
+        if (POINTER_HANDLE != null && ARRAY_HANDLE != null) {
+            // Fast path: reuse event buffer, direct arraycopy into main writer — zero allocations
             POINTER_HANDLE.set(eventWriter, 0);
 
             eventWriter.writeLong(event.getType().getId());
-            for (TypedFieldValueImpl fieldValue : event.getFieldValues()) {
-                writeTypedValue(eventWriter, fieldValue.getValue());
-            }
+            writeFields(eventWriter, event);
 
-            int length = AbstractLEB128Writer.adjustLength((int) POINTER_HANDLE.get(eventWriter));
-            writer.writeInt(length);
-            // Direct array access to avoid export() allocation
+            int pos = (int) POINTER_HANDLE.get(eventWriter);
+            int adjustedLen = AbstractLEB128Writer.adjustLength(pos);
+
+            // Write LEB128-encoded size prefix to main writer
+            writer.writeInt(adjustedLen);
+
+            // Append event bytes directly into main writer's backing array — no copy allocation
             byte[] src = (byte[]) ARRAY_HANDLE.get(eventWriter);
-            byte[] slice = new byte[length];
-            System.arraycopy(src, 0, slice, 0, length);
-            writer.writeBytes(slice);
+            int mainPointer = (int) POINTER_HANDLE.get(writer);
+            byte[] dest = (byte[]) ARRAY_HANDLE.get(writer);
+            if (mainPointer + pos > dest.length) {
+                dest = Arrays.copyOf(dest, Math.max(dest.length * 2, mainPointer + pos));
+                ARRAY_HANDLE.set(writer, dest);
+            }
+            System.arraycopy(src, 0, dest, mainPointer, pos);
+            POINTER_HANDLE.set(writer, mainPointer + pos);
         } else {
             // Fallback: original behavior (allocates new writer per event)
             LEB128Writer ew = LEB128Writer.getInstance();

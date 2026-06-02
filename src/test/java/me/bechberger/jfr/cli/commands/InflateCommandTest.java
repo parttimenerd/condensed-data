@@ -674,7 +674,7 @@ public class InflateCommandTest {
                 .check(
                         (result, files) -> {
                             // First create the output file as read-only
-                            var outPath = files.get("readonly.jfr");
+                            files.get("readonly.jfr");
                             // This is the first run, it should succeed
                         })
                 .run();

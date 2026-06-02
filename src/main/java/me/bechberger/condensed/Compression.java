@@ -92,7 +92,7 @@ public enum Compression {
 
                 @Override
                 public InputStream wrap(InputStream in) throws IOException {
-                    return new ZstdInputStream(in);
+                    return new java.io.BufferedInputStream(new ZstdInputStream(in), 65536);
                 }
             }),
     XZ(

@@ -7,7 +7,6 @@ import java.nio.file.StandardCopyOption;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
-import java.util.Objects;
 import java.util.Set;
 import java.util.concurrent.Callable;
 import jdk.jfr.consumer.RecordingFile;
@@ -110,7 +109,11 @@ public class CondenseCommand implements Callable<Integer> {
     /** Expand a path into individual JFR files, handling folders and ZIPs */
     private static List<Path> expandJFRPath(Path path) throws IOException {
         if (Files.isDirectory(path)) {
-            return java.util.Arrays.stream(Objects.requireNonNull(path.toFile().listFiles()))
+            var files = path.toFile().listFiles();
+            if (files == null) {
+                throw new IOException("Cannot read directory: " + path);
+            }
+            return java.util.Arrays.stream(files)
                     .filter(f -> f.getName().endsWith(".jfr"))
                     .map(java.io.File::toPath)
                     .toList();

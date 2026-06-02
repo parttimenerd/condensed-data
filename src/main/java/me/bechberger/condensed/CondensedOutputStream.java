@@ -1,6 +1,8 @@
 package me.bechberger.condensed;
 
 import java.io.ByteArrayOutputStream;
+import java.io.DataOutputStream;
+import java.io.FilterOutputStream;
 import java.io.IOException;
 import java.io.OutputStream;
 import java.io.UnsupportedEncodingException;
@@ -58,7 +60,7 @@ public class CondensedOutputStream extends OutputStream {
             this.outputStream =
                     startMessage
                             .compression()
-                            .wrap(outputStream, CompressionLevel.HIGH_COMPRESSION);
+                            .wrap(this.outputStream, CompressionLevel.HIGH_COMPRESSION);
         }
     }
 
@@ -66,7 +68,12 @@ public class CondensedOutputStream extends OutputStream {
     CondensedOutputStream(OutputStream outputStream, Universe universe) {
         this.typeCollection = new TypeCollection();
         this.underlyingCountingStream = new CountingOutputStream(outputStream);
-        this.outputStream = underlyingCountingStream;
+        // Always use a non-closing wrapper as outputStream so that close() never cascades to
+        // underlyingCountingStream. writeFooter (and close() for non-footer paths) close it
+        // explicitly at the right time.
+        this.outputStream = new FilterOutputStream(underlyingCountingStream) {
+            @Override public void close() {} // intentionally no-op
+        };
         this.universe = universe;
     }
 
@@ -406,7 +413,8 @@ public class CondensedOutputStream extends OutputStream {
     public synchronized void close() {
         closed = true;
         try {
-            outputStream.close();
+            outputStream.close();         // flushes/closes the compressor (or no-op wrapper for NONE)
+            underlyingCountingStream.close(); // closes the real sink
         } catch (IOException e) {
             throw new RIOException("Can't close stream", e);
         }
@@ -427,5 +435,44 @@ public class CondensedOutputStream extends OutputStream {
     /** Estimates the size of the currently written file in bytes */
     public long estimateSize() {
         return underlyingCountingStream.writtenBytes();
+    }
+
+    /** Raw, pre-compression sink. Only safe to use after close() has flushed the compressor. */
+    public CountingOutputStream getUnderlyingCountingStream() {
+        return underlyingCountingStream;
+    }
+
+    /**
+     * Closes the compression layer (if not already closed), then writes a FOOTER_TYPE_ID varint
+     * sentinel followed by the zlib-compressed footer blob and a 4-byte little-endian length to
+     * the raw underlying stream. Must be called at most once and must be the last write operation.
+     *
+     * <p>The FOOTER_TYPE_ID sentinel lets {@link CondensedInputStream} stop reading at this point
+     * even when there is no compression (NONE), preventing it from mis-parsing footer bytes as
+     * event data.
+     */
+    public synchronized void writeFooter(CJFRFooter footer) {
+        if (!closed) {
+            closed = true;
+            try {
+                outputStream.close(); // flush/close compressor only; underlyingCountingStream stays open
+            } catch (IOException e) {
+                throw new RIOException("Can't close compression stream before writing footer", e);
+            }
+        }
+        byte[] zlibBytes = footer.toCompressedBytes();
+        int len = zlibBytes.length;
+        try {
+            underlyingCountingStream.write(CJFRFooter.FOOTER_TYPE_ID);
+            underlyingCountingStream.write(zlibBytes);
+            underlyingCountingStream.write(len & 0xFF);
+            underlyingCountingStream.write((len >>> 8) & 0xFF);
+            underlyingCountingStream.write((len >>> 16) & 0xFF);
+            underlyingCountingStream.write((len >>> 24) & 0xFF);
+            underlyingCountingStream.flush();
+            underlyingCountingStream.close();
+        } catch (IOException e) {
+            throw new RIOException("Failed to write footer", e);
+        }
     }
 }

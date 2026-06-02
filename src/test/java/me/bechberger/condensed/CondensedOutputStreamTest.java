@@ -3,9 +3,12 @@ package me.bechberger.condensed;
 import static org.junit.jupiter.api.Assertions.*;
 
 import java.io.ByteArrayOutputStream;
+import java.util.Map;
+import me.bechberger.condensed.Message.StartMessage;
 import me.bechberger.condensed.types.VarIntType;
 import org.junit.jupiter.api.Test;
 
+@SuppressWarnings("resource") // test streams backed by ByteArrayOutputStream don't require closing
 public class CondensedOutputStreamTest {
 
     /**
@@ -107,9 +110,6 @@ public class CondensedOutputStreamTest {
         // Create a simple type and write a message
         VarIntType intType = out.writeAndStoreType(id -> new VarIntType(id));
 
-        // Get the pretty string before writing any instance
-        String beforeStats = out.getStatistics().toPrettyString();
-
         // Write an instance message
         out.writeMessage(intType, 42L);
 
@@ -137,5 +137,39 @@ public class CondensedOutputStreamTest {
                         + ". writeMessage is missing statistic.setModeAndCount(WriteMode.INSTANCE)."
                         + " Full stats:\n"
                         + afterStats);
+    }
+
+    @Test
+    public void testWriteFooterSentinelByteIsPresent() {
+        var baos = new ByteArrayOutputStream();
+        var out = new CondensedOutputStream(baos, StartMessage.DEFAULT);
+        var footer = new CJFRFooter(1, 0L, 0L, 0L, Map.of(), null, null, null);
+        out.writeFooter(footer);
+        byte[] bytes = baos.toByteArray();
+        // Find sentinel byte 7 — it should appear right before the zlib blob
+        // The zlib BEST_COMPRESSION magic starts with 0x78 0xDA
+        // Find the 0x78 byte and check what's before it
+        int sentinelPos = -1;
+        for (int i = 0; i < bytes.length - 1; i++) {
+            if ((bytes[i] & 0xFF) == 7 && (bytes[i + 1] & 0xFF) == 0x78) {
+                sentinelPos = i;
+                break;
+            }
+        }
+        assertTrue(sentinelPos >= 0,
+            "Sentinel byte 7 should appear before zlib magic 0x78 in the output. "
+            + "File bytes (last 20): " + bytesToHex(bytes, Math.max(0, bytes.length - 20), bytes.length));
+        // Also verify that CondensedInputStream stops at the sentinel
+        var in = new CondensedInputStream(bytes);
+        while (in.readNextMessageAndProcess() != null) {}
+        // If we reach here, the sentinel was detected and reading stopped cleanly
+    }
+
+    private static String bytesToHex(byte[] bytes, int from, int to) {
+        var sb = new StringBuilder();
+        for (int i = from; i < to; i++) {
+            sb.append(String.format("%02x ", bytes[i] & 0xFF));
+        }
+        return sb.toString();
     }
 }

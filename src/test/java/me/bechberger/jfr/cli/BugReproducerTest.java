@@ -6,7 +6,6 @@ import static org.junit.jupiter.api.Assertions.*;
 import java.io.ByteArrayOutputStream;
 import java.time.Duration;
 import java.util.concurrent.atomic.AtomicBoolean;
-import jdk.jfr.*;
 import jdk.jfr.consumer.RecordingStream;
 import me.bechberger.condensed.CondensedInputStream;
 import me.bechberger.condensed.CondensedOutputStream;
@@ -57,6 +56,7 @@ public class BugReproducerTest {
                 rs.startAsync();
                 // Force a GC
                 while (!hadGC.get()) {
+                    @SuppressWarnings("unused") // intentional allocation to trigger GC
                     byte[] garbage = new byte[1024 * 1024];
                     System.gc();
                 }

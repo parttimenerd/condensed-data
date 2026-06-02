@@ -31,7 +31,18 @@ public class Agent implements Runnable {
         spec.usage(AgentIO.getAgentInstance().createPrintStream());
     }
 
+    public static void agentmain(String agentArgs, java.lang.instrument.Instrumentation inst) {
+        me.bechberger.jfr.UnsafeRecordedObjectAccessor.openModule(inst);
+        if ("open-jfr-module".equals(agentArgs)) return; // self-attach: just open module
+        premain(agentArgs);
+    }
+
     public static void agentmain(String agentArgs) {
+        premain(agentArgs);
+    }
+
+    public static void premain(String agentArgs, java.lang.instrument.Instrumentation inst) {
+        me.bechberger.jfr.UnsafeRecordedObjectAccessor.openModule(inst);
         premain(agentArgs);
     }
 

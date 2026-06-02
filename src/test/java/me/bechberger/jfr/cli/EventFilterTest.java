@@ -21,7 +21,6 @@ public class EventFilterTest {
         field.set(instance, value);
     }
 
-    @SuppressWarnings({"unchecked", "rawtypes"})
     private static StructType<?, ReadStruct> createEventType(
             String typeName, String... fieldNames) {
         var intType = IntType.SPECIFIED_TYPE.getDefaultType(IntType.SPECIFIED_TYPE.id());

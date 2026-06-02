@@ -15,6 +15,7 @@ public class ReadListTest {
         return new ArrayType<>(100, intType);
     }
 
+    @SuppressWarnings("unused") // kept for potential future use
     private static ArrayType<String, String> stringArrayType() {
         var stringType = StringType.SPECIFIED_TYPE.getDefaultType(StringType.SPECIFIED_TYPE.id());
         return new ArrayType<>(101, stringType);

@@ -3,8 +3,6 @@ package me.bechberger.condensed.types;
 import static me.bechberger.condensed.Universe.EmbeddingType.INLINE;
 
 import java.util.Objects;
-import java.util.concurrent.atomic.AtomicBoolean;
-import java.util.function.Consumer;
 import me.bechberger.condensed.CondensedInputStream;
 import me.bechberger.condensed.CondensedOutputStream;
 import me.bechberger.condensed.Universe.EmbeddingType;
@@ -83,26 +81,22 @@ public abstract class CondensedType<T, R> {
             return;
         }
         WritingCaches caches = out.getUniverse().getWritingCaches();
-        AtomicBoolean cached = new AtomicBoolean(true);
-        Consumer<T> writer =
-                v -> {
-                    out.writeUnsignedVarInt(1);
-                    writeTo(out, v);
-                    cached.set(false);
-                };
         if (value == null) {
             out.writeUnsignedVarInt(0);
         } else {
-            var index =
+            int result =
                     switch (embedding) {
-                        case REFERENCE -> caches.get(this, value, writer);
-                        case REFERENCE_PER_TYPE -> caches.get(this, value, writer, embeddingType);
+                        case REFERENCE -> caches.getOrPut(this, value);
+                        case REFERENCE_PER_TYPE -> caches.getOrPut(this, value, embeddingType);
                         default ->
                                 throw new IllegalArgumentException(
                                         "Invalid embedding type: " + embedding);
                     };
-            if (cached.get()) {
-                out.writeUnsignedVarInt(index + 2);
+            if (result >= 0) {
+                out.writeUnsignedVarInt(result + 2);
+            } else {
+                out.writeUnsignedVarInt(1);
+                writeTo(out, value);
             }
         }
     }

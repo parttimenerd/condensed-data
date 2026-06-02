@@ -73,6 +73,7 @@ public class JFRViewTest {
                         });
                 rs.startAsync();
                 while (!hadGC.get()) {
+                    @SuppressWarnings("unused") // force allocation for GC
                     var x = new byte[1024 * 1024 * 1024];
                     System.gc();
                 }
@@ -227,7 +228,6 @@ public class JFRViewTest {
                 "ABCDE", result, "TruncateMode.END should truncate the end and keep the beginning");
     }
 
-    @SuppressWarnings({"unchecked", "rawtypes"})
     private static StructType<?, ReadStruct> createType(String typeName, String... fieldNames) {
         var intType = IntType.SPECIFIED_TYPE.getDefaultType(IntType.SPECIFIED_TYPE.id());
         List<Field<Object, ?, ?>> fields = new java.util.ArrayList<>();
@@ -491,10 +491,8 @@ public class JFRViewTest {
 
     // ========== Annotation shadowing (Bugs 3, 4) ==========
 
-    @SuppressWarnings({"unchecked", "rawtypes"})
     private static StructType<?, ReadStruct> createTypeWithFieldDesc(
             String typeName, String fieldName, String fieldTypeName, String fieldDesc) {
-        var intType = IntType.SPECIFIED_TYPE.getDefaultType(IntType.SPECIFIED_TYPE.id());
         // Create a custom VarIntType-like type with the specified name
         var fieldType = new me.bechberger.condensed.types.VarIntType(999, fieldTypeName, "", false);
         List<Field<Object, ?, ?>> fields =
@@ -574,7 +572,7 @@ public class JFRViewTest {
         var type = new StructType<>(1001, "ManyColumnEvent", fields);
         var config = new PrintConfig(160, 1, TruncateMode.END);
         // This previously threw IllegalArgumentException: count is negative
-        @SuppressWarnings({"unchecked", "rawtypes"})
+        @SuppressWarnings("rawtypes")
         JFRView view = new JFRView(new JFRViewConfig((StructType) type), config);
         assertDoesNotThrow(() -> view.header());
         // Also verify rows work
@@ -613,7 +611,6 @@ public class JFRViewTest {
                         8,
                         true,
                         me.bechberger.condensed.CondensedOutputStream.OverflowMode.ERROR);
-        @SuppressWarnings("unchecked")
         var type =
                 new StructType<>(
                         1000,
@@ -673,7 +670,6 @@ public class JFRViewTest {
                 new me.bechberger.condensed.types.VarIntType(
                         901, "memory varint BYTES", "", false, 1);
 
-        @SuppressWarnings("unchecked")
         var innerStructType =
                 new StructType<>(
                         902,
@@ -699,7 +695,6 @@ public class JFRViewTest {
                         (StructType) innerStructType,
                         Map.of("start", 21474836480L, "committedSize", 822083584L));
 
-        @SuppressWarnings("unchecked")
         var outerType =
                 new StructType<>(
                         903,

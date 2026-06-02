@@ -2,7 +2,9 @@ package me.bechberger.condensed.types;
 
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 import java.util.function.Function;
 import org.jetbrains.annotations.Nullable;
@@ -54,6 +56,7 @@ public class TypeCollection {
     }
 
     private final List<@Nullable CondensedType<?, ?>> types;
+    private final Map<String, CondensedType<?, ?>> typesByName = new HashMap<>();
     private int lastTypeId = FIRST_CUSTOM_TYPE_ID - 1;
 
     public TypeCollection() {
@@ -63,6 +66,11 @@ public class TypeCollection {
 
     private void initDefaultTypes() {
         types.addAll(Arrays.asList(defaultTypes));
+        for (CondensedType<?, ?> t : defaultTypes) {
+            if (t != null && t.getName() != null) {
+                typesByName.put(t.getName(), t);
+            }
+        }
     }
 
     /**
@@ -116,6 +124,9 @@ public class TypeCollection {
             throw new IllegalStateException("Type with id " + id + " already exists");
         }
         types.set(id, type);
+        if (type.getName() != null) {
+            typesByName.put(type.getName(), type);
+        }
         return type;
     }
 
@@ -135,6 +146,9 @@ public class TypeCollection {
             throw new IllegalStateException("Type with id " + id + " already exists");
         }
         types.set(id, type);
+        if (type.getName() != null) {
+            typesByName.put(type.getName(), type);
+        }
         return type;
     }
 
@@ -255,12 +269,9 @@ public class TypeCollection {
         return types.stream().filter(Objects::nonNull).toList();
     }
 
-    /** Slow way to get types by name */
+    /** Get a type by name, O(1) via name index */
     public @Nullable CondensedType<?, ?> getTypeOrNull(String name) {
-        return types.stream()
-                .filter(t -> t != null && t.getName().equals(name))
-                .findFirst()
-                .orElse(null);
+        return typesByName.get(name);
     }
 
     public LazyType<?, ?> getLazyType(int id) {

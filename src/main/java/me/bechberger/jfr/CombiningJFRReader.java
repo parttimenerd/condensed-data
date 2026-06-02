@@ -57,17 +57,26 @@ public class CombiningJFRReader implements JFRReader {
             @Nullable EventFilter<C> filter,
             boolean reconstitute,
             Statistic statistics) {
+        return fromPaths(paths, filter, reconstitute, false, statistics);
+    }
+
+    public static <C> CombiningJFRReader fromPaths(
+            List<Path> paths,
+            @Nullable EventFilter<C> filter,
+            boolean reconstitute,
+            boolean skipRecursiveCompletion,
+            Statistic statistics) {
         if (filter == null) {
-            return fromPaths(paths, (EventFilterInstance) null, reconstitute, statistics);
+            return fromPaths(paths, (EventFilterInstance) null, reconstitute, skipRecursiveCompletion, statistics);
         }
         C context = filter.createContext();
         if (filter.isInformationGathering()) {
             var reader =
-                    fromPaths(paths, filter.createAnalyzeFilter(context), reconstitute, statistics);
+                    fromPaths(paths, filter.createAnalyzeFilter(context), reconstitute, false, statistics);
             while (reader.readNextEvent() != null)
                 ;
         }
-        return fromPaths(paths, filter.createTestFilter(context), reconstitute, statistics);
+        return fromPaths(paths, filter.createTestFilter(context), reconstitute, skipRecursiveCompletion, statistics);
     }
 
     public static <C> CombiningJFRReader fromPaths(
@@ -84,10 +93,19 @@ public class CombiningJFRReader implements JFRReader {
             EventFilterInstance filter,
             boolean reconstitute,
             Statistic statistics) {
+        return fromPaths(paths, filter, reconstitute, false, statistics);
+    }
+
+    public static CombiningJFRReader fromPaths(
+            List<Path> paths,
+            EventFilterInstance filter,
+            boolean reconstitute,
+            boolean skipRecursiveCompletion,
+            Statistic statistics) {
         return new CombiningJFRReader(
                 orderedUniqueReaders(
                         paths.stream()
-                                .flatMap(p -> readersForPath(p, reconstitute, statistics).stream())
+                                .flatMap(p -> readersForPath(p, reconstitute, skipRecursiveCompletion, statistics).stream())
                                 .toList()),
                 filter);
     }
@@ -126,38 +144,44 @@ public class CombiningJFRReader implements JFRReader {
     }
 
     private static List<ReaderAndReadEvents> readersForPath(
-            Path path, boolean reconstitute, Statistic statistics) {
+            Path path, boolean reconstitute, boolean skipRecursiveCompletion, Statistic statistics) {
         if (Files.isDirectory(path)) {
-            return Arrays.stream(Objects.requireNonNull(path.toFile().listFiles()))
+            var files = path.toFile().listFiles();
+            if (files == null) {
+                return List.of();
+            }
+            return Arrays.stream(files)
                     .filter(f -> f.getName().endsWith(".cjfr") || f.getName().endsWith(".jfr"))
-                    .map(f -> readersForPath(f.toPath(), reconstitute, statistics))
+                    .map(f -> readersForPath(f.toPath(), reconstitute, skipRecursiveCompletion, statistics))
                     .flatMap(List::stream)
                     .toList();
         }
         if (Files.isRegularFile(path) && path.toString().endsWith(".cjfr")) {
             try {
                 return List.of(
-                        readerForInputStream(Files.newInputStream(path), reconstitute, statistics));
+                        readerForInputStream(Files.newInputStream(path), reconstitute, skipRecursiveCompletion, statistics));
             } catch (IOException e) {
                 throw new RuntimeException(e);
             }
         }
         if (Files.isRegularFile(path) && path.toString().endsWith(".jfr")) {
-            return List.of(readerForJFRFile(path, reconstitute, statistics));
+            return List.of(readerForJFRFile(path, reconstitute, skipRecursiveCompletion, statistics));
         }
         // check if file is zip or tar.gz file
         if (isZip(path)) {
-            return readersForZip(path, reconstitute, statistics);
+            return readersForZip(path, reconstitute, skipRecursiveCompletion, statistics);
         }
         return List.of();
     }
 
     private static ReaderAndReadEvents readerForInputStream(
-            InputStream is, boolean reconstitute, Statistic statistics) {
+            InputStream is, boolean reconstitute, boolean skipRecursiveCompletion, Statistic statistics) {
         var reader =
                 new BasicJFRReader(
-                        new CondensedInputStream(is),
-                        BasicJFRReader.Options.DEFAULT.withReconstitute(reconstitute));
+                        new CondensedInputStream(new java.io.BufferedInputStream(is, 65536)),
+                        BasicJFRReader.Options.DEFAULT
+                                .withReconstitute(reconstitute)
+                                .withSkipRecursiveCompletion(skipRecursiveCompletion));
         reader.setStatistics(statistics);
         var alreadyReadEvents = new ArrayList<ReadStruct>();
         var event = reader.readNextEvent();
@@ -186,7 +210,7 @@ public class CombiningJFRReader implements JFRReader {
 
     /** Condense a .jfr file on-the-fly and return a reader for the condensed data */
     private static ReaderAndReadEvents readerForJFRFile(
-            Path jfrPath, boolean reconstitute, Statistic statistics) {
+            Path jfrPath, boolean reconstitute, boolean skipRecursiveCompletion, Statistic statistics) {
         try {
             var baos = new java.io.ByteArrayOutputStream();
             try (var out =
@@ -207,14 +231,14 @@ public class CombiningJFRReader implements JFRReader {
                 writer.close();
             }
             return readerForInputStream(
-                    new java.io.ByteArrayInputStream(baos.toByteArray()), reconstitute, statistics);
+                    new java.io.ByteArrayInputStream(baos.toByteArray()), reconstitute, skipRecursiveCompletion, statistics);
         } catch (IOException e) {
             throw new RuntimeException("Failed to condense JFR file: " + jfrPath, e);
         }
     }
 
     private static List<ReaderAndReadEvents> readersForZip(
-            Path path, boolean reconstitute, Statistic statistics) {
+            Path path, boolean reconstitute, boolean skipRecursiveCompletion, Statistic statistics) {
         // unpack all .cjfr/.jfr files to a temp folder
         // reading directly from the zip file is not possible because individual files are read
         // independently and may need random access
@@ -229,7 +253,7 @@ public class CombiningJFRReader implements JFRReader {
             throw new RuntimeException(e);
         }
         return cjfrFiles.stream()
-                .flatMap(p -> readersForPath(p, reconstitute, statistics).stream())
+                .flatMap(p -> readersForPath(p, reconstitute, skipRecursiveCompletion, statistics).stream())
                 .toList();
     }
 

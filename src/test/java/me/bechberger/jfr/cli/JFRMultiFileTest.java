@@ -144,6 +144,7 @@ public class JFRMultiFileTest {
                 () -> checkInflateResult(properArgs));
     }
 
+    @SuppressWarnings("unused") // kept for potential future use
     private List<String> combine(String val, List<String> args) {
         var combined = new ArrayList<String>();
         combined.add(val);

@@ -11,7 +11,6 @@ import org.junit.jupiter.api.Test;
 
 public class ReadStructTest {
 
-    @SuppressWarnings({"unchecked", "rawtypes"})
     private static StructType<?, ReadStruct> createType(String... fieldNames) {
         var intType = IntType.SPECIFIED_TYPE.getDefaultType(IntType.SPECIFIED_TYPE.id());
         List<Field<Object, ?, ?>> fields = new ArrayList<>();
@@ -53,7 +52,7 @@ public class ReadStructTest {
         assertTrue(struct.containsKey("a"));
         assertTrue(struct.containsKey("b"));
         assertFalse(struct.containsKey("c"));
-        assertFalse(struct.containsKey(42)); // non-string key
+        assertFalse(struct.containsKey((Object) 42)); // non-string key
     }
 
     @Test
@@ -62,7 +61,7 @@ public class ReadStructTest {
         assertEquals(1L, struct.get("a"));
         assertEquals(2L, struct.get("b"));
         assertNull(struct.get("nonexistent"));
-        assertNull(struct.get(42));
+        assertNull(struct.get((Object) 42));
     }
 
     @Test

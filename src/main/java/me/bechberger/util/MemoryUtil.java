@@ -56,7 +56,11 @@ public class MemoryUtil {
         if (exp == 0) {
             return Math.round(Double.parseDouble(memory));
         }
-        var numberPart = Double.parseDouble(memory.substring(0, memory.length() - 1));
+        var numberStr = memory.substring(0, memory.length() - 1);
+        if (numberStr.isEmpty()) {
+            throw new IllegalArgumentException("Invalid memory format: '" + memory + "'");
+        }
+        var numberPart = Double.parseDouble(numberStr);
         return Math.round(numberPart * Math.pow(1024, exp));
     }
 }

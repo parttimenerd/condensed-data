@@ -52,6 +52,11 @@ public class WritingJFRReader {
         public void close() throws IOException {
             flush(); // flush but don't close the underlying stream
         }
+
+        @Override
+        public void write(byte[] b, int off, int len) throws IOException {
+            out.write(b, off, len);
+        }
     }
 
     private final JFRReader reader;
@@ -63,6 +68,7 @@ public class WritingJFRReader {
             new JFREventTypedValuedReconstitutor(this);
     private final Queue<TypedValue> eventsToEmit = new ArrayDeque<>();
     private final Map<String, Integer> combinedEventCount = new HashMap<>();
+    private final FastChunkWriter fastChunkWriter = new FastChunkWriter();
 
     /**
      * Cache for sub-struct TypedValue conversions. The condensed format's universe cache returns
@@ -75,11 +81,13 @@ public class WritingJFRReader {
     private int eventCount = 0;
 
     /** Rotate JMC recording chunks every N events to bound per-chunk memory */
-    private static final int CHUNK_ROTATION_INTERVAL = 100_000;
+    private static final int CHUNK_ROTATION_INTERVAL = 10_000_000;
 
     /** Add default values for removed fields that are not handled by the Java JFR API */
+    @SuppressWarnings("unused") // stored for future use
     private final boolean shouldAddDefaultValuesIfNecessary;
 
+    @SuppressWarnings("unused") // stored for future use
     private boolean addAllRemovedFields = false;
 
     public WritingJFRReader(
@@ -89,7 +97,6 @@ public class WritingJFRReader {
         this.reader = reader;
         this.outputStream = outputStream;
         this.shouldAddDefaultValuesIfNecessary = shouldAddDefaultValuesIfNecessary;
-        this.initRecording();
     }
 
     public WritingJFRReader(JFRReader reader, OutputStream outputStream) {
@@ -109,20 +116,30 @@ public class WritingJFRReader {
     }
 
     void initRecording() {
+        long startTimeNanos =
+                reader.getStartTime().getEpochSecond() * 1_000_000_000L
+                        + reader.getStartTime().getNano();
+        long durationNanos = Math.max(1, reader.getDuration().toNanos());
+        // Use epoch-based startTicks so JFR reader computes:
+        //   wall_time = startNanos + (eventTick - startTicks) = eventTick
+        // For uninitialized universe (no events read yet), fall back to safe defaults
+        long startTicks = startTimeNanos > 0 ? startTimeNanos : 1;
+        long startTimestamp = startTimeNanos > 0 ? startTimeNanos : 1;
         this.recording =
                 (RecordingImpl)
                         Recordings.newRecording(
                                 new NonClosingOutputStream(outputStream),
                                 r -> {
-                                    r.withStartTicks(1);
-                                    r.withTimestamp(1);
+                                    r.withStartTicks(startTicks);
+                                    r.withTimestamp(startTimestamp);
+                                    r.withDuration(durationNanos);
                                 });
     }
 
     public @Nullable TypedValue readNextJFREvent() {
         if (!eventsToEmit.isEmpty()) {
             var event = eventsToEmit.poll();
-            recording.writeEvent(event);
+            fastWriteEvent(event);
             maybeRotateChunk();
             return event;
         }
@@ -131,7 +148,7 @@ public class WritingJFRReader {
             return null;
         }
         if (recording == null) {
-            throw new IllegalStateException("Recording not initialized");
+            initRecording();
         }
         if (reconstitutor.isCombinedEvent(event)) {
             combinedEventCount.put(
@@ -141,31 +158,24 @@ public class WritingJFRReader {
             return readNextJFREvent(); // comes in handy when the combined events
         }
         var evt = toTypedValue(event, true, ROOT_PATH);
-        recording.writeEvent(evt);
+        fastWriteEvent(evt);
         maybeRotateChunk();
         return evt;
     }
 
+    private void fastWriteEvent(TypedValue event) {
+        fastChunkWriter.writeEvent(recording, (TypedValueImpl) event);
+    }
+
     private void maybeRotateChunk() {
         if (++eventCount % CHUNK_ROTATION_INTERVAL == 0) {
-            // Close the current recording to flush all buffered data (events, constant pools,
-            // metadata) to the output stream. This bounds memory by releasing the JMC
-            // LEB128Writer buffer (which holds all serialized data) and the constant pools.
-            // Each closed recording produces a complete JFR chunk; multiple chunks
-            // concatenated form a valid multi-chunk JFR file.
-            try {
-                recording.close();
-            } catch (IOException e) {
-                throw new RuntimeException(e);
-            }
-            // Clear all caches that reference old recording's JMC types/values
-            typeMap.clear();
-            realTypeMap.clear();
-            customAnnotationTypes.clear();
-            jmcFieldsCache.clear();
+            // Rotate the JMC recording's internal chunk buffer to bound memory.
+            // This flushes the current chunk's serialized event data to the output queue
+            // while keeping the same Recording instance with all its types and constant pools.
+            // The sub-struct cache is cleared to further reduce memory, but type maps are
+            // preserved since the Recording's types remain valid.
+            recording.rotateChunk();
             subStructCache.clear();
-            // Create a new recording for the next batch of events
-            initRecording();
         }
     }
 
@@ -250,9 +260,6 @@ public class WritingJFRReader {
         }
     }
 
-    /** Reusable root ReadStructPath to avoid allocation per event */
-    private static final ReadStructPath ROOT_PATH = new ReadStructPath();
-
     /** Pre-computed field processing info to avoid repeated lookups per event */
     private enum FieldCategory {
         NORMAL,
@@ -285,6 +292,15 @@ public class WritingJFRReader {
     /** Pre-computed JMC field info per type to bypass TypedValueBuilderImpl */
     private final IdentityHashMap<Type, List<TypedFieldImpl>> jmcFieldsCache =
             new IdentityHashMap<>();
+
+    /** Cached null TypedFieldValueImpl per field (avoids re-allocation per event) */
+    private final IdentityHashMap<TypedFieldImpl, TypedFieldValueImpl> nullFieldValueCache =
+            new IdentityHashMap<>();
+
+    private TypedFieldValueImpl getNullFieldValue(TypedFieldImpl field) {
+        return nullFieldValueCache.computeIfAbsent(
+                field, f -> new TypedFieldValueImpl(f, (TypedValueImpl) f.getType().nullValue()));
+    }
 
     private List<TypedFieldImpl> getJmcFields(Type type) {
         return jmcFieldsCache.computeIfAbsent(type, t -> ((TypeImpl) t).getFields());
@@ -482,6 +498,7 @@ public class WritingJFRReader {
 
     // stackTrace, eventThread, startTime
 
+    /** Linked list for cycle detection during struct-to-TypedValue conversion. */
     private record ReadStructPath(@Nullable ReadStructPath parent, @Nullable ReadStruct value) {
 
         ReadStructPath() {
@@ -507,6 +524,8 @@ public class WritingJFRReader {
         }
     }
 
+    private static final ReadStructPath ROOT_PATH = new ReadStructPath();
+
     private static final TypedValueImpl[] EMPTY_TYPED_VALUE_ARRAY = new TypedValueImpl[0];
 
     private TypedValue toTypedValue(ReadStruct struct, boolean isEvent, ReadStructPath visited) {
@@ -531,10 +550,7 @@ public class WritingJFRReader {
             String fieldName = field.getName();
             Object value = struct.get(fieldName);
             if (value == null) {
-                fieldValues.put(
-                        fieldName,
-                        new TypedFieldValueImpl(
-                                field, (TypedValueImpl) field.getType().nullValue()));
+                fieldValues.put(fieldName, getNullFieldValue(field));
                 continue;
             }
             FieldPlanEntry plan = getFieldPlan(structType, fieldName);
@@ -577,19 +593,34 @@ public class WritingJFRReader {
                 if (plan != null) {
                     FieldCategory cat = plan.category();
                     if (cat == FieldCategory.TIMESTAMP) {
-                        if (value instanceof Instant) {
-                            value = convertTimestampToUnit((Instant) value, plan.unitDivisor());
-                        } else if (value instanceof Duration) {
-                            value = ((Duration) value).toNanos();
-                        } else if (!(value instanceof Long)) {
+                        // Fast path: avoid double autoboxing by calling asValue(long) directly
+                        long nanos;
+                        if (value instanceof Instant inst) {
+                            nanos = convertTimestampToUnit(inst, plan.unitDivisor());
+                        } else if (value instanceof Duration dur) {
+                            nanos = dur.toNanos();
+                        } else if (value instanceof Long l) {
+                            nanos = l;
+                        } else {
                             throw new IllegalArgumentException(
                                     "Expected Instant, Duration or Long (nanoseconds) for "
                                             + fieldName
                                             + ", got: "
                                             + value);
                         }
-                    } else if (cat == FieldCategory.TIMESPAN && value instanceof Duration) {
-                        value = convertTimespanToUnit((Duration) value, plan.unitDivisor());
+                        fieldValues.put(
+                                fieldName,
+                                new TypedFieldValueImpl(
+                                        field, (TypedValueImpl) field.getType().asValue(nanos)));
+                        continue;
+                    } else if (cat == FieldCategory.TIMESPAN && value instanceof Duration dur) {
+                        long converted = convertTimespanToUnit(dur, plan.unitDivisor());
+                        fieldValues.put(
+                                fieldName,
+                                new TypedFieldValueImpl(
+                                        field,
+                                        (TypedValueImpl) field.getType().asValue(converted)));
+                        continue;
                     }
                 }
                 var prim = getTypedPrimitiveValue(field, value);
@@ -606,7 +637,6 @@ public class WritingJFRReader {
                 }
             }
         }
-        @SuppressWarnings("unchecked")
         var result = (TypedValueImpl) jmcType.asValue((Object) fieldValues);
         if (!isEvent) {
             subStructCache.put(struct, result);
@@ -616,6 +646,35 @@ public class WritingJFRReader {
 
     public void close() {
         try {
+            if (recording == null) {
+                initRecording();
+            }
+            // Update the duration field (which is final in RecordingImpl) to reflect
+            // the actual recording span now that all events have been processed.
+            // At initRecording() time, getDuration() returns a near-zero value because
+            // the CJFR's lastStartTimeNanos hasn't been updated yet.
+            long actualDuration = Math.max(1, reader.getDuration().toNanos());
+            try {
+                java.lang.reflect.Field durationField =
+                        RecordingImpl.class.getDeclaredField("duration");
+                durationField.setAccessible(true);
+
+                // Remove final modifier to allow reflective write
+                java.lang.reflect.Field modifiersField;
+                try {
+                    modifiersField = java.lang.reflect.Field.class.getDeclaredField("modifiers");
+                    modifiersField.setAccessible(true);
+                    modifiersField.setInt(
+                            durationField,
+                            durationField.getModifiers() & ~java.lang.reflect.Modifier.FINAL);
+                } catch (NoSuchFieldException e) {
+                    // Java 12+: modifiers field is hidden; setAccessible(true) is enough
+                }
+
+                durationField.setLong(recording, actualDuration);
+            } catch (ReflectiveOperationException e) {
+                // Fall back to the initially-set (inaccurate) duration if reflection fails
+            }
             recording.close();
             outputStream.close();
         } catch (IOException e) {

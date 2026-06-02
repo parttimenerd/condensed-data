@@ -70,11 +70,12 @@ public abstract class RecordingThread implements Runnable {
 
     private static Map<String, String> parseJfrSettings(String settings) {
         return Arrays.stream(settings.split("\\|"))
-                .filter(s -> !s.isEmpty())
+                .filter(s -> !s.isEmpty() && s.contains("="))
                 .map(s -> s.split("=", 2))
                 .collect(Collectors.toMap(a -> a[0], a -> a[1]));
     }
 
+    @SuppressWarnings("unused") // reserved for future use
     private Configuration getConfiguration() {
         return configuration;
     }

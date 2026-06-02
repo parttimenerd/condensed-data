@@ -1,4 +1,6 @@
 #!/bin/sh
 # get the directory of this script without BASH_SOURCE
 DIR="$( cd "$( dirname "$0" )" && pwd )"
-java --enable-native-access=ALL-UNNAMED -jar "$DIR/target/condensed-data.jar" "$@"
+java --enable-native-access=ALL-UNNAMED \
+     --add-opens jdk.jfr/jdk.jfr.consumer=ALL-UNNAMED \
+     -jar "$DIR/target/condensed-data.jar" "$@"

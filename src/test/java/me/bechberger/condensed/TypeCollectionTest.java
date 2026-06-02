@@ -58,7 +58,7 @@ public class TypeCollectionTest {
     }
 
     @Test
-    @SuppressWarnings({"rawtypes"})
+    @SuppressWarnings({"rawtypes", "unchecked"})
     public void testGetDefaultTypeInstance() {
         assertEquals(
                 IntType.SPECIFIED_TYPE.getDefaultType(IntType.SPECIFIED_TYPE.id()),

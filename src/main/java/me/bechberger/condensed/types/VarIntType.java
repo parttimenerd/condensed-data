@@ -139,11 +139,7 @@ public class VarIntType extends CondensedType<Long, Long> {
                             in.getTypeCollection()
                                     .addType(
                                             new VarIntType(
-                                                    id,
-                                                    name,
-                                                    description,
-                                                    signed,
-                                                    multiplier));
+                                                    id, name, description, signed, multiplier));
                 }
             };
 

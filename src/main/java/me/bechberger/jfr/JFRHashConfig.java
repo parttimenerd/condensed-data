@@ -7,6 +7,8 @@ import jdk.jfr.consumer.*;
 import me.bechberger.condensed.Universe.EmbeddingType;
 import me.bechberger.condensed.Universe.HashAndEqualsConfig;
 import me.bechberger.condensed.Universe.HashAndEqualsWrapper;
+import me.bechberger.jfr.UnsafeRecordedObjectAccessor.FieldAccessor;
+import me.bechberger.jfr.UnsafeRecordedObjectAccessor.IntFieldAccessor;
 
 /**
  * No JFR object implements {@link Object::hashCode} and {@link Object::equals}, so we need to wrap
@@ -79,15 +81,29 @@ public class JFRHashConfig extends HashAndEqualsConfig {
         private final String methodDescriptor;
         private final String frameType;
 
+        private static final IntFieldAccessor LINE_NUMBER =
+                UnsafeRecordedObjectAccessor.intField("lineNumber", -1);
+        private static final IntFieldAccessor BYTECODE_INDEX =
+                UnsafeRecordedObjectAccessor.intField("bytecodeIndex", -1);
+        private static final FieldAccessor<RecordedMethod> METHOD =
+                UnsafeRecordedObjectAccessor.field("method", null);
+        private static final FieldAccessor<String> FRAME_TYPE =
+                UnsafeRecordedObjectAccessor.field("type", null);
+
         public StackFrameWrapper(RecordedFrame value) {
             this.value = value;
-            this.lineNumber = value.getLineNumber();
-            this.bytecodeIndex = value.getBytecodeIndex();
-            this.classId = value.getMethod().getType().getId();
-            this.methodName = value.getMethod().getName();
-            this.methodDescriptor = value.getMethod().getDescriptor();
-            this.frameType = value.getType();
-            this.hashCode = Objects.hash(lineNumber, bytecodeIndex, classId, methodName, frameType);
+            this.lineNumber = LINE_NUMBER.get(value);
+            this.bytecodeIndex = BYTECODE_INDEX.get(value);
+            var method = METHOD.get(value);
+            this.classId = method.getType().getId();
+            this.methodName = method.getName();
+            this.methodDescriptor = method.getDescriptor();
+            this.frameType = FRAME_TYPE.get(value);
+            int h = 31 * lineNumber + bytecodeIndex;
+            h = 31 * h + Long.hashCode(classId);
+            h = 31 * h + methodName.hashCode();
+            h = 31 * h + (frameType != null ? frameType.hashCode() : 0);
+            this.hashCode = h;
         }
 
         @Override
@@ -137,14 +153,15 @@ public class JFRHashConfig extends HashAndEqualsConfig {
 
         @Override
         public int hashCode() {
-            return value.getName().hashCode();
+            return Objects.hashCode(value.getName());
         }
 
         @Override
         public boolean equals(Object obj) {
             return obj instanceof ThreadGroupWrapper
                     && (((ThreadGroupWrapper) obj).value == value
-                            || ((ThreadGroupWrapper) obj).value.getName().equals(value.getName()));
+                            || Objects.equals(
+                                    ((ThreadGroupWrapper) obj).value.getName(), value.getName()));
         }
     }
 

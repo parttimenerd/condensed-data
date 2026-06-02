@@ -73,7 +73,7 @@ public class ReadStruct implements Map<String, Object>, ReadContainer<ReadStruct
             return null;
         }
         assert accessor != null;
-        return Objects.requireNonNull(accessor.apply(type.getField(key), id));
+        return accessor.apply(type.getField(key), id);
     }
 
     @Override

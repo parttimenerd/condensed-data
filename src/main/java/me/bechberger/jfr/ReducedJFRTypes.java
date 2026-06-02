@@ -30,7 +30,9 @@ public class ReducedJFRTypes {
             implements RemovedField {}
 
     public static class ReducedTypeDefinition {
+        @SuppressWarnings("unused") // stored for debugging
         private final String typeName;
+
         private final List<RemovedField> removedFields;
 
         public ReducedTypeDefinition(String typeName, List<RemovedField> removedFields) {

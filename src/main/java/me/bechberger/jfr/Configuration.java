@@ -37,7 +37,8 @@ public record Configuration(
         boolean removeUnnecessaryAddresses,
         boolean combineExceptionEvents,
         boolean combineG1HeapRegionTypeChangeEvents,
-        boolean combineBlockingEvents)
+        boolean combineBlockingEvents,
+        long cpuBucketSeconds)
         implements Comparable<Configuration> {
 
     public static final Configuration DEFAULT =
@@ -61,7 +62,8 @@ public record Configuration(
                     false,
                     false,
                     false,
-                    false);
+                    false,
+                    10L);
 
     /** with conservative lossy compression */
     public static final Configuration REASONABLE_DEFAULT =
@@ -122,7 +124,8 @@ public record Configuration(
                 false,
                 false,
                 false,
-                false);
+                false,
+                10L);
     }
 
     public Configuration {
@@ -134,6 +137,12 @@ public record Configuration(
         }
         if (maxStackTraceDepth != -1 && maxStackTraceDepth <= 0) {
             throw new IllegalArgumentException("maxStackTraceDepth must be -1 or positive");
+        }
+        // cpuBucketSeconds=0 means "not serialized in old format" — treat as default 10
+        if (cpuBucketSeconds == 0) {
+            cpuBucketSeconds = 10L;
+        } else if (cpuBucketSeconds < 0) {
+            throw new IllegalArgumentException("cpuBucketSeconds must be positive");
         }
     }
 
@@ -225,6 +234,10 @@ public record Configuration(
 
     public Configuration withCombineBlockingEvents(boolean combineBlockingEvents) {
         return withFieldValue("combineBlockingEvents", combineBlockingEvents);
+    }
+
+    public Configuration withCpuBucketSeconds(long cpuBucketSeconds) {
+        return withFieldValue("cpuBucketSeconds", cpuBucketSeconds);
     }
 
     public Configuration withFieldValue(String fieldName, Object value) {

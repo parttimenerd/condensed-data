@@ -58,6 +58,8 @@ public class AgentTest {
 
     @BeforeEach
     public void setup() throws Exception {
+        // stop any leftover recording from a previous test that may have failed cleanup
+        runAgent(AgentRunMode.JATTACH, "stop");
         // delete test-dir folder if it exists
         deleteTestDir();
         jvm = new WithRunningJVM();
@@ -65,13 +67,14 @@ public class AgentTest {
 
     @AfterEach
     public void tearDown() throws IOException, InterruptedException {
-        // delete test-dir folder if it exists
-        deleteTestDir();
+        // stop any recording on the test JVM first, before cleaning up
+        runAgent(AgentRunMode.JATTACH, "stop");
         if (jvm != null) {
             jvm.close();
         }
+        // delete test-dir folder if it exists
+        deleteTestDir();
         System.out.println("Test completed, cleaned up test directory.");
-        runAgent(AgentRunMode.JATTACH, "stop"); // just to be sure
     }
 
     public enum AgentRunMode {
@@ -128,7 +131,6 @@ public class AgentTest {
         // check that the current-size-uncompressed property is memory and larger than 400 bytes
         assertThat(status).contains("current-size-uncompressed: ");
         var bytes = parseMemory(status.split("current-size-uncompressed: ")[1].split("\n")[0]);
-        long start = System.currentTimeMillis();
         assertThat(bytes).isGreaterThan(400);
         System.out.println("## Stop");
         output = runAgent(runMode, "stop");
@@ -249,8 +251,6 @@ public class AgentTest {
         var changeTimeFirstFile = Files.getLastModifiedTime(files.get(0)).toMillis();
         var changeTimeLastFile = Files.getLastModifiedTime(files.get(files.size() - 1)).toMillis();
         var creationTimeFirstFile = Util.getCreationTimeOfFile(files.get(0)).toMillis();
-        var creationTimeLastFile =
-                Util.getCreationTimeOfFile(files.get(files.size() - 1)).toMillis();
         // check that the first file is newer than the last file
         // this is because the first file is overwritten last
         assertThat(changeTimeFirstFile)

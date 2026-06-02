@@ -1,11 +1,13 @@
 package me.bechberger.condensed;
 
 import static org.junit.jupiter.api.Assertions.*;
+import static org.junit.jupiter.api.Assumptions.*;
 
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import org.junit.jupiter.api.Test;
 
+@SuppressWarnings("resource") // test streams backed by ByteArrayOutputStream don't require closing
 public class CountingOutputStreamTest {
 
     @Test
@@ -68,5 +70,32 @@ public class CountingOutputStreamTest {
                         + " bytes, "
                         + "but int overflow caused it to be "
                         + cos.writtenBytes());
+    }
+
+    @Test
+    public void testReset() throws IOException {
+        var baos = new ByteArrayOutputStream();
+        var cos = new CountingOutputStream(baos);
+        cos.write(new byte[] {1, 2, 3});
+        assertEquals(3, cos.writtenBytes());
+        cos.reset();
+        assertEquals(0, cos.writtenBytes());
+    }
+
+    @Test
+    void testWriteSingleByteCountsOne() throws IOException {
+        var baos = new ByteArrayOutputStream();
+        var cos = new CountingOutputStream(baos);
+        cos.write(0);
+        assertEquals(1, cos.writtenBytes());
+    }
+
+    @Test
+    void testAbortedViaAssumption() throws IOException {
+        // assumption fails → test is ABORTED (neither pass nor fail)
+        assumeTrue(false, "Synthetic abort via assumption");
+        var baos = new ByteArrayOutputStream();
+        var cos = new CountingOutputStream(baos);
+        assertEquals(0, cos.writtenBytes());
     }
 }

@@ -179,7 +179,6 @@ public class ViewCommand implements Callable<Integer> {
         return 0;
     }
 
-    @SuppressWarnings("unchecked")
     private static Object convertValue(Object value) {
         if (value == null) return null;
         if (value instanceof ReadStruct rs) return eventToMap(rs);

@@ -46,6 +46,26 @@ public class Universe {
                 return id;
             }
         }
+
+        /**
+         * Check if value is cached; if so return its id (≥ 0). If not, insert it into the cache and
+         * return ~newId (negative). Caller is responsible for writing the value when result is
+         * negative.
+         */
+        public int getOrPut(T value) {
+            Integer existingId = cache.get(value);
+            if (existingId != null) {
+                return existingId;
+            }
+            if (size != -1 && cache.size() >= size) {
+                var it = cache.entrySet().iterator();
+                it.next();
+                it.remove();
+            }
+            int id = ++lastId;
+            cache.put(value, id);
+            return ~id;
+        }
     }
 
     public interface HashAndEqualsWrapper<V> {
@@ -71,6 +91,11 @@ public class Universe {
         public int get(T value, Consumer<T> writer) {
             return cache.get(
                     wrapperFactory.apply(value), wrapper -> writer.accept(wrapper.value()));
+        }
+
+        @Override
+        public int getOrPut(T value) {
+            return cache.getOrPut(wrapperFactory.apply(value));
         }
     }
 
@@ -129,6 +154,32 @@ public class Universe {
                 return id;
             }
         }
+
+        /** Check/insert without writer callback. Returns existing id (≥ 0) or ~newId (negative). */
+        public int getOrPut(T value, CondensedType<?, ?> embeddingType) {
+            Map<T, CacheNode<T>> typeCache =
+                    cache.computeIfAbsent(embeddingType, k -> new HashMap<>());
+            CacheNode<T> existing = typeCache.get(value);
+            if (existing != null) {
+                lruOrder.get(existing); // promote in LRU order
+                return existing.id;
+            }
+            if (size != -1 && lruOrder.size() >= size) {
+                var it = lruOrder.entrySet().iterator();
+                CacheNode<T> lruNode = it.next().getKey();
+                it.remove();
+                lruNode.typeCache.remove(lruNode.value);
+            }
+            if (!lastIds.containsKey(embeddingType)) {
+                lastIds.put(embeddingType, -1);
+            }
+            int id = lastIds.get(embeddingType) + 1;
+            lastIds.put(embeddingType, id);
+            CacheNode<T> node = new CacheNode<>(typeCache, value, id);
+            typeCache.put(value, node);
+            lruOrder.put(node, null);
+            return ~id;
+        }
     }
 
     static class WritingCachePerTypePerEmbeddingTypeWithCustomHash<T>
@@ -150,6 +201,11 @@ public class Universe {
                     wrapperFactory.apply(value),
                     wrapper -> writer.accept(wrapper.value()),
                     embeddingType);
+        }
+
+        @Override
+        public int getOrPut(T value, CondensedType<?, ?> embeddingType) {
+            return cache.getOrPut(wrapperFactory.apply(value), embeddingType);
         }
     }
 
@@ -180,7 +236,11 @@ public class Universe {
         }
 
         public static EmbeddingType valueOf(int value) {
-            return values()[value];
+            EmbeddingType[] vals = values();
+            if (value < 0 || value >= vals.length) {
+                throw new IllegalArgumentException("Invalid EmbeddingType ordinal: " + value);
+            }
+            return vals[value];
         }
     }
 
@@ -296,6 +356,17 @@ public class Universe {
                 Consumer<T> writer,
                 CondensedType<?, ?> embeddingType) {
             return getEmbeddingCache(type).get(value, writer, embeddingType);
+        }
+
+        /** Allocation-free cache probe + insert. Returns id ≥ 0 if cached, ~id < 0 if new. */
+        public <T, R> int getOrPut(CondensedType<T, R> type, T value) {
+            return getCache(type).getOrPut(value);
+        }
+
+        /** Allocation-free cache probe + insert (per embedding type). */
+        public <T, R> int getOrPut(
+                CondensedType<T, R> type, T value, CondensedType<?, ?> embeddingType) {
+            return getEmbeddingCache(type).getOrPut(value, embeddingType);
         }
 
         public boolean isEmpty() {
@@ -424,8 +495,10 @@ public class Universe {
     public static final int DEFAULT_SIZE = 20000;
     private WritingCaches writingCaches;
     private final ReadingCaches readingCaches = new ReadingCaches();
+    private int cacheSize = DEFAULT_SIZE;
 
     public Universe(HashAndEqualsConfig config, int cacheSize) {
+        this.cacheSize = cacheSize;
         writingCaches = new WritingCaches(config, cacheSize);
     }
 
@@ -446,7 +519,7 @@ public class Universe {
             throw new IllegalStateException(
                     "Cannot change config after writing caches have been created");
         }
-        writingCaches = new WritingCaches(config, DEFAULT_SIZE);
+        writingCaches = new WritingCaches(config, cacheSize);
     }
 
     void setStartMessage(@NotNull StartMessage startMessage) {

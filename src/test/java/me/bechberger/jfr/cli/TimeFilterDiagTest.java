@@ -6,7 +6,6 @@ import java.nio.file.Path;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.*;
-import me.bechberger.condensed.ReadStruct;
 import me.bechberger.jfr.CombiningJFRReader;
 import org.junit.jupiter.api.Test;
 
@@ -29,8 +28,7 @@ public class TimeFilterDiagTest {
                         null, Instant.parse("2000-01-01T00:00:00Z"), null, null);
         var reader = CombiningJFRReader.fromPaths(List.of(cjfr), filter, true);
         int count = 0;
-        ReadStruct event;
-        while ((event = reader.readNextEvent()) != null) {
+        while (reader.readNextEvent() != null) {
             count++;
         }
         assertEquals(

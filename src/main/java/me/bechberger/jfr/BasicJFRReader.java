@@ -35,20 +35,26 @@ public class BasicJFRReader implements JFRReader {
     public static class Options {
         final boolean reconstitute;
         final boolean ignoreCloseErrors;
+        final boolean skipRecursiveCompletion;
 
-        public static Options DEFAULT = new Options(true, false);
+        public static Options DEFAULT = new Options(true, false, false);
 
-        private Options(boolean reconstitute, boolean ignoreCloseErrors) {
+        private Options(boolean reconstitute, boolean ignoreCloseErrors, boolean skipRecursiveCompletion) {
             this.reconstitute = reconstitute;
             this.ignoreCloseErrors = ignoreCloseErrors;
+            this.skipRecursiveCompletion = skipRecursiveCompletion;
         }
 
         public Options withReconstitute(boolean reconstitute) {
-            return new Options(reconstitute, this.ignoreCloseErrors);
+            return new Options(reconstitute, this.ignoreCloseErrors, this.skipRecursiveCompletion);
         }
 
         public Options withIgnoreCloseErrors(boolean ignoreCloseErrors) {
-            return new Options(this.reconstitute, ignoreCloseErrors);
+            return new Options(this.reconstitute, ignoreCloseErrors, this.skipRecursiveCompletion);
+        }
+
+        public Options withSkipRecursiveCompletion(boolean skipRecursiveCompletion) {
+            return new Options(this.reconstitute, this.ignoreCloseErrors, skipRecursiveCompletion);
         }
     }
 
@@ -60,6 +66,7 @@ public class BasicJFRReader implements JFRReader {
         this.in = in;
         this.reconstitutor = options.reconstitute ? new JFREventReadStructReconstitutor(in) : null;
         this.ignoreCloseErrors = options.ignoreCloseErrors;
+        in.setSkipRecursiveCompletion(options.skipRecursiveCompletion);
     }
 
     public void enableFullStatistics() {

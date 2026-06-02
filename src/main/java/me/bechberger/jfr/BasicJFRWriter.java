@@ -94,10 +94,7 @@ public class BasicJFRWriter {
         }
 
         public @Nullable AnnotationElement getContentTypeAnnotation() {
-            return annotations.stream()
-                    .filter(a -> isContentTypeAnnotation(a.getTypeName()))
-                    .findFirst()
-                    .orElse(null);
+            return contentTypeAnnotation;
         }
 
         public @Nullable String getContentType() {
@@ -171,6 +168,7 @@ public class BasicJFRWriter {
     private CondensedType<Universe, Universe> universeType;
     private final JFREventCombiner eventCombiner;
     private final EventDeduplication deduplication;
+    private final FooterCollector footerCollector;
     private volatile boolean closed = false;
     private final long defaultStartTimeNanos = System.currentTimeMillis() * 1000000;
 
@@ -193,6 +191,7 @@ public class BasicJFRWriter {
 
         eventCombiner = new JFREventCombiner(out, configuration, this);
         deduplication = new JFREventDeduplication(configuration);
+        footerCollector = new FooterCollector(configuration.cpuBucketSeconds());
     }
 
     public BasicJFRWriter(CondensedOutputStream out) {
@@ -470,16 +469,6 @@ public class BasicJFRWriter {
                 .map(a -> (String) a.getValue("value"));
     }
 
-    private static long getIntBackedFieldAsLong(RecordedObject event, ValueDescriptor field) {
-        return ((Number) getValueOrDefault(event, field, e -> e.getInt(field.getName())))
-                .longValue();
-    }
-
-    private static long getLongBackedFieldAsLong(RecordedObject event, ValueDescriptor field) {
-        return ((Number) getValueOrDefault(event, field, e -> e.getLong(field.getName())))
-                .longValue();
-    }
-
     private @Nullable GetterAndCachedType getLosslessBytesDataAmountType(
             ValueDescriptor field, Optional<String> dataAmount) {
         if (dataAmount.isEmpty() || !"BYTES".equals(dataAmount.get())) {
@@ -487,16 +476,20 @@ public class BasicJFRWriter {
         }
         var varIntType = getMemoryVarIntType(dataAmount.get());
         return switch (field.getTypeName()) {
-            case "byte", "short", "int" ->
-                    new GetterAndCachedType(
-                            event -> getIntBackedFieldAsLong(event, field),
-                            varIntType,
-                            JFRReduction.DATA_AMOUNT_BYTES_REDUCTION);
-            case "long" ->
-                    new GetterAndCachedType(
-                            event -> getLongBackedFieldAsLong(event, field),
-                            varIntType,
-                            JFRReduction.DATA_AMOUNT_BYTES_REDUCTION);
+            case "byte", "short", "int" -> {
+                var acc = UnsafeRecordedObjectAccessor.intField(field.getName(), 0);
+                yield new GetterAndCachedType(
+                        event -> (long) acc.get(event),
+                        varIntType,
+                        JFRReduction.DATA_AMOUNT_BYTES_REDUCTION);
+            }
+            case "long" -> {
+                var acc = UnsafeRecordedObjectAccessor.longField(field.getName(), 0L);
+                yield new GetterAndCachedType(
+                        event -> acc.get(event),
+                        varIntType,
+                        JFRReduction.DATA_AMOUNT_BYTES_REDUCTION);
+            }
             default -> null;
         };
     }
@@ -507,14 +500,16 @@ public class BasicJFRWriter {
             return null;
         }
         return switch (field.getTypeName()) {
-            case "int" ->
-                    new GetterAndCachedType(
-                            event -> (float) getIntBackedFieldAsLong(event, field),
-                            getMemoryFloatType(dataAmount.get()));
-            case "long" ->
-                    new GetterAndCachedType(
-                            event -> (float) getLongBackedFieldAsLong(event, field),
-                            getMemoryFloatType(dataAmount.get()));
+            case "int" -> {
+                var acc = UnsafeRecordedObjectAccessor.intField(field.getName(), 0);
+                yield new GetterAndCachedType(
+                        event -> (float) acc.get(event), getMemoryFloatType(dataAmount.get()));
+            }
+            case "long" -> {
+                var acc = UnsafeRecordedObjectAccessor.longField(field.getName(), 0L);
+                yield new GetterAndCachedType(
+                        event -> (float) acc.get(event), getMemoryFloatType(dataAmount.get()));
+            }
             default -> null;
         };
     }
@@ -526,43 +521,24 @@ public class BasicJFRWriter {
         }
         var varIntType = getMemoryVarIntType(dataAmount.get());
         return switch (field.getTypeName()) {
-            case "int" ->
-                    new GetterAndCachedType(
-                            event ->
-                                    getValueOrDefault(event, field, e -> e.getInt(field.getName())),
-                            varIntType);
-            case "short" ->
-                    new GetterAndCachedType(
-                            event ->
-                                    (short)
-                                            (int)
-                                                    getValueOrDefault(
-                                                            event,
-                                                            field,
-                                                            e -> e.getInt(field.getName())),
-                            varIntType);
-            case "byte" ->
-                    new GetterAndCachedType(
-                            event ->
-                                    (byte)
-                                            (int)
-                                                    getValueOrDefault(
-                                                            event,
-                                                            field,
-                                                            e -> e.getInt(field.getName())),
-                            varIntType);
-            case "long" ->
-                    new GetterAndCachedType(
-                            event ->
-                                    getValueOrDefault(
-                                            event, field, e -> e.getLong(field.getName())),
-                            varIntType);
+            case "int" -> {
+                var acc = UnsafeRecordedObjectAccessor.intField(field.getName(), 0);
+                yield new GetterAndCachedType(event -> acc.get(event), varIntType);
+            }
+            case "short" -> {
+                var acc = UnsafeRecordedObjectAccessor.intField(field.getName(), 0);
+                yield new GetterAndCachedType(event -> (short) acc.get(event), varIntType);
+            }
+            case "byte" -> {
+                var acc = UnsafeRecordedObjectAccessor.intField(field.getName(), 0);
+                yield new GetterAndCachedType(event -> (byte) acc.get(event), varIntType);
+            }
+            case "long" -> {
+                var acc = UnsafeRecordedObjectAccessor.longField(field.getName(), 0L);
+                yield new GetterAndCachedType(event -> acc.get(event), varIntType);
+            }
             default -> null;
         };
-    }
-
-    private static boolean hasField(RecordedObject event, String fieldName) {
-        return event.getFields().stream().anyMatch(f -> f.getName().equals(fieldName));
     }
 
     private static Object getDefaultValueForMissingField(ValueDescriptor field) {
@@ -581,10 +557,12 @@ public class BasicJFRWriter {
 
     private static Object getValueOrDefault(
             RecordedObject event, ValueDescriptor field, Function<RecordedObject, Object> getter) {
-        if (!hasField(event, field.getName())) {
+        try {
+            return getter.apply(event);
+        } catch (IllegalArgumentException e) {
+            // Field missing due to schema evolution between JFR chunks
             return getDefaultValueForMissingField(field);
         }
-        return getter.apply(event);
     }
 
     private GetterAndCachedType gettObjectFunction(ValueDescriptor field, boolean topLevel) {
@@ -887,6 +865,7 @@ public class BasicJFRWriter {
         if (ignoreEvent(event)) {
             return;
         }
+        footerCollector.collect(event);
         writeConfigurationAndUniverseIfNeeded(toNanoSeconds(event.getStartTime()));
         if (out.isClosed()) {
             return;
@@ -955,7 +934,11 @@ public class BasicJFRWriter {
         writeConfigurationAndUniverseIfNeeded(defaultStartTimeNanos); // ensure universe is written
         closed = true;
         eventCombiner.close();
-        out.close();
+        var footer =
+                footerCollector.build(
+                        universe.getStartTimeNanos() / 1000,
+                        universe.getDuration().toNanos() / 1000);
+        out.writeFooter(footer); // closes the compression wrapper, then writes the footer
     }
 
     public boolean isClosed() {
