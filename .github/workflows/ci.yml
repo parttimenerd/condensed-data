@@ -20,7 +20,9 @@ jobs:
         cache: maven
 
     - name: Install femtocli
-      run: mvn install -DskipTests -q -f femtocli/pom.xml
+      run: |
+        git clone --depth=1 https://github.com/parttimenerd/femtocli.git /tmp/femtocli
+        cd /tmp/femtocli && mvn install -DskipTests -q
 
     - name: Run tests
       run: mvn clean test
