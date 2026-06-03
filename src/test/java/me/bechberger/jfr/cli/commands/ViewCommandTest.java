@@ -564,6 +564,10 @@ public class ViewCommandTest {
      */
     @Test
     public void testGCHeapSummaryShowsFormattedMemory() throws Exception {
+        if (!Files.exists(Path.of("profile.cjfr"))) {
+            System.err.println("Skipping: profile.cjfr not found");
+            return;
+        }
         var result =
                 new CommandExecuter("view", "profile.cjfr", "jdk.GCHeapSummary", "--limit", "1")
                         .checkNoError()
@@ -575,6 +579,10 @@ public class ViewCommandTest {
 
     @Test
     public void testCommaSeparatedEventNameGivesClearError() throws Exception {
+        if (!Files.exists(Path.of("profile.cjfr"))) {
+            System.err.println("Skipping: profile.cjfr not found");
+            return;
+        }
         var result =
                 new CommandExecuter("view", "profile.cjfr", "jdk.GarbageCollection,jdk.ThreadStart")
                         .run();
