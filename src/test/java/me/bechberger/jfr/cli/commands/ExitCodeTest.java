@@ -2,9 +2,10 @@ package me.bechberger.jfr.cli.commands;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import java.util.stream.Stream;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
-import org.junit.jupiter.params.provider.ValueSource;
+import org.junit.jupiter.params.provider.MethodSource;
 
 /**
  * Verify that CLI parameter errors return exit code 2 (consistent with picocli convention), while
@@ -12,21 +13,29 @@ import org.junit.jupiter.params.provider.ValueSource;
  */
 public class ExitCodeTest {
 
+    private static boolean isInflaterless() {
+        return "true".equals(System.getProperty("cjfr.test.inflaterless"));
+    }
+
     private CommandExecuter.CommandResult run(String... args) throws Exception {
         return new CommandExecuter(args).run();
     }
 
     // --- Unknown options should return exit code 2 ---
 
+    static Stream<String> unknownOptionArgs() {
+        var args =
+                Stream.of(
+                        "--definitely-unknown",
+                        "condense --unknown-opt",
+                        "inflate --unknown-opt",
+                        "summary --unknown-opt",
+                        "view --unknown-opt");
+        return isInflaterless() ? args.filter(s -> !s.startsWith("inflate")) : args;
+    }
+
     @ParameterizedTest
-    @ValueSource(
-            strings = {
-                "--definitely-unknown",
-                "condense --unknown-opt",
-                "inflate --unknown-opt",
-                "summary --unknown-opt",
-                "view --unknown-opt"
-            })
+    @MethodSource("unknownOptionArgs")
     public void testUnknownOptionExitsWithCode2(String argString) throws Exception {
         var result = run(argString.split(" "));
         assertThat(result.exitCode()).isEqualTo(2);
@@ -35,8 +44,13 @@ public class ExitCodeTest {
 
     // --- Missing required parameters should return exit code 2 ---
 
+    static Stream<String> missingRequiredParamArgs() {
+        var args = Stream.of("condense", "inflate", "summary");
+        return isInflaterless() ? args.filter(s -> !s.equals("inflate")) : args;
+    }
+
     @ParameterizedTest
-    @ValueSource(strings = {"condense", "inflate", "summary"})
+    @MethodSource("missingRequiredParamArgs")
     public void testMissingRequiredParamExitsWithCode2(String argString) throws Exception {
         var result = run(argString.split(" "));
         assertThat(result.exitCode()).isEqualTo(2);
@@ -104,6 +118,7 @@ public class ExitCodeTest {
         assertThat(result.error()).contains("--limit must be >= 0");
     }
 
+    @InflaterRelated
     @Test
     public void testGcPercentileOutOfRangeExitsWithCode2() throws Exception {
         var result =
@@ -119,6 +134,7 @@ public class ExitCodeTest {
         assertThat(result.error()).contains("--gc-percentile must be between 0 and 100");
     }
 
+    @InflaterRelated
     @Test
     public void testNegativeGcPercentileExitsWithCode2() throws Exception {
         var result =
@@ -150,8 +166,13 @@ public class ExitCodeTest {
 
     // --- Time filter validation should return exit code 2 ---
 
+    static Stream<String> durationCommands() {
+        var commands = Stream.of("view", "summary", "inflate");
+        return isInflaterless() ? commands.filter(c -> !c.equals("inflate")) : commands;
+    }
+
     @ParameterizedTest
-    @ValueSource(strings = {"view", "summary", "inflate"})
+    @MethodSource("durationCommands")
     public void testZeroDurationExitsWithCode2(String command) throws Exception {
         String cjfr = "T/" + CommandTestUtil.getSampleCJFRFileName();
         var builder =
@@ -167,7 +188,7 @@ public class ExitCodeTest {
     }
 
     @ParameterizedTest
-    @ValueSource(strings = {"view", "summary", "inflate"})
+    @MethodSource("durationCommands")
     public void testNegativeDurationExitsWithCode2(String command) throws Exception {
         String cjfr = "T/" + CommandTestUtil.getSampleCJFRFileName();
         var builder =
@@ -201,15 +222,19 @@ public class ExitCodeTest {
 
     // --- Help should return exit code 0 ---
 
+    static Stream<String> helpArgs() {
+        var args =
+                Stream.of(
+                        "--help",
+                        "condense --help",
+                        "inflate --help",
+                        "summary --help",
+                        "view --help");
+        return isInflaterless() ? args.filter(s -> !s.startsWith("inflate")) : args;
+    }
+
     @ParameterizedTest
-    @ValueSource(
-            strings = {
-                "--help",
-                "condense --help",
-                "inflate --help",
-                "summary --help",
-                "view --help"
-            })
+    @MethodSource("helpArgs")
     public void testHelpExitsWithCode0(String argString) throws Exception {
         var result = run(argString.split(" "));
         assertThat(result.exitCode()).isEqualTo(0);
