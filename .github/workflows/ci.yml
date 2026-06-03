@@ -19,6 +19,9 @@ jobs:
         distribution: 'sapmachine'
         cache: maven
 
+    - name: Install femtocli
+      run: mvn install -DskipTests -q -f femtocli/pom.xml
+
     - name: Run tests
       run: mvn clean test
 
