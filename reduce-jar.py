@@ -51,6 +51,9 @@ REDUCTION_INFO_PATH = "jar-reduction-info.json"
 JMC_PREFIX = "org/openjdk/jmc/"
 INFLATERLESS_EXTRA_PREFIXES = [
     "org/owasp/",
+    "META-INF/maven/",
+    "org/jetbrains/",
+    "org/intellij/",
 ]
 
 # ---------------------------------------------------------------------------
