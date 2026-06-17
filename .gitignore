@@ -47,3 +47,6 @@ benchmark_old
 ### test-order ###
 .test-order/
 target/test-order-dashboard/
+
+### jqwik ###
+.jqwik-database
