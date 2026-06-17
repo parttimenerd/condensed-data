@@ -132,7 +132,7 @@ is designed to be
 
 - simple
 - self-describing (the type information is stored in the file)
-- compressed (supports the following compression algorithms natively: NONE, GZIP, LZ4, BZIP2, ZSTD; default: LZ4)
+- compressed (supports the following compression algorithms natively: NONE, GZIP, LZ4FRAMED; default: LZ4FRAMED)
 - space efficient (e.g. by using varints and caches)
 - streamable
 - allows to reduce event data even further by using reducers and reconstitutors
@@ -154,20 +154,25 @@ This pre-commit hook also runs the tests via `mvn test`.
 ### JAR Size Optimization
 
 The default `target/condensed-data.jar` includes native libraries for all 18+ supported platforms.
-For single-platform deployments, use `reduce-jar.py` to create platform-specific JARs (~80% smaller):
+For single-platform deployments, use `reduce-jar.py` to create platform-specific JARs:
 
 ```bash
 # List available platforms
 python3 reduce-jar.py reduce target/condensed-data.jar --list-platforms
 
-# Create platform-specific JAR
+# Create platform-specific JAR (~60% smaller)
 python3 reduce-jar.py reduce target/condensed-data.jar output.jar --platform darwin/aarch64
+
+# Create minimal inflaterless JAR — strips JMC writer, metadata, annotation stubs,
+# then automatically applies femtojar (zopfli + ProGuard): ~2.1 MB → ~360 KB
+python3 reduce-jar.py reduce target/condensed-data.jar output.jar --platform darwin/aarch64 --without-jmc
+
+# Skip femtojar compression (get the raw 846 KB stripped JAR)
+python3 reduce-jar.py reduce target/condensed-data.jar output.jar --platform darwin/aarch64 --without-jmc --no-femtojar
 
 # Generate all platform variants
 python3 reduce-jar.py matrix target/condensed-data.jar output-jars/
 ```
-
-See [README_JAR_SIZE.md](README_JAR_SIZE.md) for detailed guide on JAR reduction and size optimization.
 
 Benchmarking
 ------------
