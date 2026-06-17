@@ -1,7 +1,5 @@
 package me.bechberger.condensed;
 
-import com.github.luben.zstd.ZstdInputStream;
-import com.github.luben.zstd.ZstdOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
@@ -12,9 +10,6 @@ import net.jpountz.lz4.LZ4Factory;
 import net.jpountz.lz4.LZ4FrameInputStream;
 import net.jpountz.lz4.LZ4FrameOutputStream;
 import net.jpountz.xxhash.XXHashFactory;
-import org.tukaani.xz.LZMA2Options;
-import org.tukaani.xz.XZInputStream;
-import org.tukaani.xz.XZOutputStream;
 
 public enum Compression {
     NONE(
@@ -75,46 +70,7 @@ public enum Compression {
                     return new LZ4FrameInputStream(in);
                 }
             }),
-    ZSTD(
-            new CompressionFactory() {
-                @Override
-                public OutputStream wrap(OutputStream out, CompressionLevel level)
-                        throws IOException {
-                    int zstdLevel =
-                            switch (level) {
-                                case FAST -> 1;
-                                case MEDIUM -> 3;
-                                case HIGH_COMPRESSION -> 9;
-                                case MAX_COMPRESSION -> 19;
-                            };
-                    return new ZstdOutputStream(out, zstdLevel);
-                }
-
-                @Override
-                public InputStream wrap(InputStream in) throws IOException {
-                    return new java.io.BufferedInputStream(new ZstdInputStream(in), 65536);
-                }
-            }),
-    XZ(
-            new CompressionFactory() {
-                @Override
-                public OutputStream wrap(OutputStream out, CompressionLevel level)
-                        throws IOException {
-                    int preset =
-                            switch (level) {
-                                case FAST -> 1;
-                                case MEDIUM -> 3;
-                                case HIGH_COMPRESSION -> 6;
-                                case MAX_COMPRESSION -> 9;
-                            };
-                    return new XZOutputStream(out, new LZMA2Options(preset));
-                }
-
-                @Override
-                public InputStream wrap(InputStream in) throws IOException {
-                    return new XZInputStream(in);
-                }
-            });
+    ;
 
     public interface CompressionFactory {
         OutputStream wrap(OutputStream out, CompressionLevel level) throws IOException;
@@ -136,7 +92,7 @@ public enum Compression {
         }
     }
 
-    public static final Compression DEFAULT = ZSTD;
+    public static final Compression DEFAULT = LZ4FRAMED;
 
     private final CompressionFactory factory;
 

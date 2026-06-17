@@ -652,7 +652,7 @@ public class CondenseCommandTest {
                                 "T/out.cjfr",
                                 "--no-compression",
                                 "--compression",
-                                "ZSTD")
+                                "LZ4FRAMED")
                         .withFiles(CommandTestUtil.getSampleJFRFile())
                         .run();
         assertThat(result.exitCode()).isEqualTo(2);

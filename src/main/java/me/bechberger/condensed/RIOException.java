@@ -22,11 +22,11 @@ public class RIOException extends RuntimeException {
 
     public static class UnexpectedEOFException extends RIOException {
         public UnexpectedEOFException(Throwable cause) {
-            super("Unexpected end of stream", cause);
+            super("Truncated stream: unexpected end of stream", cause);
         }
 
         public UnexpectedEOFException() {
-            super("Unexpected end of stream");
+            super("Truncated stream: unexpected end of stream");
         }
     }
 

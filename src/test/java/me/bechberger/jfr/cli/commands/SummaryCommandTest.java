@@ -1057,17 +1057,4 @@ public class SummaryCommandTest {
         // Should complete in under 5 seconds
         assertThat(elapsed).isLessThan(5000);
     }
-
-    @Test
-    public void testXZCompressedFileIsReadable() throws Exception {
-        var xzFile = java.nio.file.Path.of("benchmark/renaissance-all_gc_G1.cjfr");
-        if (!java.nio.file.Files.exists(xzFile)) {
-            return; // skip if file not available
-        }
-        var result =
-                new CommandExecuter("summary", xzFile.toString(), "--short").checkNoError().run();
-        assertThat(result.exitCode()).isEqualTo(0);
-        assertThat(result.output()).contains("XZ");
-        assertThat(result.output()).contains("Events:");
-    }
 }
