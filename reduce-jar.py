@@ -333,18 +333,19 @@ def cmd_reduce(args: argparse.Namespace) -> None:
 
     reduce_jar(args.input, args.output, reductions)
 
-    # Optionally apply femtojar compression
-    if args.femtojar:
+    # Apply femtojar: on by default when --without-jmc, opt-out with --no-femtojar
+    use_femtojar = (args.without_jmc and not args.no_femtojar) or (args.femtojar and not args.no_femtojar)
+    use_proguard = args.femtojar_proguard and not args.no_femtojar_proguard
+    if use_femtojar:
         print(f"\nApplying femtojar compression to {os.path.basename(args.output)} …")
         cli_jar = _ensure_femtojar_cli()
-        compression = args.femtojar_compression or "default"
         ok = _run_femtojar(
             cli_jar,
             args.output,
             args.output,
-            compression,
-            args.femtojar_proguard,
-            CONDENSED_DATA_PROGUARD_OPTIONS if args.femtojar_proguard else [],
+            args.femtojar_compression,
+            use_proguard,
+            CONDENSED_DATA_PROGUARD_OPTIONS if use_proguard else [],
             args.femtojar_verbose,
         )
         if not ok:
@@ -810,18 +811,30 @@ def main() -> None:
     p_reduce.add_argument(
         "--femtojar",
         action="store_true",
-        help="Apply femtojar compression to the reduced JAR",
+        default=None,
+        help="Apply femtojar compression to the reduced JAR (default: on when --without-jmc is used)",
+    )
+    p_reduce.add_argument(
+        "--no-femtojar",
+        action="store_true",
+        help="Disable femtojar compression even when --without-jmc is used",
     )
     p_reduce.add_argument(
         "--femtojar-compression",
         choices=["default", "zopfli"],
-        default="default",
-        help="Compression algorithm for femtojar (default: default)",
+        default="zopfli",
+        help="Compression algorithm for femtojar (default: zopfli)",
     )
     p_reduce.add_argument(
         "--femtojar-proguard",
         action="store_true",
-        help="Apply ProGuard optimization with femtojar",
+        default=True,
+        help="Apply ProGuard optimization with femtojar (default: on)",
+    )
+    p_reduce.add_argument(
+        "--no-femtojar-proguard",
+        action="store_true",
+        help="Disable ProGuard when running femtojar",
     )
     p_reduce.add_argument(
         "--femtojar-verbose",
