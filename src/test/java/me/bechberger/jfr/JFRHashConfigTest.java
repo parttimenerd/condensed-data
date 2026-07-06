@@ -3,7 +3,9 @@ package me.bechberger.jfr;
 import static org.junit.jupiter.api.Assertions.*;
 
 import jdk.jfr.consumer.RecordingFile;
+import me.bechberger.condensed.Universe.EmbeddingType;
 import me.bechberger.jfr.cli.commands.CommandTestUtil;
+import org.junit.jupiter.api.Assumptions;
 import org.junit.jupiter.api.Test;
 
 public class JFRHashConfigTest {
@@ -150,5 +152,115 @@ public class JFRHashConfigTest {
                 "Could not find a suitable struct for testing the bug. "
                         + "The bug exists in isPrimitiveStructOrArray (field vs f) "
                         + "but couldn't be demonstrated with the available JFR data.");
+    }
+
+    @Test
+    public void testGetEmbeddingTypeInlinesStructWithOnePrimitiveField() throws Exception {
+        var jfrPath = CommandTestUtil.getSampleJFRFile();
+        boolean found = false;
+        try (var rf = new RecordingFile(jfrPath)) {
+            for (var eventType : rf.readEventTypes()) {
+                for (var field : eventType.getFields()) {
+                    if (field.getTypeName().equals("java.lang.String")) continue;
+                    if (field.getTypeName().equals("jdk.types.StackFrame")) continue;
+                    if (field.getFields().size() != 1) continue;
+                    if (!field.getFields().stream().allMatch(f -> f.getFields().isEmpty()))
+                        continue;
+                    var kind = JFRHashConfig.getEmbeddingType(field);
+                    assertEquals(
+                            EmbeddingType.NULLABLE_INLINE,
+                            kind,
+                            "struct '"
+                                    + field.getName()
+                                    + "' with one primitive field should be NULLABLE_INLINE");
+                    found = true;
+                    break;
+                }
+                if (found) break;
+            }
+        }
+        Assumptions.assumeTrue(
+                found, "no depth-1 single-primitive-field struct found in sample JFR");
+    }
+
+    @Test
+    public void testGetEmbeddingTypeInlinesStructWithTwoPrimitiveFields() throws Exception {
+        var jfrPath = CommandTestUtil.getSampleJFRFile();
+        boolean found = false;
+        try (var rf = new RecordingFile(jfrPath)) {
+            for (var eventType : rf.readEventTypes()) {
+                for (var field : eventType.getFields()) {
+                    if (field.getTypeName().equals("java.lang.String")) continue;
+                    if (field.getTypeName().equals("jdk.types.StackFrame")) continue;
+                    if (field.getFields().size() != 2) continue;
+                    if (!field.getFields().stream().allMatch(f -> f.getFields().isEmpty()))
+                        continue;
+                    var kind = JFRHashConfig.getEmbeddingType(field);
+                    assertEquals(
+                            EmbeddingType.NULLABLE_INLINE,
+                            kind,
+                            "struct '"
+                                    + field.getName()
+                                    + "' with two primitive fields should be NULLABLE_INLINE");
+                    found = true;
+                    break;
+                }
+                if (found) break;
+            }
+        }
+        Assumptions.assumeTrue(found, "no depth-1 two-primitive-field struct found in sample JFR");
+    }
+
+    @Test
+    public void testGetEmbeddingTypeDoesNotInlineStructWithTooManyFields() throws Exception {
+        var jfrPath = CommandTestUtil.getSampleJFRFile();
+        boolean found = false;
+        try (var rf = new RecordingFile(jfrPath)) {
+            for (var eventType : rf.readEventTypes()) {
+                for (var field : eventType.getFields()) {
+                    if (field.getTypeName().equals("java.lang.String")) continue;
+                    if (field.getTypeName().equals("jdk.types.StackFrame")) continue;
+                    if (field.getFields().size() <= 2) continue;
+                    if (!field.getFields().stream().allMatch(f -> f.getFields().isEmpty()))
+                        continue;
+                    var kind = JFRHashConfig.getEmbeddingType(field);
+                    assertTrue(
+                            kind == EmbeddingType.REFERENCE
+                                    || kind == EmbeddingType.NULLABLE_INLINE,
+                            "unexpected embedding for wide primitive struct: " + kind);
+                    found = true;
+                    break;
+                }
+                if (found) break;
+            }
+        }
+        Assumptions.assumeTrue(found, "no wide primitive-only struct found in sample JFR");
+    }
+
+    @Test
+    public void testGetEmbeddingTypeDoesNotInlineStructWithNonPrimitiveField() throws Exception {
+        var jfrPath = CommandTestUtil.getSampleJFRFile();
+        boolean found = false;
+        try (var rf = new RecordingFile(jfrPath)) {
+            for (var eventType : rf.readEventTypes()) {
+                for (var field : eventType.getFields()) {
+                    if (field.getTypeName().equals("java.lang.String")) continue;
+                    if (field.getTypeName().equals("jdk.types.StackFrame")) continue;
+                    if (field.getFields().isEmpty()) continue;
+                    if (field.getFields().size() > 2) continue;
+                    boolean hasNonPrimitiveChild =
+                            field.getFields().stream().anyMatch(f -> !f.getFields().isEmpty());
+                    if (!hasNonPrimitiveChild) continue;
+                    var kind = JFRHashConfig.getEmbeddingType(field);
+                    assertTrue(
+                            kind != EmbeddingType.INLINE,
+                            "structs with a non-primitive child must not be plain INLINE");
+                    found = true;
+                    break;
+                }
+                if (found) break;
+            }
+        }
+        Assumptions.assumeTrue(found, "no small non-primitive-containing struct in sample JFR");
     }
 }
