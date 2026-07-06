@@ -578,6 +578,86 @@ public class JFREventCombinerTest {
         }
     }
 
+    /**
+     * Test {@link me.bechberger.jfr.JFREventCombiner.BasicObjectAllocationCombiner} and {@link
+     * BasicObjectAllocationReconstitutor} for jdk.ObjectAllocationInNewTLAB
+     */
+    @Test
+    public void testObjectAllocationInNewTLABCombiner() {
+        var res =
+                runJFRWithCombiner(
+                        Map.of(
+                                "jdk.ObjectAllocationInNewTLAB",
+                                new CombinerAndReconstitutor(
+                                        "jdk.combined.ObjectAllocationInNewTLAB")),
+                        Configuration.DEFAULT.withCombineObjectAllocationSampleEvents(true),
+                        () -> {
+                            for (int i = 0; i < 20; i++) {
+                                System.out.println(new byte[16 * 1024].length);
+                            }
+                        });
+        assertTrue(
+                res.combinedEventCount.size() <= res.readEvents.size(),
+                "Less combined than recorded events");
+        Map<String, Long> sizePerClass = new HashMap<>();
+        for (var event : res.recordedEvents) {
+            var className = event.getClass("objectClass").getName().replace('.', '/');
+            var size = event.getLong("allocationSize");
+            sizePerClass.put(className, sizePerClass.getOrDefault(className, 0L) + size);
+        }
+        Map<String, Long> reconSizePerClass = new HashMap<>();
+        for (var event : res.readEvents) {
+            if (!event.getType().getTypeName().equals("jdk.ObjectAllocationInNewTLAB")) {
+                continue;
+            }
+            var objClass = (TypedValue) TypedValueUtil.getNonScalar(event, "objectClass");
+            var className = TypedValueUtil.get(objClass, "name").toString();
+            var size = TypedValueUtil.getLong(event, "allocationSize");
+            reconSizePerClass.put(className, reconSizePerClass.getOrDefault(className, 0L) + size);
+        }
+        assertMapEquals(sizePerClass, reconSizePerClass);
+    }
+
+    /**
+     * Test {@link me.bechberger.jfr.JFREventCombiner.BasicObjectAllocationCombiner} and {@link
+     * BasicObjectAllocationReconstitutor} for jdk.ObjectAllocationOutsideTLAB
+     */
+    @Test
+    public void testObjectAllocationOutsideTLABCombiner() {
+        var res =
+                runJFRWithCombiner(
+                        Map.of(
+                                "jdk.ObjectAllocationOutsideTLAB",
+                                new CombinerAndReconstitutor(
+                                        "jdk.combined.ObjectAllocationOutsideTLAB")),
+                        Configuration.DEFAULT.withCombineObjectAllocationSampleEvents(true),
+                        () -> {
+                            for (int i = 0; i < 10; i++) {
+                                System.out.println(new byte[8 * 1024 * 1024].length);
+                            }
+                        });
+        assertTrue(
+                res.combinedEventCount.size() <= res.readEvents.size(),
+                "Less combined than recorded events");
+        Map<String, Long> sizePerClass = new HashMap<>();
+        for (var event : res.recordedEvents) {
+            var className = event.getClass("objectClass").getName().replace('.', '/');
+            var size = event.getLong("allocationSize");
+            sizePerClass.put(className, sizePerClass.getOrDefault(className, 0L) + size);
+        }
+        Map<String, Long> reconSizePerClass = new HashMap<>();
+        for (var event : res.readEvents) {
+            if (!event.getType().getTypeName().equals("jdk.ObjectAllocationOutsideTLAB")) {
+                continue;
+            }
+            var objClass = (TypedValue) TypedValueUtil.getNonScalar(event, "objectClass");
+            var className = TypedValueUtil.get(objClass, "name").toString();
+            var size = TypedValueUtil.getLong(event, "allocationSize");
+            reconSizePerClass.put(className, reconSizePerClass.getOrDefault(className, 0L) + size);
+        }
+        assertMapEquals(sizePerClass, reconSizePerClass);
+    }
+
     EventCombinerTestResult runJFRWithCombiner(
             Map<String, CombinerAndReconstitutor> combiners, Runnable createEvents) {
         return runJFRWithCombiner(combiners, Configuration.DEFAULT, createEvents);
