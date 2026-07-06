@@ -94,14 +94,17 @@ public class RotatingRecordingThread extends RecordingThread {
 
     /**
      * Open a new output stream, retrying on name collision up to 100 times. Returns the opened
-     * stream and sets newPath to the actual path used. Throws IOException if all attempts fail.
+     * stream; sets {@code currentPath} to the final path used. Throws IOException if all attempts
+     * fail. Only sets {@code currentPath} after a successful open.
      */
     private static final int MAX_COLLISION_RETRIES = 100;
 
     private java.io.OutputStream openNewOutputStream(Path basePath) throws IOException {
         // Try the base name first
         try {
-            return Files.newOutputStream(basePath, CREATE_NEW);
+            java.io.OutputStream out = Files.newOutputStream(basePath, CREATE_NEW);
+            currentPath = basePath;
+            return out;
         } catch (java.nio.file.FileAlreadyExistsException ignored) {
             // fall through to suffix loop
         }
@@ -113,8 +116,9 @@ public class RotatingRecordingThread extends RecordingThread {
                                     ? base.replace(".cjfr", "_" + suffix + ".cjfr")
                                     : base + "_" + suffix);
             try {
+                java.io.OutputStream out = Files.newOutputStream(candidate, CREATE_NEW);
                 currentPath = candidate;
-                return Files.newOutputStream(candidate, CREATE_NEW);
+                return out;
             } catch (java.nio.file.FileAlreadyExistsException ignored) {
                 // keep trying
             }
@@ -146,9 +150,9 @@ public class RotatingRecordingThread extends RecordingThread {
 
         // Open with CREATE_NEW BEFORE closing the old writer so a disk-full or permission error
         // leaves the previous recording stream intact and recording continues.
-        currentPath = newPath;
+        // currentPath is set inside openNewOutputStream only on success.
         java.io.OutputStream rawOut = openNewOutputStream(newPath);
-        newPath = currentPath; // may be updated by openNewOutputStream on collision
+        newPath = currentPath; // reflect actual path (may differ from basePath if collision)
 
         var out =
                 new CondensedOutputStream(
@@ -268,12 +272,16 @@ public class RotatingRecordingThread extends RecordingThread {
             return new ArrayList<>();
         }
         List<Instant> storedStarts;
+        int storedCount;
         synchronized (filesLock) {
             storedStarts = new ArrayList<>(currentlyStoredStarts);
+            storedCount = currentlyStoredFiles.size();
         }
         var path = currentPath;
         return List.of(
                 Map.entry("mode", "rotating"),
+                Map.entry("stored-files", storedCount + "/" + getMaxFiles()),
+                Map.entry("total-files-written", Integer.toString(overallWrittenFileCount)),
                 Map.entry("current-size-on-drive", formatMemory(state.jfrWriter.estimateSize(), 3)),
                 Map.entry(
                         "current-size-uncompressed",

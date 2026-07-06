@@ -14,6 +14,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Map.Entry;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.locks.LockSupport;
 import jdk.jfr.consumer.RecordedEvent;
 import jdk.jfr.consumer.RecordingStream;
 import me.bechberger.jfr.Configuration;
@@ -91,7 +92,8 @@ public abstract class RecordingThread implements Runnable {
     }
 
     private volatile boolean shuttingDown = false;
-    private final Thread shutdownHook = new Thread(() -> shuttingDown = true);
+    private final Thread shutdownHook =
+            new Thread(() -> shuttingDown = true, "cjfr-shutdown-marker");
 
     {
         Runtime.getRuntime().addShutdownHook(shutdownHook);
@@ -151,19 +153,14 @@ public abstract class RecordingThread implements Runnable {
         }
         shouldStop.set(true);
         try {
-            removeFromParent.run();
-        } catch (Throwable e) {
-            agentIO.writeSevereError("Error removing from parent: " + e.getMessage());
-        }
-        try {
             recordingStream.close();
         } catch (Throwable e) {
             agentIO.writeSevereError("Error closing recording stream: " + e.getMessage());
         }
-        // wait till run() clears shouldStop — bounded to avoid infinite spin on JFR anomalies
+        // wait till run() clears shouldStop — bounded to avoid infinite hang on JFR anomalies
         long deadline = System.nanoTime() + 5_000_000_000L;
         while (shouldStop.get() && System.nanoTime() < deadline) {
-            Thread.onSpinWait();
+            LockSupport.parkNanos(1_000_000L); // 1ms sleep to avoid burning CPU
         }
         if (shouldStop.get()) {
             agentIO.writeSevereError(
@@ -176,6 +173,11 @@ public abstract class RecordingThread implements Runnable {
             agentIO.writeSevereError("Error closing writer: " + e.getMessage());
         }
         agentIO.writeInfo("closed");
+        try {
+            removeFromParent.run();
+        } catch (Throwable e) {
+            agentIO.writeSevereError("Error removing from parent: " + e.getMessage());
+        }
         try {
             agentIO.close();
         } catch (Throwable e) {

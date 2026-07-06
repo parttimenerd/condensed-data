@@ -215,7 +215,7 @@ public class AgentIO {
                             ? Long.parseLong(Files.readString(getReadBytesFile()))
                             : 0;
             if (Files.exists(getOutputFile())) {
-                String output;
+                byte[] raw;
                 try (var input = Files.newInputStream(getOutputFile())) {
                     long skipped = input.skip(bytesRead);
                     if (skipped != bytesRead) {
@@ -226,18 +226,14 @@ public class AgentIO {
                                         + skipped
                                         + " bytes skipped");
                     }
-                    if (input.available() != 0) {
-                        output = new String(input.readAllBytes(), StandardCharsets.UTF_8);
-                    } else {
-                        output = null;
-                    }
+                    raw = input.available() != 0 ? input.readAllBytes() : null;
                 }
-                // write bytes read
-                if (output != null) {
+                String output = raw != null ? new String(raw, StandardCharsets.UTF_8) : null;
+                // write bytes read using raw byte length to stay consistent with file offsets
+                if (raw != null) {
                     Files.writeString(
                             getReadBytesFile(),
-                            String.valueOf(
-                                    output.getBytes(StandardCharsets.UTF_8).length + bytesRead),
+                            String.valueOf(raw.length + bytesRead),
                             CREATE,
                             TRUNCATE_EXISTING);
                 }

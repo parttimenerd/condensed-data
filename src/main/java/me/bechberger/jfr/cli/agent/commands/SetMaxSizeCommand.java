@@ -23,16 +23,18 @@ public class SetMaxSizeCommand implements Callable<Integer> {
 
     @Override
     public Integer call() {
-        if (Agent.getCurrentRecordingThread() == null) {
-            AgentIO.getAgentInstance().println("No recording running");
-            return 1;
+        synchronized (Agent.getSyncObject()) {
+            if (Agent.getCurrentRecordingThread() == null) {
+                AgentIO.getAgentInstance().println("No recording running");
+                return 1;
+            }
+            try {
+                Agent.getCurrentRecordingThread().setMaxSize(maxSize);
+            } catch (DynamicallyChangeableSettings.ValidationException e) {
+                AgentIO.getAgentInstance().writeSevereError(e.getMessage());
+                return 1;
+            }
+            return 0;
         }
-        try {
-            Agent.getCurrentRecordingThread().setMaxSize(maxSize);
-        } catch (DynamicallyChangeableSettings.ValidationException e) {
-            AgentIO.getAgentInstance().writeSevereError(e.getMessage());
-            return 1;
-        }
-        return 0;
     }
 }

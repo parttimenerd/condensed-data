@@ -56,72 +56,88 @@ public class StartCommand implements Callable<Integer> {
 
     @Override
     public Integer call() throws Exception {
-        if (Agent.getCurrentRecordingThread() != null) {
-            AgentIO.getAgentInstance()
-                    .writeSevereError("Recording already running, please stop it first");
-            return 1;
-        }
-        if (path == null || path.isBlank()) {
-            AgentIO.getAgentInstance().writeSevereError("Output path must not be empty");
-            return 1;
-        }
-        if (rotating) {
-            if (dynSettings.maxFiles < 1) {
-                AgentIO.getAgentInstance().writeSevereError("max-files must be at least 1");
-                return 1;
-            }
-            if (dynSettings.maxSize == 0 && dynSettings.maxDuration.isZero()) {
+        synchronized (Agent.getSyncObject()) {
+            if (Agent.getCurrentRecordingThread() != null) {
                 AgentIO.getAgentInstance()
-                        .writeSevereError("max-size or max-duration required when rotating files");
+                        .writeSevereError("Recording already running, please stop it first");
                 return 1;
             }
-            path = ensureRotatingPathHasPlaceholder(path);
-        }
-        try {
-            dynSettings.validate(rotating);
-        } catch (DynamicallyChangeableSettings.ValidationException e) {
-            AgentIO.getAgentInstance().writeSevereError(e.getMessage());
-            return 1;
-        }
-        if (rotating) {
+            if (path == null || path.isBlank()) {
+                AgentIO.getAgentInstance().writeSevereError("Output path must not be empty");
+                return 1;
+            }
+            if (rotating) {
+                if (dynSettings.maxFiles < 1) {
+                    AgentIO.getAgentInstance().writeSevereError("max-files must be at least 1");
+                    return 1;
+                }
+                if (dynSettings.maxSize == 0 && dynSettings.maxDuration.isZero()) {
+                    AgentIO.getAgentInstance()
+                            .writeSevereError(
+                                    "max-size or max-duration required when rotating files");
+                    return 1;
+                }
+                path = ensureRotatingPathHasPlaceholder(path);
+            }
             try {
-                Agent.setCurrentRecordingThread(
-                        new RotatingRecordingThread(
-                                path,
-                                configuration,
-                                verbose,
-                                jfrConfig,
-                                miscJfrConfig,
-                                () -> Agent.setCurrentRecordingThread(null),
-                                dynSettings));
-            } catch (Exception e) {
-                Agent.setCurrentRecordingThread(null);
-                AgentIO.getAgentInstance()
-                        .writeSevereError("Could not start rotating recording: " + e.getMessage());
+                dynSettings.validate(rotating);
+            } catch (DynamicallyChangeableSettings.ValidationException e) {
+                AgentIO.getAgentInstance().writeSevereError(e.getMessage());
                 return 1;
             }
-        } else {
+            if (rotating) {
+                try {
+                    Agent.setCurrentRecordingThread(
+                            new RotatingRecordingThread(
+                                    path,
+                                    configuration,
+                                    verbose,
+                                    jfrConfig,
+                                    miscJfrConfig,
+                                    () -> Agent.setCurrentRecordingThread(null),
+                                    dynSettings));
+                } catch (Exception e) {
+                    Agent.setCurrentRecordingThread(null);
+                    AgentIO.getAgentInstance()
+                            .writeSevereError(
+                                    "Could not start rotating recording: " + e.getMessage());
+                    return 1;
+                }
+            } else {
+                try {
+                    Agent.setCurrentRecordingThread(
+                            new SingleRecordingThread(
+                                    path,
+                                    configuration,
+                                    verbose,
+                                    jfrConfig,
+                                    miscJfrConfig,
+                                    () -> Agent.setCurrentRecordingThread(null),
+                                    dynSettings));
+                } catch (Exception e) {
+                    Agent.setCurrentRecordingThread(null);
+                    AgentIO.getAgentInstance()
+                            .writeSevereError("Could not start recording: " + e.getMessage());
+                    return 1;
+                }
+            }
+            RecordingThread rt = Agent.getCurrentRecordingThread();
+            Thread t = new Thread(rt, "cjfr-agent-recording");
+            t.setDaemon(true);
             try {
-                Agent.setCurrentRecordingThread(
-                        new SingleRecordingThread(
-                                path,
-                                configuration,
-                                verbose,
-                                jfrConfig,
-                                miscJfrConfig,
-                                () -> Agent.setCurrentRecordingThread(null),
-                                dynSettings));
-            } catch (Exception e) {
+                t.start();
+            } catch (Throwable e) {
                 Agent.setCurrentRecordingThread(null);
+                try {
+                    rt.close();
+                } catch (Throwable ignored) {
+                }
                 AgentIO.getAgentInstance()
-                        .writeSevereError("Could not start recording: " + e.getMessage());
+                        .writeSevereError("Could not start recording thread: " + e.getMessage());
                 return 1;
             }
+            return 0;
         }
-        Thread t = new Thread(Agent.getCurrentRecordingThread());
-        t.setDaemon(true);
-        t.start();
-        return 0;
     }
 
     static String ensureRotatingPathHasPlaceholder(String path) {
