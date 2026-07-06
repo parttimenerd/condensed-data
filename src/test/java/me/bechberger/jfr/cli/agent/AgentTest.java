@@ -644,7 +644,8 @@ public class AgentTest {
         var outputBytes = new ByteArrayOutputStream();
         process.getInputStream().transferTo(outputBytes);
         var agentOutput = outputBytes.toString();
-        process.waitFor();
+        process.waitFor(20, TimeUnit.SECONDS);
+        process.destroyForcibly();
 
         assertEquals(
                 0,
@@ -680,7 +681,8 @@ public class AgentTest {
             var outputBytes = new ByteArrayOutputStream();
             process.getInputStream().transferTo(outputBytes);
             var agentOutput = outputBytes.toString();
-            process.waitFor();
+            process.waitFor(20, TimeUnit.SECONDS);
+            process.destroyForcibly();
 
             assertEquals(
                     0,
