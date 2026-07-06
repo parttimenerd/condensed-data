@@ -21,7 +21,12 @@ public class SetMaxFilesCommand implements Callable<Integer> {
             AgentIO.getAgentInstance().println("No recording running");
             return 1;
         }
-        Agent.getCurrentRecordingThread().setMaxFiles(maxFiles);
+        try {
+            Agent.getCurrentRecordingThread().setMaxFiles(maxFiles);
+        } catch (IllegalArgumentException e) {
+            AgentIO.getAgentInstance().writeSevereError(e.getMessage());
+            return 1;
+        }
         return 0;
     }
 }

@@ -7,6 +7,8 @@ import me.bechberger.jfr.cli.CLIUtils.ByteSizeConverter;
 import me.bechberger.jfr.cli.agent.Agent;
 import me.bechberger.jfr.cli.agent.AgentIO;
 
+import me.bechberger.jfr.cli.agent.DynamicallyChangeableSettings;
+
 @Command(
         name = "set-max-size",
         description = "Set the max file size",
@@ -26,7 +28,12 @@ public class SetMaxSizeCommand implements Callable<Integer> {
             AgentIO.getAgentInstance().println("No recording running");
             return 1;
         }
-        Agent.getCurrentRecordingThread().setMaxSize(maxSize);
+        try {
+            Agent.getCurrentRecordingThread().setMaxSize(maxSize);
+        } catch (DynamicallyChangeableSettings.ValidationException e) {
+            AgentIO.getAgentInstance().writeSevereError(e.getMessage());
+            return 1;
+        }
         return 0;
     }
 }

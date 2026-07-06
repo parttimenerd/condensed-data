@@ -83,10 +83,10 @@ public class DynamicallyChangeableSettings {
         }
         if (!rotating) {
             if (maxDuration.toMillis() != 0) {
-                errors.add("Max duration can only be set when rotating files");
+                errors.add("--max-duration requires --rotating; add --rotating or omit --max-duration");
             }
             if (maxSize != 0) {
-                errors.add("Max size can only be set when rotating files");
+                errors.add("--max-size requires --rotating; add --rotating or omit --max-size");
             }
         }
         if (!errors.isEmpty()) {

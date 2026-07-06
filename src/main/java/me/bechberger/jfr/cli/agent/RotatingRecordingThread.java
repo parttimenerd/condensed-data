@@ -211,7 +211,7 @@ public class RotatingRecordingThread extends RecordingThread {
                     "$date",
                     i -> {
                         var date = Instant.now();
-                        return date.toString().replace(":", "-").replace("T", "");
+                        return date.toString().replace(":", "-").replace("T", "_").replace("Z", "").replaceAll("\\.\\d+$", "");
                     },
                     "$index",
                     i -> i + "");

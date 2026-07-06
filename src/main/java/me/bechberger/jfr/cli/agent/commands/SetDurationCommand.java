@@ -7,6 +7,7 @@ import me.bechberger.femtocli.annotations.Parameters;
 import me.bechberger.jfr.cli.CLIUtils.DurationConverter;
 import me.bechberger.jfr.cli.agent.Agent;
 import me.bechberger.jfr.cli.agent.AgentIO;
+import me.bechberger.jfr.cli.agent.DynamicallyChangeableSettings;
 
 @Command(
         name = "set-duration",
@@ -25,7 +26,12 @@ public class SetDurationCommand implements Callable<Integer> {
             AgentIO.getAgentInstance().println("No recording running");
             return 1;
         }
-        Agent.getCurrentRecordingThread().setDuration(duration);
+        try {
+            Agent.getCurrentRecordingThread().setDuration(duration);
+        } catch (DynamicallyChangeableSettings.ValidationException e) {
+            AgentIO.getAgentInstance().writeSevereError(e.getMessage());
+            return 1;
+        }
         return 0;
     }
 }

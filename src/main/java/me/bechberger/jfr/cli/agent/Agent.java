@@ -54,7 +54,8 @@ public class Agent implements Runnable {
                 () -> {
                     try {
                         var ps = AgentIO.getAgentInstance().createPrintStream();
-                        FemtoCli.runAgent(new Agent(), ps, ps, preprocResult.args);
+                        int exitCode = FemtoCli.runAgent(new Agent(), ps, ps, preprocResult.args);
+                        AgentIO.getAgentInstance().writeExitCode(exitCode);
                     } catch (Throwable e) {
                         try {
                             AgentIO.getAgentInstance()

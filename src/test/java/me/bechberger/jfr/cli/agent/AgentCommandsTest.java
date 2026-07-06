@@ -229,9 +229,14 @@ public class AgentCommandsTest {
         Agent.setCurrentRecordingThread(thread);
         var command = new SetMaxFilesCommand();
         setField(command, "maxFiles", 0);
+        var output = new StringBuilder();
 
-        var exception = assertThrows(IllegalArgumentException.class, command::call);
-        assertTrue(exception.getMessage().contains("Max files must be at least 1 when rotating"));
+        int result = captureStdout(command::call, output);
+
+        assertEquals(1, result);
+        assertTrue(
+                output.toString().contains("Max files must be at least 1 when rotating"),
+                "Expected error message, got: " + output);
         assertEquals(10, thread.getMaxFiles());
     }
 

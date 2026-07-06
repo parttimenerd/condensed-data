@@ -37,7 +37,7 @@ public class BasicJFRReader implements JFRReader {
         final boolean ignoreCloseErrors;
         final boolean skipRecursiveCompletion;
 
-        public static Options DEFAULT = new Options(true, false, false);
+        public static Options DEFAULT = new Options(true, true, false);
 
         private Options(
                 boolean reconstitute, boolean ignoreCloseErrors, boolean skipRecursiveCompletion) {

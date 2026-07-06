@@ -9,12 +9,11 @@ import java.text.ParseException;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.ArrayList;
-import java.util.Arrays;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Map.Entry;
 import java.util.concurrent.atomic.AtomicBoolean;
-import java.util.stream.Collectors;
 import jdk.jfr.consumer.RecordedEvent;
 import jdk.jfr.consumer.RecordingStream;
 import me.bechberger.jfr.Configuration;
@@ -69,10 +68,19 @@ public abstract class RecordingThread implements Runnable {
     }
 
     private static Map<String, String> parseJfrSettings(String settings) {
-        return Arrays.stream(settings.split("\\|"))
-                .filter(s -> !s.isEmpty() && s.contains("="))
-                .map(s -> s.split("=", 2))
-                .collect(Collectors.toMap(a -> a[0], a -> a[1]));
+        var result = new HashMap<String, String>();
+        for (var s : settings.split("\\|")) {
+            if (s.isEmpty()) continue;
+            if (!s.contains("=")) {
+                AgentIO.getAgentInstance()
+                        .writeSevereError(
+                                "Ignoring malformed --misc-jfr-config entry (missing '='): '" + s + "'");
+                continue;
+            }
+            var parts = s.split("=", 2);
+            result.put(parts[0], parts[1]);
+        }
+        return result;
     }
 
     @SuppressWarnings("unused") // reserved for future use

@@ -92,7 +92,7 @@ The recording runs until the JVM exits. The output is `recording.cjfr`.
 
 ```shell
 # Find the PID or use the process name
-cjfr agent myapp start --output recording.cjfr
+cjfr agent myapp start recording.cjfr
 
 # Check recording status
 cjfr agent myapp status
@@ -115,7 +115,7 @@ java -javaagent:cjfr.jar='start,/tmp/rec_$index.cjfr,--rotating,--max-files=5,--
 Or attach at runtime:
 
 ```shell
-cjfr agent myapp start --output /tmp/rec_\$index.cjfr --rotating --max-files=5 --max-size=100m
+cjfr agent myapp start /tmp/rec_\$index.cjfr --rotating --max-files=5 --max-size=100m
 ```
 
 ---

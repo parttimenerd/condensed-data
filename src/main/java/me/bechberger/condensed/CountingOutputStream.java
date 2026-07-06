@@ -6,7 +6,7 @@ import org.jetbrains.annotations.NotNull;
 
 class CountingOutputStream extends OutputStream {
     private final OutputStream out;
-    private long count = 0;
+    private volatile long count = 0;
 
     public CountingOutputStream(OutputStream out) {
         this.out = out;
