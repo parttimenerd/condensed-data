@@ -141,8 +141,8 @@ public class BasicJFRWriterTest {
                 new TestEvent2(1, 3).commit();
                 new TestEvent2(1, 2).commit();
                 new TestEvent2(2, 2).commit();
+                new TestEvent().commit(); // commit before stopper so it's not lost on stream close
                 new TestEvent2(-1, 2).commit(); // stop
-                new TestEvent().commit();
                 rs.awaitTermination();
             }
             basicJFRWriter.close();
@@ -154,9 +154,11 @@ public class BasicJFRWriterTest {
         assertEquals(6, events.size());
         assertEquals(
                 List.of(entry(1, 2), entry(1, 3), entry(1, 2), entry(2, 2), entry(-1, 2)),
-                events.subList(0, 5).stream()
+                events.stream()
+                        .filter(s -> s.getType().getName().equals("TestEvent2"))
                         .map(s -> entry((int) (long) s.get("key"), (int) (long) s.get("value")))
                         .toList());
-        assertEquals("TestEvent", events.get(5).getType().getName());
+        assertEquals(
+                1, events.stream().filter(s -> s.getType().getName().equals("TestEvent")).count());
     }
 }
