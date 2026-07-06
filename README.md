@@ -98,10 +98,6 @@ compression algorithms, and reports event-count/event-type mismatches in
 
 See [THIRD_PARTY_BUG_HUNT.md](THIRD_PARTY_BUG_HUNT.md) for extensive workflows.
 
-Known Limitations / Open Work:
-- [x] Agent crash-resilience integration tests (corrupt config, disk full, double-attach)
-- [x] `BasicObjectAllocationCombiner` for allocation events (group by thread/class, store summed sizes)
-- [x] Consider inlining small structs in `JFRHashConfig.getEmbeddingType()` for better compression ratio (benchmarked: no improvement, tests added)
 
 Requirements
 ------------
