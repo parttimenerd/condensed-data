@@ -28,7 +28,7 @@ import me.bechberger.jfr.cli.Constants;
 public class RotatingRecordingThread extends RecordingThread {
 
     private final String pathTemplate;
-    private Path currentPath;
+    private volatile Path currentPath;
     private volatile State state = null;
     private final List<Path> currentlyStoredFiles;
     private final List<Instant> currentlyStoredStarts;

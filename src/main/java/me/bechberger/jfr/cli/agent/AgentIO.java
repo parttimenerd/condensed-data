@@ -201,7 +201,7 @@ public class AgentIO {
 
                     @Override
                     public void write(byte @NotNull [] b, int off, int len) {
-                        writeOutput(new String(b, off, len));
+                        writeOutput(new String(b, off, len, StandardCharsets.UTF_8));
                     }
                 });
     }
