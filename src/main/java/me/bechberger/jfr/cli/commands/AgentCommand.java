@@ -328,18 +328,36 @@ public class AgentCommand implements Callable<Integer> {
         return path.getParent().resolve("condensed-data.jar");
     }
 
+    private static final int IDLE_POLL_SLEEP_MILLIS = 50;
+    private static final int MAX_IDLE_POLLS = 20;
+
     private static int handleSubCommand(int pid, List<String> agentArgs) {
         AgentIO agentIO = AgentIO.getAgentInstance(pid);
         try {
             VirtualMachine jvm = VirtualMachine.attach(pid + "");
             jvm.loadAgent(ownJAR().toString(), addLogToFileOption(String.join(",", agentArgs)));
             jvm.detach();
-            String out;
-            while ((out = agentIO.readOutput()) != null) {
-                System.out.println(
-                        out.replace(
-                                "Usage: -javaagent:condensed-agent.jar [COMMAND]",
-                                "Usage: cjfr agent " + pid + " [COMMAND]"));
+            int idlePolls = 0;
+            while (true) {
+                String out = agentIO.readOutput();
+                if (out != null) {
+                    System.out.print(
+                            out.replace(
+                                    "Usage: -javaagent:condensed-agent.jar [COMMAND]",
+                                    "Usage: cjfr agent " + pid + " [COMMAND]"));
+                    idlePolls = 0;
+                } else {
+                    idlePolls++;
+                    if (idlePolls >= MAX_IDLE_POLLS) {
+                        break;
+                    }
+                    try {
+                        Thread.sleep(IDLE_POLL_SLEEP_MILLIS);
+                    } catch (InterruptedException e) {
+                        Thread.currentThread().interrupt();
+                        break;
+                    }
+                }
             }
         } catch (URISyntaxException ex) {
             System.err.println("Can't find the current JAR file");
@@ -351,6 +369,7 @@ public class AgentCommand implements Callable<Integer> {
             System.err.println("Can't attach to the JVM process");
             return 1;
         }
-        return agentIO.readExitCode();
+        int exitCode = agentIO.readExitCode();
+        return exitCode < 0 ? 1 : exitCode;
     }
 }

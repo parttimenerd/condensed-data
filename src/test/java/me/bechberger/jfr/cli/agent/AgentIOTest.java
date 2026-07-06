@@ -239,14 +239,14 @@ public class AgentIOTest {
         var io = newAgentIO(true);
         io.writeExitCode(1);
         assertEquals(1, io.readExitCode());
-        // second read returns 0 (file was deleted)
-        assertEquals(0, io.readExitCode());
+        // second read returns -1 (file was deleted, sentinel for "not written")
+        assertEquals(-1, io.readExitCode());
     }
 
     @Test
-    public void testExitCodeDefaultsToZero() {
+    public void testExitCodeDefaultsToMinusOne() {
         useTempDir();
         var io = newAgentIO(true);
-        assertEquals(0, io.readExitCode());
+        assertEquals(-1, io.readExitCode());
     }
 }

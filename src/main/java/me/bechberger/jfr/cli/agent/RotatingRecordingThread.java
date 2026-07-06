@@ -163,13 +163,15 @@ public class RotatingRecordingThread extends RecordingThread {
                 if (!triggeredStop) {
                     // we're currently stuck in JFR code, so we need to stop the recording
                     // from a different thread so we don't deadlock
-                    new Thread(
+                    Thread t =
+                            new Thread(
                                     () -> {
                                         synchronized (Agent.getSyncObject()) {
                                             stop();
                                         }
-                                    })
-                            .start();
+                                    });
+                    t.setDaemon(true);
+                    t.start();
                     triggeredStop = true;
                 }
                 return;
@@ -190,13 +192,15 @@ public class RotatingRecordingThread extends RecordingThread {
             agentIO.writeSevereError("Error while processing event: " + e.getMessage() + " " + e);
             if (!triggeredStop) {
                 triggeredStop = true;
-                new Thread(
+                Thread t =
+                        new Thread(
                                 () -> {
                                     synchronized (Agent.getSyncObject()) {
                                         stop();
                                     }
-                                })
-                        .start();
+                                });
+                t.setDaemon(true);
+                t.start();
             }
         }
     }
@@ -226,13 +230,14 @@ public class RotatingRecordingThread extends RecordingThread {
         }
         // Snapshot mutable collections to avoid IOOBE if a rotation races with this read
         var storedStarts = new ArrayList<>(currentlyStoredStarts);
+        var path = currentPath;
         return List.of(
                 Map.entry("mode", "rotating"),
                 Map.entry("current-size-on-drive", formatMemory(state.jfrWriter.estimateSize(), 3)),
                 Map.entry(
                         "current-size-uncompressed",
                         formatMemory(state.jfrWriter.getUncompressedStatistic().getBytes(), 3)),
-                Map.entry("path", currentPath.toAbsolutePath().toString()),
+                Map.entry("path", path != null ? path.toAbsolutePath().toString() : pathTemplate),
                 Map.entry("current-file-start", formatInstant(state.start)),
                 Map.entry(
                         "stored-start",
@@ -243,12 +248,16 @@ public class RotatingRecordingThread extends RecordingThread {
             Map.of(
                     "$date",
                     i -> {
-                        var date = Instant.now();
-                        return date.toString()
-                                .replace(":", "-")
-                                .replace("T", "_")
-                                .replace("Z", "")
-                                .replaceAll("\\.\\d+$", "");
+                        var now = java.time.LocalDateTime.now();
+                        return String.format(
+                                "%04d-%02d-%02d_%02d-%02d-%02d-%03d",
+                                now.getYear(),
+                                now.getMonthValue(),
+                                now.getDayOfMonth(),
+                                now.getHour(),
+                                now.getMinute(),
+                                now.getSecond(),
+                                now.getNano() / 1_000_000);
                     },
                     "$index",
                     i -> i + "");

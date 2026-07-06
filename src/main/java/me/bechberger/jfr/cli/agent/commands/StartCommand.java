@@ -62,6 +62,10 @@ public class StartCommand implements Callable<Integer> {
                     .writeSevereError("Recording already running, please stop it first");
             return 1;
         }
+        if (path == null || path.isBlank()) {
+            AgentIO.getAgentInstance().writeSevereError("Output path must not be empty");
+            return 1;
+        }
         if (rotating) {
             if (dynSettings.maxFiles < 1) {
                 AgentIO.getAgentInstance().writeSevereError("max-files must be at least 1");

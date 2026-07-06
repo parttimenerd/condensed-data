@@ -145,7 +145,7 @@ public class AgentIO {
         }
     }
 
-    /** Read and delete the exit code file. Returns 0 if not found. */
+    /** Read and delete the exit code file. Returns -1 if the file has not been written yet. */
     public int readExitCode() {
         try {
             if (Files.exists(getExitCodeFile())) {
@@ -156,7 +156,7 @@ public class AgentIO {
         } catch (IOException | NumberFormatException e) {
             // best effort
         }
-        return 0;
+        return -1;
     }
 
     public void writeSevereError(String message) {

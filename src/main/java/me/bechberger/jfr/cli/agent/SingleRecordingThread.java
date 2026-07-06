@@ -69,13 +69,15 @@ public class SingleRecordingThread extends RecordingThread {
             if (!triggeredStop) {
                 // we're currently stuck in JFR code, so we need to stop the recording
                 // from a different thread so we don't deadlock
-                new Thread(
+                Thread t =
+                        new Thread(
                                 () -> {
                                     synchronized (Agent.getSyncObject()) {
                                         stop();
                                     }
-                                })
-                        .start();
+                                });
+                t.setDaemon(true);
+                t.start();
                 triggeredStop = true;
             }
             return;

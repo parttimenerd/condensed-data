@@ -160,8 +160,15 @@ public abstract class RecordingThread implements Runnable {
         } catch (Throwable e) {
             agentIO.writeSevereError("Error closing recording stream: " + e.getMessage());
         }
-        while (shouldStop.get()) { // wait till it properly stopped
+        // wait till run() clears shouldStop — bounded to avoid infinite spin on JFR anomalies
+        long deadline = System.nanoTime() + 5_000_000_000L;
+        while (shouldStop.get() && System.nanoTime() < deadline) {
             Thread.onSpinWait();
+        }
+        if (shouldStop.get()) {
+            agentIO.writeSevereError(
+                    "Recording thread did not stop within 5s; proceeding with best-effort"
+                            + " cleanup");
         }
         try {
             this.close();
