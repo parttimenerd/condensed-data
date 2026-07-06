@@ -21,7 +21,7 @@ import me.bechberger.jfr.cli.agent.commands.*;
 public class Agent implements Runnable {
 
     private static final Object syncObject = new Object();
-    private static RecordingThread currentRecordingThread;
+    private static volatile RecordingThread currentRecordingThread;
     private static String agentArgs;
 
     Spec spec;

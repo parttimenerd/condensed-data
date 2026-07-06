@@ -7,6 +7,7 @@ import static java.nio.file.StandardOpenOption.TRUNCATE_EXISTING;
 import java.io.IOException;
 import java.io.OutputStream;
 import java.io.PrintStream;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.logging.Formatter;
@@ -78,10 +79,13 @@ public class AgentIO {
         boolean oldDefaultLogToFile = defaultLogToFile;
         boolean oldInstanceLogToFile = instance != null && instance.logToFile;
         setLogToFile(logToFile);
-        r.run();
-        setLogToFile(oldDefaultLogToFile);
-        if (instance != null) {
-            instance.logToFile = oldInstanceLogToFile;
+        try {
+            r.run();
+        } finally {
+            setLogToFile(oldDefaultLogToFile);
+            if (instance != null) {
+                instance.logToFile = oldInstanceLogToFile;
+            }
         }
     }
 
@@ -169,7 +173,7 @@ public class AgentIO {
             return;
         }
         try {
-            Files.writeString(getOutputFile(), output, APPEND, CREATE);
+            Files.writeString(getOutputFile(), output, StandardCharsets.UTF_8, APPEND, CREATE);
             Files.deleteIfExists(getIsClosedFile());
         } catch (IOException e) {
             throw new RuntimeException("Could not write output", e);
@@ -220,7 +224,7 @@ public class AgentIO {
                                         + " bytes skipped");
                     }
                     if (input.available() != 0) {
-                        output = new String(input.readAllBytes());
+                        output = new String(input.readAllBytes(), StandardCharsets.UTF_8);
                     } else {
                         output = null;
                     }
@@ -229,7 +233,8 @@ public class AgentIO {
                 if (output != null) {
                     Files.writeString(
                             getReadBytesFile(),
-                            String.valueOf(output.getBytes().length + bytesRead),
+                            String.valueOf(
+                                    output.getBytes(StandardCharsets.UTF_8).length + bytesRead),
                             CREATE,
                             TRUNCATE_EXISTING);
                 }

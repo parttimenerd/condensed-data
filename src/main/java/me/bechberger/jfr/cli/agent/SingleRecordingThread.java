@@ -26,7 +26,7 @@ public class SingleRecordingThread extends RecordingThread {
     private final String path;
     private final BasicJFRWriter jfrWriter;
     // triggered stop already
-    private boolean triggeredStop = false;
+    private volatile boolean triggeredStop = false;
 
     public SingleRecordingThread(
             String path,
@@ -83,12 +83,7 @@ public class SingleRecordingThread extends RecordingThread {
         try {
             jfrWriter.processEvent(event);
         } catch (RuntimeException e) {
-            agentIO.writeSevereError(
-                    e.getMessage()
-                            + " while processing event "
-                            + event
-                            + " shou "
-                            + shouldEndFile());
+            agentIO.writeSevereError("Error processing event: " + e.getMessage());
         }
     }
 

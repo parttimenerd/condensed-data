@@ -1,6 +1,6 @@
 package me.bechberger.jfr.cli.agent;
 
-import static java.nio.file.StandardOpenOption.CREATE;
+import static java.nio.file.StandardOpenOption.CREATE_NEW;
 import static me.bechberger.util.MemoryUtil.formatMemory;
 import static me.bechberger.util.TimeUtil.formatInstant;
 
@@ -34,7 +34,7 @@ public class RotatingRecordingThread extends RecordingThread {
     private final List<Instant> currentlyStoredStarts;
     private int overallWrittenFileCount = 0;
     // triggered stop already
-    private boolean triggeredStop = false;
+    private volatile boolean triggeredStop = false;
 
     record State(BasicJFRWriter jfrWriter, Path filePath, Instant start) {
         State(BasicJFRWriter jfrWriter, Path filePath) {
@@ -72,7 +72,8 @@ public class RotatingRecordingThread extends RecordingThread {
 
     /** Delete files so that count is below max-files */
     private Optional<Path> deleteOldestFileIfNeeded() {
-        if (currentlyStoredFiles.size() >= getMaxFiles()) {
+        Optional<Path> last = Optional.empty();
+        while (currentlyStoredFiles.size() >= getMaxFiles()) {
             var fileToDelete = currentlyStoredFiles.remove(0);
             currentlyStoredStarts.remove(0);
             try {
@@ -80,9 +81,9 @@ public class RotatingRecordingThread extends RecordingThread {
             } catch (IOException e) {
                 agentIO.writeSevereError("Deleting oldest file failed: " + e.getMessage());
             }
-            return Optional.of(fileToDelete);
+            last = Optional.of(fileToDelete);
         }
-        return Optional.empty();
+        return last;
     }
 
     /** Initialize a new file and start a new jfrWriter, is called in the same thread as onEvent */
@@ -94,15 +95,34 @@ public class RotatingRecordingThread extends RecordingThread {
         } else {
             newPath = createNewPath();
         }
-        currentlyStoredFiles.add(newPath);
-        overallWrittenFileCount++;
         Files.createDirectories(newPath.toAbsolutePath().getParent());
         if (state != null) {
             closeState(state);
         }
+        // Open with CREATE_NEW to avoid silently overwriting an existing file (e.g. two
+        // rotations within the same second when using $date). Fall back to CREATE on collision.
+        java.io.OutputStream rawOut;
+        try {
+            rawOut = Files.newOutputStream(newPath, CREATE_NEW);
+        } catch (java.nio.file.FileAlreadyExistsException e) {
+            // Append a counter suffix to make the name unique
+            String base = newPath.toString();
+            int suffix = 1;
+            Path unique;
+            do {
+                unique =
+                        Path.of(
+                                base.endsWith(".cjfr")
+                                        ? base.replace(".cjfr", "_" + suffix + ".cjfr")
+                                        : base + "_" + suffix);
+                suffix++;
+            } while (Files.exists(unique));
+            newPath = unique;
+            rawOut = Files.newOutputStream(newPath, CREATE_NEW);
+        }
         var out =
                 new CondensedOutputStream(
-                        Files.newOutputStream(newPath, CREATE),
+                        rawOut,
                         new StartMessage(
                                 Constants.FORMAT_VERSION,
                                 "condensed jfr agent",
@@ -111,7 +131,10 @@ public class RotatingRecordingThread extends RecordingThread {
                                 Compression.DEFAULT));
         var newWriter = new BasicJFRWriter(out);
         var newState = new State(newWriter, newPath);
+        // Commit to the list only after the stream is successfully opened
+        currentlyStoredFiles.add(newPath);
         currentlyStoredStarts.add(newState.start);
+        overallWrittenFileCount++;
         currentPath = newPath;
         state = newState;
     }
@@ -201,6 +224,8 @@ public class RotatingRecordingThread extends RecordingThread {
         if (state == null || state.jfrWriter == null) {
             return new ArrayList<>();
         }
+        // Snapshot mutable collections to avoid IOOBE if a rotation races with this read
+        var storedStarts = new ArrayList<>(currentlyStoredStarts);
         return List.of(
                 Map.entry("mode", "rotating"),
                 Map.entry("current-size-on-drive", formatMemory(state.jfrWriter.estimateSize(), 3)),
@@ -211,9 +236,7 @@ public class RotatingRecordingThread extends RecordingThread {
                 Map.entry("current-file-start", formatInstant(state.start)),
                 Map.entry(
                         "stored-start",
-                        currentlyStoredStarts.isEmpty()
-                                ? "none"
-                                : formatInstant(currentlyStoredStarts.get(0))));
+                        storedStarts.isEmpty() ? "none" : formatInstant(storedStarts.get(0))));
     }
 
     private static final Map<String, Function<Integer, String>> rotatingFileNamePlaceholder =

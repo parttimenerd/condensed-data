@@ -81,25 +81,39 @@ public class StartCommand implements Callable<Integer> {
             return 1;
         }
         if (rotating) {
-            Agent.setCurrentRecordingThread(
-                    new RotatingRecordingThread(
-                            path,
-                            configuration,
-                            verbose,
-                            jfrConfig,
-                            miscJfrConfig,
-                            () -> Agent.setCurrentRecordingThread(null),
-                            dynSettings));
+            try {
+                Agent.setCurrentRecordingThread(
+                        new RotatingRecordingThread(
+                                path,
+                                configuration,
+                                verbose,
+                                jfrConfig,
+                                miscJfrConfig,
+                                () -> Agent.setCurrentRecordingThread(null),
+                                dynSettings));
+            } catch (Exception e) {
+                Agent.setCurrentRecordingThread(null);
+                AgentIO.getAgentInstance()
+                        .writeSevereError("Could not start rotating recording: " + e.getMessage());
+                return 1;
+            }
         } else {
-            Agent.setCurrentRecordingThread(
-                    new SingleRecordingThread(
-                            path,
-                            configuration,
-                            verbose,
-                            jfrConfig,
-                            miscJfrConfig,
-                            () -> Agent.setCurrentRecordingThread(null),
-                            dynSettings));
+            try {
+                Agent.setCurrentRecordingThread(
+                        new SingleRecordingThread(
+                                path,
+                                configuration,
+                                verbose,
+                                jfrConfig,
+                                miscJfrConfig,
+                                () -> Agent.setCurrentRecordingThread(null),
+                                dynSettings));
+            } catch (Exception e) {
+                Agent.setCurrentRecordingThread(null);
+                AgentIO.getAgentInstance()
+                        .writeSevereError("Could not start recording: " + e.getMessage());
+                return 1;
+            }
         }
         Runtime.getRuntime()
                 .addShutdownHook(
