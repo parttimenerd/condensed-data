@@ -58,7 +58,7 @@ jobs:
         run: |
           rm -rf ~/.m2/repository/me/bechberger/util/femtocli
           git clone --depth=1 https://github.com/parttimenerd/femtocli.git /tmp/femtocli
-          cd /tmp/femtocli && mvn install -DskipTests -q
+          cd /tmp/femtocli && mvn install -Pminimal -DskipTests -q
 
       - name: Build
         run: mvn -ntp -B --file pom.xml verify
