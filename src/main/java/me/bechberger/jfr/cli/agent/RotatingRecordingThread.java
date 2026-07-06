@@ -32,6 +32,7 @@ public class RotatingRecordingThread extends RecordingThread {
     private volatile State state = null;
     private final List<Path> currentlyStoredFiles;
     private final List<Instant> currentlyStoredStarts;
+    private final Object filesLock = new Object();
     private int overallWrittenFileCount = 0;
     // triggered stop already
     private volatile boolean triggeredStop = false;
@@ -70,15 +71,20 @@ public class RotatingRecordingThread extends RecordingThread {
         return Path.of(replacePlaceholders(pathTemplate, overallWrittenFileCount));
     }
 
-    /** Delete files so that count is below max-files */
+    /** Delete oldest files so that count is below max-files. Must be called with filesLock held. */
     private Optional<Path> deleteOldestFileIfNeeded() {
         Optional<Path> last = Optional.empty();
-        while (currentlyStoredFiles.size() >= getMaxFiles()) {
-            var fileToDelete = currentlyStoredFiles.remove(0);
-            currentlyStoredStarts.remove(0);
+        int max = Math.max(1, getMaxFiles());
+        while (currentlyStoredFiles.size() >= max) {
+            var fileToDelete = currentlyStoredFiles.get(0);
             try {
                 Files.delete(fileToDelete);
+                currentlyStoredFiles.remove(0);
+                currentlyStoredStarts.remove(0);
             } catch (IOException e) {
+                // File may have been deleted externally — remove tracking entry anyway
+                currentlyStoredFiles.remove(0);
+                currentlyStoredStarts.remove(0);
                 agentIO.writeSevereError("Deleting oldest file failed: " + e.getMessage());
             }
             last = Optional.of(fileToDelete);
@@ -86,40 +92,64 @@ public class RotatingRecordingThread extends RecordingThread {
         return last;
     }
 
-    /** Initialize a new file and start a new jfrWriter, is called in the same thread as onEvent */
+    /**
+     * Open a new output stream, retrying on name collision up to 100 times. Returns the opened
+     * stream and sets newPath to the actual path used. Throws IOException if all attempts fail.
+     */
+    private static final int MAX_COLLISION_RETRIES = 100;
+
+    private java.io.OutputStream openNewOutputStream(Path basePath) throws IOException {
+        // Try the base name first
+        try {
+            return Files.newOutputStream(basePath, CREATE_NEW);
+        } catch (java.nio.file.FileAlreadyExistsException ignored) {
+            // fall through to suffix loop
+        }
+        String base = basePath.toString();
+        for (int suffix = 1; suffix <= MAX_COLLISION_RETRIES; suffix++) {
+            Path candidate =
+                    Path.of(
+                            base.endsWith(".cjfr")
+                                    ? base.replace(".cjfr", "_" + suffix + ".cjfr")
+                                    : base + "_" + suffix);
+            try {
+                currentPath = candidate;
+                return Files.newOutputStream(candidate, CREATE_NEW);
+            } catch (java.nio.file.FileAlreadyExistsException ignored) {
+                // keep trying
+            }
+        }
+        throw new IOException(
+                "Could not create a unique output file after "
+                        + MAX_COLLISION_RETRIES
+                        + " attempts (base: "
+                        + basePath
+                        + ")");
+    }
+
+    /**
+     * Initialize a new file and start a new jfrWriter. Called on the JFR event thread. Opens the
+     * new file BEFORE closing the old writer so a transient failure leaves the old writer intact.
+     */
     private void initNewFile() throws IOException {
-        var delFile = deleteOldestFileIfNeeded();
         Path newPath;
-        if (delFile.isPresent() && !useNewNames()) {
-            newPath = delFile.get();
-        } else {
-            newPath = createNewPath();
+        Optional<Path> delFile;
+        synchronized (filesLock) {
+            delFile = deleteOldestFileIfNeeded();
+            if (delFile.isPresent() && !useNewNames()) {
+                newPath = delFile.get();
+            } else {
+                newPath = createNewPath();
+            }
         }
         Files.createDirectories(newPath.toAbsolutePath().getParent());
-        if (state != null) {
-            closeState(state);
-        }
-        // Open with CREATE_NEW to avoid silently overwriting an existing file (e.g. two
-        // rotations within the same second when using $date). Fall back to CREATE on collision.
-        java.io.OutputStream rawOut;
-        try {
-            rawOut = Files.newOutputStream(newPath, CREATE_NEW);
-        } catch (java.nio.file.FileAlreadyExistsException e) {
-            // Append a counter suffix to make the name unique
-            String base = newPath.toString();
-            int suffix = 1;
-            Path unique;
-            do {
-                unique =
-                        Path.of(
-                                base.endsWith(".cjfr")
-                                        ? base.replace(".cjfr", "_" + suffix + ".cjfr")
-                                        : base + "_" + suffix);
-                suffix++;
-            } while (Files.exists(unique));
-            newPath = unique;
-            rawOut = Files.newOutputStream(newPath, CREATE_NEW);
-        }
+
+        // Open with CREATE_NEW BEFORE closing the old writer so a disk-full or permission error
+        // leaves the previous recording stream intact and recording continues.
+        currentPath = newPath;
+        java.io.OutputStream rawOut = openNewOutputStream(newPath);
+        newPath = currentPath; // may be updated by openNewOutputStream on collision
+
         var out =
                 new CondensedOutputStream(
                         rawOut,
@@ -131,9 +161,18 @@ public class RotatingRecordingThread extends RecordingThread {
                                 Compression.DEFAULT));
         var newWriter = new BasicJFRWriter(out);
         var newState = new State(newWriter, newPath);
-        // Commit to the list only after the stream is successfully opened
-        currentlyStoredFiles.add(newPath);
-        currentlyStoredStarts.add(newState.start);
+
+        // Close old writer only after new one is ready
+        var oldState = this.state;
+        if (oldState != null) {
+            closeState(oldState);
+        }
+
+        // Commit to the list after the stream is successfully opened
+        synchronized (filesLock) {
+            currentlyStoredFiles.add(newPath);
+            currentlyStoredStarts.add(newState.start);
+        }
         overallWrittenFileCount++;
         currentPath = newPath;
         state = newState;
@@ -206,13 +245,13 @@ public class RotatingRecordingThread extends RecordingThread {
     }
 
     private boolean shouldEndFile() {
+        State s = this.state;
+        if (s == null) return false;
         return (getMaxDuration().toNanos() > 0
-                        && Duration.between(this.state.start, Instant.now())
-                                        .compareTo(getMaxDuration())
-                                > 0)
+                        && Duration.between(s.start, Instant.now()).compareTo(getMaxDuration()) > 0)
                 || (getMaxSize() > 0
-                        && state.jfrWriter != null
-                        && state.jfrWriter.estimateSize() > getMaxSize());
+                        && s.jfrWriter != null
+                        && s.jfrWriter.estimateSize() > getMaxSize());
     }
 
     private boolean shouldEndRecording() {
@@ -228,8 +267,10 @@ public class RotatingRecordingThread extends RecordingThread {
         if (state == null || state.jfrWriter == null) {
             return new ArrayList<>();
         }
-        // Snapshot mutable collections to avoid IOOBE if a rotation races with this read
-        var storedStarts = new ArrayList<>(currentlyStoredStarts);
+        List<Instant> storedStarts;
+        synchronized (filesLock) {
+            storedStarts = new ArrayList<>(currentlyStoredStarts);
+        }
         var path = currentPath;
         return List.of(
                 Map.entry("mode", "rotating"),

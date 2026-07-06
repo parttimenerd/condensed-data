@@ -1,6 +1,5 @@
 package me.bechberger.jfr.cli.agent.commands;
 
-import java.time.Duration;
 import java.util.concurrent.Callable;
 import me.bechberger.femtocli.annotations.Command;
 import me.bechberger.femtocli.annotations.Mixin;
@@ -71,7 +70,7 @@ public class StartCommand implements Callable<Integer> {
                 AgentIO.getAgentInstance().writeSevereError("max-files must be at least 1");
                 return 1;
             }
-            if (dynSettings.maxSize == 0 && dynSettings.maxDuration == Duration.ZERO) {
+            if (dynSettings.maxSize == 0 && dynSettings.maxDuration.isZero()) {
                 AgentIO.getAgentInstance()
                         .writeSevereError("max-size or max-duration required when rotating files");
                 return 1;

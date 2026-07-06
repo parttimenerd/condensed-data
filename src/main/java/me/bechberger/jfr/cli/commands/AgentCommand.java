@@ -370,6 +370,18 @@ public class AgentCommand implements Callable<Integer> {
             return 1;
         }
         int exitCode = agentIO.readExitCode();
+        if (exitCode < 0) {
+            // Exit-code file not yet written — retry briefly to handle slow filesystems
+            for (int i = 0; i < 5 && exitCode < 0; i++) {
+                try {
+                    Thread.sleep(IDLE_POLL_SLEEP_MILLIS);
+                } catch (InterruptedException e) {
+                    Thread.currentThread().interrupt();
+                    break;
+                }
+                exitCode = agentIO.readExitCode();
+            }
+        }
         return exitCode < 0 ? 1 : exitCode;
     }
 }

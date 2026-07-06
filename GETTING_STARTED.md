@@ -112,15 +112,35 @@ Keep the last 5 files, each up to 100 MB:
 java -javaagent:cjfr.jar='start,/tmp/rec_$index.cjfr,--rotating,--max-files=5,--max-size=100m' MyApp
 ```
 
-Or attach at runtime:
+Or attach at runtime (use single quotes to prevent shell expansion of `$`):
 
 ```shell
-cjfr agent myapp start /tmp/rec_\$index.cjfr --rotating --max-files=5 --max-size=100m
+cjfr agent myapp start '/tmp/rec_$index.cjfr' --rotating --max-files=5 --max-size=100m
 ```
 
 **`--duration` vs `--max-duration`:** `--duration=30m` stops the *whole* recording after 30 minutes.
 `--max-duration=5m` caps each *individual rotated file* at 5 minutes (rotation trigger).
 Both can be combined: record for 1 hour total, rotating every 10 minutes.
+
+**`--new-names`:** By default, each rotation reuses the oldest file's name (keeps disk usage bounded
+to exactly `--max-files` names). Pass `--new-names` to always generate a fresh name per rotation
+(files accumulate until `--max-files` is reached, then oldest is deleted).
+
+**Changing limits at runtime** after a recording is already running:
+
+```shell
+# Increase file count limit
+cjfr agent myapp set-max-files 20
+
+# Change per-file size cap
+cjfr agent myapp set-max-size 200m
+
+# Change per-file duration cap
+cjfr agent myapp set-max-duration 10m
+
+# Change total recording duration
+cjfr agent myapp set-duration 2h
+```
 
 ### Reading agent output
 

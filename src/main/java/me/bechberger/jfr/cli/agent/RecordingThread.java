@@ -91,14 +91,10 @@ public abstract class RecordingThread implements Runnable {
     }
 
     private volatile boolean shuttingDown = false;
+    private final Thread shutdownHook = new Thread(() -> shuttingDown = true);
 
     {
-        Runtime.getRuntime()
-                .addShutdownHook(
-                        new Thread(
-                                () -> {
-                                    shuttingDown = true;
-                                }));
+        Runtime.getRuntime().addShutdownHook(shutdownHook);
     }
 
     @Override
@@ -142,13 +138,17 @@ public abstract class RecordingThread implements Runnable {
 
     abstract void onEvent(RecordedEvent event);
 
-    private volatile boolean stopped = false;
+    private final AtomicBoolean stopped = new AtomicBoolean(false);
 
     public void stop() {
-        if (stopped) {
+        if (!stopped.compareAndSet(false, true)) {
             return;
         }
-        stopped = true;
+        try {
+            Runtime.getRuntime().removeShutdownHook(shutdownHook);
+        } catch (IllegalStateException ignored) {
+            // JVM is already shutting down — hook cannot be removed
+        }
         shouldStop.set(true);
         try {
             removeFromParent.run();
@@ -195,7 +195,7 @@ public abstract class RecordingThread implements Runnable {
         status.add(Map.entry("max-files", Integer.toString(getMaxFiles())));
         status.add(Map.entry("new-names", Boolean.toString(useNewNames())));
         status.add(Map.entry("duration", formatDuration(dynSettings.duration)));
-        status.add(Map.entry("running", Boolean.toString(!stopped)));
+        status.add(Map.entry("running", Boolean.toString(!stopped.get())));
         status.add(Map.entry("event-errors", Integer.toString(eventErrorCount)));
         status.addAll(getMiscStatus());
         return status;
