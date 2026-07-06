@@ -55,6 +55,14 @@ public class AgentCommand implements Callable<Integer> {
         @Override
         public Integer call() {
             AgentIO agentIO = AgentIO.getAgentInstance();
+            return run(agentIO, outputFile);
+        }
+
+        static int runForPid(long pid, String outputFile) {
+            return run(AgentIO.getAgentInstance(pid), outputFile);
+        }
+
+        private static int run(AgentIO agentIO, String outputFile) {
             try {
                 java.io.PrintStream out =
                         outputFile.isEmpty()
@@ -307,6 +315,12 @@ public class AgentCommand implements Callable<Integer> {
             return handleSubCommand((int) pid, List.of("status"));
         }
         List<String> agentArgs = subCommandArgs.subList(1, subCommandArgs.size());
+        // 'read' is a CLI-side command that reads from the agent IPC files; it must NOT be
+        // forwarded to the agent because the agent doesn't know about it.
+        if (agentArgs.get(0).equals("read")) {
+            String outputFile = agentArgs.size() > 1 ? agentArgs.get(1) : "";
+            return ReadCommand.runForPid(pid, outputFile);
+        }
         return handleSubCommand((int) pid, agentArgs);
     }
 

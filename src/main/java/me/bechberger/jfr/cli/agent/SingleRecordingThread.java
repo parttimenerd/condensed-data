@@ -1,6 +1,8 @@
 package me.bechberger.jfr.cli.agent;
 
 import static java.nio.file.StandardOpenOption.CREATE;
+import static java.nio.file.StandardOpenOption.TRUNCATE_EXISTING;
+import static java.nio.file.StandardOpenOption.WRITE;
 import static me.bechberger.util.MemoryUtil.formatMemory;
 
 import java.io.IOException;
@@ -49,7 +51,7 @@ public class SingleRecordingThread extends RecordingThread {
         Files.createDirectories(Path.of(path).toAbsolutePath().getParent());
         var out =
                 new CondensedOutputStream(
-                        Files.newOutputStream(Path.of(path), CREATE),
+                        Files.newOutputStream(Path.of(path), WRITE, CREATE, TRUNCATE_EXISTING),
                         new StartMessage(
                                 Constants.FORMAT_VERSION,
                                 "condensed jfr agent",
