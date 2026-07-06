@@ -56,6 +56,20 @@ INFLATERLESS_EXTRA_PREFIXES = [
     "org/intellij/",
 ]
 
+# Prefixes/entries removed in minimal builds (LZ4 only)
+MINIMAL_CODEC_PREFIXES = [
+    "com/github/luben/",  # zstd-jni Java classes
+    "org/tukaani/",  # xz Java classes
+    "META-INF/maven/",  # POM files (~85 KB win, no runtime use)
+]
+# Codec factory classes plus their synthetic inner classes (e.g. switch-table $1).
+# Matched as a prefix on the entry path, so this catches both
+# 'ZstdCompressionFactory.class' and 'ZstdCompressionFactory$1.class'.
+MINIMAL_CODEC_CLASS_PREFIXES = [
+    "me/bechberger/condensed/codec/ZstdCompressionFactory",
+    "me/bechberger/condensed/codec/XzCompressionFactory",
+]
+
 # ---------------------------------------------------------------------------
 # Reduction descriptors – add new reductions here
 # ---------------------------------------------------------------------------
@@ -210,6 +224,37 @@ def reduce_jmc(jar_path: str, zf: zipfile.ZipFile) -> ReductionResult:
     # Add each annotated class as an exact-match entry path
     result.removed_entries = annotated
     return result
+
+
+# ---------------------------------------------------------------------------
+# Minimal codec reduction (LZ4-only, drops ZSTD/XZ + POMs)
+# ---------------------------------------------------------------------------
+
+def reduce_minimal_codecs(zf: zipfile.ZipFile) -> ReductionResult:
+    """Strip ZSTD/XZ classes, codec factory classes, POMs, and zstd native libs.
+
+    Used only on the path into the ``--with-minimal`` femtojar+proguard pipeline.
+    Does not affect the non-minimal reduced jars.
+    """
+    removed_entries: List[str] = []
+    for entry in zf.namelist():
+        # Drop every libzstd-jni* native lib regardless of platform/extension
+        base = entry.rsplit("/", 1)[-1]
+        if base.startswith("libzstd-jni") and base.endswith((".so", ".dylib", ".dll")):
+            removed_entries.append(entry)
+            continue
+        # Drop ZstdCompressionFactory{,$1,...}.class etc.
+        for cp in MINIMAL_CODEC_CLASS_PREFIXES:
+            if entry.startswith(cp) and entry.endswith(".class"):
+                removed_entries.append(entry)
+                break
+
+    return ReductionResult(
+        name="minimal-codecs",
+        description="LZ4-only minimal build: removed ZSTD/XZ codecs, POMs, and zstd native libs",
+        removed_prefixes=list(MINIMAL_CODEC_PREFIXES),
+        removed_entries=removed_entries,
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -418,6 +463,7 @@ def cmd_matrix(args: argparse.Namespace) -> None:
         minimal_output_dir = args.minimal_output_dir or f"{out_dir.rstrip('/')}-minimal"
         os.makedirs(minimal_output_dir, exist_ok=True)
         cli_jar = _ensure_femtojar_cli()
+        femtocli_minimal_jar = _ensure_femtocli_minimal_jar()
         print(
             f"\nGenerating minimal variants (zopfli + proguard) into {minimal_output_dir}/"
         )
@@ -428,15 +474,26 @@ def cmd_matrix(args: argparse.Namespace) -> None:
         for input_jar in generated_jars:
             base_name = os.path.splitext(os.path.basename(input_jar))[0]
             output_jar = os.path.join(minimal_output_dir, f"{base_name}-minimal.jar")
-            ok = _run_femtojar(
-                cli_jar,
-                input_jar,
-                output_jar,
-                "zopfli",
-                True,
-                CONDENSED_DATA_PROGUARD_OPTIONS,
-                args.minimal_verbose,
-            )
+
+            # Pre-process: swap femtocli for its minimal classifier, then strip
+            # ZSTD/XZ codecs and POMs before feeding into femtojar+proguard.
+            with tempfile.TemporaryDirectory(prefix="cd-minimal-") as tmpdir:
+                swapped_jar = os.path.join(tmpdir, "swapped.jar")
+                stripped_jar = os.path.join(tmpdir, "stripped.jar")
+                _swap_femtocli(input_jar, swapped_jar, femtocli_minimal_jar)
+                with zipfile.ZipFile(swapped_jar, "r") as zf:
+                    codec_reduction = reduce_minimal_codecs(zf)
+                reduce_jar(swapped_jar, stripped_jar, [codec_reduction])
+
+                ok = _run_femtojar(
+                    cli_jar,
+                    stripped_jar,
+                    output_jar,
+                    "zopfli",
+                    True,
+                    CONDENSED_DATA_PROGUARD_OPTIONS,
+                    args.minimal_verbose,
+                )
             if not ok:
                 failed.append(output_jar)
                 continue
@@ -501,6 +558,36 @@ def cmd_matrix(args: argparse.Namespace) -> None:
 CONDENSED_DATA_PROGUARD_OPTIONS = [
     "-dontwarn",
     "-keep class **.cli.** { *; }",
+    # Preserve the Record attribute so Class.getRecordComponents() works at runtime.
+    # Configuration uses it to copy itself with one field changed (withFieldValue).
+    "-keepattributes Record,RuntimeVisibleAnnotations,RuntimeInvisibleAnnotations,Signature,InnerClasses,EnclosingMethod",
+    # Targeted full-keeps for packages reflected on by field/record-component name.
+    # ReadStructUtil walks declared fields by name; StructType holds them as records;
+    # the Compression enum loads codec factories via Class.forName(FQCN).
+    "-keep class me.bechberger.condensed.types.** { *; }",
+    "-keep class me.bechberger.condensed.codec.** { *; }",
+    "-keep class me.bechberger.condensed.Universe* { *; }",
+    "-keep class me.bechberger.condensed.ReadStruct { *; }",
+    "-keep class me.bechberger.condensed.ReadList { *; }",
+    "-keep class me.bechberger.condensed.Message$* { *; }",
+    "-keep class me.bechberger.condensed.CJFRFooter* { *; }",
+    # JFR-side reflective targets. CombinerSpec/JFREventCombiner/JFRReduction read
+    # record component names; ReducedJFRTypes maps fields by name; JFRHashConfig
+    # wrappers are constructed reflectively from raw RecordedObjects.
+    "-keep class me.bechberger.jfr.Configuration { *; }",
+    "-keep class me.bechberger.jfr.CombinerSpec* { *; }",
+    "-keep class me.bechberger.jfr.JFREventCombiner* { *; }",
+    "-keep class me.bechberger.jfr.JFREventTypedValueCombiner* { *; }",
+    "-keep class me.bechberger.jfr.JFRReduction* { *; }",
+    "-keep class me.bechberger.jfr.JFRHashConfig* { *; }",
+    "-keep class me.bechberger.jfr.ReducedJFRTypes* { *; }",
+    "-keep class me.bechberger.jfr.UnsafeRecordedObjectAccessor* { *; }",
+    # For everything else in condensed/jfr, keep names so reflection-by-classname
+    # still works, but allow ProGuard to shrink unreachable methods/classes.
+    "-keep,allowshrinking,allowoptimization class me.bechberger.condensed.** { *; }",
+    "-keep,allowshrinking,allowoptimization class me.bechberger.jfr.** { *; }",
+    # lz4-java loads its compressor implementations via Class.forName.
+    "-keep class net.jpountz.** { *; }",
 ]
 
 # femtojar source dir relative to this script
@@ -600,6 +687,81 @@ def _ensure_femtojar_cli() -> str:
         )
         print(f"Cause: {exc}", file=sys.stderr)
         sys.exit(1)
+
+
+# ---------------------------------------------------------------------------
+# femtocli-minimal classifier swap
+# ---------------------------------------------------------------------------
+
+FEMTOCLI_GROUP_PATH = "me/bechberger/util/femtocli"
+FEMTOCLI_VERSION = "0.4.0"
+FEMTOCLI_SOURCE_DIR = os.path.join(os.path.dirname(__file__), "femtocli")
+FEMTOCLI_MINIMAL_M2_JAR = os.path.join(
+    os.path.expanduser("~"),
+    ".m2",
+    "repository",
+    FEMTOCLI_GROUP_PATH,
+    FEMTOCLI_VERSION,
+    f"femtocli-{FEMTOCLI_VERSION}-minimal.jar",
+)
+# Class-file prefix that identifies femtocli runtime classes inside a fat jar
+FEMTOCLI_CLASS_PREFIX = "me/bechberger/femtocli/"
+
+
+def _ensure_femtocli_minimal_jar() -> str:
+    """Return the path to femtocli-<version>-minimal.jar, building locally if needed."""
+    if os.path.exists(FEMTOCLI_MINIMAL_M2_JAR):
+        return FEMTOCLI_MINIMAL_M2_JAR
+
+    if not os.path.isdir(FEMTOCLI_SOURCE_DIR):
+        print(
+            f"Error: femtocli minimal jar not found at {FEMTOCLI_MINIMAL_M2_JAR} "
+            f"and no local source at {FEMTOCLI_SOURCE_DIR}",
+            file=sys.stderr,
+        )
+        sys.exit(1)
+
+    print(f"femtocli minimal jar not in ~/.m2; building from {FEMTOCLI_SOURCE_DIR} …")
+    result = subprocess.run(
+        ["mvn", "install", "-Pminimal", "-DskipTests", "-q"],
+        cwd=FEMTOCLI_SOURCE_DIR,
+    )
+    if result.returncode != 0:
+        print("Error: mvn install -Pminimal failed for femtocli", file=sys.stderr)
+        sys.exit(result.returncode)
+
+    if not os.path.exists(FEMTOCLI_MINIMAL_M2_JAR):
+        print(
+            f"Error: expected femtocli minimal jar not found after build: "
+            f"{FEMTOCLI_MINIMAL_M2_JAR}",
+            file=sys.stderr,
+        )
+        sys.exit(1)
+    return FEMTOCLI_MINIMAL_M2_JAR
+
+
+def _swap_femtocli(input_jar: str, output_jar: str, minimal_jar: str) -> None:
+    """Replace all me/bechberger/femtocli/** entries in *input_jar* with the
+    contents of *minimal_jar*, writing the result to *output_jar*."""
+    with zipfile.ZipFile(minimal_jar, "r") as mz:
+        minimal_entries = {
+            name: mz.read(name)
+            for name in mz.namelist()
+            if name.startswith(FEMTOCLI_CLASS_PREFIX) and not name.endswith("/")
+        }
+
+    with zipfile.ZipFile(input_jar, "r") as zf_in:
+        with zipfile.ZipFile(output_jar, "w", compression=zipfile.ZIP_DEFLATED) as zf_out:
+            written: set = set()
+            for item in zf_in.infolist():
+                if item.filename.startswith(FEMTOCLI_CLASS_PREFIX):
+                    continue  # drop original femtocli classes; replace below
+                zf_out.writestr(item, zf_in.read(item.filename))
+                written.add(item.filename)
+            for name, data in minimal_entries.items():
+                if name in written:
+                    continue
+                zf_out.writestr(name, data)
 
 
 def _run_femtojar(

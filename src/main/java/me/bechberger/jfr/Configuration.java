@@ -1,7 +1,6 @@
 package me.bechberger.jfr;
 
 import java.lang.reflect.InvocationTargetException;
-import java.util.Arrays;
 import java.util.Map;
 
 /**
@@ -241,32 +240,28 @@ public record Configuration(
     }
 
     public Configuration withFieldValue(String fieldName, Object value) {
-        // use reflection to call the constructor
+        // Record components retain their names even when MethodParameters is stripped
+        // (e.g. by ProGuard with -g:none / parameters=false), so we resolve names via
+        // getRecordComponents() rather than constructor.getParameters().
         try {
-            var constructor =
-                    Arrays.stream(Configuration.class.getDeclaredConstructors())
-                            .min(
-                                    (c1, c2) ->
-                                            Integer.compare(
-                                                    c2.getParameterCount(), c1.getParameterCount()))
-                            .orElseThrow();
-            var params =
-                    Arrays.stream(constructor.getParameters())
-                            .map(
-                                    p -> {
-                                        try {
-                                            return p.getName().equals(fieldName)
-                                                    ? value
-                                                    : Configuration.class
-                                                            .getDeclaredField(p.getName())
-                                                            .get(this);
-                                        } catch (IllegalAccessException | NoSuchFieldException e) {
-                                            throw new RuntimeException(e);
-                                        }
-                                    })
-                            .toArray();
-            return (Configuration) constructor.newInstance(params);
-        } catch (IllegalAccessException | InvocationTargetException | InstantiationException e) {
+            var components = Configuration.class.getRecordComponents();
+            var paramTypes = new Class<?>[components.length];
+            var params = new Object[components.length];
+            for (int i = 0; i < components.length; i++) {
+                var c = components[i];
+                paramTypes[i] = c.getType();
+                params[i] =
+                        c.getName().equals(fieldName)
+                                ? value
+                                : Configuration.class.getDeclaredField(c.getName()).get(this);
+            }
+            var constructor = Configuration.class.getDeclaredConstructor(paramTypes);
+            return constructor.newInstance(params);
+        } catch (IllegalAccessException
+                | InvocationTargetException
+                | InstantiationException
+                | NoSuchFieldException
+                | NoSuchMethodException e) {
             throw new RuntimeException(e);
         }
     }

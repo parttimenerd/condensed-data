@@ -3,17 +3,19 @@ Condensed Data
 
 [![ci](https://github.com/parttimenerd/condensed-data/actions/workflows/ci.yml/badge.svg)](https://github.com/parttimenerd/condensed-data/actions/workflows/ci.yml)
 
-A library and tool for reading and writing condensed JFR event data
-to disk. Focusing on a simple, yet space saving, format.
-Storing JFR data via a compressing agent that allows file rotations
-and more.
+A library and CLI tool for reading and writing condensed JFR event data to disk.
+Focuses on a simple, self-describing, space-saving format.
+Stores JFR data via a compressing Java agent that supports file rotation and
+live attachment to running JVMs.
 
-The main usage is to compress JFR files related to GC.
+Primary use case: long-term storage of GC-related JFR recordings.
+
+**[Getting Started Guide](GETTING_STARTED.md)** — installation, quickstart, agent usage, configuration guide, and troubleshooting.
 
 Usage
 -----
 
-Build the tool or download it from the [GitHub Releases](https://github.com/parttimenerd/condensed-data/releases/latest).
+Download from [GitHub Releases](https://github.com/parttimenerd/condensed-data/releases/latest) or build from source (see [Getting Started](GETTING_STARTED.md)).
 
 The tool can be used via its CLI:
 ```shell
@@ -80,46 +82,26 @@ Start the recording
       --verbose              Be verbose
 ```
 
-  Third-party Bug Hunting
-  -----------------------
+Third-party Bug Hunting
+-----------------------
 
-  You can use condensed-data as a differential bug-finding tool against third-party JFR corpora.
+You can use condensed-data as a differential bug-finding tool against third-party JFR corpora.
 
-  Run the automated harness:
-  ```shell
-  python3 bin/third_party_bug_hunt.py /path/to/third-party-jfrs
-  ```
+Run the automated harness:
+```shell
+python3 bin/third_party_bug_hunt.py /path/to/third-party-jfrs
+```
 
-  This runs `condense -> summary -> inflate -> summary` across multiple configurations and
-  compression algorithms, and reports event-count/event-type mismatches in
-  `tmp/third_party_bug_hunt/report.json`.
+This runs `condense -> summary -> inflate -> summary` across multiple configurations and
+compression algorithms, and reports event-count/event-type mismatches in
+`tmp/third_party_bug_hunt/report.json`.
 
-  See [THIRD_PARTY_BUG_HUNT.md](THIRD_PARTY_BUG_HUNT.md) for extensive workflows.
+See [THIRD_PARTY_BUG_HUNT.md](THIRD_PARTY_BUG_HUNT.md) for extensive workflows.
 
-Autocompletion is not yet supported.
-
-TODO:
-- javaagent
-  - [x] check what happens if any error is thrown somewhere deep down in the agent
-  - [x] agent crash resilience: `onEvent()` wrapped with `safeOnEvent()` (catches Throwable, rate-limited error logging),
-    `stop()` guards each step individually, `run()` and `premain()` catch Throwable
-  - [ ] agent crash resilience: add integration tests (e.g. corrupt config, disk full, double-attach) to verify
-    the host JVM is never impacted, and consider recording an error state marker file
-- logging (don't log anything in default warning mode)
-  - seems to be missing new lines
-    ```
-      ➜  condensed-data git:(main) ✗ java  -javaagent:target/condensed-data.jar=start,profiling -jar benchmark/renaissance-gpl-0.15.0.jar all
-      Condensed recording to profiling startedBenchmark 'db-shootout' excluded: requires JVM version >=11 and <=18 (found 22).
-      ====== scrabble (functional) [default], iteration 0 started ======52046/  renaissance-gpl-0.15.0.jar                                                                                 
-      GC bef
-    ```
-- [ ] implement `BasicObjectAllocationCombiner` for `jdk.ObjectAllocationInNewTLAB`,
-  `jdk.ObjectAllocationOutsideTLAB` and `jdk.ObjectAllocation` events (group by
-  thread → TLAB size → object class, store summed or individual sizes)
-- [ ] consider inlining small structs in `JFRHashConfig.getEmbeddingType()` — currently only
-  primitive-only structs use `NULLABLE_INLINE`; structs with ≤2-3 small fields could also
-  benefit (benchmark compression ratio and speed before committing)
-- add examples to the README
+Known Limitations / Open Work:
+- [ ] Agent crash-resilience integration tests (corrupt config, disk full, double-attach)
+- [ ] `BasicObjectAllocationCombiner` for allocation events (group by thread/class, store summed sizes)
+- [ ] Consider inlining small structs in `JFRHashConfig.getEmbeddingType()` for better compression ratio
 
 Requirements
 ------------
