@@ -513,17 +513,17 @@ public class AgentTest {
                         () -> {},
                         settings);
 
-        // Capture stdout so we can verify the error was reported
+        // Capture stderr so we can verify the error was reported
         var captured = new ByteArrayOutputStream();
-        var savedOut = System.out;
-        System.setOut(new PrintStream(captured));
+        var savedErr = System.err;
+        System.setErr(new PrintStream(captured));
         try {
             // Passing null causes a NullPointerException inside BasicJFRWriter.processEvent.
             // The catch block in SingleRecordingThread.onEvent must absorb it without
             // rethrowing, keeping the recording thread alive.
             thread.onEvent(null);
         } finally {
-            System.setOut(savedOut);
+            System.setErr(savedErr);
             thread.close();
         }
 
@@ -732,9 +732,9 @@ public class AgentTest {
      * based approach
      */
     String runAgentViaJattach(String... args) {
-        var out = System.out;
-        var newOut = new ByteArrayOutputStream();
-        System.setOut(new PrintStream(newOut));
+        var err = System.err;
+        var newErr = new ByteArrayOutputStream();
+        System.setErr(new PrintStream(newErr));
         try {
             var pid = ProcessHandle.current().pid();
             AsyncProfilerLoader.executeJattach(
@@ -746,8 +746,12 @@ public class AgentTest {
         } catch (Exception e) {
             throw new RuntimeException(e);
         }
-        System.setOut(out);
-        return newOut.toString();
+        System.setErr(err);
+        // Strip JVM's own "WARNING: A Java agent has been loaded dynamically" noise
+        return java.util.Arrays.stream(newErr.toString().split("\n"))
+                .filter(line -> !line.startsWith("WARNING:"))
+                .collect(java.util.stream.Collectors.joining("\n"))
+                .stripLeading();
     }
 
     /** Uses {@code java -jar target/condensed-data.jar attach PID args} to run the agent */

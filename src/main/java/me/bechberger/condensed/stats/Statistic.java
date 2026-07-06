@@ -13,7 +13,7 @@ public class Statistic {
         other.count = 1;
     }
 
-    private long bytes = 0;
+    private volatile long bytes = 0;
     private WriteMode mode = WriteMode.OTHER;
 
     private EventWriteTree context = EventWriteTree.createRoot();

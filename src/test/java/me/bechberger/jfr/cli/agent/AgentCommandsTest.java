@@ -115,15 +115,15 @@ public class AgentCommandsTest {
 
     private static <T> T captureStdout(ThrowingSupplier<T> supplier, StringBuilder output)
             throws Exception {
-        var previous = System.out;
+        var previous = System.err;
         var buffer = new ByteArrayOutputStream();
         try {
-            System.setOut(new PrintStream(buffer, true));
+            System.setErr(new PrintStream(buffer, true));
             T result = supplier.get();
             output.append(buffer);
             return result;
         } finally {
-            System.setOut(previous);
+            System.setErr(previous);
         }
     }
 

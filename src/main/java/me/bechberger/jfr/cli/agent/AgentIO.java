@@ -2,6 +2,7 @@ package me.bechberger.jfr.cli.agent;
 
 import static java.nio.file.StandardOpenOption.APPEND;
 import static java.nio.file.StandardOpenOption.CREATE;
+import static java.nio.file.StandardOpenOption.TRUNCATE_EXISTING;
 
 import java.io.IOException;
 import java.io.OutputStream;
@@ -130,7 +131,8 @@ public class AgentIO {
     /** Write the exit code of the agent command */
     public void writeExitCode(int exitCode) {
         try {
-            Files.writeString(getExitCodeFile(), String.valueOf(exitCode), CREATE);
+            Files.writeString(
+                    getExitCodeFile(), String.valueOf(exitCode), CREATE, TRUNCATE_EXISTING);
         } catch (IOException e) {
             // best effort
         }
@@ -163,7 +165,7 @@ public class AgentIO {
     /** Write the output of the agent */
     public void writeOutput(String output) {
         if (!logToFile) {
-            System.out.print(output);
+            System.err.print(output);
             return;
         }
         try {
@@ -228,7 +230,8 @@ public class AgentIO {
                     Files.writeString(
                             getReadBytesFile(),
                             String.valueOf(output.getBytes().length + bytesRead),
-                            CREATE);
+                            CREATE,
+                            TRUNCATE_EXISTING);
                 }
                 if (Files.exists(getIsClosedFile())) {
                     Files.deleteIfExists(getIsClosedFile());

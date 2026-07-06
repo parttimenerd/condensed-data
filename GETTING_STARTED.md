@@ -140,7 +140,7 @@ cjfr condense --condenser-config=reduced-default recording.jfr
 Or with the agent:
 
 ```shell
-java -javaagent:cjfr.jar='start,recording.cjfr,-d=reduced-default' MyApp
+java -javaagent:cjfr.jar='start,recording.cjfr,--condenser-config=reduced-default' MyApp
 ```
 
 ---

@@ -74,7 +74,9 @@ public abstract class RecordingThread implements Runnable {
             if (!s.contains("=")) {
                 AgentIO.getAgentInstance()
                         .writeSevereError(
-                                "Ignoring malformed --misc-jfr-config entry (missing '='): '" + s + "'");
+                                "Ignoring malformed --misc-jfr-config entry (missing '='): '"
+                                        + s
+                                        + "'");
                 continue;
             }
             var parts = s.split("=", 2);
@@ -187,6 +189,7 @@ public abstract class RecordingThread implements Runnable {
         status.add(Map.entry("new-names", Boolean.toString(useNewNames())));
         status.add(Map.entry("duration", formatDuration(dynSettings.duration)));
         status.add(Map.entry("running", Boolean.toString(!stopped)));
+        status.add(Map.entry("event-errors", Integer.toString(eventErrorCount)));
         status.addAll(getMiscStatus());
         return status;
     }

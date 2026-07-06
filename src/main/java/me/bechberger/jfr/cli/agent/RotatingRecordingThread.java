@@ -165,6 +165,16 @@ public class RotatingRecordingThread extends RecordingThread {
             state.jfrWriter.processEvent(event);
         } catch (IOException e) {
             agentIO.writeSevereError("Error while processing event: " + e.getMessage() + " " + e);
+            if (!triggeredStop) {
+                triggeredStop = true;
+                new Thread(
+                                () -> {
+                                    synchronized (Agent.getSyncObject()) {
+                                        stop();
+                                    }
+                                })
+                        .start();
+            }
         }
     }
 
@@ -211,7 +221,11 @@ public class RotatingRecordingThread extends RecordingThread {
                     "$date",
                     i -> {
                         var date = Instant.now();
-                        return date.toString().replace(":", "-").replace("T", "_").replace("Z", "").replaceAll("\\.\\d+$", "");
+                        return date.toString()
+                                .replace(":", "-")
+                                .replace("T", "_")
+                                .replace("Z", "")
+                                .replaceAll("\\.\\d+$", "");
                     },
                     "$index",
                     i -> i + "");

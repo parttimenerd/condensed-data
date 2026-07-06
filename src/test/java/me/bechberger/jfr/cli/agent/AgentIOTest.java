@@ -184,16 +184,16 @@ public class AgentIOTest {
     }
 
     @Test
-    public void testWriteOutputUsesStdoutWhenLogToFileDisabled() throws Exception {
+    public void testWriteOutputUsesStderrWhenLogToFileDisabled() throws Exception {
         useTempDir();
         var io = newAgentIO(false);
-        var previous = System.out;
+        var previous = System.err;
         var output = new ByteArrayOutputStream();
         try {
-            System.setOut(new PrintStream(output, true));
+            System.setErr(new PrintStream(output, true));
             io.writeOutput("hello");
         } finally {
-            System.setOut(previous);
+            System.setErr(previous);
         }
         assertEquals("hello", output.toString());
     }
@@ -222,13 +222,13 @@ public class AgentIOTest {
         var outputFile = AgentIO.getAgentInstance().getOutputFile();
         assertTrue(Files.exists(outputFile));
 
-        var previous = System.out;
+        var previous = System.err;
         var output = new ByteArrayOutputStream();
         try {
-            System.setOut(new PrintStream(output, true));
+            System.setErr(new PrintStream(output, true));
             AgentIO.getAgentInstance().writeOutput("b");
         } finally {
-            System.setOut(previous);
+            System.setErr(previous);
         }
         assertEquals("b", output.toString());
     }

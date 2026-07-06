@@ -6,7 +6,6 @@ import me.bechberger.femtocli.annotations.Parameters;
 import me.bechberger.jfr.cli.CLIUtils.ByteSizeConverter;
 import me.bechberger.jfr.cli.agent.Agent;
 import me.bechberger.jfr.cli.agent.AgentIO;
-
 import me.bechberger.jfr.cli.agent.DynamicallyChangeableSettings;
 
 @Command(
