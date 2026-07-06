@@ -624,6 +624,100 @@ public class AgentTest {
         assertThat(agentOutput).as("agent should report the startup error").contains("Error: ");
     }
 
+    @Test
+    @Timeout(30)
+    public void testCorruptConfigDoesNotCrashJVM() throws IOException, InterruptedException {
+        Path tmp = Files.createTempDirectory("agent-test-corrupt-config-");
+        tmp.toFile().deleteOnExit();
+        Path recordingFile = tmp.resolve("recording.cjfr");
+
+        var javaBin = JavaUtil.getJavaBinary().toString();
+        var processArgs = new ArrayList<String>();
+        processArgs.add(javaBin);
+        processArgs.add(
+                "-javaagent:target/condensed-data.jar=start,"
+                        + recordingFile
+                        + ",--this-option-does-not-exist,bogus-value");
+        processArgs.add("-version");
+
+        var process = new ProcessBuilder(processArgs).redirectErrorStream(true).start();
+        var outputBytes = new ByteArrayOutputStream();
+        process.getInputStream().transferTo(outputBytes);
+        var agentOutput = outputBytes.toString();
+        process.waitFor();
+
+        assertEquals(
+                0,
+                process.exitValue(),
+                "JVM must exit normally even if the agent config is corrupt.\nAgent output:\n"
+                        + agentOutput);
+        assertThat(agentOutput)
+                .as("agent should complain about the unknown option, not silently ignore it")
+                .containsAnyOf("Unknown option", "Error:", "Severe Error");
+    }
+
+    @Test
+    @Timeout(30)
+    public void testReadOnlyDirectoryDoesNotCrashJVM() throws IOException, InterruptedException {
+        Path tmp = Files.createTempDirectory("agent-test-readonly-");
+        tmp.toFile().deleteOnExit();
+        Path readOnlyDir = tmp.resolve("ro");
+        Files.createDirectories(readOnlyDir);
+        readOnlyDir.toFile().setWritable(false, false);
+        try {
+            Path recordingFile = readOnlyDir.resolve("recording.cjfr");
+
+            Assumptions.assumeTrue(
+                    !readOnlyDir.toFile().canWrite(), "setWritable(false) not honored; skipping");
+
+            var javaBin = JavaUtil.getJavaBinary().toString();
+            var processArgs = new ArrayList<String>();
+            processArgs.add(javaBin);
+            processArgs.add("-javaagent:target/condensed-data.jar=start," + recordingFile);
+            processArgs.add("-version");
+
+            var process = new ProcessBuilder(processArgs).redirectErrorStream(true).start();
+            var outputBytes = new ByteArrayOutputStream();
+            process.getInputStream().transferTo(outputBytes);
+            var agentOutput = outputBytes.toString();
+            process.waitFor();
+
+            assertEquals(
+                    0,
+                    process.exitValue(),
+                    "JVM must exit normally even if the agent cannot write to the recording"
+                            + " path.\nAgent output:\n"
+                            + agentOutput);
+            assertThat(recordingFile)
+                    .as("no recording should be produced when the dir is read-only")
+                    .doesNotExist();
+        } finally {
+            readOnlyDir.toFile().setWritable(true, true);
+        }
+    }
+
+    @Test
+    @Timeout(30)
+    public void testDoubleAttachIsRejected() throws IOException, InterruptedException {
+        assertTrue(jvm.isAlive(), "test JVM should be alive before attach");
+
+        var firstOutput = runAgent(AgentRunMode.JATTACH, "start", "test-dir/recording.cjfr");
+        System.out.println("First attach output: " + firstOutput);
+        assertThat(firstOutput)
+                .as("first attach should succeed")
+                .startsWith("Condensed recording to ");
+        assertTrue(jvm.isAlive(), "JVM must survive first attach");
+
+        var secondOutput = runAgent(AgentRunMode.JATTACH, "start", "test-dir/recording2.cjfr");
+        System.out.println("Second attach output: " + secondOutput);
+        assertThat(secondOutput)
+                .as("second attach must be rejected, not silently overwrite")
+                .containsAnyOf("Recording already running", "already running", "Severe Error");
+        assertTrue(jvm.isAlive(), "JVM must survive rejected second attach");
+
+        runAgent(AgentRunMode.JATTACH, "stop");
+    }
+
     String runAgent(AgentRunMode runMode, String... args) throws IOException, InterruptedException {
         return switch (runMode) {
             case CLI_JAR -> runAgentViaCLI(args);
