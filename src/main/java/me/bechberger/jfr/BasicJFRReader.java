@@ -106,6 +106,13 @@ public class BasicJFRReader implements JFRReader {
             } else {
                 throw e;
             }
+        } catch (RIOException e) {
+            if (ignoreCloseErrors) {
+                isTruncated = true;
+                closed = true;
+            } else {
+                throw e;
+            }
         }
     }
 
@@ -159,6 +166,14 @@ public class BasicJFRReader implements JFRReader {
         } catch (RIOException.UnexpectedEOFException e) {
             isTruncated = true;
             if (ignoreCloseErrors) {
+                closed = true;
+                return null;
+            } else {
+                throw e;
+            }
+        } catch (RIOException e) {
+            if (ignoreCloseErrors) {
+                isTruncated = true;
                 closed = true;
                 return null;
             } else {

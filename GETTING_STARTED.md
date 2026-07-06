@@ -118,6 +118,24 @@ Or attach at runtime:
 cjfr agent myapp start /tmp/rec_\$index.cjfr --rotating --max-files=5 --max-size=100m
 ```
 
+**`--duration` vs `--max-duration`:** `--duration=30m` stops the *whole* recording after 30 minutes.
+`--max-duration=5m` caps each *individual rotated file* at 5 minutes (rotation trigger).
+Both can be combined: record for 1 hour total, rotating every 10 minutes.
+
+### Reading agent output
+
+When the CLI attaches (`cjfr agent PID ...`), the agent writes its output to a temporary file
+(`$TMPDIR/jfr-condenser-agent-<pid>-out.log`) which the CLI reads back automatically.
+
+If something goes wrong silently, you can read unread output manually:
+
+```shell
+cjfr agent myapp read
+```
+
+Exit codes are also written to `$TMPDIR/jfr-condenser-agent-<pid>-exit.code` and read
+back by the CLI so non-zero exits are surfaced to the caller.
+
 ---
 
 ## Choosing a Configuration

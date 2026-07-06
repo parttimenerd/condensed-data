@@ -226,19 +226,37 @@ public abstract class RecordingThread implements Runnable {
 
     /** Must be at least 1kB or 0 (no max size) */
     public void setMaxSize(long maxSize) {
+        long old = dynSettings.maxSize;
         dynSettings.maxSize = maxSize;
-        dynSettings.validate(rotating);
+        try {
+            dynSettings.validate(rotating);
+        } catch (DynamicallyChangeableSettings.ValidationException e) {
+            dynSettings.maxSize = old;
+            throw e;
+        }
     }
 
     /** Must be >= 1ms, 0 means no limit */
     public void setMaxDuration(Duration maxDuration) {
+        var old = dynSettings.maxDuration;
         dynSettings.maxDuration = maxDuration;
-        dynSettings.validate(rotating);
+        try {
+            dynSettings.validate(rotating);
+        } catch (DynamicallyChangeableSettings.ValidationException e) {
+            dynSettings.maxDuration = old;
+            throw e;
+        }
     }
 
     public void setDuration(Duration duration) {
+        var old = dynSettings.duration;
         dynSettings.duration = duration;
-        dynSettings.validate(rotating);
+        try {
+            dynSettings.validate(rotating);
+        } catch (DynamicallyChangeableSettings.ValidationException e) {
+            dynSettings.duration = old;
+            throw e;
+        }
     }
 
     public void setMaxFiles(int maxFiles) {
@@ -248,8 +266,14 @@ public abstract class RecordingThread implements Runnable {
         if (rotating && maxFiles < 1) {
             throw new IllegalArgumentException("Max files must be at least 1 when rotating files");
         }
+        int old = dynSettings.maxFiles;
         dynSettings.maxFiles = maxFiles;
-        dynSettings.validate(rotating);
+        try {
+            dynSettings.validate(rotating);
+        } catch (DynamicallyChangeableSettings.ValidationException e) {
+            dynSettings.maxFiles = old;
+            throw e;
+        }
     }
 
     public boolean useNewNames() {

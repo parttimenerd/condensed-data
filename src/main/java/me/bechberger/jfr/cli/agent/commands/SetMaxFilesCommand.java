@@ -5,6 +5,7 @@ import me.bechberger.femtocli.annotations.Command;
 import me.bechberger.femtocli.annotations.Parameters;
 import me.bechberger.jfr.cli.agent.Agent;
 import me.bechberger.jfr.cli.agent.AgentIO;
+import me.bechberger.jfr.cli.agent.DynamicallyChangeableSettings;
 
 @Command(
         name = "set-max-files",
@@ -23,7 +24,7 @@ public class SetMaxFilesCommand implements Callable<Integer> {
         }
         try {
             Agent.getCurrentRecordingThread().setMaxFiles(maxFiles);
-        } catch (IllegalArgumentException e) {
+        } catch (IllegalArgumentException | DynamicallyChangeableSettings.ValidationException e) {
             AgentIO.getAgentInstance().writeSevereError(e.getMessage());
             return 1;
         }

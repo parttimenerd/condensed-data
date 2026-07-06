@@ -336,7 +336,6 @@ public class AgentCommand implements Callable<Integer> {
             jvm.detach();
             String out;
             while ((out = agentIO.readOutput()) != null) {
-                Thread.sleep(50);
                 System.out.println(
                         out.replace(
                                 "Usage: -javaagent:condensed-agent.jar [COMMAND]",
@@ -350,8 +349,6 @@ public class AgentCommand implements Callable<Integer> {
             return 1;
         } catch (AttachNotSupportedException e) {
             System.err.println("Can't attach to the JVM process");
-            return 1;
-        } catch (InterruptedException e) {
             return 1;
         }
         return agentIO.readExitCode();

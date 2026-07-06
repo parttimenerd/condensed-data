@@ -115,16 +115,6 @@ public class StartCommand implements Callable<Integer> {
                 return 1;
             }
         }
-        Runtime.getRuntime()
-                .addShutdownHook(
-                        new Thread(
-                                () -> {
-                                    synchronized (Agent.getSyncObject()) {
-                                        if (Agent.getCurrentRecordingThread() != null) {
-                                            Agent.getCurrentRecordingThread().stop();
-                                        }
-                                    }
-                                }));
         Thread t = new Thread(Agent.getCurrentRecordingThread());
         t.setDaemon(true);
         t.start();

@@ -49,6 +49,16 @@ public class Agent implements Runnable {
     public static void premain(String agentArgs) {
         Agent.agentArgs = agentArgs;
         var preprocResult = preprocessArgs(agentArgs);
+        Runtime.getRuntime()
+                .addShutdownHook(
+                        new Thread(
+                                () -> {
+                                    synchronized (syncObject) {
+                                        if (currentRecordingThread != null) {
+                                            currentRecordingThread.stop();
+                                        }
+                                    }
+                                }));
         AgentIO.withLogToFile(
                 preprocResult.logToFile,
                 () -> {
@@ -61,6 +71,7 @@ public class Agent implements Runnable {
                             AgentIO.getAgentInstance()
                                     .writeSevereError("Could not start agent: " + e.getMessage());
                             e.printStackTrace(AgentIO.getAgentInstance().createPrintStream());
+                            AgentIO.getAgentInstance().writeExitCode(1);
                         } catch (Throwable ignored) {
                             // last resort — don't let agent errors crash the host JVM
                         }

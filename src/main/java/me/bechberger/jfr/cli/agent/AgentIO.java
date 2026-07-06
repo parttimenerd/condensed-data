@@ -45,7 +45,7 @@ public class AgentIO {
     private final String agentIdentifier;
     private final long pid;
     private boolean logToFile;
-    private final LogLevel logLevel;
+    private LogLevel logLevel;
 
     AgentIO(String agentIdentifier, long pid, boolean logToFile, LogLevel logLevel) {
         this.agentIdentifier = agentIdentifier;
@@ -91,6 +91,9 @@ public class AgentIO {
 
     public static void setLogLevel(LogLevel level) {
         defaultLogLevel = level;
+        if (instance != null) {
+            instance.logLevel = level;
+        }
     }
 
     /** Get instance, assuming that this is called in the agent */
