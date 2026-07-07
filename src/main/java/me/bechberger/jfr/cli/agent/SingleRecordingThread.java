@@ -49,16 +49,28 @@ public class SingleRecordingThread extends RecordingThread {
                 false);
         this.path = path;
         Files.createDirectories(Path.of(path).toAbsolutePath().getParent());
-        var out =
-                new CondensedOutputStream(
-                        Files.newOutputStream(Path.of(path), WRITE, CREATE, TRUNCATE_EXISTING),
-                        new StartMessage(
-                                Constants.FORMAT_VERSION,
-                                "condensed jfr agent",
-                                Constants.VERSION,
-                                Agent.getAgentArgs(),
-                                Compression.DEFAULT));
-        this.jfrWriter = new BasicJFRWriter(out);
+        var rawOut = Files.newOutputStream(Path.of(path), WRITE, CREATE, TRUNCATE_EXISTING);
+        BasicJFRWriter writer;
+        try {
+            var condensedOut =
+                    new CondensedOutputStream(
+                            rawOut,
+                            new StartMessage(
+                                    Constants.FORMAT_VERSION,
+                                    "condensed jfr agent",
+                                    Constants.VERSION,
+                                    Agent.getAgentArgs(),
+                                    Compression.DEFAULT));
+            writer = new BasicJFRWriter(condensedOut);
+        } catch (Throwable t) {
+            try {
+                rawOut.close();
+            } catch (IOException ignored) {
+            }
+            if (t instanceof IOException ioe) throw ioe;
+            throw new IOException("Failed to create writer", t);
+        }
+        this.jfrWriter = writer;
         agentIO.writeOutput("Condensed recording to " + path + " started\n");
         registerShutdownHook();
     }

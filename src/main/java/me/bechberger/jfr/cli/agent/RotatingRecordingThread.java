@@ -19,6 +19,7 @@ import java.util.Map.Entry;
 import java.util.Optional;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.locks.ReentrantLock;
 import java.util.function.Function;
 import jdk.jfr.consumer.RecordedEvent;
 import me.bechberger.condensed.Compression;
@@ -40,8 +41,11 @@ public class RotatingRecordingThread extends RecordingThread {
     private final List<Instant> currentlyStoredStarts;
     private final Object filesLock = new Object();
 
-    /** Serializes all open/close/publish steps of a single rotation. */
-    private final Object rotationLock = new Object();
+    /**
+     * Serializes event writes, rotation open/close steps, and close(). Using ReentrantLock so
+     * onEvent() can hold the lock while calling initNewFile() (which re-acquires it).
+     */
+    private final ReentrantLock rotationLock = new ReentrantLock();
 
     private final AtomicInteger overallWrittenFileCount = new AtomicInteger(0);
     // triggered stop already
@@ -76,7 +80,10 @@ public class RotatingRecordingThread extends RecordingThread {
         this.currentlyStoredStarts = new ArrayList<>();
         initNewFile();
         agentIO.writeOutput("Condensed recording to " + pathTemplate + " started");
-        this.rotationWatchdog = new Thread(this::runRotationWatchdog, "cjfr-rotation-watchdog");
+        this.rotationWatchdog =
+                new Thread(
+                        this::runRotationWatchdog,
+                        "cjfr-rotation-watchdog[" + pathTemplate + "]");
         this.rotationWatchdog.setDaemon(true);
         this.rotationWatchdog.start();
         registerShutdownHook();
@@ -193,15 +200,18 @@ public class RotatingRecordingThread extends RecordingThread {
     }
 
     /**
-     * Initialize a new file and start a new jfrWriter. Called on the JFR event thread or the
-     * rotation watchdog. Serialized by {@code rotationLock} to prevent double-rotation. Opens the
-     * new file BEFORE closing the old writer so a transient failure leaves the old writer intact.
+     * Initialize a new file and start a new jfrWriter. Called on the JFR event thread (possibly
+     * while rotationLock is already held) or the rotation watchdog. Serialized by {@code
+     * rotationLock} (ReentrantLock, so re-entrant from onEvent is safe) to prevent double-rotation
+     * and to ensure processEvent is never called on a closed writer. Opens the new file BEFORE
+     * closing the old writer so a transient failure leaves the old writer intact.
      *
      * @param force if {@code false}, re-checks {@link #shouldEndFile()} inside the lock and skips
      *     the rotation if another thread already rotated first.
      */
     private void initNewFile(boolean force) throws IOException {
-        synchronized (rotationLock) {
+        rotationLock.lock();
+        try {
             if (triggeredStop.get()) {
                 return; // shutting down — do not open new files
             }
@@ -277,6 +287,8 @@ public class RotatingRecordingThread extends RecordingThread {
                                     + t.getMessage());
                 }
             }
+        } finally {
+            rotationLock.unlock();
         }
     }
 
@@ -314,40 +326,56 @@ public class RotatingRecordingThread extends RecordingThread {
             Thread.currentThread().interrupt();
         }
         agentIO.writeOutput("Condensed recording to " + pathTemplate + " finished");
-        synchronized (rotationLock) {
+        rotationLock.lock();
+        try {
             var s = this.state;
             this.state = null;
             if (s != null) {
                 closeState(s);
             }
+        } finally {
+            rotationLock.unlock();
         }
     }
 
     @Override
     void onEvent(RecordedEvent event) {
+        if (triggeredStop.get()) {
+            return;
+        }
+        if (shouldEndRecording()) {
+            triggerStop();
+            return;
+        }
+        rotationLock.lock();
         try {
             if (triggeredStop.get()) {
                 return;
             }
-            if (shouldEndRecording()) {
-                triggerStop();
-                return;
-            }
-            var state = this.state;
-            if (state == null) {
-                return;
-            }
+            // Rotate if needed — re-entrant acquisition inside initNewFile is safe.
             if (shouldEndFile()) {
-                initNewFile();
+                try {
+                    initNewFile();
+                } catch (IOException e) {
+                    agentIO.writeSevereError(
+                            "Error while rotating file: " + e.getMessage() + " " + e);
+                    triggerStop();
+                    return;
+                }
             }
-            state = this.state;
-            if (state == null) {
+            var s = this.state;
+            if (s == null) {
                 return;
             }
-            state.jfrWriter.processEvent(event);
-        } catch (IOException e) {
-            agentIO.writeSevereError("Error while processing event: " + e.getMessage() + " " + e);
-            triggerStop();
+            try {
+                s.jfrWriter.processEvent(event);
+            } catch (Exception e) {
+                agentIO.writeSevereError(
+                        "Error while processing event: " + e.getMessage() + " " + e);
+                triggerStop();
+            }
+        } finally {
+            rotationLock.unlock();
         }
     }
 

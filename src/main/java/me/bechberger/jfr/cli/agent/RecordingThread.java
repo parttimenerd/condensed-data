@@ -13,9 +13,10 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Map.Entry;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
-import java.util.concurrent.locks.LockSupport;
 import jdk.jfr.consumer.RecordedEvent;
 import jdk.jfr.consumer.RecordingStream;
 import me.bechberger.jfr.Configuration;
@@ -34,7 +35,9 @@ public abstract class RecordingThread implements Runnable {
     private final DynamicallyChangeableSettings dynSettings;
     private final boolean rotating;
 
-    private final AtomicBoolean shouldStop = new AtomicBoolean(false);
+    /** Counts down to 0 when run() exits; used by stop() to wait for the event thread. */
+    private final CountDownLatch runExited = new CountDownLatch(1);
+
     private final AtomicInteger eventErrorCount = new AtomicInteger(0);
     final Instant start = Instant.now();
 
@@ -59,13 +62,15 @@ public abstract class RecordingThread implements Runnable {
                         : jdk.jfr.Configuration.getConfiguration(jfrConfig);
         agentIO.writeInfo("Using config " + parsedJfrConfig.getName());
         this.miscJfrConfig = miscJfrConfig;
+        var parsedMiscJfrConfig = parseJfrSettings(miscJfrConfig);
+        parsedJfrConfig.getSettings().putAll(parsedMiscJfrConfig);
+        RecordingStream rs;
         try {
-            var parsedMiscJfrConfig = parseJfrSettings(miscJfrConfig);
-            parsedJfrConfig.getSettings().putAll(parsedMiscJfrConfig);
-            this.recordingStream = new RecordingStream(parsedJfrConfig);
+            rs = new RecordingStream(parsedJfrConfig);
         } catch (Exception ex) {
             throw ex;
         }
+        this.recordingStream = rs;
         this.removeFromParent = removeFromParent;
     }
 
@@ -114,18 +119,15 @@ public abstract class RecordingThread implements Runnable {
             agentIO.writeInfo("start");
             recordingStream.start();
             agentIO.writeInfo("finished");
-            if (!shouldStop.get()) {
-                this.stop();
-            }
         } catch (Throwable e) {
             if (shuttingDown) {
-                shouldStop.set(false); // unblock stop() which is waiting for this flag
                 return; // JVM is shutting down, silently stop
             }
             agentIO.writeSevereError("Error: " + e.getMessage());
+        } finally {
+            runExited.countDown();
         }
         agentIO.writeInfo("finished run");
-        shouldStop.set(false);
     }
 
     /** Wraps {@link #onEvent} to prevent exceptions from propagating into JFR infrastructure */
@@ -174,21 +176,21 @@ public abstract class RecordingThread implements Runnable {
         } catch (IllegalStateException ignored) {
             // JVM is already shutting down — hook cannot be removed
         }
-        shouldStop.set(true);
         try {
             recordingStream.close();
         } catch (Throwable e) {
             agentIO.writeSevereError("Error closing recording stream: " + e.getMessage());
         }
-        // wait till run() clears shouldStop — bounded to avoid infinite hang on JFR anomalies
-        long deadline = System.nanoTime() + 5_000_000_000L;
-        while (shouldStop.get() && System.nanoTime() < deadline) {
-            LockSupport.parkNanos(1_000_000L); // 1ms sleep to avoid burning CPU
-        }
-        if (shouldStop.get()) {
-            agentIO.writeSevereError(
-                    "Recording thread did not stop within 5s; proceeding with best-effort"
-                            + " cleanup");
+        // Wait for the event-dispatch thread to exit before closing the writer,
+        // so we don't close a writer that is mid-write.
+        try {
+            if (!runExited.await(5, TimeUnit.SECONDS)) {
+                agentIO.writeSevereError(
+                        "Recording thread did not stop within 5s; proceeding with best-effort"
+                                + " cleanup");
+            }
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
         }
         try {
             this.close();
