@@ -26,7 +26,7 @@ GC tuning and capacity planning.
 Full fidelity. Only structurally redundant data is removed (no-op events like
 GC region changes where nothing changed). Everything else is preserved verbatim.
 
-**Sizes (with LZ4, the default compression):** ~8–42% of the original JFR. Lower for gc_details-heavy recordings (~17% on G1 renaissance); higher for sparse gc-only profiles (~41%).
+**Sizes (with LZ4FRAMED, the default compression):** ~8–42% of the original JFR. Lower for gc_details-heavy recordings (~17% on G1 renaissance); higher for sparse gc-only profiles (~41%).
 
 **Use when:**
 - You need exact nanosecond timestamps
@@ -49,7 +49,7 @@ Conservative lossy compression. Human-readable precision is fully preserved.
 Loses sub-millisecond timestamp precision, BCI/line numbers in stacks, and very
 short or zero-valued GC data.
 
-**Sizes (with LZ4, the default compression):** ~4–17% of the original JFR. Lower for gc_details-heavy recordings (~7% on G1 renaissance); higher for sparse gc-only profiles (~17%).
+**Sizes (with LZ4FRAMED, the default compression):** ~4–17% of the original JFR. Lower for gc_details-heavy recordings (~7% on G1 renaissance); higher for sparse gc-only profiles (~17%).
 
 **Use when:**
 - Production long-term storage and capacity planning
@@ -79,7 +79,7 @@ short or zero-valued GC data.
 Aggressive lossy compression. Suitable for bulk archival and fleet-wide
 recordings where storage cost outweighs per-event granularity.
 
-**Sizes (with LZ4, the default compression):** ~1–11% of the original JFR. Lower for gc_details-heavy recordings (~4% on G1, ~1.4% on ZGC renaissance); higher for sparse gc-only profiles (~11%).
+**Sizes (with LZ4FRAMED, the default compression):** ~1–11% of the original JFR. Lower for gc_details-heavy recordings (~4% on G1, ~1.4% on ZGC renaissance); higher for sparse gc-only profiles (~11%).
 
 **Use when:**
 - Fleet-wide continuous recording where storage is expensive
@@ -104,7 +104,7 @@ recordings where storage cost outweighs per-event granularity.
 
 | Feature | `default` | `reasonable-default` | `reduced-default` |
 |---|---|---|---|
-| Size (% of JFR, with LZ4) | 8–42% | 4–17% | 1–11% |
+| Size (% of JFR, with LZ4FRAMED) | 8–42% | 4–17% | 1–11% |
 | Nanosecond timestamps | ✓ | ✗ (ms) | ✗ (ms) |
 | Source line / BCI in stacks | ✓ | ✗ | ✗ |
 | Stack depth | unlimited | 32 | 16 |

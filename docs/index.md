@@ -25,12 +25,12 @@ without losing anything GC-relevant:
 | Approach | Typical size (gc_details-heavy) | Notes |
 |---|---|---|
 | Raw JFR | 100% | Full fidelity |
-| `cjfr default` + LZ4 | 8–42% | No loss |
-| `cjfr reasonable-default` + LZ4 | 4–17% | Millisecond timestamps, 32-frame stacks |
-| `cjfr reduced-default` + LZ4 | 1–11% | Aggregate metrics, combined allocation events |
+| `cjfr default` + LZ4FRAMED | 8–42% | No loss |
+| `cjfr reasonable-default` + LZ4FRAMED | 4–17% | Millisecond timestamps, 32-frame stacks |
+| `cjfr reduced-default` + LZ4FRAMED | 1–11% | Aggregate metrics, combined allocation events |
 
 The agent writes directly to `.cjfr` — no intermediate JFR file, no extra disk I/O.
-Compression is LZ4 (fast) or GZIP (better ratio, archival). No other algorithms.
+Compression is `LZ4FRAMED` (default, fast) or `GZIP` (better ratio, archival).
 
 ## How it works
 

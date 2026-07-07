@@ -5,7 +5,7 @@ title: "Cookbook: Archival Pipeline"
 # Cookbook: Archival Pipeline
 
 **Situation:** You have a collection of old `.jfr` files (or existing `.cjfr` files
-with LZ4 compression) and want to archive them long-term at maximum compression.
+with LZ4FRAMED compression) and want to archive them long-term at maximum compression.
 
 ---
 
@@ -24,7 +24,7 @@ cjfr condense --condenser-config=reduced-default /data/jfr/2024-05-24/
 
 ### Re-compress with GZIP for long-term storage
 
-GZIP gives a better byte-level ratio than LZ4 at the cost of slower reads.
+GZIP gives a better byte-level ratio than LZ4FRAMED at the cost of slower reads.
 For files that will be read rarely, the trade-off is worth it.
 
 ```shell
@@ -32,7 +32,7 @@ For files that will be read rarely, the trade-off is worth it.
 cjfr condense --condenser-config=reduced-default --compression=GZIP \
   recording.jfr recording.cjfr
 
-# Re-compress an existing LZ4 .cjfr to GZIP
+# Re-compress an existing LZ4FRAMED .cjfr to GZIP
 cjfr inflate recording-lz4.cjfr /tmp/recording.jfr
 cjfr condense --condenser-config=reduced-default --compression=GZIP \
   /tmp/recording.jfr recording-gzip.cjfr

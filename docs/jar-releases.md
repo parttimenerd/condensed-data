@@ -20,7 +20,7 @@ Do you know your target OS/arch?
 └── No  → use the universal JAR
 
 Are you embedding the agent in a container where JAR size matters?
-├── Yes → use a *-minimal JAR (LZ4-only, ~450 KB with compression)
+├── Yes → use a *-minimal JAR (LZ4FRAMED + GZIP, ~450 KB with compression)
 └── No  → use a standard platform or universal JAR
 ```
 
@@ -49,7 +49,7 @@ All variants are published as CI artifacts and in GitHub Releases.
 | Java agent (`-javaagent`) | ✓ | ✓ | ✓ | ✓ |
 | `cjfr inflate` | ✓ | ✓ | ✗ | ✗ |
 | GZIP compression | ✓ | ✓ | ✓ | ✓ |
-| LZ4 compression | ✓ | ✓ | ✓ | ✓ |
+| LZ4FRAMED compression | ✓ | ✓ | ✓ | ✓ |
 
 ## Recommended Choices by Persona
 
