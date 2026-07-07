@@ -169,11 +169,13 @@ back by the CLI so non-zero exits are surfaced to the caller.
 The `--condenser-config` option controls how aggressively events are reduced.
 All configurations produce valid `.cjfr` files that can be inflated back to JFR.
 
-| Config | Size | Use case |
+| Config | Size (with LZ4, gc_details workload) | Use case |
 |---|---|---|
-| `default` | ~8–13% of original | Full-fidelity GC data, safe default |
-| `reasonable-default` | ~4–7% of original | Good compression, slight data reduction |
-| `reduced-default` | ~1–2% of original | Maximum compression, more lossy |
+| `default` | ~8–42% of original | Full-fidelity GC data, safe default |
+| `reasonable-default` | ~4–17% of original | Good compression, slight data reduction |
+| `reduced-default` | ~1–11% of original | Maximum compression, more lossy |
+
+*Size varies widely: gc_details-heavy recordings (many events) compress best; sparse gc-only profiles compress least. The ranges above are from actual renaissance benchmarks.*
 
 > **Default config differs by surface:** `cjfr condense` defaults to `default`. The agent `start` command defaults to `reasonable-default`. Specify `--condenser-config` explicitly if you need consistent behaviour across both.
 

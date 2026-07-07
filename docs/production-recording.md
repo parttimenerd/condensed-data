@@ -184,18 +184,18 @@ cjfr agent myapp stop
 
 ## Storage Sizing
 
-These figures are from benchmarks on renaissance workloads. Real-world recordings
-vary — CPU-bound apps (less GC) will be at the low end; GC-heavy apps at the high end.
+These figures are measured on renaissance gc_details benchmarks. Actual sizes depend
+heavily on workload type — sparse gc-only profiles produce much smaller files.
 
-| Condenser config | Approx. size per hour (busy GC-details workload) |
-|---|---|
-| `default` | 40–80 MB/hour |
-| `reasonable-default` (agent default) | 20–40 MB/hour |
-| `reduced-default` | 4–10 MB/hour |
+| Condenser config | GB/hour (gc_details-heavy) | MB/hour (gc-only sparse) |
+|---|---|---|
+| `default` | ~0.3 GB/hour | ~25 MB/hour |
+| `reasonable-default` (agent default) | ~0.13 GB/hour | ~10 MB/hour |
+| `reduced-default` | ~70 MB/hour | ~6 MB/hour |
 
-*These are based on a 1800s renaissance benchmark producing ~241 MB of JFR. Actual
-sizes depend on event density (GC frequency, thread count, allocation rate). Low-GC
-workloads will produce significantly smaller files.*
+*Based on a 7m52s renaissance benchmark with ~242 MB of gc_details JFR.
+For gc-only sparse profiles (renaissance-all_gc_G1.jfr, 29 MB), multiply by ~0.1.
+Actual results depend on GC frequency, thread count, and allocation rate.*
 
 ---
 

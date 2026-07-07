@@ -17,7 +17,7 @@ during condensing cannot be recovered on inflation.
 Full fidelity. Only structurally redundant data is removed (no-op events like
 GC region changes where nothing changed). Everything else is preserved verbatim.
 
-**Sizes:** ~8–30% of the original JFR (before inner compression; lower for `gc_details`-heavy recordings; higher for sparse `gc`-only profiles).
+**Sizes (with LZ4, the default compression):** ~8–42% of the original JFR. Lower for gc_details-heavy recordings (~17% on G1 renaissance); higher for sparse gc-only profiles (~41%).
 
 **Use when:**
 - You need exact nanosecond timestamps
@@ -40,7 +40,7 @@ Conservative lossy compression. Human-readable precision is fully preserved.
 Loses sub-millisecond timestamp precision, BCI/line numbers in stacks, and very
 short or zero-valued GC data.
 
-**Sizes:** ~4–19% of the original JFR (before inner compression; lower for `gc_details`-heavy recordings; higher for sparse `gc`-only profiles).
+**Sizes (with LZ4, the default compression):** ~4–17% of the original JFR. Lower for gc_details-heavy recordings (~7% on G1 renaissance); higher for sparse gc-only profiles (~17%).
 
 **Use when:**
 - Production long-term storage and capacity planning
@@ -70,7 +70,7 @@ short or zero-valued GC data.
 Aggressive lossy compression. Suitable for bulk archival and fleet-wide
 recordings where storage cost outweighs per-event granularity.
 
-**Sizes:** ~1–16% of the original JFR (before inner compression; as low as 0.5% for ZGC `gc_details` workloads; higher for sparse `gc`-only profiles).
+**Sizes (with LZ4, the default compression):** ~1–11% of the original JFR. Lower for gc_details-heavy recordings (~4% on G1, ~1.4% on ZGC renaissance); higher for sparse gc-only profiles (~11%).
 
 **Use when:**
 - Fleet-wide continuous recording where storage is expensive
@@ -95,7 +95,7 @@ recordings where storage cost outweighs per-event granularity.
 
 | Feature | `default` | `reasonable-default` | `reduced-default` |
 |---|---|---|---|
-| Size (% of JFR) | 8–30% | 4–19% | 0.5–16% |
+| Size (% of JFR, with LZ4) | 8–42% | 4–17% | 1–11% |
 | Nanosecond timestamps | ✓ | ✗ (ms) | ✗ (ms) |
 | Source line / BCI in stacks | ✓ | ✗ | ✗ |
 | Stack depth | unlimited | 32 | 16 |
@@ -142,13 +142,15 @@ comes from choosing the condenser config; compression on top is incremental.
 
 | Config + Algorithm | Approx. % of original JFR |
 |---|---|
-| `default` + `LZ4FRAMED` | 8–13% |
-| `default` + `GZIP` | 7–12% |
-| `reasonable-default` + `LZ4FRAMED` | 4–7% |
-| `reasonable-default` + `GZIP` | 3–6% |
-| `reduced-default` + `LZ4FRAMED` | 0.5–2% |
-| `reduced-default` + `GZIP` | 0.5–2% |
+| `default` + `LZ4FRAMED` | 8–42% |
+| `default` + `GZIP` | 7–35% |
+| `reasonable-default` + `LZ4FRAMED` | 4–17% |
+| `reasonable-default` + `GZIP` | 3–15% |
+| `reduced-default` + `LZ4FRAMED` | 1–11% |
+| `reduced-default` + `GZIP` | 1–10% |
+
+*Lower bound = gc_details-heavy workloads (many events); upper bound = sparse gc-only profiles. Measured on renaissance benchmarks.*
 
 For most production deployments: `reasonable-default` + `LZ4FRAMED` (the agent
-default) is the right choice — fast writes, fast reads, ~5% of original size
-(after LZ4 inner compression; the uncompressed `.cjfr` event data is ~4–19%).
+default) is the right choice — fast writes, fast reads, 4–17% of original size
+depending on workload type.
