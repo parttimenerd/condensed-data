@@ -95,12 +95,14 @@ public class RotatingRecordingThread extends RecordingThread {
         registerShutdownHook();
         try {
             initNewFile(true);
-        } catch (IOException | RuntimeException e) {
+        } catch (Throwable e) {
             // If first file open fails, remove the hook and the RecordingStream allocated
             // by the super-constructor so no native JFR resources are leaked on retry.
             unregisterShutdownHook();
             closeRecordingStream();
-            throw e;
+            if (e instanceof IOException ioe) throw ioe;
+            if (e instanceof RuntimeException re) throw re;
+            throw new RuntimeException("Failed to initialize first recording file", e);
         }
         agentIO.writeOutput("Condensed recording to " + pathTemplate + " started");
         Thread watchdog;
@@ -335,7 +337,27 @@ public class RotatingRecordingThread extends RecordingThread {
 
             var newState = new State(newWriter, newPath);
             var oldState = this.state;
-            Path oldPath = oldState != null ? oldState.filePath : null;
+
+            // Re-check triggeredStop before publishing the new state — close() may have nulled
+            // state and returned while we were stuck in I/O. If we publish now, the newly-opened
+            // writer would never be closed (state = newState overwrites the null that close() set).
+            // BasicJFRWriter.close() is idempotent, so the extra close on oldState is safe.
+            if (triggeredStop.get()) {
+                synchronized (filesLock) {
+                    overallWrittenFileCount.decrementAndGet();
+                }
+                try {
+                    closeState(newState);
+                } catch (Throwable t) {
+                    agentIO.writeSevereError(
+                            "Failed to close abandoned new file on stop: " + t.getMessage());
+                }
+                try {
+                    Files.deleteIfExists(newPath);
+                } catch (IOException ignored) {
+                }
+                return;
+            }
 
             // Atomically: add new entry, publish new state.
             // We do NOT evict here — the old writer is still open and its file must not be deleted.
@@ -355,8 +377,6 @@ public class RotatingRecordingThread extends RecordingThread {
                                     + t.getMessage());
                 }
                 // Evict oldest sealed files now that the old writer is closed.
-                // Exclude the newly-added file (live writer); exclude nothing for the old path
-                // since it is now sealed and eligible for eviction.
                 synchronized (filesLock) {
                     deleteOldestFilesIfNeeded(newPath);
                 }

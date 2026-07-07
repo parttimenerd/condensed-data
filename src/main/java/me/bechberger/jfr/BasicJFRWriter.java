@@ -931,6 +931,9 @@ public class BasicJFRWriter {
     }
 
     public void close() {
+        if (closed) {
+            return;
+        }
         writeConfigurationAndUniverseIfNeeded(defaultStartTimeNanos); // ensure universe is written
         closed = true;
         eventCombiner.close();
