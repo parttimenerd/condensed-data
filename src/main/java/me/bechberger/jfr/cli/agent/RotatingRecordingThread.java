@@ -15,6 +15,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Map.Entry;
 import java.util.Optional;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.Function;
 import jdk.jfr.consumer.RecordedEvent;
 import me.bechberger.condensed.Compression;
@@ -37,7 +38,7 @@ public class RotatingRecordingThread extends RecordingThread {
     private final Object filesLock = new Object();
     private int overallWrittenFileCount = 0;
     // triggered stop already
-    private volatile boolean triggeredStop = false;
+    private final AtomicBoolean triggeredStop = new AtomicBoolean(false);
     private final Thread rotationWatchdog;
 
     record State(BasicJFRWriter jfrWriter, Path filePath, Instant start) {
@@ -74,29 +75,18 @@ public class RotatingRecordingThread extends RecordingThread {
     }
 
     private void runRotationWatchdog() {
-        while (!triggeredStop) {
+        while (!triggeredStop.get()) {
             try {
                 Thread.sleep(ROTATION_WATCHDOG_INTERVAL_MS);
             } catch (InterruptedException e) {
                 Thread.currentThread().interrupt();
                 return;
             }
-            if (triggeredStop) {
+            if (triggeredStop.get()) {
                 return;
             }
             if (shouldEndRecording()) {
-                if (!triggeredStop) {
-                    triggeredStop = true;
-                    Thread t =
-                            new Thread(
-                                    () -> {
-                                        synchronized (Agent.getSyncObject()) {
-                                            stop();
-                                        }
-                                    });
-                    t.setDaemon(true);
-                    t.start();
-                }
+                triggerStop();
                 return;
             }
             if (shouldEndFile()) {
@@ -229,9 +219,24 @@ public class RotatingRecordingThread extends RecordingThread {
         state.jfrWriter.close();
     }
 
+    /** Spawns a stop thread under the sync object, guarded by CAS so only one fires. */
+    private void triggerStop() {
+        if (triggeredStop.compareAndSet(false, true)) {
+            Thread t =
+                    new Thread(
+                            () -> {
+                                synchronized (Agent.getSyncObject()) {
+                                    stop();
+                                }
+                            });
+            t.setDaemon(true);
+            t.start();
+        }
+    }
+
     @Override
     public void close() {
-        triggeredStop = true;
+        triggeredStop.set(true);
         rotationWatchdog.interrupt();
         agentIO.writeOutput("Condensed recording to " + pathTemplate + " finished");
         var state = this.state;
@@ -244,24 +249,11 @@ public class RotatingRecordingThread extends RecordingThread {
     @Override
     void onEvent(RecordedEvent event) {
         try {
-            if (triggeredStop) {
+            if (triggeredStop.get()) {
                 return;
             }
             if (shouldEndRecording()) {
-                if (!triggeredStop) {
-                    // we're currently stuck in JFR code, so we need to stop the recording
-                    // from a different thread so we don't deadlock
-                    Thread t =
-                            new Thread(
-                                    () -> {
-                                        synchronized (Agent.getSyncObject()) {
-                                            stop();
-                                        }
-                                    });
-                    t.setDaemon(true);
-                    t.start();
-                    triggeredStop = true;
-                }
+                triggerStop();
                 return;
             }
             var state = this.state;
@@ -278,18 +270,7 @@ public class RotatingRecordingThread extends RecordingThread {
             state.jfrWriter.processEvent(event);
         } catch (IOException e) {
             agentIO.writeSevereError("Error while processing event: " + e.getMessage() + " " + e);
-            if (!triggeredStop) {
-                triggeredStop = true;
-                Thread t =
-                        new Thread(
-                                () -> {
-                                    synchronized (Agent.getSyncObject()) {
-                                        stop();
-                                    }
-                                });
-                t.setDaemon(true);
-                t.start();
-            }
+            triggerStop();
         }
     }
 
