@@ -119,6 +119,7 @@ public abstract class RecordingThread implements Runnable {
             }
         } catch (Throwable e) {
             if (shuttingDown) {
+                shouldStop.set(false); // unblock stop() which is waiting for this flag
                 return; // JVM is shutting down, silently stop
             }
             agentIO.writeSevereError("Error: " + e.getMessage());
@@ -199,11 +200,6 @@ public abstract class RecordingThread implements Runnable {
             removeFromParent.run();
         } catch (Throwable e) {
             agentIO.writeSevereError("Error removing from parent: " + e.getMessage());
-        }
-        try {
-            agentIO.close();
-        } catch (Throwable e) {
-            // last resort — can't report via agentIO since it's closing
         }
     }
 
@@ -324,7 +320,13 @@ public abstract class RecordingThread implements Runnable {
     }
 
     public void useNewNames(boolean newNames) {
+        boolean old = dynSettings.newNames;
         dynSettings.newNames = newNames;
-        dynSettings.validate(rotating);
+        try {
+            dynSettings.validate(rotating);
+        } catch (DynamicallyChangeableSettings.ValidationException e) {
+            dynSettings.newNames = old;
+            throw e;
+        }
     }
 }

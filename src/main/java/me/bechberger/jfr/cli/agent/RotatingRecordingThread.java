@@ -10,6 +10,8 @@ import java.nio.file.Path;
 import java.text.ParseException;
 import java.time.Duration;
 import java.time.Instant;
+import java.time.ZoneOffset;
+import java.time.ZonedDateTime;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
@@ -80,7 +82,10 @@ public class RotatingRecordingThread extends RecordingThread {
         registerShutdownHook();
     }
 
+    private static final int MAX_WATCHDOG_ROTATION_ERRORS = 5;
+
     private void runRotationWatchdog() {
+        int consecutiveRotationErrors = 0;
         while (!triggeredStop.get()) {
             try {
                 Thread.sleep(ROTATION_WATCHDOG_INTERVAL_MS);
@@ -98,8 +103,25 @@ public class RotatingRecordingThread extends RecordingThread {
             if (shouldEndFile()) {
                 try {
                     initNewFile(false);
+                    consecutiveRotationErrors = 0;
                 } catch (IOException e) {
-                    agentIO.writeSevereError("Watchdog: failed to rotate file: " + e.getMessage());
+                    consecutiveRotationErrors++;
+                    if (consecutiveRotationErrors <= MAX_WATCHDOG_ROTATION_ERRORS) {
+                        agentIO.writeSevereError(
+                                "Watchdog: failed to rotate file ("
+                                        + consecutiveRotationErrors
+                                        + "/"
+                                        + MAX_WATCHDOG_ROTATION_ERRORS
+                                        + "): "
+                                        + e.getMessage());
+                    }
+                    if (consecutiveRotationErrors == MAX_WATCHDOG_ROTATION_ERRORS) {
+                        agentIO.writeSevereError(
+                                "Watchdog: too many consecutive rotation failures; stopping"
+                                        + " recording.");
+                        triggerStop();
+                        return;
+                    }
                 }
             }
         }
@@ -180,6 +202,9 @@ public class RotatingRecordingThread extends RecordingThread {
      */
     private void initNewFile(boolean force) throws IOException {
         synchronized (rotationLock) {
+            if (triggeredStop.get()) {
+                return; // shutting down — do not open new files
+            }
             if (!force && !shouldEndFile()) {
                 return; // another thread already rotated
             }
@@ -239,12 +264,18 @@ public class RotatingRecordingThread extends RecordingThread {
                 currentlyStoredFiles.add(newPath);
                 currentlyStoredStarts.add(newState.start);
                 overallWrittenFileCount.incrementAndGet();
+                currentPath = newPath;
+                state = newState;
             }
-            currentPath = newPath;
-            state = newState;
 
             if (oldState != null) {
-                closeState(oldState);
+                try {
+                    closeState(oldState);
+                } catch (Throwable t) {
+                    agentIO.writeSevereError(
+                            "Failed to close previous file (data may be incomplete): "
+                                    + t.getMessage());
+                }
             }
         }
     }
@@ -369,7 +400,7 @@ public class RotatingRecordingThread extends RecordingThread {
             Map.of(
                     "$date",
                     i -> {
-                        var now = java.time.LocalDateTime.now();
+                        var now = ZonedDateTime.now(ZoneOffset.UTC);
                         return String.format(
                                 "%04d-%02d-%02d_%02d-%02d-%02d-%03d",
                                 now.getYear(),
