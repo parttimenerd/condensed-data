@@ -33,6 +33,20 @@ public class RotatingRecordingThread extends RecordingThread {
 
     private static final long ROTATION_WATCHDOG_INTERVAL_MS = 5_000;
 
+    /**
+     * Returns the watchdog sleep interval in ms: min(5s, maxDuration/2) so we don't overshoot by a
+     * full interval on small maxDuration values. Falls back to 5s when maxDuration is 0 (size-only
+     * rotation) or very large.
+     */
+    private long watchdogIntervalMs() {
+        Duration maxDur = getMaxDuration();
+        if (maxDur.isZero() || maxDur.isNegative()) {
+            return ROTATION_WATCHDOG_INTERVAL_MS;
+        }
+        long halfMs = maxDur.toMillis() / 2;
+        return halfMs < 100 ? 100 : Math.min(halfMs, ROTATION_WATCHDOG_INTERVAL_MS);
+    }
+
     private final String pathTemplate;
     private volatile Path currentPath;
     private volatile State state = null;
@@ -78,7 +92,14 @@ public class RotatingRecordingThread extends RecordingThread {
         this.currentlyStoredFiles = new ArrayList<>();
         this.currentlyStoredStarts = new ArrayList<>();
         registerShutdownHook();
-        initNewFile(true);
+        try {
+            initNewFile(true);
+        } catch (IOException | RuntimeException e) {
+            // If first file open fails, remove the hook we just registered so a later JVM
+            // shutdown does not block on a recording that never really started.
+            unregisterShutdownHook();
+            throw e;
+        }
         agentIO.writeOutput("Condensed recording to " + pathTemplate + " started");
         this.rotationWatchdog =
                 new Thread(
@@ -93,7 +114,7 @@ public class RotatingRecordingThread extends RecordingThread {
         int consecutiveRotationErrors = 0;
         while (!triggeredStop.get()) {
             try {
-                Thread.sleep(ROTATION_WATCHDOG_INTERVAL_MS);
+                Thread.sleep(watchdogIntervalMs());
             } catch (InterruptedException e) {
                 Thread.currentThread().interrupt();
                 return;
@@ -162,6 +183,15 @@ public class RotatingRecordingThread extends RecordingThread {
                 agentIO.writeSevereError("Deleting oldest file failed: " + e.getMessage());
             }
         }
+        if (currentlyStoredFiles.size() > max) {
+            // Only live file(s) remain; can't evict further until a rotation seals them.
+            agentIO.writeInfo(
+                    "stored-files ("
+                            + currentlyStoredFiles.size()
+                            + ") exceeds max-files ("
+                            + max
+                            + ") because the live writer file cannot be evicted yet");
+        }
     }
 
     /**
@@ -224,6 +254,7 @@ public class RotatingRecordingThread extends RecordingThread {
             }
 
             // Decide the candidate base path. Increment counter first so $index is monotone.
+            // If the open fails, decrement to avoid gaps in $index.
             Path basePath;
             synchronized (filesLock) {
                 overallWrittenFileCount.incrementAndGet();
@@ -237,7 +268,15 @@ public class RotatingRecordingThread extends RecordingThread {
 
             // Open the new file BEFORE closing the old writer. On failure the old writer
             // remains intact and recording continues.
-            OpenResult opened = openNewOutputStream(basePath);
+            OpenResult opened;
+            try {
+                opened = openNewOutputStream(basePath);
+            } catch (IOException e) {
+                synchronized (filesLock) {
+                    overallWrittenFileCount.decrementAndGet();
+                }
+                throw e;
+            }
             Path newPath = opened.actualPath();
             java.io.OutputStream rawOut = opened.stream();
 
@@ -255,6 +294,9 @@ public class RotatingRecordingThread extends RecordingThread {
                                         Compression.DEFAULT));
                 newWriter = new BasicJFRWriter(out);
             } catch (Throwable t) {
+                synchronized (filesLock) {
+                    overallWrittenFileCount.decrementAndGet();
+                }
                 try {
                     rawOut.close();
                 } catch (IOException ignored) {
@@ -326,7 +368,8 @@ public class RotatingRecordingThread extends RecordingThread {
                                 synchronized (Agent.getSyncObject()) {
                                     stop();
                                 }
-                            });
+                            },
+                            "cjfr-rotating-stop");
             t.setDaemon(true);
             t.start();
         }
@@ -351,7 +394,9 @@ public class RotatingRecordingThread extends RecordingThread {
         } finally {
             rotationLock.unlock();
         }
-        agentIO.writeOutput("Condensed recording to " + pathTemplate + " finished");
+        if (overallWrittenFileCount.get() >= 0) {
+            agentIO.writeOutput("Condensed recording to " + pathTemplate + " finished");
+        }
     }
 
     @Override

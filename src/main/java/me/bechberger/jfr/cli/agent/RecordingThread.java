@@ -90,7 +90,7 @@ public abstract class RecordingThread implements Runnable {
                                         + "'");
                 continue;
             }
-            result.put(parts[0], parts[1]);
+            result.put(parts[0].strip(), parts[1].strip());
         }
         return result;
     }
@@ -113,6 +113,15 @@ public abstract class RecordingThread implements Runnable {
     /** Must be called as the last line of every subclass constructor. */
     protected final void registerShutdownHook() {
         Runtime.getRuntime().addShutdownHook(shutdownHook);
+    }
+
+    /** Remove the shutdown hook; call on constructor failure to avoid a JVM-shutdown block. */
+    protected final void unregisterShutdownHook() {
+        try {
+            Runtime.getRuntime().removeShutdownHook(shutdownHook);
+        } catch (IllegalStateException ignored) {
+            // JVM is already shutting down — hook cannot be removed.
+        }
     }
 
     @Override

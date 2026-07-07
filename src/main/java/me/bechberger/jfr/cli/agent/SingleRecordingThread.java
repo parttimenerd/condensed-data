@@ -105,7 +105,8 @@ public class SingleRecordingThread extends RecordingThread {
                                 synchronized (Agent.getSyncObject()) {
                                     stop();
                                 }
-                            });
+                            },
+                            "cjfr-single-stop");
             t.setDaemon(true);
             t.start();
         }
