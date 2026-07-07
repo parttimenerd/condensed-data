@@ -169,6 +169,8 @@ All configurations produce valid `.cjfr` files that can be inflated back to JFR.
 | `reasonable-default` | ~4–7% of original | Good compression, slight data reduction |
 | `reduced-default` | ~1–2% of original | Maximum compression, more lossy |
 
+> **Default config differs by surface:** `cjfr condense` defaults to `default`. The agent `start` command defaults to `reasonable-default`. Specify `--condenser-config` explicitly if you need consistent behaviour across both.
+
 Example:
 
 ```shell
@@ -185,21 +187,23 @@ java -javaagent:cjfr.jar='start,recording.cjfr,--condenser-config=reduced-defaul
 
 ## Choosing a Compression Algorithm
 
-The inner compression algorithm is independent of the event reduction above.
-LZ4 (default) is the best choice for most cases.
+The inner compression algorithm is independent of event reduction above.
+The CLI accepts exactly three values for `--compression`:
 
-| Algorithm | Speed | Ratio |
-|---|---|---|
-| `LZ4` | Very fast | Good (default) |
-| `ZSTD` | Fast | Better |
-| `GZIP` | Slow | Good |
-| `BZIP2` | Very slow | Good |
-| `NONE` | Instant | No compression |
+| Algorithm | CLI value | Speed | Ratio | Best for |
+|---|---|---|---|---|
+| LZ4 (default) | `LZ4FRAMED` | Very fast | Good | Agent recording, frequent reads |
+| gzip | `GZIP` | Slow | Good | Long-term archive, toolchain compat |
+| None | `NONE` | Instant | None | Benchmarking, re-compressed transport |
 
-Example:
+> **Note:** `ZSTD` and `BZIP2` are reserved identifiers in the file format but are **not supported** by the current CLI. Passing `--compression=ZSTD` will fail with a validation error.
+
+`LZ4FRAMED` uses block-independent framing, which makes files resilient to partial corruption and streamable. It is the right default for the agent.
+
+Example (gzip for archival):
 
 ```shell
-cjfr condense --compression=ZSTD recording.jfr
+cjfr condense --compression=GZIP recording.jfr
 ```
 
 ---
@@ -264,4 +268,12 @@ Check that the JVM was started with `-XX:+FlightRecorder` or that JFR is enabled
 **Output file is unexpectedly large**
 
 Try `--condenser-config=reduced-default` for maximum compression, or switch from
-`--compression=LZ4` to `--compression=ZSTD` for a better ratio at modest cost.
+`--compression=LZ4FRAMED` to `--compression=GZIP` for a better ratio at modest cost.
+
+---
+
+## Further Reading
+
+- [JAR Release Selection Guide](doc/RELEASES.md) — which JAR to download for your environment
+- [Configuration Reference](doc/CONFIGURATIONS.md) — full condenser config and compression trade-offs
+- [Production Recording Guide](doc/PRODUCTION_RECORDING.md) — rotating files, live tuning, sizing
