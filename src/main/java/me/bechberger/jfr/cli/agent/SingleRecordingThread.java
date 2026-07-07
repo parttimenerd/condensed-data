@@ -86,8 +86,20 @@ public class SingleRecordingThread extends RecordingThread {
         }
         try {
             jfrWriter.processEvent(event);
-        } catch (RuntimeException e) {
+        } catch (Exception e) {
             agentIO.writeSevereError("Error processing event: " + e.getMessage());
+            if (!triggeredStop) {
+                triggeredStop = true;
+                Thread t =
+                        new Thread(
+                                () -> {
+                                    synchronized (Agent.getSyncObject()) {
+                                        stop();
+                                    }
+                                });
+                t.setDaemon(true);
+                t.start();
+            }
         }
     }
 

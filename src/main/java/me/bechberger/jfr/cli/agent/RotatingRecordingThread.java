@@ -27,6 +27,8 @@ import me.bechberger.jfr.cli.Constants;
 /** Record to multiple files */
 public class RotatingRecordingThread extends RecordingThread {
 
+    private static final long ROTATION_WATCHDOG_INTERVAL_MS = 5_000;
+
     private final String pathTemplate;
     private volatile Path currentPath;
     private volatile State state = null;
@@ -36,6 +38,7 @@ public class RotatingRecordingThread extends RecordingThread {
     private int overallWrittenFileCount = 0;
     // triggered stop already
     private volatile boolean triggeredStop = false;
+    private final Thread rotationWatchdog;
 
     record State(BasicJFRWriter jfrWriter, Path filePath, Instant start) {
         State(BasicJFRWriter jfrWriter, Path filePath) {
@@ -65,6 +68,45 @@ public class RotatingRecordingThread extends RecordingThread {
         this.currentlyStoredStarts = new ArrayList<>();
         initNewFile();
         agentIO.writeOutput("Condensed recording to " + pathTemplate + " started");
+        this.rotationWatchdog = new Thread(this::runRotationWatchdog, "cjfr-rotation-watchdog");
+        this.rotationWatchdog.setDaemon(true);
+        this.rotationWatchdog.start();
+    }
+
+    private void runRotationWatchdog() {
+        while (!triggeredStop) {
+            try {
+                Thread.sleep(ROTATION_WATCHDOG_INTERVAL_MS);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                return;
+            }
+            if (triggeredStop) {
+                return;
+            }
+            if (shouldEndRecording()) {
+                if (!triggeredStop) {
+                    triggeredStop = true;
+                    Thread t =
+                            new Thread(
+                                    () -> {
+                                        synchronized (Agent.getSyncObject()) {
+                                            stop();
+                                        }
+                                    });
+                    t.setDaemon(true);
+                    t.start();
+                }
+                return;
+            }
+            if (shouldEndFile()) {
+                try {
+                    initNewFile();
+                } catch (IOException e) {
+                    agentIO.writeSevereError("Watchdog: failed to rotate file: " + e.getMessage());
+                }
+            }
+        }
     }
 
     private Path createNewPath() {
@@ -81,13 +123,13 @@ public class RotatingRecordingThread extends RecordingThread {
                 Files.delete(fileToDelete);
                 currentlyStoredFiles.remove(0);
                 currentlyStoredStarts.remove(0);
+                last = Optional.of(fileToDelete);
             } catch (IOException e) {
-                // File may have been deleted externally — remove tracking entry anyway
-                currentlyStoredFiles.remove(0);
-                currentlyStoredStarts.remove(0);
                 agentIO.writeSevereError("Deleting oldest file failed: " + e.getMessage());
+                // Leave the entry in the list so it is retried on the next rotation rather than
+                // leaking past maxFiles indefinitely. Break to avoid an infinite loop.
+                break;
             }
-            last = Optional.of(fileToDelete);
         }
         return last;
     }
@@ -189,8 +231,11 @@ public class RotatingRecordingThread extends RecordingThread {
 
     @Override
     public void close() {
+        triggeredStop = true;
+        rotationWatchdog.interrupt();
         agentIO.writeOutput("Condensed recording to " + pathTemplate + " finished");
         var state = this.state;
+        this.state = null;
         if (state != null) {
             closeState(state);
         }

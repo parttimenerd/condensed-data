@@ -179,7 +179,8 @@ public class AgentIO {
             Files.writeString(getOutputFile(), output, StandardCharsets.UTF_8, APPEND, CREATE);
             Files.deleteIfExists(getIsClosedFile());
         } catch (IOException e) {
-            throw new RuntimeException("Could not write output", e);
+            // Fall back to stderr so the message is not silently lost (e.g. /tmp is read-only)
+            System.err.print(output);
         }
     }
 
@@ -257,7 +258,8 @@ public class AgentIO {
         try {
             Files.writeString(getIsClosedFile(), "", CREATE);
         } catch (IOException e) {
-            throw new RuntimeException("Could not write is.closed file", e);
+            // best effort — fall back to stderr
+            System.err.println("Could not write is.closed file: " + e.getMessage());
         }
     }
 }

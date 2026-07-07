@@ -14,6 +14,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Map.Entry;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.locks.LockSupport;
 import jdk.jfr.consumer.RecordedEvent;
 import jdk.jfr.consumer.RecordingStream;
@@ -34,7 +35,7 @@ public abstract class RecordingThread implements Runnable {
     private final boolean rotating;
 
     private final AtomicBoolean shouldStop = new AtomicBoolean(false);
-    private volatile int eventErrorCount = 0;
+    private final AtomicInteger eventErrorCount = new AtomicInteger(0);
     final Instant start = Instant.now();
 
     RecordingThread(
@@ -93,7 +94,13 @@ public abstract class RecordingThread implements Runnable {
 
     private volatile boolean shuttingDown = false;
     private final Thread shutdownHook =
-            new Thread(() -> shuttingDown = true, "cjfr-shutdown-marker");
+            new Thread(
+                    () -> {
+                        shuttingDown = true;
+                        // Finalize the current file so it is readable after JVM exit (e.g. SIGTERM)
+                        stop();
+                    },
+                    "cjfr-shutdown-finalizer");
 
     {
         Runtime.getRuntime().addShutdownHook(shutdownHook);
@@ -124,13 +131,13 @@ public abstract class RecordingThread implements Runnable {
         try {
             onEvent(event);
         } catch (Throwable e) {
-            eventErrorCount++;
-            if (eventErrorCount <= MAX_EVENT_ERRORS) {
+            int count = eventErrorCount.incrementAndGet();
+            if (count <= MAX_EVENT_ERRORS) {
                 agentIO.writeSevereError(
                         "Error processing event: "
                                 + e.getMessage()
                                 + " ("
-                                + eventErrorCount
+                                + count
                                 + "/"
                                 + MAX_EVENT_ERRORS
                                 + ")");
@@ -198,7 +205,7 @@ public abstract class RecordingThread implements Runnable {
         status.add(Map.entry("new-names", Boolean.toString(useNewNames())));
         status.add(Map.entry("duration", formatDuration(dynSettings.duration)));
         status.add(Map.entry("running", Boolean.toString(!stopped.get())));
-        status.add(Map.entry("event-errors", Integer.toString(eventErrorCount)));
+        status.add(Map.entry("event-errors", Integer.toString(eventErrorCount.get())));
         status.addAll(getMiscStatus());
         return status;
     }
