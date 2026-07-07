@@ -17,6 +17,15 @@ java -javaagent:/opt/cjfr/cjfr.jar='start,/var/recordings/app_$index.cjfr,--rota
      -jar myapp.jar
 ```
 
+!!! tip "Container and environment-variable deployments"
+    In Docker containers or anywhere you can't modify the JVM command line directly,
+    set `JAVA_TOOL_OPTIONS` instead:
+    ```
+    JAVA_TOOL_OPTIONS=-javaagent:/opt/cjfr/cjfr.jar=start,/var/rec/app_$index.cjfr,--rotating,--max-files=10,--max-size=100m
+    ```
+    The JVM parses `JAVA_TOOL_OPTIONS` itself — no shell quoting needed for `$index`.
+    See [Container & Sidecar Deployment](cookbook-container.md) for a full Docker example.
+
 ### Attaching to a running process
 
 ```shell

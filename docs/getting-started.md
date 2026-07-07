@@ -21,7 +21,7 @@ Download the latest JAR from [GitHub Releases](https://github.com/parttimenerd/c
 
 ```shell
 curl -L -o cjfr.jar https://github.com/parttimenerd/condensed-data/releases/latest/download/condensed-data.jar
-alias cjfr='java -jar /path/to/cjfr.jar'
+alias cjfr='java -jar '"$(pwd)"'/cjfr.jar'
 ```
 
 Requires JDK 17+. Or build from source:

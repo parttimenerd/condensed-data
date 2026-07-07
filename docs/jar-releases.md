@@ -61,9 +61,10 @@ It includes `inflate` for round-trip to JMC and works on any platform out of the
 needs none of the JMC writer machinery.
 
 **Size-critical sidecar / Java agent in a thin container**: Use
-`condensed-data-<platform>-inflaterless-minimal.jar` (~450 KB). Only LZ4 compression is
-available in minimal JARs (use `--compression=GZIP` on the full JAR for archival).
-The recording file is still fully readable by any full JAR.
+`condensed-data-<platform>-inflaterless-minimal.jar` (~450 KB). Minimal JARs support
+`LZ4FRAMED` and `GZIP` compression — the size savings come from stripping ZSTD/XZ codec
+classes and POM files, not from removing GZIP. The recording file is still fully readable
+by any full JAR.
 
 **Fleet-wide scraper that only calls `condense` or `summary`**: Use
 `condensed-data-<platform>-inflaterless.jar`. GZIP (`--compression=GZIP`) is available

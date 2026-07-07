@@ -113,13 +113,11 @@ Useful event groups for GC analysis:
 
 Pass `-i` to add more input files. All files are merged in time order,
 which is the normal way to work with a rotating recording set.
+Only one positional file is accepted — pass all others with `-i`.
 
 ```shell
 # Summary across a whole day of rotating recordings
 cjfr summary rec_0.cjfr -i rec_1.cjfr -i rec_2.cjfr
-
-# Shell glob — first file is positional, rest via -i
-cjfr summary rec_0.cjfr $(ls rec_*.cjfr | tail -n +2 | sed 's/^/-i /')
 
 # Inflate multiple files into a single JFR
 cjfr inflate -i rec_1.cjfr -i rec_2.cjfr rec_0.cjfr merged.jfr

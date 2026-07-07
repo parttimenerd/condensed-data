@@ -26,7 +26,10 @@ Or attach to an already-running process:
 cjfr agent myapp start '/var/rec/app_$index.cjfr' --rotating --max-files=5 --max-size=100m
 ```
 
-> Single-quote the path to prevent shell expansion of `$index`.
+!!! warning "Single-quote the path"
+    When the output path contains `$index` or `$date`, always **single-quote** it
+    in shell to prevent expansion: `'/var/rec/app_$index.cjfr'`, not
+    `"/var/rec/app_$index.cjfr"`.
 
 To verify it is running:
 
@@ -169,18 +172,16 @@ cjfr inflate --gc-percentile=95 recording.cjfr worst-pauses.jfr
 When a recording spans several rotation files, combine them for analysis:
 
 ```shell
-# Summarise the whole day
+# Summarise the whole day (first file positional, rest via -i)
 cjfr summary app_0.cjfr -i app_1.cjfr -i app_2.cjfr -i app_3.cjfr
-
-# Shell glob shorthand (bash/zsh)
-files=(app_*.cjfr)
-extra_args=()
-for f in "${files[@]:1}"; do extra_args+=(-i "$f"); done
-cjfr summary "${files[0]}" "${extra_args[@]}"
 
 # Merge into a single .cjfr for long-term archival
 cjfr condense --force -i app_1.cjfr -i app_2.cjfr app_0.cjfr archive.cjfr
 ```
+
+!!! note "No glob shorthand"
+    `cjfr summary rec_*.cjfr` does not work — only one positional file is accepted.
+    Pass remaining files with `-i rec_1.cjfr -i rec_2.cjfr …` or use a loop for large sets.
 
 ---
 
