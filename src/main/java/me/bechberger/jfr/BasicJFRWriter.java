@@ -11,6 +11,7 @@ import java.time.Duration;
 import java.util.*;
 import java.util.Map.Entry;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.Function;
 import jdk.jfr.AnnotationElement;
 import jdk.jfr.EventType;
@@ -169,7 +170,7 @@ public class BasicJFRWriter {
     private final JFREventCombiner eventCombiner;
     private final EventDeduplication deduplication;
     private final FooterCollector footerCollector;
-    private volatile boolean closed = false;
+    private final AtomicBoolean closed = new AtomicBoolean(false);
     private final long defaultStartTimeNanos = System.currentTimeMillis() * 1000000;
 
     /** field types that are not yet added, but their creation code is running + id */
@@ -931,11 +932,10 @@ public class BasicJFRWriter {
     }
 
     public void close() {
-        if (closed) {
+        if (!closed.compareAndSet(false, true)) {
             return;
         }
         writeConfigurationAndUniverseIfNeeded(defaultStartTimeNanos); // ensure universe is written
-        closed = true;
         eventCombiner.close();
         var footer =
                 footerCollector.build(
@@ -945,7 +945,7 @@ public class BasicJFRWriter {
     }
 
     public boolean isClosed() {
-        return closed;
+        return closed.get();
     }
 
     public long estimateSize() {

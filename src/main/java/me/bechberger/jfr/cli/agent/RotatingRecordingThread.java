@@ -102,6 +102,7 @@ public class RotatingRecordingThread extends RecordingThread {
             closeRecordingStream();
             if (e instanceof IOException ioe) throw ioe;
             if (e instanceof RuntimeException re) throw re;
+            if (e instanceof Error err) throw err;
             throw new RuntimeException("Failed to initialize first recording file", e);
         }
         agentIO.writeOutput("Condensed recording to " + pathTemplate + " started");
@@ -354,7 +355,12 @@ public class RotatingRecordingThread extends RecordingThread {
                 }
                 try {
                     Files.deleteIfExists(newPath);
-                } catch (IOException ignored) {
+                } catch (IOException e) {
+                    agentIO.writeSevereError(
+                            "Could not delete abandoned rotation file "
+                                    + newPath
+                                    + ": "
+                                    + e.getMessage());
                 }
                 return;
             }
