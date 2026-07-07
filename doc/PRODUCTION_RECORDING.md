@@ -37,13 +37,14 @@ cjfr agent all start '/var/recordings/$index.cjfr' --rotating --max-files=5 --ma
 | `--rotating` | off | Enable file rotation. Requires `--max-size` or `--max-duration` (or both). |
 | `--max-size=<size>` | 0 (unlimited) | Max size per individual file. Rotate when reached. Minimum 1024 bytes. Examples: `50m`, `200m`, `1g`. |
 | `--max-duration=<time>` | 0 (unlimited) | Max wall-clock duration per individual file. Rotate when reached. Minimum 1 ms. Examples: `5m`, `1h`. |
-| `--max-files=<n>` | 10 | Max number of files kept. Oldest is evicted once limit is reached. Must be ≥ 1. |
+| `--max-files=<n>` | 10 | Max number of files kept. Oldest is evicted once limit is reached. Must be ≥ 1 when rotating. |
 | `--new-names` | off | If off (default): oldest file is **overwritten** — on-disk names are stable. If on: each rotation creates a new name; oldest file is **deleted** when limit reached. |
 | `--duration=<time>` | 0 (unlimited) | Total cap on the whole recording (not per-file). Recording stops after this. Does not require `--rotating`. |
 
 ### `--rotating` validation rules
 - At least one of `--max-size` or `--max-duration` must be non-zero.
 - `--max-duration` without `--rotating` is rejected.
+- `--max-size` without `--rotating` is rejected.
 - Setting both `--max-size=0` and `--max-duration=0` while rotating is rejected.
 
 ### Path placeholders
@@ -53,7 +54,7 @@ When `--rotating` is set, the output path should contain a placeholder:
 | Placeholder | Replaced with |
 |---|---|
 | `$index` | Monotonically increasing integer (0, 1, 2, …) |
-| `$date` | Timestamp when the file was opened |
+| `$date` | Timestamp when the file was opened (`YYYY-MM-DD_HH-MM-SS-mmm`, UTC) |
 
 If neither placeholder appears in the path, `.cjfr` is automatically replaced
 with `_$index.cjfr` (e.g. `recording.cjfr` → `recording_0.cjfr`, `recording_1.cjfr`, …).
