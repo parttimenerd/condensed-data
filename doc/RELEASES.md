@@ -28,8 +28,8 @@ All variants are published as CI artifacts and in GitHub Releases.
 | **Universal-inflaterless** | `condensed-data-universal-inflaterless.jar` | 8.1 MB | JMC classes, jetbrains/owasp stubs | `cjfr inflate` |
 | **Platform** | `condensed-data-linux-amd64.jar` | 2.1 MB | Native libs for 17 other platforms | nothing |
 | **Platform-inflaterless** | `condensed-data-linux-amd64-inflaterless.jar` | 1.5 MB | Native libs for other platforms + JMC | `cjfr inflate` |
-| **Platform-minimal** | `condensed-data-linux-amd64-minimal.jar` | 505 KB | As platform + ZSTD/XZ codecs, all POMs | `cjfr inflate`, ZSTD compression |
-| **Platform-inflaterless-minimal** | `condensed-data-linux-amd64-inflaterless-minimal.jar` | 441 KB | All of the above + JMC | `cjfr inflate`, ZSTD compression |
+| **Platform-minimal** | `condensed-data-linux-amd64-minimal.jar` | 505 KB | As platform + XZ codec, all POMs | `cjfr inflate` |
+| **Platform-inflaterless-minimal** | `condensed-data-linux-amd64-inflaterless-minimal.jar` | 441 KB | All of the above + JMC | `cjfr inflate` |
 
 *Sizes shown for linux/amd64. Other platforms are similar; JARs with no LZ4 native lib for that platform (e.g. linux/arm) are ~50 KB smaller.*
 
@@ -42,7 +42,6 @@ All variants are published as CI artifacts and in GitHub Releases.
 | `cjfr view` | ✓ | ✓ | ✓ | ✓ |
 | Java agent (`-javaagent`) | ✓ | ✓ | ✓ | ✓ |
 | `cjfr inflate` | ✓ | ✓ | ✗ | ✗ |
-| ZSTD compression | ✓ | ✓ | ✓ | ✗ |
 | GZIP compression | ✓ | ✓ | ✓ | ✓ |
 | LZ4 compression | ✓ | ✓ | ✓ | ✓ |
 
@@ -54,7 +53,7 @@ All variants are published as CI artifacts and in GitHub Releases.
 
 **Size-critical sidecar / Java agent in a thin container**: Use `condensed-data-<platform>-inflaterless-minimal.jar` (~450 KB). Use LZ4 (the default) — ZSTD is not available in minimal JARs. The recording file is still fully readable by any full JAR.
 
-**Fleet-wide scraper that only calls `condense` or `summary`**: Use `condensed-data-<platform>-inflaterless.jar`. ZSTD is available if you want a better compression ratio without inflation.
+**Fleet-wide scraper that only calls `condense` or `summary`**: Use `condensed-data-<platform>-inflaterless.jar`. GZIP (`--compression=GZIP`) is available if you want a better compression ratio at the cost of slower write speed.
 
 ## Inspecting a JAR's Reduction Manifest
 
