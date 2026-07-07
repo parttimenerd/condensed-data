@@ -102,7 +102,8 @@ public abstract class RecordingThread implements Runnable {
                     },
                     "cjfr-shutdown-finalizer");
 
-    {
+    /** Must be called as the last line of every subclass constructor. */
+    protected final void registerShutdownHook() {
         Runtime.getRuntime().addShutdownHook(shutdownHook);
     }
 
@@ -141,6 +142,20 @@ public abstract class RecordingThread implements Runnable {
                                 + "/"
                                 + MAX_EVENT_ERRORS
                                 + ")");
+            }
+            if (count == MAX_EVENT_ERRORS) {
+                agentIO.writeSevereError(
+                        "Too many event errors; stopping recording to avoid silent data loss.");
+                Thread t =
+                        new Thread(
+                                () -> {
+                                    synchronized (Agent.getSyncObject()) {
+                                        stop();
+                                    }
+                                },
+                                "cjfr-error-stop");
+                t.setDaemon(true);
+                t.start();
             }
         }
     }

@@ -16,6 +16,7 @@ import java.util.Map;
 import java.util.Map.Entry;
 import java.util.Optional;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Function;
 import jdk.jfr.consumer.RecordedEvent;
 import me.bechberger.condensed.Compression;
@@ -36,7 +37,11 @@ public class RotatingRecordingThread extends RecordingThread {
     private final List<Path> currentlyStoredFiles;
     private final List<Instant> currentlyStoredStarts;
     private final Object filesLock = new Object();
-    private int overallWrittenFileCount = 0;
+
+    /** Serializes all open/close/publish steps of a single rotation. */
+    private final Object rotationLock = new Object();
+
+    private final AtomicInteger overallWrittenFileCount = new AtomicInteger(0);
     // triggered stop already
     private final AtomicBoolean triggeredStop = new AtomicBoolean(false);
     private final Thread rotationWatchdog;
@@ -72,6 +77,7 @@ public class RotatingRecordingThread extends RecordingThread {
         this.rotationWatchdog = new Thread(this::runRotationWatchdog, "cjfr-rotation-watchdog");
         this.rotationWatchdog.setDaemon(true);
         this.rotationWatchdog.start();
+        registerShutdownHook();
     }
 
     private void runRotationWatchdog() {
@@ -91,7 +97,7 @@ public class RotatingRecordingThread extends RecordingThread {
             }
             if (shouldEndFile()) {
                 try {
-                    initNewFile();
+                    initNewFile(false);
                 } catch (IOException e) {
                     agentIO.writeSevereError("Watchdog: failed to rotate file: " + e.getMessage());
                 }
@@ -100,7 +106,7 @@ public class RotatingRecordingThread extends RecordingThread {
     }
 
     private Path createNewPath() {
-        return Path.of(replacePlaceholders(pathTemplate, overallWrittenFileCount));
+        return Path.of(replacePlaceholders(pathTemplate, overallWrittenFileCount.get()));
     }
 
     /** Delete oldest files so that count is below max-files. Must be called with filesLock held. */
@@ -111,15 +117,16 @@ public class RotatingRecordingThread extends RecordingThread {
             var fileToDelete = currentlyStoredFiles.get(0);
             try {
                 Files.delete(fileToDelete);
-                currentlyStoredFiles.remove(0);
-                currentlyStoredStarts.remove(0);
-                last = Optional.of(fileToDelete);
+            } catch (java.nio.file.NoSuchFileException ignored) {
+                // Already deleted externally — forget it and keep enforcing maxFiles.
             } catch (IOException e) {
                 agentIO.writeSevereError("Deleting oldest file failed: " + e.getMessage());
-                // Leave the entry in the list so it is retried on the next rotation rather than
-                // leaking past maxFiles indefinitely. Break to avoid an infinite loop.
-                break;
+                // Drop from tracking so the same file isn't retried forever; the file
+                // may remain on disk but retention is enforced going forward.
             }
+            currentlyStoredFiles.remove(0);
+            currentlyStoredStarts.remove(0);
+            last = Optional.of(fileToDelete);
         }
         return last;
     }
@@ -164,54 +171,86 @@ public class RotatingRecordingThread extends RecordingThread {
     }
 
     /**
-     * Initialize a new file and start a new jfrWriter. Called on the JFR event thread. Opens the
+     * Initialize a new file and start a new jfrWriter. Called on the JFR event thread or the
+     * rotation watchdog. Serialized by {@code rotationLock} to prevent double-rotation. Opens the
      * new file BEFORE closing the old writer so a transient failure leaves the old writer intact.
+     *
+     * @param force if {@code false}, re-checks {@link #shouldEndFile()} inside the lock and skips
+     *     the rotation if another thread already rotated first.
      */
-    private void initNewFile() throws IOException {
-        Path newPath;
-        Optional<Path> delFile;
-        synchronized (filesLock) {
-            delFile = deleteOldestFileIfNeeded();
-            if (delFile.isPresent() && !useNewNames()) {
-                newPath = delFile.get();
-            } else {
-                newPath = createNewPath();
+    private void initNewFile(boolean force) throws IOException {
+        synchronized (rotationLock) {
+            if (!force && !shouldEndFile()) {
+                return; // another thread already rotated
+            }
+            Path newPath;
+            Optional<Path> delFile;
+            synchronized (filesLock) {
+                delFile = deleteOldestFileIfNeeded();
+                if (delFile.isPresent() && !useNewNames()) {
+                    newPath = delFile.get();
+                } else {
+                    newPath = createNewPath();
+                }
+            }
+            Path parent = newPath.toAbsolutePath().getParent();
+            if (parent != null) {
+                Files.createDirectories(parent);
+            }
+
+            // Open with CREATE_NEW BEFORE closing the old writer so a disk-full or permission
+            // error leaves the previous recording stream intact and recording continues.
+            // currentPath is set inside openNewOutputStream only on success.
+            java.io.OutputStream rawOut = openNewOutputStream(newPath);
+            newPath = currentPath; // reflect actual path (may differ if collision)
+
+            CondensedOutputStream out;
+            BasicJFRWriter newWriter;
+            try {
+                out =
+                        new CondensedOutputStream(
+                                rawOut,
+                                new StartMessage(
+                                        Constants.FORMAT_VERSION,
+                                        "condensed jfr agent",
+                                        Constants.VERSION,
+                                        Agent.getAgentArgs(),
+                                        Compression.DEFAULT));
+                newWriter = new BasicJFRWriter(out);
+            } catch (Throwable t) {
+                try {
+                    rawOut.close();
+                } catch (IOException ignored) {
+                }
+                try {
+                    Files.deleteIfExists(newPath);
+                } catch (IOException ignored) {
+                }
+                if (t instanceof IOException ioe) throw ioe;
+                throw new IOException("Failed to create writer", t);
+            }
+
+            var newState = new State(newWriter, newPath);
+
+            // Close old writer only after new one is ready
+            var oldState = this.state;
+
+            synchronized (filesLock) {
+                currentlyStoredFiles.add(newPath);
+                currentlyStoredStarts.add(newState.start);
+                overallWrittenFileCount.incrementAndGet();
+            }
+            currentPath = newPath;
+            state = newState;
+
+            if (oldState != null) {
+                closeState(oldState);
             }
         }
-        Files.createDirectories(newPath.toAbsolutePath().getParent());
+    }
 
-        // Open with CREATE_NEW BEFORE closing the old writer so a disk-full or permission error
-        // leaves the previous recording stream intact and recording continues.
-        // currentPath is set inside openNewOutputStream only on success.
-        java.io.OutputStream rawOut = openNewOutputStream(newPath);
-        newPath = currentPath; // reflect actual path (may differ from basePath if collision)
-
-        var out =
-                new CondensedOutputStream(
-                        rawOut,
-                        new StartMessage(
-                                Constants.FORMAT_VERSION,
-                                "condensed jfr agent",
-                                Constants.VERSION,
-                                Agent.getAgentArgs(),
-                                Compression.DEFAULT));
-        var newWriter = new BasicJFRWriter(out);
-        var newState = new State(newWriter, newPath);
-
-        // Close old writer only after new one is ready
-        var oldState = this.state;
-        if (oldState != null) {
-            closeState(oldState);
-        }
-
-        // Commit to the list after the stream is successfully opened
-        synchronized (filesLock) {
-            currentlyStoredFiles.add(newPath);
-            currentlyStoredStarts.add(newState.start);
-        }
-        overallWrittenFileCount++;
-        currentPath = newPath;
-        state = newState;
+    private void initNewFile() throws IOException {
+        initNewFile(true);
     }
 
     /** close the state, closing the writer and more */
@@ -238,11 +277,18 @@ public class RotatingRecordingThread extends RecordingThread {
     public void close() {
         triggeredStop.set(true);
         rotationWatchdog.interrupt();
+        try {
+            rotationWatchdog.join(2_000);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+        }
         agentIO.writeOutput("Condensed recording to " + pathTemplate + " finished");
-        var state = this.state;
-        this.state = null;
-        if (state != null) {
-            closeState(state);
+        synchronized (rotationLock) {
+            var s = this.state;
+            this.state = null;
+            if (s != null) {
+                closeState(s);
+            }
         }
     }
 
@@ -307,7 +353,7 @@ public class RotatingRecordingThread extends RecordingThread {
         return List.of(
                 Map.entry("mode", "rotating"),
                 Map.entry("stored-files", storedCount + "/" + getMaxFiles()),
-                Map.entry("total-files-written", Integer.toString(overallWrittenFileCount)),
+                Map.entry("total-files-written", Integer.toString(overallWrittenFileCount.get())),
                 Map.entry("current-size-on-drive", formatMemory(state.jfrWriter.estimateSize(), 3)),
                 Map.entry(
                         "current-size-uncompressed",

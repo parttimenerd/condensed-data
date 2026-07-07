@@ -14,6 +14,7 @@ import java.time.Instant;
 import java.util.List;
 import java.util.Map;
 import java.util.Map.Entry;
+import java.util.concurrent.atomic.AtomicBoolean;
 import jdk.jfr.consumer.RecordedEvent;
 import me.bechberger.condensed.Compression;
 import me.bechberger.condensed.CondensedOutputStream;
@@ -27,8 +28,7 @@ public class SingleRecordingThread extends RecordingThread {
 
     private final String path;
     private final BasicJFRWriter jfrWriter;
-    // triggered stop already
-    private volatile boolean triggeredStop = false;
+    private final AtomicBoolean triggeredStop = new AtomicBoolean(false);
 
     public SingleRecordingThread(
             String path,
@@ -60,46 +60,39 @@ public class SingleRecordingThread extends RecordingThread {
                                 Compression.DEFAULT));
         this.jfrWriter = new BasicJFRWriter(out);
         agentIO.writeOutput("Condensed recording to " + path + " started\n");
+        registerShutdownHook();
     }
 
     @Override
     void onEvent(RecordedEvent event) {
-        if (triggeredStop) {
+        if (triggeredStop.get()) {
             return;
         }
         if (shouldEndFile()) {
-            if (!triggeredStop) {
-                // we're currently stuck in JFR code, so we need to stop the recording
-                // from a different thread so we don't deadlock
-                Thread t =
-                        new Thread(
-                                () -> {
-                                    synchronized (Agent.getSyncObject()) {
-                                        stop();
-                                    }
-                                });
-                t.setDaemon(true);
-                t.start();
-                triggeredStop = true;
-            }
+            triggerStop();
             return;
         }
         try {
             jfrWriter.processEvent(event);
         } catch (Exception e) {
             agentIO.writeSevereError("Error processing event: " + e.getMessage());
-            if (!triggeredStop) {
-                triggeredStop = true;
-                Thread t =
-                        new Thread(
-                                () -> {
-                                    synchronized (Agent.getSyncObject()) {
-                                        stop();
-                                    }
-                                });
-                t.setDaemon(true);
-                t.start();
-            }
+            triggerStop();
+        }
+    }
+
+    private void triggerStop() {
+        if (triggeredStop.compareAndSet(false, true)) {
+            // we're currently stuck in JFR code, so we need to stop the recording
+            // from a different thread so we don't deadlock
+            Thread t =
+                    new Thread(
+                            () -> {
+                                synchronized (Agent.getSyncObject()) {
+                                    stop();
+                                }
+                            });
+            t.setDaemon(true);
+            t.start();
         }
     }
 
