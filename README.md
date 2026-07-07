@@ -10,7 +10,11 @@ live attachment to running JVMs.
 
 Primary use case: long-term storage of GC-related JFR recordings.
 
-**[Getting Started Guide](GETTING_STARTED.md)** — installation, quickstart, agent usage, configuration guide, and troubleshooting.
+**Documentation**
+- **[Getting Started](GETTING_STARTED.md)** — installation, quickstart, agent usage, configuration guide, and troubleshooting
+- **[JAR Release Selection](doc/RELEASES.md)** — which JAR variant to download for your environment
+- **[Configuration Reference](doc/CONFIGURATIONS.md)** — condenser configs and compression algorithm trade-offs
+- **[Production Recording Guide](doc/PRODUCTION_RECORDING.md)** — rotating recordings, live tuning, storage sizing
 
 Usage
 -----
