@@ -45,6 +45,8 @@ java -javaagent:cjfr.jar=start,recording.cjfr -jar myapp.jar
 - [JAR Release Selection]({% link jar-releases.md %}) — pick the right JAR variant (universal vs platform vs minimal)
 - [Configuration Reference]({% link configurations.md %}) — condenser configs and compression algorithm trade-offs
 - [Production Recording Guide]({% link production-recording.md %}) — rotating recordings, live tuning, storage sizing
+- [Analyzing Recordings]({% link analysis.md %}) — time filters, GC percentile, event filters, multi-file queries
+- [Common Workflows]({% link workflows.md %}) — end-to-end recipes (remote recording, JFR slicing, GC extraction)
 
 ## Project links
 

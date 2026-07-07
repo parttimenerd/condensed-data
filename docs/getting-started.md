@@ -216,51 +216,6 @@ cjfr condense --compression=GZIP recording.jfr
 
 ---
 
-## Common Workflows
-
-### Batch-condense a folder of JFR files
-
-```shell
-cjfr condense --force /path/to/jfr-folder/
-# produces a single jfr-folder.cjfr merging all JFR files in the directory
-```
-
-### Condense a ZIP archive
-
-```shell
-cjfr condense recordings.zip output.cjfr
-```
-
-### Check what's in an existing .cjfr file
-
-```shell
-# Short summary
-cjfr summary --short recording.cjfr
-
-# Full breakdown with event counts
-cjfr summary --full recording.cjfr
-
-# Machine-readable JSON
-cjfr summary --json recording.cjfr
-```
-
-### Reduce JAR size for single-platform deployment
-
-The default JAR bundles native libraries for multiple platforms (~80% of JAR size).
-For a production deployment on a known platform:
-
-```shell
-# List available platforms
-python3 reduce-jar.py reduce cjfr.jar --list-platforms
-
-# Build a darwin/aarch64-only JAR
-python3 reduce-jar.py reduce cjfr.jar cjfr-mac.jar --platform darwin/aarch64
-```
-
-See [README_JAR_SIZE.md](https://github.com/parttimenerd/condensed-data/blob/main/README_JAR_SIZE.md) for details.
-
----
-
 ## Troubleshooting
 
 **`cjfr inflate` fails or produces an empty JFR**
@@ -285,3 +240,5 @@ Try `--condenser-config=reduced-default` for maximum compression, or switch from
 - [JAR Release Selection Guide]({% link jar-releases.md %}) — which JAR to download for your environment
 - [Configuration Reference]({% link configurations.md %}) — full condenser config and compression trade-offs
 - [Production Recording Guide]({% link production-recording.md %}) — rotating files, live tuning, sizing
+- [Analyzing Recordings]({% link analysis.md %}) — time filters, GC percentile, event filters, multi-file
+- [Common Workflows]({% link workflows.md %}) — end-to-end recipes
