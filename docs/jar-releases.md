@@ -34,7 +34,7 @@ All variants are published as CI artifacts and in GitHub Releases.
 | **Universal-inflaterless** | `condensed-data-universal-inflaterless.jar` | 8.1 MB | JMC classes, jetbrains/owasp stubs | `cjfr inflate` |
 | **Platform** | `condensed-data-linux-amd64.jar` | 2.1 MB | Native libs for 17 other platforms | nothing |
 | **Platform-inflaterless** | `condensed-data-linux-amd64-inflaterless.jar` | 1.5 MB | Native libs for other platforms + JMC | `cjfr inflate` |
-| **Platform-minimal** | `condensed-data-linux-amd64-minimal.jar` | 505 KB | As platform + XZ codec, all POMs | `cjfr inflate` |
+| **Platform-minimal** | `condensed-data-linux-amd64-minimal.jar` | 505 KB | As platform + all POMs | `cjfr inflate` |
 | **Platform-inflaterless-minimal** | `condensed-data-linux-amd64-inflaterless-minimal.jar` | 441 KB | All of the above + JMC | `cjfr inflate` |
 
 *Sizes shown for linux/amd64. Other platforms are similar; JARs with no LZ4 native lib for that platform (e.g. linux/arm) are ~50 KB smaller.*

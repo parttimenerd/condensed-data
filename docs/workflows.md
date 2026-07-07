@@ -251,10 +251,10 @@ python3 reduce-jar.py reduce cjfr.jar --list-platforms
 # Linux/amd64-only JAR (from ~2 MB universal down to ~2 MB platform — same size roughly)
 python3 reduce-jar.py reduce cjfr.jar cjfr-linux.jar --platform linux/amd64
 
-# Same, but also strip the inflate/JMC-writer code (inflaterless, ~1.3 MB)
-# Note: inflaterless JAR cannot run cjfr inflate, and its agent defaults to ZSTD
+# Same, but also strip the inflate/JMC-writer code (inflaterless, ~450 KB with compression)
+# Note: inflaterless JAR cannot run cjfr inflate, but is otherwise identical for recording
 python3 reduce-jar.py reduce cjfr.jar cjfr-linux-minimal.jar \
-  --platform linux/amd64 --inflaterless
+  --platform linux/amd64 --without-jmc
 ```
 
 Pre-built variants are on [GitHub Releases](https://github.com/parttimenerd/condensed-data/releases/latest).
