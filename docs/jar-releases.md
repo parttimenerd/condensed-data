@@ -1,3 +1,9 @@
+---
+title: JAR Release Selection
+layout: default
+nav_order: 3
+---
+
 # JAR Release Selection Guide
 
 `cjfr` releases multiple JAR variants. This guide helps you pick the right one.
@@ -76,4 +82,4 @@ python3 reduce-jar.py matrix target/condensed-data.jar target/platform-jars/
 python3 reduce-jar.py matrix target/condensed-data.jar target/platform-jars/ --with-minimal
 ```
 
-See [README_JAR_SIZE.md](../README_JAR_SIZE.md) for more on the `reduce-jar.py` options.
+See [README_JAR_SIZE.md](https://github.com/parttimenerd/condensed-data/blob/main/README_JAR_SIZE.md) for more on the `reduce-jar.py` options.

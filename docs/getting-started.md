@@ -1,3 +1,9 @@
+---
+title: Getting Started
+layout: default
+nav_order: 2
+---
+
 # Getting Started with cjfr (condensed-data)
 
 `cjfr` compresses JFR (Java Flight Recorder) files into a compact `.cjfr` format.
@@ -249,7 +255,7 @@ python3 reduce-jar.py reduce cjfr.jar --list-platforms
 python3 reduce-jar.py reduce cjfr.jar cjfr-mac.jar --platform darwin/aarch64
 ```
 
-See [README_JAR_SIZE.md](README_JAR_SIZE.md) for details.
+See [README_JAR_SIZE.md](https://github.com/parttimenerd/condensed-data/blob/main/README_JAR_SIZE.md) for details.
 
 ---
 
@@ -274,6 +280,6 @@ Try `--condenser-config=reduced-default` for maximum compression, or switch from
 
 ## Further Reading
 
-- [JAR Release Selection Guide](doc/RELEASES.md) — which JAR to download for your environment
-- [Configuration Reference](doc/CONFIGURATIONS.md) — full condenser config and compression trade-offs
-- [Production Recording Guide](doc/PRODUCTION_RECORDING.md) — rotating files, live tuning, sizing
+- [JAR Release Selection Guide]({% link jar-releases.md %}) — which JAR to download for your environment
+- [Configuration Reference]({% link configurations.md %}) — full condenser config and compression trade-offs
+- [Production Recording Guide]({% link production-recording.md %}) — rotating files, live tuning, sizing
