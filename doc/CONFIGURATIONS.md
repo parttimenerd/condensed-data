@@ -1,0 +1,147 @@
+# Configuration Reference
+
+## Condenser Configurations
+
+The `--condenser-config` flag controls how aggressively JFR events are reduced.
+All configurations produce valid `.cjfr` files. Loss is one-way: data reduced
+during condensing cannot be recovered on inflation.
+
+### `default`
+
+Full fidelity. Only structurally redundant data is removed (no-op events like
+GC region changes where nothing changed). Everything else is preserved verbatim.
+
+**Sizes:** ~8–13% of the original JFR (varies by GC type and event density).
+
+**Use when:**
+- You need exact nanosecond timestamps
+- You need source-file line numbers and bytecode index (BCI) in stack frames
+- You need per-allocation object sizes in TLAB/PLAB events
+- You need stacks deeper than 32 frames
+- You are doing forensic analysis or benchmarking
+
+**Defaults to:** `cjfr condense` CLI
+
+**Preserved:** nanosecond timestamps, microsecond durations, full stack traces (unlimited depth), exact memory sizes (32-bit float), all allocation events, all exception events.
+
+**Removed:** provably empty events (e.g. G1HeapRegionTypeChange events with no change).
+
+---
+
+### `reasonable-default`
+
+Conservative lossy compression. Human-readable precision is fully preserved.
+Loses sub-millisecond timestamp precision, BCI/line numbers in stacks, and very
+short or zero-valued GC data.
+
+**Sizes:** ~4–7% of the original JFR.
+
+**Use when:**
+- Production long-term storage and capacity planning
+- GC tuning (pause durations, heap sizes, promotion data are all accurate)
+- You want a ~2× size saving over `default` with minimal analytical impact
+
+**Defaults to:** the Java agent (`-javaagent:cjfr.jar=start,...`)
+
+**Changes from `default`:**
+
+| Field | `default` | `reasonable-default` |
+|---|---|---|
+| Timestamp resolution | nanosecond | millisecond |
+| Duration resolution | nanosecond | microsecond |
+| Memory sizes | 32-bit float | bfloat16 (~0.4% error) |
+| Stack depth limit | unlimited | 32 frames |
+| BCI / source line in stacks | yes | no |
+| Zero-count tenured ages | included | dropped |
+| Sub-threshold GC pauses | included | dropped |
+| PLAB promotion events | per-event | combined |
+| Unnecessary addresses | included | dropped |
+
+---
+
+### `reduced-default`
+
+Aggressive lossy compression. Suitable for bulk archival and fleet-wide
+recordings where storage cost outweighs per-event granularity.
+
+**Sizes:** ~1–2% of the original JFR (as low as 0.5% for ZGC-heavy workloads).
+
+**Use when:**
+- Fleet-wide continuous recording where storage is expensive
+- You only need aggregate metrics (total GC time, pause percentiles, heap trend)
+- You can tolerate losing per-allocation object sizes and per-exception events
+
+**Changes from `reasonable-default`:**
+
+| Field | `reasonable-default` | `reduced-default` |
+|---|---|---|
+| Stack depth limit | 32 frames | 16 frames |
+| Type info in stack frames | yes | no |
+| ObjectAllocationSample events | per-event | combined into buckets |
+| TLAB/PLAB allocation sizes | per-event | summed |
+| Exception events | per-event | combined (same exception class) |
+| G1 heap region changes | per-event | combined |
+| MonitorEnter / ThreadPark | per-event | combined |
+
+---
+
+### Config Summary Table
+
+| Feature | `default` | `reasonable-default` | `reduced-default` |
+|---|---|---|---|
+| Size (% of JFR) | 8–13% | 4–7% | 0.5–2% |
+| Nanosecond timestamps | ✓ | ✗ (ms) | ✗ (ms) |
+| Source line / BCI in stacks | ✓ | ✗ | ✗ |
+| Stack depth | unlimited | 32 | 16 |
+| Per-allocation object size | ✓ | ✓ | ✗ (summed) |
+| Per-exception events | ✓ | ✓ | ✗ (combined) |
+| GC pause durations | ✓ | ✓ | ✓ |
+| Heap sizes | ✓ | ✓ (bfloat16) | ✓ (bfloat16) |
+| Safe for `cjfr inflate` | ✓ | ✓* | ✓* |
+
+*Inflated output reflects the reduced precision (e.g. ms-resolution timestamps,
+no BCI). Inflation does not restore lost data; it only converts the format.
+
+---
+
+## Compression Algorithms
+
+The `--compression` flag selects the inner byte-stream compression. This is
+independent of event reduction above.
+
+```
+cjfr condense --compression=<value> recording.jfr
+```
+
+Accepted values: `NONE`, `GZIP`, `LZ4FRAMED`.
+
+> **Note:** The `.cjfr` format reserves space for additional algorithms, but only
+> `NONE`, `GZIP`, and `LZ4FRAMED` are implemented. Passing any other value is
+> rejected by the CLI.
+
+| Value | Speed (write) | Speed (read) | Ratio | Use case |
+|---|---|---|---|---|
+| `LZ4FRAMED` (default) | Very fast | Very fast | Good | Agent recording, streaming, frequent reads |
+| `GZIP` | Slow | Moderate | Good | Long-term archive; compatible with standard gzip tooling |
+| `NONE` | Instant | Instant | None | Benchmarking the condenser itself; transport with built-in compression |
+
+`LZ4FRAMED` uses block-independent framing: each block can be decompressed
+independently. This makes recordings resilient to partial file corruption and
+allows streaming reads without buffering the entire file.
+
+### Combining config and compression
+
+Compression and condenser config are independent knobs. The biggest size reduction
+comes from choosing the condenser config; compression on top is incremental.
+
+| Config + Algorithm | Approx. % of original JFR |
+|---|---|
+| `default` + `LZ4FRAMED` | 8–13% |
+| `default` + `GZIP` | 7–12% |
+| `reasonable-default` + `LZ4FRAMED` | 4–7% |
+| `reasonable-default` + `GZIP` | 3–6% |
+| `reduced-default` + `LZ4FRAMED` | 0.5–2% |
+| `reduced-default` + `GZIP` | 0.5–2% |
+
+For most production deployments: `reasonable-default` + `LZ4FRAMED` (the agent
+default) is the right choice — fast writes, fast reads, ~5% of original size.

@@ -51,7 +51,7 @@ All variants are published as CI artifacts and in GitHub Releases.
 
 **Production JVM agent (known OS, container)**: Use `condensed-data-<platform>-inflaterless.jar` (~1.5 MB). Inflation happens offline on a different host with the full JAR. Agent-only recording needs none of the JMC machinery.
 
-**Size-critical sidecar / Java agent in a thin container**: Use `condensed-data-<platform>-inflaterless-minimal.jar` (~450 KB). Use LZ4 (the default) — ZSTD is not available in minimal JARs. The recording file is still fully readable by any full JAR.
+**Size-critical sidecar / Java agent in a thin container**: Use `condensed-data-<platform>-inflaterless-minimal.jar` (~450 KB). Only LZ4 compression is available in minimal JARs (use `--compression=GZIP` for better ratio on the full JAR). The recording file is still fully readable by any full JAR.
 
 **Fleet-wide scraper that only calls `condense` or `summary`**: Use `condensed-data-<platform>-inflaterless.jar`. GZIP (`--compression=GZIP`) is available if you want a better compression ratio at the cost of slower write speed.
 
