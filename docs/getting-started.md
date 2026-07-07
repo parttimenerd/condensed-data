@@ -51,17 +51,20 @@ Or attach to an already-running process without restart:
 cjfr agent myapp start '/var/rec/app_$index.cjfr' --rotating --max-files=10 --max-size=100m
 ```
 
-> Always **single-quote** the path when it contains `$index` or `$date` to prevent
-> shell expansion.
+!!! warning "Single-quote the path"
+    When the output path contains `$index` or `$date`, always **single-quote** it
+    in shell to prevent expansion: `'/var/rec/app_$index.cjfr'`, not
+    `"/var/rec/app_$index.cjfr"`.
 
 **How rotation works:** When a file reaches `--max-size` (or `--max-duration`), the
 agent closes it and opens the next. By default, names cycle — `app_0.cjfr`, `app_1.cjfr`,
 …, then back to `app_0.cjfr` — so disk usage is capped at exactly `max-files × max-size`.
 Pass `--new-names` to generate unique names instead (oldest deleted when the cap is hit).
 
-**`--duration` vs `--max-duration`:** `--duration=4h` stops the *whole* recording after
-4 hours. `--max-duration=10m` caps each *individual file* at 10 minutes (rotation trigger).
-Combine both: record for 2 hours total, rotating every 10 minutes.
+!!! tip "`--duration` vs `--max-duration`"
+    `--duration=4h` stops the **whole recording** after 4 hours.
+    `--max-duration=10m` caps **each individual file** at 10 minutes (rotation trigger).
+    Combine both: record for 2 hours total, rotating every 10 minutes.
 
 Check status or stop at any time:
 

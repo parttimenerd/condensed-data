@@ -52,11 +52,16 @@ cjfr inflate --start="2024-05-24 12:07:00" --duration=2m \
 ## GC percentile filter
 
 Focus on the worst GC pauses — and the application activity that caused them.
-`--gc-percentile=N` retains events from **N seconds before and after** any GC
-whose pause duration is at or above the Nth percentile.
+`--gc-percentile=N` **filters events** to a window (default 1 minute, tunable
+via `--gc-percentile-context`) around every GC whose pause duration is at or above
+the Nth percentile.
 
-This is the fastest way to answer "what was my application doing around the worst
-pauses?" without loading the full recording into Mission Control.
+- With `cjfr summary`, this changes the **event-count table** — you see counts of
+  what happened around the worst pauses. The standard GC Summary section is still
+  shown when the input is a single file.
+- With `cjfr inflate`, this produces a `.jfr` containing only those windows —
+  much smaller than a full inflation and fast to open in JMC.
+- With `cjfr view`, it restricts the event listing to those windows.
 
 ```shell
 # Keep only events near the slowest 10% of GC pauses (≥ 90th percentile)
@@ -139,6 +144,20 @@ cjfr summary --flamegraph storage.html recording.cjfr  # storage flamegraph by e
 
 The `--flamegraph` output shows **byte distribution** across event types, not
 CPU time — useful for understanding which event types dominate file size.
+
+!!! warning "GC Summary is single-file only"
+    `cjfr summary` only produces the dedicated **GC Summary** section when querying
+    a **single file**. When multiple `-i` files are passed, the event count table is
+    merged across all files, but the GC-specific summary section is omitted.
+
+    Workarounds:
+
+    - Run `summary --short` on the most recent rotation file per host — it is
+      usually representative.
+    - Run `summary --json` on each file individually and aggregate `.gc.p95Micros`
+      / `.gc.maxMicros` (values in microseconds).
+    - Or `inflate` the multi-file set to a single `.jfr` and re-run
+      `summary --short` on that single output.
 
 ---
 

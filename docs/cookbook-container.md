@@ -42,6 +42,12 @@ docker run \
   myapp:latest
 ```
 
+!!! warning "Escape `$index` in shell strings"
+    Inside double-quoted shell strings (including `docker run -e "…"` and
+    Dockerfile `ENV` lines), the shell expands `$index` to empty before the JVM
+    sees it. Use `\$index` (or single-quote the value) so the literal placeholder
+    reaches the agent.
+
 ---
 
 ### Pull recordings and analyse on the host

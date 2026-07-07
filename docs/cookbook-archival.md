@@ -72,6 +72,16 @@ done
 cjfr condense recordings.zip archive.cjfr
 ```
 
+!!! note "ZIP and folder inputs use `default` config"
+    When condensing a ZIP or directory, `cjfr condense` defaults to the `default`
+    condenser config (lossless). For archival, pass
+    `--condenser-config=reduced-default --compression=GZIP` explicitly:
+
+    ```shell
+    cjfr condense --condenser-config=reduced-default --compression=GZIP \
+      recordings.zip archive.cjfr
+    ```
+
 ---
 
 ### Verify and inspect an archived recording

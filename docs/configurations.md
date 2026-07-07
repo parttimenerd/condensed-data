@@ -4,6 +4,12 @@ title: Configuration Reference
 
 # Configuration Reference
 
+!!! success "Default is usually right"
+    For 95% of production deployments, use `reasonable-default` (the agent default)
+    with `LZ4FRAMED` compression (also the default). You do not need to change this.
+    The rest of this page exists for the 5% who need tighter compression or full
+    nanosecond fidelity.
+
 ## Condenser Configurations
 
 The `--condenser-config` flag controls how aggressively JFR events are reduced.

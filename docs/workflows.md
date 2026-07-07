@@ -172,11 +172,11 @@ When a recording spans several rotation files, combine them for analysis:
 # Summarise the whole day
 cjfr summary app_0.cjfr -i app_1.cjfr -i app_2.cjfr -i app_3.cjfr
 
-# Shell glob shorthand
-FILES=$(ls app_*.cjfr)
-FIRST=$(echo $FILES | awk '{print $1}')
-REST=$(echo $FILES | tr ' ' '\n' | tail -n +2 | sed 's/^/-i /' | tr '\n' ' ')
-cjfr summary $FIRST $REST
+# Shell glob shorthand (bash/zsh)
+files=(app_*.cjfr)
+extra_args=()
+for f in "${files[@]:1}"; do extra_args+=(-i "$f"); done
+cjfr summary "${files[0]}" "${extra_args[@]}"
 
 # Merge into a single .cjfr for long-term archival
 cjfr condense --force -i app_1.cjfr -i app_2.cjfr app_0.cjfr archive.cjfr
