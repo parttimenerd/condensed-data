@@ -1,7 +1,5 @@
 ---
 title: Production Recording
-layout: default
-nav_order: 5
 ---
 
 # Production Recording Guide

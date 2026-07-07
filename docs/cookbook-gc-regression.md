@@ -1,8 +1,5 @@
 ---
 title: "Cookbook: GC Regression Hunt"
-layout: default
-nav_order: 9
-parent: Cookbooks
 ---
 
 # Cookbook: Investigating a GC Regression
@@ -62,6 +59,9 @@ compared to inflating the full recording.
 
 ### Step 4 — Compare GC event details directly (no JMC needed)
 
+`cjfr view --json` emits one JSON object per event; pipe to `jq` to project the
+fields you care about.
+
 ```shell
 # Before: show GC events with cause, pause, and heap usage
 cjfr view --json before_0.cjfr jdk.GarbageCollection \
@@ -72,8 +72,11 @@ cjfr view --json after_0.cjfr jdk.GarbageCollection \
   | jq '.[] | {gcId, cause, longestPause, sumOfPauses}'
 ```
 
-Pause values (`longestPause`, `sumOfPauses`) are in nanoseconds.
+!!! note "Units"
+    `longestPause` and `sumOfPauses` in `view --json` output are in **nanoseconds**.
+    (The `summary --json` GC section uses **microseconds** — the `.gc.p95Micros` field.)
 
+```shell
 # Heap trajectory before vs. after
 cjfr view before_0.cjfr jdk.GCHeapSummary
 cjfr view after_0.cjfr jdk.GCHeapSummary

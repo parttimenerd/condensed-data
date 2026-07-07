@@ -1,7 +1,5 @@
 ---
 title: Home
-layout: default
-nav_order: 1
 ---
 
 # cjfr — Condensed JFR
@@ -76,17 +74,17 @@ cjfr condense recording.jfr
 
 ## Documentation
 
-- [Getting Started]({% link getting-started.md %}) — installation, rotating recording quickstart, basic analysis
-- [Production Recording Guide]({% link production-recording.md %}) — rotation knobs, live tuning, storage sizing
-- [Analyzing Recordings]({% link analysis.md %}) — time filters, GC percentile, event filters, multi-file queries
-- [Common Workflows]({% link workflows.md %}) — command-level recipes (JFR slicing, GC extraction, file merging)
-- [Configuration Reference]({% link configurations.md %}) — condenser configs and compression algorithm trade-offs
-- [JAR Release Selection]({% link jar-releases.md %}) — pick the right JAR variant (universal vs platform vs minimal)
+- [Getting Started](getting-started.md) — installation, rotating recording quickstart, basic analysis
+- [Production Recording Guide](production-recording.md) — rotation knobs, live tuning, storage sizing
+- [Analyzing Recordings](analysis.md) — time filters, GC percentile, event filters, multi-file queries
+- [Common Workflows](workflows.md) — command-level recipes (JFR slicing, GC extraction, file merging)
+- [Configuration Reference](configurations.md) — condenser configs and compression algorithm trade-offs
+- [JAR Release Selection](jar-releases.md) — pick the right JAR variant (universal vs platform vs minimal)
 - **Cookbooks:**
-  - [GC Regression Hunt]({% link cookbook-gc-regression.md %}) — before/after comparison, worst-pause extraction
-  - [Fleet-Wide GC Monitoring]({% link cookbook-fleet-monitoring.md %}) — batch summary, JSON aggregation, live limit tuning
-  - [Container and Sidecar Deployment]({% link cookbook-container.md %}) — inflaterless agent, Kubernetes init-container
-  - [Archival Pipeline]({% link cookbook-archival.md %}) — GZIP re-compression, batch script with verification
+  - [GC Regression Hunt](cookbook-gc-regression.md) — before/after comparison, worst-pause extraction
+  - [Fleet-Wide GC Monitoring](cookbook-fleet-monitoring.md) — batch summary, JSON aggregation, live limit tuning
+  - [Container and Sidecar Deployment](cookbook-container.md) — inflaterless agent, Kubernetes init-container
+  - [Archival Pipeline](cookbook-archival.md) — GZIP re-compression, batch script with verification
 
 ## Project links
 

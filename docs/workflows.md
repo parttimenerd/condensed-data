@@ -1,7 +1,5 @@
 ---
 title: Common Workflows
-layout: default
-nav_order: 7
 ---
 
 # Common Workflows
@@ -283,4 +281,4 @@ python3 reduce-jar.py reduce cjfr.jar cjfr-linux-minimal.jar \
 ```
 
 Pre-built variants are on [GitHub Releases](https://github.com/parttimenerd/condensed-data/releases/latest).
-See [JAR Release Selection]({% link jar-releases.md %}) for the full comparison.
+See [JAR Release Selection](jar-releases.md) for the full comparison.

@@ -1,7 +1,5 @@
 ---
 title: JAR Release Selection
-layout: default
-nav_order: 3
 ---
 
 # JAR Release Selection Guide

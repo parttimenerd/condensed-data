@@ -1,7 +1,5 @@
 ---
 title: Getting Started
-layout: default
-nav_order: 2
 ---
 
 # Getting Started with cjfr
@@ -80,7 +78,7 @@ cjfr agent myapp set-max-size 200m     # grow per-file cap
 cjfr agent myapp set-max-duration 15m  # change rotation interval
 ```
 
-See [Production Recording Guide]({% link production-recording.md %}) for the full
+See [Production Recording Guide](production-recording.md) for the full
 rotation reference, storage sizing, and JFR config options.
 
 ---
@@ -113,7 +111,7 @@ cjfr inflate --start="2024-05-24 14:25:00" --duration=30m recording.cjfr inciden
 cjfr inflate --gc-percentile=95 recording.cjfr worst-pauses.jfr
 ```
 
-See [Analyzing Recordings]({% link analysis.md %}) for time filters, event filters,
+See [Analyzing Recordings](analysis.md) for time filters, event filters,
 and multi-file queries.
 
 ---
@@ -147,15 +145,15 @@ Run `cjfr agent <pid> status` to confirm the recording started.
 
 The agent defaults to `reasonable-default` config. Switch to `reduced-default` for
 maximum compression (~1–4% of original), or use `--compression=GZIP` for a better
-ratio at slower write speed. See [Configuration Reference]({% link configurations.md %}).
+ratio at slower write speed. See [Configuration Reference](configurations.md).
 
 ---
 
 ## Further Reading
 
-- [Production Recording Guide]({% link production-recording.md %}) — rotation knobs, live tuning, storage sizing, JFR config
-- [Configuration Reference]({% link configurations.md %}) — condenser configs and compression algorithms
-- [Analyzing Recordings]({% link analysis.md %}) — time filters, GC percentile, event filters, multi-file queries
-- [Common Workflows]({% link workflows.md %}) — end-to-end recipes
-- [Cookbooks]({% link cookbooks.md %}) — GC regression hunt, fleet monitoring, container deployment, archival
-- [JAR Release Selection]({% link jar-releases.md %}) — pick the right JAR variant for your deployment
+- [Production Recording Guide](production-recording.md) — rotation knobs, live tuning, storage sizing, JFR config
+- [Configuration Reference](configurations.md) — condenser configs and compression algorithms
+- [Analyzing Recordings](analysis.md) — time filters, GC percentile, event filters, multi-file queries
+- [Common Workflows](workflows.md) — end-to-end recipes
+- [Cookbooks](cookbooks.md) — GC regression hunt, fleet monitoring, container deployment, archival
+- [JAR Release Selection](jar-releases.md) — pick the right JAR variant for your deployment

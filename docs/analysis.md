@@ -1,7 +1,5 @@
 ---
 title: Analyzing Recordings
-layout: default
-nav_order: 6
 ---
 
 # Analyzing Recordings

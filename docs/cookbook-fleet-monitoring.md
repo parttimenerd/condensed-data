@@ -1,8 +1,5 @@
 ---
 title: "Cookbook: Fleet-Wide GC Monitoring"
-layout: default
-nav_order: 10
-parent: Cookbooks
 ---
 
 # Cookbook: Fleet-Wide GC Monitoring

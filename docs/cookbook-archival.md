@@ -1,8 +1,5 @@
 ---
 title: "Cookbook: Archival Pipeline"
-layout: default
-nav_order: 12
-parent: Cookbooks
 ---
 
 # Cookbook: Archival Pipeline

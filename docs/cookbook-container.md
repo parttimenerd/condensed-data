@@ -1,8 +1,5 @@
 ---
 title: "Cookbook: Container and Sidecar Deployment"
-layout: default
-nav_order: 11
-parent: Cookbooks
 ---
 
 # Cookbook: Container and Sidecar Deployment
