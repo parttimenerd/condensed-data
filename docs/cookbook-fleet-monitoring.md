@@ -92,7 +92,7 @@ cjfr inflate --gc-percentile=90 fleet/server2/app_0.cjfr \
 ### Adjusting limits live (no restart)
 
 If disk usage grows unexpectedly on a server, shrink the ring buffer without stopping
-the recording:
+the recording. Run these commands on the server (or via `ssh server1`):
 
 ```shell
 cjfr agent myapp set-max-files 10

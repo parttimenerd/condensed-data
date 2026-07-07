@@ -72,7 +72,7 @@ cjfr inflate --start="2024-05-24 14:00:00" --duration=1h \
 
 ### For absolute minimum JAR size (~450 KB)
 
-Use the minimal variant — LZ4 only, ProGuard-optimised:
+Use the minimal variant — LZ4FRAMED and GZIP, ProGuard-optimised:
 
 ```shell
 condensed-data-linux-amd64-inflaterless-minimal.jar
@@ -104,9 +104,7 @@ containers:
   - name: myapp
     env:
       - name: JAVA_TOOL_OPTIONS
-        value: >-
-          -javaagent:/agent/cjfr-agent.jar=start,/var/rec/app_$index.cjfr,
-          --rotating,--max-files=10,--max-size=100m
+        value: "-javaagent:/agent/cjfr-agent.jar=start,/var/rec/app_$index.cjfr,--rotating,--max-files=10,--max-size=100m"
     volumeMounts:
       - name: gc-recordings
         mountPath: /var/rec
