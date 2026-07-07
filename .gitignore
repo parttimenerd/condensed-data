@@ -50,3 +50,9 @@ target/test-order-dashboard/
 
 ### jqwik ###
 .jqwik-database
+
+### MkDocs ###
+/site/
+docs/_site/
+docs/.jekyll-cache/
+.playwright-mcp/

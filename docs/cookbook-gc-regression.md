@@ -62,6 +62,10 @@ compared to inflating the full recording.
 `cjfr view --json` emits one JSON object per event; pipe to `jq` to project the
 fields you care about.
 
+!!! note "Units"
+    `longestPause` and `sumOfPauses` in `view --json` output are in **nanoseconds**.
+    (The `summary --json` GC section uses **microseconds** — the `.gc.p95Micros` field.)
+
 ```shell
 # Before: show GC events with cause, pause, and heap usage
 cjfr view --json before_0.cjfr jdk.GarbageCollection \
@@ -71,10 +75,6 @@ cjfr view --json before_0.cjfr jdk.GarbageCollection \
 cjfr view --json after_0.cjfr jdk.GarbageCollection \
   | jq '.[] | {gcId, cause, longestPause, sumOfPauses}'
 ```
-
-!!! note "Units"
-    `longestPause` and `sumOfPauses` in `view --json` output are in **nanoseconds**.
-    (The `summary --json` GC section uses **microseconds** — the `.gc.p95Micros` field.)
 
 ```shell
 # Heap trajectory before vs. after
@@ -100,3 +100,5 @@ cjfr inflate --events=jdk.ObjectAllocationSample,jdk.ObjectAllocationInNewTLAB,\
 jdk.ObjectAllocationOutsideTLAB \
   after_0.cjfr alloc-after.jfr
 ```
+
+---

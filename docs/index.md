@@ -46,6 +46,7 @@ Compression is LZ4 (fast) or GZIP (better ratio, archival). No other algorithms.
    ┌──────────────┐          ┌──────────────────────────────┐
    │  cjfr agent  │          │  cjfr summary  (no inflate)  │
    │  status/stop │          │  cjfr view     (per-event)   │
+   │  set-max-*   │
    └──────────────┘          │  cjfr inflate → .jfr → JMC   │
                              └──────────────────────────────┘
 ```
