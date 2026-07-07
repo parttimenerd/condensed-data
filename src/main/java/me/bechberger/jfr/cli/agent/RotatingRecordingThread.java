@@ -377,9 +377,13 @@ public class RotatingRecordingThread extends RecordingThread {
      */
     @Override
     protected void onMaxFilesChanged() {
-        synchronized (filesLock) {
-            Path livePath = currentPath;
-            deleteOldestFilesIfNeeded(livePath);
+        rotationLock.lock();
+        try {
+            synchronized (filesLock) {
+                deleteOldestFilesIfNeeded(currentPath);
+            }
+        } finally {
+            rotationLock.unlock();
         }
     }
 
@@ -417,18 +421,20 @@ public class RotatingRecordingThread extends RecordingThread {
             Thread.currentThread().interrupt();
             locked = false;
         }
+        boolean cleanClose = false;
         if (locked) {
             try {
                 var s = this.state;
                 this.state = null;
                 if (s != null) {
                     closeState(s);
+                    // Evict oldest sealed files but preserve the last written file —
+                    // it is the most recent recording the client expects to keep.
+                    synchronized (filesLock) {
+                        deleteOldestFilesIfNeeded(s.filePath());
+                    }
                 }
-                // Final eviction pass: the last file is now sealed and eligible for eviction.
-                // Pass null as excludePath because there is no longer a live writer.
-                synchronized (filesLock) {
-                    deleteOldestFilesIfNeeded(null);
-                }
+                cleanClose = true;
             } finally {
                 rotationLock.unlock();
             }
@@ -445,13 +451,20 @@ public class RotatingRecordingThread extends RecordingThread {
                     agentIO.writeSevereError(
                             "Best-effort close of writer failed: " + t.getMessage());
                 }
-            }
-            synchronized (filesLock) {
-                deleteOldestFilesIfNeeded(null);
+                synchronized (filesLock) {
+                    deleteOldestFilesIfNeeded(s.filePath());
+                }
             }
         }
         if (overallWrittenFileCount.get() >= 0) {
-            agentIO.writeOutput("Condensed recording to " + pathTemplate + " finished");
+            if (cleanClose) {
+                agentIO.writeOutput("Condensed recording to " + pathTemplate + " finished");
+            } else {
+                agentIO.writeOutput(
+                        "Condensed recording to "
+                                + pathTemplate
+                                + " finished (last file may be truncated — shutdown under load)");
+            }
         }
     }
 
@@ -531,7 +544,19 @@ public class RotatingRecordingThread extends RecordingThread {
 
     @Override
     List<Entry<String, String>> getMiscStatus() {
-        rotationLock.lock();
+        boolean locked;
+        try {
+            locked = rotationLock.tryLock(200, TimeUnit.MILLISECONDS);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            locked = false;
+        }
+        if (!locked) {
+            return List.of(
+                    Map.entry("mode", "rotating"),
+                    Map.entry("path", pathTemplate),
+                    Map.entry("state", "rotating (status unavailable)"));
+        }
         try {
             State s = this.state;
             if (s == null || s.jfrWriter == null) {

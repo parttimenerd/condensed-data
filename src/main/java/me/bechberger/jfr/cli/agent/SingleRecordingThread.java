@@ -150,19 +150,35 @@ public class SingleRecordingThread extends RecordingThread {
             } finally {
                 writerLock.unlock();
             }
+            agentIO.writeOutput("Condensed recording to " + path + " finished\n");
         } else {
             agentIO.writeSevereError(
                     "Could not acquire writerLock within 2s during close;"
                             + " abandoning writer (best-effort shutdown)");
+            agentIO.writeOutput(
+                    "Condensed recording to "
+                            + path
+                            + " finished (last file may be truncated — shutdown under load)\n");
         }
-        agentIO.writeOutput("Condensed recording to " + path + " finished\n");
     }
 
     @Override
     List<Entry<String, String>> getMiscStatus() {
+        boolean locked;
+        try {
+            locked = writerLock.tryLock(200, java.util.concurrent.TimeUnit.MILLISECONDS);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            locked = false;
+        }
+        if (!locked) {
+            return List.of(
+                    Map.entry("mode", "single file"),
+                    Map.entry("path", Path.of(path).toAbsolutePath().toString()),
+                    Map.entry("state", "writing (status unavailable)"));
+        }
         long sizeOnDrive;
         long sizeUncompressed;
-        writerLock.lock();
         try {
             sizeOnDrive = jfrWriter.estimateSize();
             sizeUncompressed = jfrWriter.getUncompressedStatistic().getBytes();
