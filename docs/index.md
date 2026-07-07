@@ -6,12 +6,29 @@ nav_order: 1
 
 # cjfr — Condensed JFR
 
-A library and CLI tool for reading and writing condensed JFR (Java Flight Recorder)
-event data. Focused on a simple, self-describing, space-saving format for long-term
-storage of GC-related JFR recordings.
+`cjfr` is a library and CLI for compressing JFR (Java Flight Recorder) data into a
+compact, self-describing `.cjfr` format. It is designed for continuous GC profiling
+in production: long-term storage of rotating JFR recordings with negligible overhead,
+offline analysis without a full JFR toolchain, and selective inflation back to `.jfr`
+when you need JDK Mission Control.
 
-`cjfr` includes a Java agent that records directly to the compact `.cjfr` format
-with file rotation, live tuning, and per-platform native compression.
+Developed by the [SapMachine](https://sap.github.io/SapMachine/) team at SAP.
+
+## Why use cjfr?
+
+Standard JFR files are large — a gc_details-heavy workload produces ~250 MB/hour.
+Keeping weeks of data on each node is expensive. `cjfr` shrinks that by 4–30×
+without losing anything GC-relevant:
+
+| Approach | Typical size (gc_details-heavy) | Notes |
+|---|---|---|
+| Raw JFR | 100% | Full fidelity |
+| `cjfr default` + LZ4 | 8–42% | No loss |
+| `cjfr reasonable-default` + LZ4 | 4–17% | Millisecond timestamps, 32-frame stacks |
+| `cjfr reduced-default` + LZ4 | 1–11% | Aggregate metrics, combined allocation events |
+
+The agent writes directly to `.cjfr` — no intermediate JFR file, no extra disk I/O.
+Compression is LZ4 (fast) or GZIP (better ratio, archival). No other algorithms.
 
 ## Install
 
@@ -22,7 +39,7 @@ curl -L -o cjfr.jar https://github.com/parttimenerd/condensed-data/releases/late
 alias cjfr='java -jar '"$(pwd)"'/cjfr.jar'
 ```
 
-Requires JDK 17+.
+Requires JDK 17+. The JAR is self-contained — no installation, no classpath setup.
 
 ## Quick example
 
@@ -33,13 +50,20 @@ cjfr condense recording.jfr
 # → recording.cjfr (typically 4–13% of original)
 ```
 
-Record directly to `.cjfr` with the agent:
+Attach the agent to a running process for continuous recording:
 
 ```shell
-java -javaagent:cjfr.jar=start,recording.cjfr -jar myapp.jar
+cjfr agent myapp start '/var/rec/app_$index.cjfr' --rotating --max-files=10 --max-size=100m
 ```
 
-## Next steps
+Inspect without inflating:
+
+```shell
+cjfr summary recording.cjfr
+cjfr summary --gc-percentile=95 recording.cjfr   # show context around worst pauses
+```
+
+## Documentation
 
 - [Getting Started]({% link getting-started.md %}) — installation, quickstart, agent usage, troubleshooting
 - [JAR Release Selection]({% link jar-releases.md %}) — pick the right JAR variant (universal vs platform vs minimal)

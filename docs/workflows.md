@@ -6,7 +6,7 @@ nav_order: 7
 
 # Common Workflows
 
-Practical recipes for the most common cjfr use cases.
+Practical recipes for the most common `cjfr` use cases.
 Each workflow is self-contained — copy the commands, substitute your paths.
 
 ---
@@ -56,14 +56,15 @@ default — any of them can be used as the agent, and the output is readable by
 the full JAR on your workstation. The inflaterless JAR cannot run `inflate`
 but is otherwise identical for recording.
 
-**On the server:**
+**On the server** (use the smallest JAR that fits your deployment):
 
 ```shell
-# Download the universal JAR (~2 MB, works on any platform)
+# Platform-inflaterless JAR: ~1.5 MB, no inflate capability, minimal deps
+# Download the right platform JAR for your server OS/arch from GitHub Releases
 curl -L -o cjfr.jar \
-  https://github.com/parttimenerd/condensed-data/releases/latest/download/condensed-data.jar
+  https://github.com/parttimenerd/condensed-data/releases/latest/download/condensed-data-linux-amd64-inflaterless.jar
 
-# Start rotating recording (reasonable-default ≈ 130 MB/hr for GC-heavy apps)
+# Start rotating recording (~130 MB/hr for gc_details-heavy workloads)
 java -javaagent:cjfr.jar='start,/var/rec/app_$index.cjfr,--rotating,--max-files=10,--max-size=100m' \
      -jar myapp.jar
 ```
@@ -85,7 +86,7 @@ cjfr summary --gc-percentile=90 recordings/app_0.cjfr \
   -i recordings/app_1.cjfr -i recordings/app_2.cjfr
 ```
 
-**Inflate to JFR for JDK Mission Control:**
+**Inflate to JFR for JDK Mission Control** (needs the full JAR locally):
 
 ```shell
 # Merge all files into one JFR
@@ -97,6 +98,30 @@ cjfr inflate --start="2024-05-24 08:00:00" --duration=1h \
   recordings/app_0.cjfr -i recordings/app_1.cjfr -i recordings/app_2.cjfr \
   last-hour.jfr
 ```
+
+---
+
+## Inflating multiple files, keeping only a time range
+
+A common post-incident workflow: you have several rotation files spanning many hours,
+and you want a single JFR covering just the 30 minutes around the incident.
+
+```shell
+# Step 1: find out when the recording starts
+cjfr summary --short app_0.cjfr -i app_1.cjfr -i app_2.cjfr
+
+# Step 2: extract the window across all files into a single JFR
+cjfr inflate \
+  --start="2024-05-24 14:25:00" --duration=30m \
+  app_0.cjfr -i app_1.cjfr -i app_2.cjfr \
+  incident.jfr
+
+# Step 3: open in JDK Mission Control
+jmc incident.jfr
+```
+
+The time-range filter is applied across the merged file set — you don't need to know
+which rotation file contains the incident window.
 
 ---
 
@@ -113,8 +138,8 @@ cjfr inflate --start="2024-05-24 14:30:00" --duration=5m recording.cjfr incident
 cjfr inflate --start="2024-05-24 12:06:42" --duration=10m recording.cjfr warmup.jfr
 ```
 
-Timestamps must include a date. Use the `cjfr summary --short` output to find
-the recording's start time, then build your window from there.
+Timestamps must include a date. Use `cjfr summary --short` to find the recording's
+start time, then build your window from there.
 
 ---
 
@@ -248,10 +273,10 @@ production deployment on a known OS/architecture, strip it down:
 # See what platforms are available
 python3 reduce-jar.py reduce cjfr.jar --list-platforms
 
-# Linux/amd64-only JAR (from ~2 MB universal down to ~2 MB platform — same size roughly)
+# Linux/amd64-only JAR (~2 MB platform)
 python3 reduce-jar.py reduce cjfr.jar cjfr-linux.jar --platform linux/amd64
 
-# Same, but also strip the inflate/JMC-writer code (inflaterless, ~450 KB with compression)
+# Same, but also strip the inflate/JMC-writer code (~450 KB with compression)
 # Note: inflaterless JAR cannot run cjfr inflate, but is otherwise identical for recording
 python3 reduce-jar.py reduce cjfr.jar cjfr-linux-minimal.jar \
   --platform linux/amd64 --without-jmc

@@ -12,6 +12,11 @@ The `--condenser-config` flag controls how aggressively JFR events are reduced.
 All configurations produce valid `.cjfr` files. Loss is one-way: data reduced
 during condensing cannot be recovered on inflation.
 
+For GC profiling, `reasonable-default` is the right choice for almost all production
+deployments — it preserves all GC pause durations, heap sizes, promotion data,
+and allocation rates at millisecond precision, which is far more than enough for
+GC tuning and capacity planning.
+
 ### `default`
 
 Full fidelity. Only structurally redundant data is removed (no-op events like

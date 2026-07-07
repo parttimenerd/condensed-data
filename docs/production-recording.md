@@ -7,7 +7,8 @@ nav_order: 5
 # Production Recording Guide
 
 This guide covers operating the cjfr Java agent in long-running production
-services: rotating files, live tuning, storage sizing, and common patterns.
+services: rotating files, live tuning, storage sizing, and common patterns
+for continuous GC profiling.
 
 ## Starting a Continuous Recording
 

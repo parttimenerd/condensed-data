@@ -6,21 +6,23 @@ nav_order: 3
 
 # JAR Release Selection Guide
 
-`cjfr` releases multiple JAR variants. This guide helps you pick the right one.
+`cjfr` releases multiple JAR variants optimised for different deployment contexts.
+The key trade-off is size vs. capability: the universal JAR does everything but
+weighs 8.7 MB; a platform-inflaterless JAR runs the agent at ~1.5 MB.
 
 ## Quick Decision Tree
 
 ```
 Do you need `cjfr inflate` (convert .cjfr back to .jfr)?
 ├── Yes → use a JAR *without* "inflaterless" in the name
-└── No  → any variant works; prefer inflaterless for smaller size
+└── No  → any variant works; prefer inflaterless for smaller agent footprint
 
 Do you know your target OS/arch?
 ├── Yes → use a platform-specific JAR (e.g. linux-amd64)
 └── No  → use the universal JAR
 
 Are you embedding the agent in a container where JAR size matters?
-├── Yes → use a *-minimal JAR (LZ4-only, ~450 KB)
+├── Yes → use a *-minimal JAR (LZ4-only, ~450 KB with compression)
 └── No  → use a standard platform or universal JAR
 ```
 
@@ -53,13 +55,21 @@ All variants are published as CI artifacts and in GitHub Releases.
 
 ## Recommended Choices by Persona
 
-**Local developer / JFR tooling**: Download the universal `condensed-data.jar` from GitHub Releases. It includes `inflate` for round-trip to JMC.
+**Local developer / ad-hoc analysis**: Download the universal `condensed-data.jar`.
+It includes `inflate` for round-trip to JMC and works on any platform out of the box.
 
-**Production JVM agent (known OS, container)**: Use `condensed-data-<platform>-inflaterless.jar` (~1.5 MB). Inflation happens offline on a different host with the full JAR. Agent-only recording needs none of the JMC machinery.
+**Production JVM agent (known OS, recording only)**: Use `condensed-data-<platform>-inflaterless.jar`
+(~1.5 MB). Inflation happens offline on a different host with the full JAR. The agent
+needs none of the JMC writer machinery.
 
-**Size-critical sidecar / Java agent in a thin container**: Use `condensed-data-<platform>-inflaterless-minimal.jar` (~450 KB). Only LZ4 compression is available in minimal JARs (use `--compression=GZIP` for better ratio on the full JAR). The recording file is still fully readable by any full JAR.
+**Size-critical sidecar / Java agent in a thin container**: Use
+`condensed-data-<platform>-inflaterless-minimal.jar` (~450 KB). Only LZ4 compression is
+available in minimal JARs (use `--compression=GZIP` on the full JAR for archival).
+The recording file is still fully readable by any full JAR.
 
-**Fleet-wide scraper that only calls `condense` or `summary`**: Use `condensed-data-<platform>-inflaterless.jar`. GZIP (`--compression=GZIP`) is available if you want a better compression ratio at the cost of slower write speed.
+**Fleet-wide scraper that only calls `condense` or `summary`**: Use
+`condensed-data-<platform>-inflaterless.jar`. GZIP (`--compression=GZIP`) is available
+if you want a better compression ratio at the cost of slower writes.
 
 ## Inspecting a JAR's Reduction Manifest
 
