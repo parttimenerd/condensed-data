@@ -113,7 +113,7 @@ public class RotatingRecordingThread extends RecordingThread {
             Path candidate =
                     Path.of(
                             base.endsWith(".cjfr")
-                                    ? base.replace(".cjfr", "_" + suffix + ".cjfr")
+                                    ? base.substring(0, base.length() - 5) + "_" + suffix + ".cjfr"
                                     : base + "_" + suffix);
             try {
                 java.io.OutputStream out = Files.newOutputStream(candidate, CREATE_NEW);

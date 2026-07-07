@@ -243,6 +243,12 @@ public abstract class RecordingThread implements Runnable {
             dynSettings.maxSize = old;
             throw e;
         }
+        if (rotating && maxSize == 0 && dynSettings.maxDuration.isZero()) {
+            dynSettings.maxSize = old;
+            throw new DynamicallyChangeableSettings.ValidationException(
+                    "Cannot set --max-size to 0 while --max-duration is also 0:"
+                            + " rotating mode requires at least one rotation trigger");
+        }
     }
 
     /** Must be >= 1ms, 0 means no limit */
@@ -254,6 +260,12 @@ public abstract class RecordingThread implements Runnable {
         } catch (DynamicallyChangeableSettings.ValidationException e) {
             dynSettings.maxDuration = old;
             throw e;
+        }
+        if (rotating && maxDuration.isZero() && dynSettings.maxSize == 0) {
+            dynSettings.maxDuration = old;
+            throw new DynamicallyChangeableSettings.ValidationException(
+                    "Cannot set --max-duration to 0 while --max-size is also 0:"
+                            + " rotating mode requires at least one rotation trigger");
         }
     }
 

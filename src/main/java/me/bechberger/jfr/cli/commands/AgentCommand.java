@@ -373,6 +373,12 @@ public class AgentCommand implements Callable<Integer> {
                     }
                 }
             }
+            // Clean up any stale is.closed marker so it cannot interfere with the next session
+            try {
+                java.nio.file.Files.deleteIfExists(agentIO.getIsClosedFile());
+            } catch (IOException ignored) {
+                // best effort
+            }
         } catch (URISyntaxException ex) {
             System.err.println("Can't find the current JAR file");
             return 1;

@@ -145,7 +145,7 @@ public class StartCommand implements Callable<Integer> {
             return path;
         }
         if (path.endsWith(".cjfr")) {
-            return path.replace(".cjfr", "_$index.cjfr");
+            return path.substring(0, path.length() - 5) + "_$index.cjfr";
         }
         return path + "_$index.cjfr";
     }
