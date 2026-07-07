@@ -1,3 +1,9 @@
+---
+title: Production Recording
+layout: default
+nav_order: 5
+---
+
 # Production Recording Guide
 
 This guide covers operating the cjfr Java agent in long-running production
