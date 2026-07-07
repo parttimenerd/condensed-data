@@ -172,7 +172,8 @@ public class EventTypesCompletionHelper {
 
     private static String hashPath(Path path) throws NoSuchAlgorithmException, IOException {
         // get the sha1 hash of the path and take the first 20 characters from base64 encoding
-        return Base64.getEncoder()
+        return Base64.getUrlEncoder()
+                .withoutPadding()
                 .encodeToString(
                         MessageDigest.getInstance("SHA-1")
                                 .digest(
