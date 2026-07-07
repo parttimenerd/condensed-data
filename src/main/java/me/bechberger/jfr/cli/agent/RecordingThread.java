@@ -64,12 +64,7 @@ public abstract class RecordingThread implements Runnable {
         this.miscJfrConfig = miscJfrConfig;
         var parsedMiscJfrConfig = parseJfrSettings(miscJfrConfig);
         parsedJfrConfig.getSettings().putAll(parsedMiscJfrConfig);
-        RecordingStream rs;
-        try {
-            rs = new RecordingStream(parsedJfrConfig);
-        } catch (Exception ex) {
-            throw ex;
-        }
+        RecordingStream rs = new RecordingStream(parsedJfrConfig);
         this.recordingStream = rs;
         this.removeFromParent = removeFromParent;
     }
@@ -87,6 +82,14 @@ public abstract class RecordingThread implements Runnable {
                 continue;
             }
             var parts = s.split("=", 2);
+            if (parts[0].isEmpty()) {
+                AgentIO.getAgentInstance()
+                        .writeSevereError(
+                                "Ignoring malformed --misc-jfr-config entry (empty key): '"
+                                        + s
+                                        + "'");
+                continue;
+            }
             result.put(parts[0], parts[1]);
         }
         return result;
@@ -315,7 +318,13 @@ public abstract class RecordingThread implements Runnable {
             dynSettings.maxFiles = old;
             throw e;
         }
+        if (rotating) {
+            onMaxFilesChanged();
+        }
     }
+
+    /** Called after maxFiles is successfully updated in rotating mode. Subclasses may evict. */
+    protected void onMaxFilesChanged() {}
 
     public boolean useNewNames() {
         return dynSettings.newNames;

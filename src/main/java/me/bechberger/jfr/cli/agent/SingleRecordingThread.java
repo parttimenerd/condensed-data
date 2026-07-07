@@ -48,7 +48,10 @@ public class SingleRecordingThread extends RecordingThread {
                 dynSettings,
                 false);
         this.path = path;
-        Files.createDirectories(Path.of(path).toAbsolutePath().getParent());
+        Path parent = Path.of(path).toAbsolutePath().getParent();
+        if (parent != null) {
+            Files.createDirectories(parent);
+        }
         var rawOut = Files.newOutputStream(Path.of(path), WRITE, CREATE, TRUNCATE_EXISTING);
         BasicJFRWriter writer;
         try {
@@ -110,8 +113,8 @@ public class SingleRecordingThread extends RecordingThread {
 
     @Override
     public void close() {
-        agentIO.writeOutput("Condensed recording to " + path + " finished\n");
         jfrWriter.close();
+        agentIO.writeOutput("Condensed recording to " + path + " finished\n");
     }
 
     @Override

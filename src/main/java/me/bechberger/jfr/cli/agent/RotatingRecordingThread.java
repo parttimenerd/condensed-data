@@ -137,19 +137,29 @@ public class RotatingRecordingThread extends RecordingThread {
         return Path.of(replacePlaceholders(pathTemplate, overallWrittenFileCount.get()));
     }
 
-    /** Delete oldest files until count is below max. Must be called with filesLock held. */
-    private void deleteOldestFilesIfNeeded() {
+    /**
+     * Delete oldest sealed files until count is below max. Must be called with filesLock held.
+     * {@code excludePath} is the path of the currently-open writer and is never evicted here; pass
+     * {@code null} when there is no live writer (e.g. on final close).
+     */
+    private void deleteOldestFilesIfNeeded(Path excludePath) {
         int max = Math.max(1, getMaxFiles());
-        while (currentlyStoredFiles.size() >= max) {
-            var fileToDelete = currentlyStoredFiles.remove(0);
-            currentlyStoredStarts.remove(0);
+        int i = 0;
+        while (currentlyStoredFiles.size() >= max && i < currentlyStoredFiles.size()) {
+            Path candidate = currentlyStoredFiles.get(i);
+            if (candidate.equals(excludePath)) {
+                // Skip the live writer's file — it will be evicted once the writer is closed.
+                i++;
+                continue;
+            }
+            currentlyStoredFiles.remove(i);
+            currentlyStoredStarts.remove(i);
             try {
-                Files.delete(fileToDelete);
+                Files.delete(candidate);
             } catch (java.nio.file.NoSuchFileException ignored) {
                 // Already deleted externally — forget it and keep enforcing maxFiles.
             } catch (IOException e) {
                 agentIO.writeSevereError("Deleting oldest file failed: " + e.getMessage());
-                // Drop from tracking so the same file isn't retried forever.
             }
         }
     }
@@ -195,9 +205,10 @@ public class RotatingRecordingThread extends RecordingThread {
     /**
      * Initialize a new file and start a new jfrWriter. Serialized by {@code rotationLock}
      * (ReentrantLock; re-entrant from onEvent is safe). Opens the new file BEFORE closing the old
-     * writer so a transient failure leaves the old writer intact. Eviction, path assignment, and
-     * new-file registration happen atomically in a single {@code filesLock} section after the new
-     * writer is ready — so external observers never see a window where both old and new are absent.
+     * writer so a transient failure leaves the old writer intact. Path assignment and new-file
+     * registration happen atomically in a single {@code filesLock} section after the new writer is
+     * ready. Eviction of oldest sealed files happens AFTER the old writer is closed so we never
+     * delete a file that still has an open writer.
      *
      * @param force if {@code false}, re-checks {@link #shouldEndFile()} inside the lock and skips
      *     the rotation if another thread already rotated.
@@ -213,9 +224,6 @@ public class RotatingRecordingThread extends RecordingThread {
             }
 
             // Decide the candidate base path. Increment counter first so $index is monotone.
-            // For !useNewNames we still generate a fresh name — we reuse the deleted slot later
-            // by opening with TRUNCATE_EXISTING. Using CREATE_NEW avoids overwriting a file that
-            // wasn't ours to evict (e.g., externally replaced).
             Path basePath;
             synchronized (filesLock) {
                 overallWrittenFileCount.incrementAndGet();
@@ -261,12 +269,11 @@ public class RotatingRecordingThread extends RecordingThread {
 
             var newState = new State(newWriter, newPath);
             var oldState = this.state;
+            Path oldPath = oldState != null ? oldState.filePath : null;
 
-            // Atomically: evict oldest if needed, add new entry, publish new state.
-            // Eviction happens HERE (after new writer is ready) so the ring-buffer always
-            // contains maxFiles sealed files + at most 1 live file, never fewer.
+            // Atomically: add new entry, publish new state.
+            // We do NOT evict here — the old writer is still open and its file must not be deleted.
             synchronized (filesLock) {
-                deleteOldestFilesIfNeeded();
                 currentlyStoredFiles.add(newPath);
                 currentlyStoredStarts.add(newState.start);
                 currentPath = newPath;
@@ -281,6 +288,12 @@ public class RotatingRecordingThread extends RecordingThread {
                             "Failed to close previous file (data may be incomplete): "
                                     + t.getMessage());
                 }
+                // Evict oldest sealed files now that the old writer is closed.
+                // Exclude the newly-added file (live writer); exclude nothing for the old path
+                // since it is now sealed and eligible for eviction.
+                synchronized (filesLock) {
+                    deleteOldestFilesIfNeeded(newPath);
+                }
             }
         } finally {
             rotationLock.unlock();
@@ -290,6 +303,18 @@ public class RotatingRecordingThread extends RecordingThread {
     /** close the state, closing the writer and more */
     private void closeState(State state) {
         state.jfrWriter.close();
+    }
+
+    /**
+     * Called after maxFiles is reduced. Evicts oldest sealed files immediately so disk use is
+     * bounded without waiting for the next rotation.
+     */
+    @Override
+    protected void onMaxFilesChanged() {
+        synchronized (filesLock) {
+            Path livePath = currentPath;
+            deleteOldestFilesIfNeeded(livePath);
+        }
     }
 
     /** Spawns a stop thread under the sync object, guarded by CAS so only one fires. */
@@ -316,7 +341,6 @@ public class RotatingRecordingThread extends RecordingThread {
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
         }
-        agentIO.writeOutput("Condensed recording to " + pathTemplate + " finished");
         rotationLock.lock();
         try {
             var s = this.state;
@@ -327,6 +351,7 @@ public class RotatingRecordingThread extends RecordingThread {
         } finally {
             rotationLock.unlock();
         }
+        agentIO.writeOutput("Condensed recording to " + pathTemplate + " finished");
     }
 
     @Override
@@ -349,10 +374,13 @@ public class RotatingRecordingThread extends RecordingThread {
                 try {
                     initNewFile(false);
                 } catch (IOException e) {
+                    // Rotation failed — keep writing to the current file rather than dropping
+                    // the event or stopping. A rate-limited error has been logged inside
+                    // initNewFile; continue writing here so no events are lost on a transient
+                    // disk error.
                     agentIO.writeSevereError(
-                            "Error while rotating file: " + e.getMessage() + " " + e);
-                    triggerStop();
-                    return;
+                            "Error while rotating file (continuing with current file): "
+                                    + e.getMessage());
                 }
             }
             var s = this.state;
@@ -394,11 +422,13 @@ public class RotatingRecordingThread extends RecordingThread {
         List<Instant> storedStarts;
         int storedCount;
         Path path;
+        int totalWritten;
         synchronized (filesLock) {
             s = this.state;
             storedStarts = new ArrayList<>(currentlyStoredStarts);
             storedCount = currentlyStoredFiles.size();
             path = currentPath;
+            totalWritten = overallWrittenFileCount.get() + 1;
         }
         if (s == null || s.jfrWriter == null) {
             return new ArrayList<>();
@@ -406,8 +436,7 @@ public class RotatingRecordingThread extends RecordingThread {
         return List.of(
                 Map.entry("mode", "rotating"),
                 Map.entry("stored-files", storedCount + "/" + getMaxFiles()),
-                Map.entry(
-                        "total-files-written", Integer.toString(overallWrittenFileCount.get() + 1)),
+                Map.entry("total-files-written", Integer.toString(totalWritten)),
                 Map.entry("current-size-on-drive", formatMemory(s.jfrWriter.estimateSize(), 3)),
                 Map.entry(
                         "current-size-uncompressed",
