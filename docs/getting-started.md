@@ -222,7 +222,7 @@ cjfr condense --compression=GZIP recording.jfr
 
 ```shell
 cjfr condense --force /path/to/jfr-folder/
-# produces .cjfr files alongside the originals
+# produces a single jfr-folder.cjfr merging all JFR files in the directory
 ```
 
 ### Condense a ZIP archive
@@ -246,7 +246,7 @@ cjfr summary --json recording.cjfr
 
 ### Reduce JAR size for single-platform deployment
 
-The default JAR bundles native libraries for 18+ platforms (~80% of JAR size).
+The default JAR bundles native libraries for multiple platforms (~80% of JAR size).
 For a production deployment on a known platform:
 
 ```shell
