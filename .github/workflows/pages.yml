@@ -7,6 +7,12 @@ on:
     paths:
       - "docs/**"
       - ".github/workflows/pages.yml"
+  workflow_run:
+    workflows: ["Release"]
+    types:
+      - completed
+    branches:
+      - main
   workflow_dispatch:
 
 # Grant GITHUB_TOKEN the permissions required to deploy Pages.
@@ -23,6 +29,8 @@ concurrency:
 jobs:
   build:
     runs-on: ubuntu-latest
+    # Skip if triggered by a failed Release workflow run
+    if: ${{ github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success' }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
