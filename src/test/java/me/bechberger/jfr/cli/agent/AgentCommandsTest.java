@@ -37,7 +37,7 @@ public class AgentCommandsTest {
                     "default",
                     "",
                     () -> {},
-                    createSettings(),
+                    createSettings(rotating),
                     rotating);
         }
 
@@ -87,7 +87,7 @@ public class AgentCommandsTest {
                     "default",
                     "",
                     () -> {},
-                    createSettings(),
+                    createSettings(rotating),
                     rotating);
         }
 
@@ -104,9 +104,14 @@ public class AgentCommandsTest {
     }
 
     private static DynamicallyChangeableSettings createSettings() {
+        return createSettings(false);
+    }
+
+    private static DynamicallyChangeableSettings createSettings(boolean rotating) {
         var settings = new DynamicallyChangeableSettings();
         settings.maxDuration = Duration.ZERO;
-        settings.maxSize = 0;
+        // Rotating mode requires at least one rotation trigger; use 1MB as default.
+        settings.maxSize = rotating ? 1024 * 1024 : 0;
         settings.maxFiles = 10;
         settings.newNames = false;
         settings.duration = Duration.ZERO;

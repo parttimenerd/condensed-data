@@ -63,7 +63,7 @@ public class RotatingRecordingThread extends RecordingThread {
     private final AtomicInteger overallWrittenFileCount = new AtomicInteger(-1);
     // triggered stop already
     private final AtomicBoolean triggeredStop = new AtomicBoolean(false);
-    private final Thread rotationWatchdog;
+    private Thread rotationWatchdog;
 
     record State(BasicJFRWriter jfrWriter, Path filePath, Instant start) {
         State(BasicJFRWriter jfrWriter, Path filePath) {
@@ -101,11 +101,29 @@ public class RotatingRecordingThread extends RecordingThread {
             throw e;
         }
         agentIO.writeOutput("Condensed recording to " + pathTemplate + " started");
-        this.rotationWatchdog =
-                new Thread(
-                        this::runRotationWatchdog, "cjfr-rotation-watchdog[" + pathTemplate + "]");
-        this.rotationWatchdog.setDaemon(true);
-        this.rotationWatchdog.start();
+        Thread watchdog;
+        try {
+            watchdog =
+                    new Thread(
+                            this::runRotationWatchdog,
+                            "cjfr-rotation-watchdog[" + pathTemplate + "]");
+            watchdog.setDaemon(true);
+            watchdog.start();
+        } catch (RuntimeException | Error e) {
+            rotationLock.lock();
+            try {
+                var s = this.state;
+                this.state = null;
+                if (s != null) {
+                    closeState(s);
+                }
+            } finally {
+                rotationLock.unlock();
+            }
+            unregisterShutdownHook();
+            throw e;
+        }
+        this.rotationWatchdog = watchdog;
     }
 
     private static final int MAX_WATCHDOG_ROTATION_ERRORS = 5;
@@ -391,6 +409,11 @@ public class RotatingRecordingThread extends RecordingThread {
             if (s != null) {
                 closeState(s);
             }
+            // Final eviction pass: the last file is now sealed and eligible for eviction.
+            // Pass null as excludePath because there is no longer a live writer.
+            synchronized (filesLock) {
+                deleteOldestFilesIfNeeded(null);
+            }
         } finally {
             rotationLock.unlock();
         }
@@ -416,16 +439,20 @@ public class RotatingRecordingThread extends RecordingThread {
             // Use force=false so the re-check inside the lock prevents double-rotation
             // (e.g., when the watchdog already rotated while we were waiting for the lock).
             if (shouldEndFile()) {
-                try {
-                    initNewFile(false);
-                } catch (IOException e) {
-                    // Rotation failed — keep writing to the current file rather than dropping
-                    // the event or stopping. A rate-limited error has been logged inside
-                    // initNewFile; continue writing here so no events are lost on a transient
-                    // disk error.
-                    agentIO.writeSevereError(
-                            "Error while rotating file (continuing with current file): "
-                                    + e.getMessage());
+                long now = System.nanoTime();
+                if (now - lastRotationFailureNanos > ROTATION_FAILURE_BACKOFF_NS) {
+                    try {
+                        initNewFile(false);
+                        lastRotationFailureNanos = Long.MIN_VALUE;
+                    } catch (IOException e) {
+                        lastRotationFailureNanos = System.nanoTime();
+                        // Rotation failed — keep writing to the current file rather than dropping
+                        // the event or stopping. Back off for 1s to avoid flooding on a full disk.
+                        agentIO.writeSevereError(
+                                "Error while rotating file (continuing with current file, will"
+                                        + " retry in 1s): "
+                                        + e.getMessage());
+                    }
                 }
             }
             var s = this.state;
@@ -463,35 +490,43 @@ public class RotatingRecordingThread extends RecordingThread {
 
     @Override
     List<Entry<String, String>> getMiscStatus() {
-        State s;
-        List<Instant> storedStarts;
-        int storedCount;
-        Path path;
-        int totalWritten;
-        synchronized (filesLock) {
-            s = this.state;
-            storedStarts = new ArrayList<>(currentlyStoredStarts);
-            storedCount = currentlyStoredFiles.size();
-            path = currentPath;
-            totalWritten = overallWrittenFileCount.get() + 1;
+        rotationLock.lock();
+        try {
+            State s = this.state;
+            if (s == null || s.jfrWriter == null) {
+                return new ArrayList<>();
+            }
+            List<Instant> storedStarts;
+            int storedCount;
+            Path path;
+            int totalWritten;
+            synchronized (filesLock) {
+                storedStarts = new ArrayList<>(currentlyStoredStarts);
+                storedCount = currentlyStoredFiles.size();
+                path = currentPath;
+                totalWritten = overallWrittenFileCount.get() + 1;
+            }
+            return List.of(
+                    Map.entry("mode", "rotating"),
+                    Map.entry("stored-files", storedCount + "/" + getMaxFiles()),
+                    Map.entry("total-files-written", Integer.toString(totalWritten)),
+                    Map.entry("current-size-on-drive", formatMemory(s.jfrWriter.estimateSize(), 3)),
+                    Map.entry(
+                            "current-size-uncompressed",
+                            formatMemory(s.jfrWriter.getUncompressedStatistic().getBytes(), 3)),
+                    Map.entry(
+                            "path", path != null ? path.toAbsolutePath().toString() : pathTemplate),
+                    Map.entry("current-file-start", formatInstant(s.start)),
+                    Map.entry(
+                            "stored-start",
+                            storedStarts.isEmpty() ? "none" : formatInstant(storedStarts.get(0))));
+        } finally {
+            rotationLock.unlock();
         }
-        if (s == null || s.jfrWriter == null) {
-            return new ArrayList<>();
-        }
-        return List.of(
-                Map.entry("mode", "rotating"),
-                Map.entry("stored-files", storedCount + "/" + getMaxFiles()),
-                Map.entry("total-files-written", Integer.toString(totalWritten)),
-                Map.entry("current-size-on-drive", formatMemory(s.jfrWriter.estimateSize(), 3)),
-                Map.entry(
-                        "current-size-uncompressed",
-                        formatMemory(s.jfrWriter.getUncompressedStatistic().getBytes(), 3)),
-                Map.entry("path", path != null ? path.toAbsolutePath().toString() : pathTemplate),
-                Map.entry("current-file-start", formatInstant(s.start)),
-                Map.entry(
-                        "stored-start",
-                        storedStarts.isEmpty() ? "none" : formatInstant(storedStarts.get(0))));
     }
+
+    private static final long ROTATION_FAILURE_BACKOFF_NS = 1_000_000_000L;
+    private volatile long lastRotationFailureNanos = Long.MIN_VALUE;
 
     private static final Map<String, Function<Integer, String>> rotatingFileNamePlaceholder =
             Map.of(

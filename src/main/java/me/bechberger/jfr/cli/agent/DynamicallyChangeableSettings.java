@@ -81,6 +81,11 @@ public class DynamicallyChangeableSettings {
         if (duration.toNanos() > 0 && duration.toMillis() < 1) {
             errors.add("Duration must be at least 1ms or 0 (no limit)");
         }
+        if (rotating && maxSize == 0 && maxDuration.isZero()) {
+            errors.add(
+                    "Rotating mode requires at least one rotation trigger:"
+                            + " set --max-size or --max-duration to a non-zero value");
+        }
         if (!rotating) {
             if (maxDuration.toMillis() != 0) {
                 errors.add(

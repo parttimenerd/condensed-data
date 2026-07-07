@@ -48,13 +48,17 @@ public class SingleRecordingThread extends RecordingThread {
                 dynSettings,
                 false);
         this.path = path;
-        Path parent = Path.of(path).toAbsolutePath().getParent();
-        if (parent != null) {
-            Files.createDirectories(parent);
-        }
-        var rawOut = Files.newOutputStream(Path.of(path), WRITE, CREATE, TRUNCATE_EXISTING);
-        BasicJFRWriter writer;
+        // Register the shutdown hook before opening any file so a JVM exit during construction
+        // still triggers finalization. Unregistered below if construction fails.
+        registerShutdownHook();
+        java.io.OutputStream rawOut = null;
+        BasicJFRWriter writer = null;
         try {
+            Path parent = Path.of(path).toAbsolutePath().getParent();
+            if (parent != null) {
+                Files.createDirectories(parent);
+            }
+            rawOut = Files.newOutputStream(Path.of(path), WRITE, CREATE, TRUNCATE_EXISTING);
             var condensedOut =
                     new CondensedOutputStream(
                             rawOut,
@@ -66,16 +70,18 @@ public class SingleRecordingThread extends RecordingThread {
                                     Compression.DEFAULT));
             writer = new BasicJFRWriter(condensedOut);
         } catch (Throwable t) {
-            try {
-                rawOut.close();
-            } catch (IOException ignored) {
+            if (rawOut != null) {
+                try {
+                    rawOut.close();
+                } catch (IOException ignored) {
+                }
             }
+            unregisterShutdownHook();
             if (t instanceof IOException ioe) throw ioe;
             throw new IOException("Failed to create writer", t);
         }
         this.jfrWriter = writer;
         agentIO.writeOutput("Condensed recording to " + path + " started\n");
-        registerShutdownHook();
     }
 
     @Override
@@ -120,12 +126,21 @@ public class SingleRecordingThread extends RecordingThread {
 
     @Override
     List<Entry<String, String>> getMiscStatus() {
+        long sizeOnDrive;
+        long sizeUncompressed;
+        try {
+            sizeOnDrive = jfrWriter.estimateSize();
+            sizeUncompressed = jfrWriter.getUncompressedStatistic().getBytes();
+        } catch (Throwable t) {
+            return List.of(
+                    Map.entry("mode", "single file"),
+                    Map.entry("path", Path.of(path).toAbsolutePath().toString()),
+                    Map.entry("state", "closing"));
+        }
         return List.of(
                 Map.entry("mode", "single file"),
-                Map.entry("current-size-on-drive", formatMemory(jfrWriter.estimateSize(), 3)),
-                Map.entry(
-                        "current-size-uncompressed",
-                        formatMemory(jfrWriter.getUncompressedStatistic().getBytes(), 3)),
+                Map.entry("current-size-on-drive", formatMemory(sizeOnDrive, 3)),
+                Map.entry("current-size-uncompressed", formatMemory(sizeUncompressed, 3)),
                 Map.entry("path", Path.of(path).toAbsolutePath().toString()));
     }
 

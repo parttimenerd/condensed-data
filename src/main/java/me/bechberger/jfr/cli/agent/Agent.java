@@ -53,12 +53,15 @@ public class Agent implements Runnable {
                 .addShutdownHook(
                         new Thread(
                                 () -> {
+                                    RecordingThread t;
                                     synchronized (syncObject) {
-                                        if (currentRecordingThread != null) {
-                                            currentRecordingThread.stop();
-                                        }
+                                        t = currentRecordingThread;
                                     }
-                                }));
+                                    if (t != null) {
+                                        t.stop();
+                                    }
+                                },
+                                "cjfr-agent-shutdown"));
         AgentIO.withLogToFile(
                 preprocResult.logToFile,
                 () -> {
