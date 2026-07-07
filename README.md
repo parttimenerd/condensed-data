@@ -11,15 +11,19 @@ live attachment to running JVMs.
 Primary use case: long-term storage of GC-related JFR recordings.
 
 **Documentation**
-- **[Getting Started](GETTING_STARTED.md)** — installation, quickstart, agent usage, configuration guide, and troubleshooting
-- **[JAR Release Selection](doc/RELEASES.md)** — which JAR variant to download for your environment
-- **[Configuration Reference](doc/CONFIGURATIONS.md)** — condenser configs and compression algorithm trade-offs
-- **[Production Recording Guide](doc/PRODUCTION_RECORDING.md)** — rotating recordings, live tuning, storage sizing
+
+Full docs are published at **<https://parttimenerd.github.io/condensed-data/>**.
+
+Source Markdown lives in [`docs/`](docs/):
+- **[Getting Started](docs/getting-started.md)** — installation, quickstart, agent usage, configuration guide, and troubleshooting
+- **[JAR Release Selection](docs/jar-releases.md)** — which JAR variant to download for your environment
+- **[Configuration Reference](docs/configurations.md)** — condenser configs and compression algorithm trade-offs
+- **[Production Recording Guide](docs/production-recording.md)** — rotating recordings, live tuning, storage sizing
 
 Usage
 -----
 
-Download from [GitHub Releases](https://github.com/parttimenerd/condensed-data/releases/latest) or build from source (see [Getting Started](GETTING_STARTED.md)).
+Download from [GitHub Releases](https://github.com/parttimenerd/condensed-data/releases/latest) or build from source (see [Getting Started](docs/getting-started.md)).
 
 The tool can be used via its CLI:
 ```shell
