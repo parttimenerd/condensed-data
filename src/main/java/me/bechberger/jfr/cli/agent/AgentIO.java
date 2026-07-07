@@ -65,8 +65,8 @@ public class AgentIO {
         ALL
     }
 
-    private static boolean defaultLogToFile = false;
-    private static LogLevel defaultLogLevel = LogLevel.WARNING;
+    private static volatile boolean defaultLogToFile = false;
+    private static volatile LogLevel defaultLogLevel = LogLevel.WARNING;
     private static volatile AgentIO instance = null;
 
     private static void setLogToFile(boolean logToFile) {

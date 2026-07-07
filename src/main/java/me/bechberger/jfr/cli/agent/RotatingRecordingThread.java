@@ -66,9 +66,9 @@ public class RotatingRecordingThread extends RecordingThread {
     private final AtomicBoolean triggeredStop = new AtomicBoolean(false);
     private volatile Thread rotationWatchdog;
 
-    record State(BasicJFRWriter jfrWriter, Path filePath, Instant start) {
+    record State(BasicJFRWriter jfrWriter, Path filePath, Instant start, long startNanos) {
         State(BasicJFRWriter jfrWriter, Path filePath) {
-            this(jfrWriter, filePath, Instant.now());
+            this(jfrWriter, filePath, Instant.now(), System.nanoTime());
         }
     }
 
@@ -130,6 +130,7 @@ public class RotatingRecordingThread extends RecordingThread {
     }
 
     private static final int MAX_WATCHDOG_ROTATION_ERRORS = 5;
+    private volatile int watchdogConsecutiveErrors = 0;
 
     private void runRotationWatchdog() {
         int consecutiveRotationErrors = 0;
@@ -148,28 +149,30 @@ public class RotatingRecordingThread extends RecordingThread {
                 triggerStop();
                 return;
             }
-            if (shouldEndFile()) {
-                try {
-                    initNewFile(false);
-                    consecutiveRotationErrors = 0;
-                } catch (IOException e) {
-                    consecutiveRotationErrors++;
-                    if (consecutiveRotationErrors <= MAX_WATCHDOG_ROTATION_ERRORS) {
-                        agentIO.writeSevereError(
-                                "Watchdog: failed to rotate file ("
-                                        + consecutiveRotationErrors
-                                        + "/"
-                                        + MAX_WATCHDOG_ROTATION_ERRORS
-                                        + "): "
-                                        + e.getMessage());
-                    }
-                    if (consecutiveRotationErrors == MAX_WATCHDOG_ROTATION_ERRORS) {
-                        agentIO.writeSevereError(
-                                "Watchdog: too many consecutive rotation failures; stopping"
-                                        + " recording.");
-                        triggerStop();
-                        return;
-                    }
+            // Always call initNewFile(false) — it re-checks shouldEndFile() under rotationLock,
+            // which prevents torn reads of BasicJFRWriter state and avoids double-rotations.
+            try {
+                initNewFile(false);
+                consecutiveRotationErrors = 0;
+                watchdogConsecutiveErrors = 0;
+            } catch (IOException e) {
+                consecutiveRotationErrors++;
+                watchdogConsecutiveErrors = consecutiveRotationErrors;
+                // Log on every error up to the threshold, then every 60th error thereafter.
+                if (consecutiveRotationErrors <= MAX_WATCHDOG_ROTATION_ERRORS
+                        || consecutiveRotationErrors % 60 == 0) {
+                    agentIO.writeSevereError(
+                            "Watchdog: failed to rotate file ("
+                                    + consecutiveRotationErrors
+                                    + "): "
+                                    + e.getMessage());
+                }
+                if (consecutiveRotationErrors == MAX_WATCHDOG_ROTATION_ERRORS) {
+                    agentIO.writeSevereError(
+                            "Watchdog: too many consecutive rotation failures; stopping"
+                                    + " recording.");
+                    triggerStop();
+                    return;
                 }
             }
         }
@@ -431,8 +434,21 @@ public class RotatingRecordingThread extends RecordingThread {
             }
         } else {
             agentIO.writeSevereError(
-                    "Could not acquire rotationLock within 2s during close; abandoning writer"
-                            + " (best-effort shutdown)");
+                    "Could not acquire rotationLock within 2s during close;"
+                            + " forcing writer close without lock (best-effort shutdown)");
+            var s = this.state;
+            this.state = null;
+            if (s != null) {
+                try {
+                    closeState(s);
+                } catch (Throwable t) {
+                    agentIO.writeSevereError(
+                            "Best-effort close of writer failed: " + t.getMessage());
+                }
+            }
+            synchronized (filesLock) {
+                deleteOldestFilesIfNeeded(null);
+            }
         }
         if (overallWrittenFileCount.get() >= 0) {
             agentIO.writeOutput("Condensed recording to " + pathTemplate + " finished");
@@ -449,8 +465,14 @@ public class RotatingRecordingThread extends RecordingThread {
             return;
         }
         rotationLock.lock();
+        String pendingError = null;
         try {
             if (triggeredStop.get()) {
+                return;
+            }
+            // Re-check after acquiring the lock: duration may have expired while we waited.
+            if (shouldEndRecording()) {
+                triggerStop();
                 return;
             }
             // Use force=false so the re-check inside the lock prevents double-rotation
@@ -465,12 +487,12 @@ public class RotatingRecordingThread extends RecordingThread {
                     } catch (IOException e) {
                         rotationFailurePending = true;
                         lastRotationFailureNanos = System.nanoTime();
-                        // Rotation failed — keep writing to the current file rather than dropping
-                        // the event or stopping. Back off for 1s to avoid flooding on a full disk.
-                        agentIO.writeSevereError(
+                        // Defer logging to outside the lock to avoid blocking event dispatch
+                        // on a slow /tmp write during a disk-full scenario.
+                        pendingError =
                                 "Error while rotating file (continuing with current file, will"
                                         + " retry in 1s): "
-                                        + e.getMessage());
+                                        + e.getMessage();
                     }
                 }
             }
@@ -481,12 +503,14 @@ public class RotatingRecordingThread extends RecordingThread {
             try {
                 s.jfrWriter.processEvent(event);
             } catch (Exception e) {
-                agentIO.writeSevereError(
-                        "Error while processing event: " + e.getMessage() + " " + e);
+                pendingError = "Error while processing event: " + e.getMessage() + " " + e;
                 triggerStop();
             }
         } finally {
             rotationLock.unlock();
+        }
+        if (pendingError != null) {
+            agentIO.writeSevereError(pendingError);
         }
     }
 
@@ -494,17 +518,15 @@ public class RotatingRecordingThread extends RecordingThread {
         State s = this.state;
         if (s == null) return false;
         return (getMaxDuration().toNanos() > 0
-                        && Duration.between(s.start, Instant.now()).compareTo(getMaxDuration()) > 0)
+                        && (System.nanoTime() - s.startNanos) > getMaxDuration().toNanos())
                 || (getMaxSize() > 0
                         && s.jfrWriter != null
                         && s.jfrWriter.estimateSize() > getMaxSize());
     }
 
     private boolean shouldEndRecording() {
-        boolean durationCheck = getDuration().toNanos() > 0;
-        boolean isDurationExceeded =
-                Duration.between(this.start, Instant.now()).compareTo(getDuration()) > 0;
-        return isDurationExceeded && durationCheck;
+        long durationNanos = getDuration().toNanos();
+        return durationNanos > 0 && (System.nanoTime() - this.startNanos) > durationNanos;
     }
 
     @Override
@@ -538,7 +560,10 @@ public class RotatingRecordingThread extends RecordingThread {
                     Map.entry("current-file-start", formatInstant(s.start)),
                     Map.entry(
                             "stored-start",
-                            storedStarts.isEmpty() ? "none" : formatInstant(storedStarts.get(0))));
+                            storedStarts.isEmpty() ? "none" : formatInstant(storedStarts.get(0))),
+                    Map.entry(
+                            "watchdog-rotation-errors",
+                            Integer.toString(watchdogConsecutiveErrors)));
         } finally {
             rotationLock.unlock();
         }

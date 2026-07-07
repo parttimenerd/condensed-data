@@ -40,6 +40,7 @@ public abstract class RecordingThread implements Runnable {
 
     private final AtomicInteger eventErrorCount = new AtomicInteger(0);
     final Instant start = Instant.now();
+    final long startNanos = System.nanoTime();
 
     RecordingThread(
             Configuration configuration,

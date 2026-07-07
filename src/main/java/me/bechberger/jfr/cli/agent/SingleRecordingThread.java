@@ -9,8 +9,6 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.text.ParseException;
-import java.time.Duration;
-import java.time.Instant;
 import java.util.List;
 import java.util.Map;
 import java.util.Map.Entry;
@@ -96,21 +94,27 @@ public class SingleRecordingThread extends RecordingThread {
         if (triggeredStop.get()) {
             return;
         }
-        if (shouldEndFile()) {
-            triggerStop();
-            return;
-        }
         writerLock.lock();
+        String pendingError = null;
         try {
             if (triggeredStop.get()) {
                 return;
             }
+            // shouldEndFile() is evaluated under writerLock so estimateSize() is not read
+            // concurrently with getMiscStatus() on the status thread.
+            if (shouldEndFileUnderLock()) {
+                triggerStop();
+                return;
+            }
             jfrWriter.processEvent(event);
         } catch (Exception e) {
-            agentIO.writeSevereError("Error processing event: " + e.getMessage());
+            pendingError = "Error processing event: " + e.getMessage();
             triggerStop();
         } finally {
             writerLock.unlock();
+        }
+        if (pendingError != null) {
+            agentIO.writeSevereError(pendingError);
         }
     }
 
@@ -140,12 +144,16 @@ public class SingleRecordingThread extends RecordingThread {
             Thread.currentThread().interrupt();
             locked = false;
         }
-        try {
-            jfrWriter.close();
-        } finally {
-            if (locked) {
+        if (locked) {
+            try {
+                jfrWriter.close();
+            } finally {
                 writerLock.unlock();
             }
+        } else {
+            agentIO.writeSevereError(
+                    "Could not acquire writerLock within 2s during close;"
+                            + " abandoning writer (best-effort shutdown)");
         }
         agentIO.writeOutput("Condensed recording to " + path + " finished\n");
     }
@@ -173,14 +181,12 @@ public class SingleRecordingThread extends RecordingThread {
                 Map.entry("path", Path.of(path).toAbsolutePath().toString()));
     }
 
-    private boolean shouldEndFile() {
-        boolean durationCheck = getDuration().toNanos() > 0;
+    /** Must be called while holding {@code writerLock}. */
+    private boolean shouldEndFileUnderLock() {
+        long durationNanos = getDuration().toNanos();
         boolean isDurationExceeded =
-                Duration.between(this.start, Instant.now()).compareTo(getDuration()) > 0;
-        boolean maxSizeCheck = getMaxSize() > 0;
-        boolean jfrWriterCheck = jfrWriter != null;
-        boolean sizeComparison = jfrWriter != null && jfrWriter.estimateSize() > getMaxSize();
-        return (durationCheck && isDurationExceeded)
-                || (maxSizeCheck && jfrWriterCheck && sizeComparison);
+                durationNanos > 0 && (System.nanoTime() - startNanos) > durationNanos;
+        boolean isSizeExceeded = getMaxSize() > 0 && jfrWriter.estimateSize() > getMaxSize();
+        return isDurationExceeded || isSizeExceeded;
     }
 }
