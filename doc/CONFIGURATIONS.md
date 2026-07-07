@@ -11,7 +11,7 @@ during condensing cannot be recovered on inflation.
 Full fidelity. Only structurally redundant data is removed (no-op events like
 GC region changes where nothing changed). Everything else is preserved verbatim.
 
-**Sizes:** ~8–13% of the original JFR (varies by GC type and event density).
+**Sizes:** ~8–30% of the original JFR (lower for `gc_details`-heavy recordings; higher for sparse `gc`-only profiles).
 
 **Use when:**
 - You need exact nanosecond timestamps
@@ -22,7 +22,7 @@ GC region changes where nothing changed). Everything else is preserved verbatim.
 
 **Defaults to:** `cjfr condense` CLI
 
-**Preserved:** nanosecond timestamps, microsecond durations, full stack traces (unlimited depth), exact memory sizes (32-bit float), all allocation events, all exception events.
+**Preserved:** nanosecond timestamps, microsecond durations, full stack traces (unlimited depth), exact memory sizes (lossless integer), all allocation events, all exception events.
 
 **Removed:** provably empty events (e.g. G1HeapRegionTypeChange events with no change).
 
@@ -34,7 +34,7 @@ Conservative lossy compression. Human-readable precision is fully preserved.
 Loses sub-millisecond timestamp precision, BCI/line numbers in stacks, and very
 short or zero-valued GC data.
 
-**Sizes:** ~4–7% of the original JFR.
+**Sizes:** ~4–19% of the original JFR (lower for `gc_details`-heavy recordings; higher for sparse `gc`-only profiles).
 
 **Use when:**
 - Production long-term storage and capacity planning
@@ -49,7 +49,7 @@ short or zero-valued GC data.
 |---|---|---|
 | Timestamp resolution | nanosecond | millisecond |
 | Duration resolution | nanosecond | microsecond |
-| Memory sizes | 32-bit float | bfloat16 (~0.4% error) |
+| Memory sizes | lossless integer | bfloat16 (~0.4% error) |
 | Stack depth limit | unlimited | 32 frames |
 | BCI / source line in stacks | yes | no |
 | Zero-count tenured ages | included | dropped |
@@ -64,7 +64,7 @@ short or zero-valued GC data.
 Aggressive lossy compression. Suitable for bulk archival and fleet-wide
 recordings where storage cost outweighs per-event granularity.
 
-**Sizes:** ~1–2% of the original JFR (as low as 0.5% for ZGC-heavy workloads).
+**Sizes:** ~1–16% of the original JFR (as low as 0.5% for ZGC `gc_details` workloads; higher for sparse `gc`-only profiles).
 
 **Use when:**
 - Fleet-wide continuous recording where storage is expensive
@@ -89,7 +89,7 @@ recordings where storage cost outweighs per-event granularity.
 
 | Feature | `default` | `reasonable-default` | `reduced-default` |
 |---|---|---|---|
-| Size (% of JFR) | 8–13% | 4–7% | 0.5–2% |
+| Size (% of JFR) | 8–30% | 4–19% | 0.5–16% |
 | Nanosecond timestamps | ✓ | ✗ (ms) | ✗ (ms) |
 | Source line / BCI in stacks | ✓ | ✗ | ✗ |
 | Stack depth | unlimited | 32 | 16 |
