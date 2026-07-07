@@ -196,7 +196,7 @@ The CLI accepts exactly three values for `--compression`:
 | gzip | `GZIP` | Slow | Good | Long-term archive, toolchain compat |
 | None | `NONE` | Instant | None | Benchmarking, re-compressed transport |
 
-> **Note:** `ZSTD` and `BZIP2` are reserved identifiers in the file format but are **not supported** by the current CLI. Passing `--compression=ZSTD` will fail with a validation error.
+> **Note:** The `.cjfr` format reserves space for additional algorithms, but only `NONE`, `GZIP`, and `LZ4FRAMED` are implemented. Passing any other value (e.g. `--compression=ZSTD`) is rejected by the CLI.
 
 `LZ4FRAMED` uses block-independent framing, which makes files resilient to partial corruption and streamable. It is the right default for the agent.
 
