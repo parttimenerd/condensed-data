@@ -16,7 +16,6 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Map.Entry;
-import java.util.Optional;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.locks.ReentrantLock;
@@ -47,7 +46,7 @@ public class RotatingRecordingThread extends RecordingThread {
      */
     private final ReentrantLock rotationLock = new ReentrantLock();
 
-    private final AtomicInteger overallWrittenFileCount = new AtomicInteger(0);
+    private final AtomicInteger overallWrittenFileCount = new AtomicInteger(-1);
     // triggered stop already
     private final AtomicBoolean triggeredStop = new AtomicBoolean(false);
     private final Thread rotationWatchdog;
@@ -78,14 +77,14 @@ public class RotatingRecordingThread extends RecordingThread {
         this.pathTemplate = pathTemplate;
         this.currentlyStoredFiles = new ArrayList<>();
         this.currentlyStoredStarts = new ArrayList<>();
-        initNewFile();
+        registerShutdownHook();
+        initNewFile(true);
         agentIO.writeOutput("Condensed recording to " + pathTemplate + " started");
         this.rotationWatchdog =
                 new Thread(
                         this::runRotationWatchdog, "cjfr-rotation-watchdog[" + pathTemplate + "]");
         this.rotationWatchdog.setDaemon(true);
         this.rotationWatchdog.start();
-        registerShutdownHook();
     }
 
     private static final int MAX_WATCHDOG_ROTATION_ERRORS = 5;
@@ -103,6 +102,7 @@ public class RotatingRecordingThread extends RecordingThread {
                 return;
             }
             if (shouldEndRecording()) {
+                agentIO.writeInfo("Watchdog: total recording duration reached; stopping.");
                 triggerStop();
                 return;
             }
@@ -137,41 +137,36 @@ public class RotatingRecordingThread extends RecordingThread {
         return Path.of(replacePlaceholders(pathTemplate, overallWrittenFileCount.get()));
     }
 
-    /** Delete oldest files so that count is below max-files. Must be called with filesLock held. */
-    private Optional<Path> deleteOldestFileIfNeeded() {
-        Optional<Path> last = Optional.empty();
+    /** Delete oldest files until count is below max. Must be called with filesLock held. */
+    private void deleteOldestFilesIfNeeded() {
         int max = Math.max(1, getMaxFiles());
         while (currentlyStoredFiles.size() >= max) {
-            var fileToDelete = currentlyStoredFiles.get(0);
+            var fileToDelete = currentlyStoredFiles.remove(0);
+            currentlyStoredStarts.remove(0);
             try {
                 Files.delete(fileToDelete);
             } catch (java.nio.file.NoSuchFileException ignored) {
                 // Already deleted externally — forget it and keep enforcing maxFiles.
             } catch (IOException e) {
                 agentIO.writeSevereError("Deleting oldest file failed: " + e.getMessage());
-                // Drop from tracking so the same file isn't retried forever; the file
-                // may remain on disk but retention is enforced going forward.
+                // Drop from tracking so the same file isn't retried forever.
             }
-            currentlyStoredFiles.remove(0);
-            currentlyStoredStarts.remove(0);
-            last = Optional.of(fileToDelete);
         }
-        return last;
     }
 
     /**
-     * Open a new output stream, retrying on name collision up to 100 times. Returns the opened
-     * stream; sets {@code currentPath} to the final path used. Throws IOException if all attempts
-     * fail. Only sets {@code currentPath} after a successful open.
+     * Open a new output stream, retrying on name collision up to 100 times. Returns the actual path
+     * used (may differ from basePath on collision). Throws IOException if all attempts fail. Does
+     * NOT modify currentPath — caller assigns it atomically in the publish step.
      */
     private static final int MAX_COLLISION_RETRIES = 100;
 
-    private java.io.OutputStream openNewOutputStream(Path basePath) throws IOException {
-        // Try the base name first
+    private record OpenResult(java.io.OutputStream stream, Path actualPath) {}
+
+    private OpenResult openNewOutputStream(Path basePath) throws IOException {
         try {
             java.io.OutputStream out = Files.newOutputStream(basePath, CREATE_NEW);
-            currentPath = basePath;
-            return out;
+            return new OpenResult(out, basePath);
         } catch (java.nio.file.FileAlreadyExistsException ignored) {
             // fall through to suffix loop
         }
@@ -184,8 +179,7 @@ public class RotatingRecordingThread extends RecordingThread {
                                     : base + "_" + suffix);
             try {
                 java.io.OutputStream out = Files.newOutputStream(candidate, CREATE_NEW);
-                currentPath = candidate;
-                return out;
+                return new OpenResult(out, candidate);
             } catch (java.nio.file.FileAlreadyExistsException ignored) {
                 // keep trying
             }
@@ -199,14 +193,14 @@ public class RotatingRecordingThread extends RecordingThread {
     }
 
     /**
-     * Initialize a new file and start a new jfrWriter. Called on the JFR event thread (possibly
-     * while rotationLock is already held) or the rotation watchdog. Serialized by {@code
-     * rotationLock} (ReentrantLock, so re-entrant from onEvent is safe) to prevent double-rotation
-     * and to ensure processEvent is never called on a closed writer. Opens the new file BEFORE
-     * closing the old writer so a transient failure leaves the old writer intact.
+     * Initialize a new file and start a new jfrWriter. Serialized by {@code rotationLock}
+     * (ReentrantLock; re-entrant from onEvent is safe). Opens the new file BEFORE closing the old
+     * writer so a transient failure leaves the old writer intact. Eviction, path assignment, and
+     * new-file registration happen atomically in a single {@code filesLock} section after the new
+     * writer is ready — so external observers never see a window where both old and new are absent.
      *
      * @param force if {@code false}, re-checks {@link #shouldEndFile()} inside the lock and skips
-     *     the rotation if another thread already rotated first.
+     *     the rotation if another thread already rotated.
      */
     private void initNewFile(boolean force) throws IOException {
         rotationLock.lock();
@@ -217,26 +211,27 @@ public class RotatingRecordingThread extends RecordingThread {
             if (!force && !shouldEndFile()) {
                 return; // another thread already rotated
             }
-            Path newPath;
-            Optional<Path> delFile;
+
+            // Decide the candidate base path. Increment counter first so $index is monotone.
+            // For !useNewNames we still generate a fresh name — we reuse the deleted slot later
+            // by opening with TRUNCATE_EXISTING. Using CREATE_NEW avoids overwriting a file that
+            // wasn't ours to evict (e.g., externally replaced).
+            Path basePath;
             synchronized (filesLock) {
-                delFile = deleteOldestFileIfNeeded();
-                if (delFile.isPresent() && !useNewNames()) {
-                    newPath = delFile.get();
-                } else {
-                    newPath = createNewPath();
-                }
+                overallWrittenFileCount.incrementAndGet();
+                basePath = createNewPath();
             }
-            Path parent = newPath.toAbsolutePath().getParent();
+
+            Path parent = basePath.toAbsolutePath().getParent();
             if (parent != null) {
                 Files.createDirectories(parent);
             }
 
-            // Open with CREATE_NEW BEFORE closing the old writer so a disk-full or permission
-            // error leaves the previous recording stream intact and recording continues.
-            // currentPath is set inside openNewOutputStream only on success.
-            java.io.OutputStream rawOut = openNewOutputStream(newPath);
-            newPath = currentPath; // reflect actual path (may differ if collision)
+            // Open the new file BEFORE closing the old writer. On failure the old writer
+            // remains intact and recording continues.
+            OpenResult opened = openNewOutputStream(basePath);
+            Path newPath = opened.actualPath();
+            java.io.OutputStream rawOut = opened.stream();
 
             CondensedOutputStream out;
             BasicJFRWriter newWriter;
@@ -265,14 +260,15 @@ public class RotatingRecordingThread extends RecordingThread {
             }
 
             var newState = new State(newWriter, newPath);
-
-            // Close old writer only after new one is ready
             var oldState = this.state;
 
+            // Atomically: evict oldest if needed, add new entry, publish new state.
+            // Eviction happens HERE (after new writer is ready) so the ring-buffer always
+            // contains maxFiles sealed files + at most 1 live file, never fewer.
             synchronized (filesLock) {
+                deleteOldestFilesIfNeeded();
                 currentlyStoredFiles.add(newPath);
                 currentlyStoredStarts.add(newState.start);
-                overallWrittenFileCount.incrementAndGet();
                 currentPath = newPath;
                 state = newState;
             }
@@ -289,10 +285,6 @@ public class RotatingRecordingThread extends RecordingThread {
         } finally {
             rotationLock.unlock();
         }
-    }
-
-    private void initNewFile() throws IOException {
-        initNewFile(true);
     }
 
     /** close the state, closing the writer and more */
@@ -351,10 +343,11 @@ public class RotatingRecordingThread extends RecordingThread {
             if (triggeredStop.get()) {
                 return;
             }
-            // Rotate if needed — re-entrant acquisition inside initNewFile is safe.
+            // Use force=false so the re-check inside the lock prevents double-rotation
+            // (e.g., when the watchdog already rotated while we were waiting for the lock).
             if (shouldEndFile()) {
                 try {
-                    initNewFile();
+                    initNewFile(false);
                 } catch (IOException e) {
                     agentIO.writeSevereError(
                             "Error while rotating file: " + e.getMessage() + " " + e);
@@ -397,27 +390,30 @@ public class RotatingRecordingThread extends RecordingThread {
 
     @Override
     List<Entry<String, String>> getMiscStatus() {
-        var state = this.state;
-        if (state == null || state.jfrWriter == null) {
-            return new ArrayList<>();
-        }
+        State s;
         List<Instant> storedStarts;
         int storedCount;
+        Path path;
         synchronized (filesLock) {
+            s = this.state;
             storedStarts = new ArrayList<>(currentlyStoredStarts);
             storedCount = currentlyStoredFiles.size();
+            path = currentPath;
         }
-        var path = currentPath;
+        if (s == null || s.jfrWriter == null) {
+            return new ArrayList<>();
+        }
         return List.of(
                 Map.entry("mode", "rotating"),
                 Map.entry("stored-files", storedCount + "/" + getMaxFiles()),
-                Map.entry("total-files-written", Integer.toString(overallWrittenFileCount.get())),
-                Map.entry("current-size-on-drive", formatMemory(state.jfrWriter.estimateSize(), 3)),
+                Map.entry(
+                        "total-files-written", Integer.toString(overallWrittenFileCount.get() + 1)),
+                Map.entry("current-size-on-drive", formatMemory(s.jfrWriter.estimateSize(), 3)),
                 Map.entry(
                         "current-size-uncompressed",
-                        formatMemory(state.jfrWriter.getUncompressedStatistic().getBytes(), 3)),
+                        formatMemory(s.jfrWriter.getUncompressedStatistic().getBytes(), 3)),
                 Map.entry("path", path != null ? path.toAbsolutePath().toString() : pathTemplate),
-                Map.entry("current-file-start", formatInstant(state.start)),
+                Map.entry("current-file-start", formatInstant(s.start)),
                 Map.entry(
                         "stored-start",
                         storedStarts.isEmpty() ? "none" : formatInstant(storedStarts.get(0))));
