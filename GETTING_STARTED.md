@@ -243,10 +243,10 @@ For a production deployment on a known platform:
 
 ```shell
 # List available platforms
-python3 bin/reduce-jar.py reduce cjfr.jar --list-platforms
+python3 reduce-jar.py reduce cjfr.jar --list-platforms
 
 # Build a darwin/aarch64-only JAR
-python3 bin/reduce-jar.py reduce cjfr.jar cjfr-mac.jar --platform darwin/aarch64
+python3 reduce-jar.py reduce cjfr.jar cjfr-mac.jar --platform darwin/aarch64
 ```
 
 See [README_JAR_SIZE.md](README_JAR_SIZE.md) for details.

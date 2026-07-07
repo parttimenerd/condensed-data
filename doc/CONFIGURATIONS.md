@@ -11,7 +11,7 @@ during condensing cannot be recovered on inflation.
 Full fidelity. Only structurally redundant data is removed (no-op events like
 GC region changes where nothing changed). Everything else is preserved verbatim.
 
-**Sizes:** ~8–30% of the original JFR (lower for `gc_details`-heavy recordings; higher for sparse `gc`-only profiles).
+**Sizes:** ~8–30% of the original JFR (before inner compression; lower for `gc_details`-heavy recordings; higher for sparse `gc`-only profiles).
 
 **Use when:**
 - You need exact nanosecond timestamps
@@ -34,7 +34,7 @@ Conservative lossy compression. Human-readable precision is fully preserved.
 Loses sub-millisecond timestamp precision, BCI/line numbers in stacks, and very
 short or zero-valued GC data.
 
-**Sizes:** ~4–19% of the original JFR (lower for `gc_details`-heavy recordings; higher for sparse `gc`-only profiles).
+**Sizes:** ~4–19% of the original JFR (before inner compression; lower for `gc_details`-heavy recordings; higher for sparse `gc`-only profiles).
 
 **Use when:**
 - Production long-term storage and capacity planning
@@ -64,7 +64,7 @@ short or zero-valued GC data.
 Aggressive lossy compression. Suitable for bulk archival and fleet-wide
 recordings where storage cost outweighs per-event granularity.
 
-**Sizes:** ~1–16% of the original JFR (as low as 0.5% for ZGC `gc_details` workloads; higher for sparse `gc`-only profiles).
+**Sizes:** ~1–16% of the original JFR (before inner compression; as low as 0.5% for ZGC `gc_details` workloads; higher for sparse `gc`-only profiles).
 
 **Use when:**
 - Fleet-wide continuous recording where storage is expensive
@@ -144,4 +144,5 @@ comes from choosing the condenser config; compression on top is incremental.
 | `reduced-default` + `GZIP` | 0.5–2% |
 
 For most production deployments: `reasonable-default` + `LZ4FRAMED` (the agent
-default) is the right choice — fast writes, fast reads, ~5% of original size.
+default) is the right choice — fast writes, fast reads, ~5% of original size
+(after LZ4 inner compression; the uncompressed `.cjfr` event data is ~4–19%).
