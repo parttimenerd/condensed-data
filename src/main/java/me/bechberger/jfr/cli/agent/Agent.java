@@ -114,6 +114,8 @@ public class Agent implements Runnable {
     }
 
     public static void setCurrentRecordingThread(RecordingThread currentRecordingThread) {
-        Agent.currentRecordingThread = currentRecordingThread;
+        synchronized (syncObject) {
+            Agent.currentRecordingThread = currentRecordingThread;
+        }
     }
 }

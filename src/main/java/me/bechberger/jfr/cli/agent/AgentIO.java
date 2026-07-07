@@ -44,8 +44,9 @@ public class AgentIO {
     private static final Logger LOGGER = Logger.getLogger(AgentIO.class.getName());
     private final String agentIdentifier;
     private final long pid;
-    private boolean logToFile;
-    private LogLevel logLevel;
+    private volatile boolean logToFile;
+    private volatile LogLevel logLevel;
+    private final Object outputLock = new Object();
 
     AgentIO(String agentIdentifier, long pid, boolean logToFile, LogLevel logLevel) {
         this.agentIdentifier = agentIdentifier;
@@ -66,7 +67,7 @@ public class AgentIO {
 
     private static boolean defaultLogToFile = false;
     private static LogLevel defaultLogLevel = LogLevel.WARNING;
-    private static AgentIO instance = null;
+    private static volatile AgentIO instance = null;
 
     private static void setLogToFile(boolean logToFile) {
         defaultLogToFile = logToFile;
@@ -99,12 +100,16 @@ public class AgentIO {
     /** Get instance, assuming that this is called in the agent */
     public static AgentIO getAgentInstance() {
         if (instance == null) {
-            instance =
-                    new AgentIO(
-                            AGENT_IDENTIFIER,
-                            ProcessHandle.current().pid(),
-                            defaultLogToFile,
-                            defaultLogLevel);
+            synchronized (AgentIO.class) {
+                if (instance == null) {
+                    instance =
+                            new AgentIO(
+                                    AGENT_IDENTIFIER,
+                                    ProcessHandle.current().pid(),
+                                    defaultLogToFile,
+                                    defaultLogLevel);
+                }
+            }
         }
         return instance;
     }
@@ -172,15 +177,19 @@ public class AgentIO {
     /** Write the output of the agent */
     public void writeOutput(String output) {
         if (!logToFile) {
-            System.err.print(output);
+            synchronized (outputLock) {
+                System.err.print(output);
+            }
             return;
         }
-        try {
-            Files.writeString(getOutputFile(), output, StandardCharsets.UTF_8, APPEND, CREATE);
-            Files.deleteIfExists(getIsClosedFile());
-        } catch (IOException e) {
-            // Fall back to stderr so the message is not silently lost (e.g. /tmp is read-only)
-            System.err.print(output);
+        synchronized (outputLock) {
+            try {
+                Files.writeString(getOutputFile(), output, StandardCharsets.UTF_8, APPEND, CREATE);
+                Files.deleteIfExists(getIsClosedFile());
+            } catch (IOException e) {
+                // Fall back to stderr so the message is not silently lost (e.g. /tmp is read-only)
+                System.err.print(output);
+            }
         }
     }
 
@@ -255,11 +264,13 @@ public class AgentIO {
 
     /** Close the output file */
     public void close() {
-        try {
-            Files.writeString(getIsClosedFile(), "", CREATE);
-        } catch (IOException e) {
-            // best effort — fall back to stderr
-            System.err.println("Could not write is.closed file: " + e.getMessage());
+        synchronized (outputLock) {
+            try {
+                Files.writeString(getIsClosedFile(), "", CREATE);
+            } catch (IOException e) {
+                // best effort — fall back to stderr
+                System.err.println("Could not write is.closed file: " + e.getMessage());
+            }
         }
     }
 }

@@ -124,6 +124,17 @@ public abstract class RecordingThread implements Runnable {
         }
     }
 
+    /**
+     * Close the underlying RecordingStream; call on subclass constructor failure to release native
+     * JFR resources that were allocated by the super-constructor.
+     */
+    protected final void closeRecordingStream() {
+        try {
+            recordingStream.close();
+        } catch (Throwable ignored) {
+        }
+    }
+
     @Override
     public void run() {
         try {

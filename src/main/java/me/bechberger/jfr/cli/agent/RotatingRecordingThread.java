@@ -16,6 +16,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Map.Entry;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.locks.ReentrantLock;
@@ -63,7 +64,7 @@ public class RotatingRecordingThread extends RecordingThread {
     private final AtomicInteger overallWrittenFileCount = new AtomicInteger(-1);
     // triggered stop already
     private final AtomicBoolean triggeredStop = new AtomicBoolean(false);
-    private Thread rotationWatchdog;
+    private volatile Thread rotationWatchdog;
 
     record State(BasicJFRWriter jfrWriter, Path filePath, Instant start) {
         State(BasicJFRWriter jfrWriter, Path filePath) {
@@ -95,9 +96,10 @@ public class RotatingRecordingThread extends RecordingThread {
         try {
             initNewFile(true);
         } catch (IOException | RuntimeException e) {
-            // If first file open fails, remove the hook we just registered so a later JVM
-            // shutdown does not block on a recording that never really started.
+            // If first file open fails, remove the hook and the RecordingStream allocated
+            // by the super-constructor so no native JFR resources are leaked on retry.
             unregisterShutdownHook();
+            closeRecordingStream();
             throw e;
         }
         agentIO.writeOutput("Condensed recording to " + pathTemplate + " started");
@@ -121,6 +123,7 @@ public class RotatingRecordingThread extends RecordingThread {
                 rotationLock.unlock();
             }
             unregisterShutdownHook();
+            closeRecordingStream();
             throw e;
         }
         this.rotationWatchdog = watchdog;
@@ -396,26 +399,40 @@ public class RotatingRecordingThread extends RecordingThread {
     @Override
     public void close() {
         triggeredStop.set(true);
-        rotationWatchdog.interrupt();
+        if (rotationWatchdog != null) {
+            rotationWatchdog.interrupt();
+            try {
+                rotationWatchdog.join(2_000);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+            }
+        }
+        boolean locked;
         try {
-            rotationWatchdog.join(2_000);
+            locked = rotationLock.tryLock(2, TimeUnit.SECONDS);
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
+            locked = false;
         }
-        rotationLock.lock();
-        try {
-            var s = this.state;
-            this.state = null;
-            if (s != null) {
-                closeState(s);
+        if (locked) {
+            try {
+                var s = this.state;
+                this.state = null;
+                if (s != null) {
+                    closeState(s);
+                }
+                // Final eviction pass: the last file is now sealed and eligible for eviction.
+                // Pass null as excludePath because there is no longer a live writer.
+                synchronized (filesLock) {
+                    deleteOldestFilesIfNeeded(null);
+                }
+            } finally {
+                rotationLock.unlock();
             }
-            // Final eviction pass: the last file is now sealed and eligible for eviction.
-            // Pass null as excludePath because there is no longer a live writer.
-            synchronized (filesLock) {
-                deleteOldestFilesIfNeeded(null);
-            }
-        } finally {
-            rotationLock.unlock();
+        } else {
+            agentIO.writeSevereError(
+                    "Could not acquire rotationLock within 2s during close; abandoning writer"
+                            + " (best-effort shutdown)");
         }
         if (overallWrittenFileCount.get() >= 0) {
             agentIO.writeOutput("Condensed recording to " + pathTemplate + " finished");
@@ -440,11 +457,13 @@ public class RotatingRecordingThread extends RecordingThread {
             // (e.g., when the watchdog already rotated while we were waiting for the lock).
             if (shouldEndFile()) {
                 long now = System.nanoTime();
-                if (now - lastRotationFailureNanos > ROTATION_FAILURE_BACKOFF_NS) {
+                if (!rotationFailurePending
+                        || (now - lastRotationFailureNanos) > ROTATION_FAILURE_BACKOFF_NS) {
                     try {
                         initNewFile(false);
-                        lastRotationFailureNanos = Long.MIN_VALUE;
+                        rotationFailurePending = false;
                     } catch (IOException e) {
+                        rotationFailurePending = true;
                         lastRotationFailureNanos = System.nanoTime();
                         // Rotation failed — keep writing to the current file rather than dropping
                         // the event or stopping. Back off for 1s to avoid flooding on a full disk.
@@ -526,7 +545,8 @@ public class RotatingRecordingThread extends RecordingThread {
     }
 
     private static final long ROTATION_FAILURE_BACKOFF_NS = 1_000_000_000L;
-    private volatile long lastRotationFailureNanos = Long.MIN_VALUE;
+    private volatile boolean rotationFailurePending = false;
+    private volatile long lastRotationFailureNanos = 0L;
 
     private static final Map<String, Function<Integer, String>> rotatingFileNamePlaceholder =
             Map.of(

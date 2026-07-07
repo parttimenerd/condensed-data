@@ -15,6 +15,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Map.Entry;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.locks.ReentrantLock;
 import jdk.jfr.consumer.RecordedEvent;
 import me.bechberger.condensed.Compression;
 import me.bechberger.condensed.CondensedOutputStream;
@@ -29,6 +30,11 @@ public class SingleRecordingThread extends RecordingThread {
     private final String path;
     private final BasicJFRWriter jfrWriter;
     private final AtomicBoolean triggeredStop = new AtomicBoolean(false);
+
+    /**
+     * Serializes processEvent, close, and getMiscStatus to prevent torn state in BasicJFRWriter.
+     */
+    private final ReentrantLock writerLock = new ReentrantLock();
 
     public SingleRecordingThread(
             String path,
@@ -77,6 +83,7 @@ public class SingleRecordingThread extends RecordingThread {
                 }
             }
             unregisterShutdownHook();
+            closeRecordingStream();
             if (t instanceof IOException ioe) throw ioe;
             throw new IOException("Failed to create writer", t);
         }
@@ -93,11 +100,17 @@ public class SingleRecordingThread extends RecordingThread {
             triggerStop();
             return;
         }
+        writerLock.lock();
         try {
+            if (triggeredStop.get()) {
+                return;
+            }
             jfrWriter.processEvent(event);
         } catch (Exception e) {
             agentIO.writeSevereError("Error processing event: " + e.getMessage());
             triggerStop();
+        } finally {
+            writerLock.unlock();
         }
     }
 
@@ -120,7 +133,20 @@ public class SingleRecordingThread extends RecordingThread {
 
     @Override
     public void close() {
-        jfrWriter.close();
+        boolean locked;
+        try {
+            locked = writerLock.tryLock(2, java.util.concurrent.TimeUnit.SECONDS);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            locked = false;
+        }
+        try {
+            jfrWriter.close();
+        } finally {
+            if (locked) {
+                writerLock.unlock();
+            }
+        }
         agentIO.writeOutput("Condensed recording to " + path + " finished\n");
     }
 
@@ -128,6 +154,7 @@ public class SingleRecordingThread extends RecordingThread {
     List<Entry<String, String>> getMiscStatus() {
         long sizeOnDrive;
         long sizeUncompressed;
+        writerLock.lock();
         try {
             sizeOnDrive = jfrWriter.estimateSize();
             sizeUncompressed = jfrWriter.getUncompressedStatistic().getBytes();
@@ -136,6 +163,8 @@ public class SingleRecordingThread extends RecordingThread {
                     Map.entry("mode", "single file"),
                     Map.entry("path", Path.of(path).toAbsolutePath().toString()),
                     Map.entry("state", "closing"));
+        } finally {
+            writerLock.unlock();
         }
         return List.of(
                 Map.entry("mode", "single file"),
