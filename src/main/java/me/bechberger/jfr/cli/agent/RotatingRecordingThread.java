@@ -390,14 +390,7 @@ public class RotatingRecordingThread extends RecordingThread {
     /** Spawns a stop thread under the sync object, guarded by CAS so only one fires. */
     private void triggerStop() {
         if (triggeredStop.compareAndSet(false, true)) {
-            Thread t =
-                    new Thread(
-                            () -> {
-                                synchronized (Agent.getSyncObject()) {
-                                    stop();
-                                }
-                            },
-                            "cjfr-rotating-stop");
+            Thread t = new Thread(this::stop, "cjfr-rotating-stop");
             t.setDaemon(true);
             t.start();
         }

@@ -83,7 +83,9 @@ public abstract class RecordingThread implements Runnable {
                 continue;
             }
             var parts = s.split("=", 2);
-            if (parts[0].isEmpty()) {
+            String key = parts[0].strip();
+            String value = parts[1].strip();
+            if (key.isEmpty()) {
                 AgentIO.getAgentInstance()
                         .writeSevereError(
                                 "Ignoring malformed --misc-jfr-config entry (empty key): '"
@@ -91,7 +93,15 @@ public abstract class RecordingThread implements Runnable {
                                         + "'");
                 continue;
             }
-            result.put(parts[0].strip(), parts[1].strip());
+            if (value.isEmpty()) {
+                AgentIO.getAgentInstance()
+                        .writeSevereError(
+                                "Ignoring malformed --misc-jfr-config entry (empty value): '"
+                                        + s
+                                        + "'");
+                continue;
+            }
+            result.put(key, value);
         }
         return result;
     }
@@ -173,14 +183,7 @@ public abstract class RecordingThread implements Runnable {
             if (count == MAX_EVENT_ERRORS) {
                 agentIO.writeSevereError(
                         "Too many event errors; stopping recording to avoid silent data loss.");
-                Thread t =
-                        new Thread(
-                                () -> {
-                                    synchronized (Agent.getSyncObject()) {
-                                        stop();
-                                    }
-                                },
-                                "cjfr-error-stop");
+                Thread t = new Thread(this::stop, "cjfr-error-stop");
                 t.setDaemon(true);
                 t.start();
             }
@@ -223,7 +226,9 @@ public abstract class RecordingThread implements Runnable {
         }
         agentIO.writeInfo("closed");
         try {
-            removeFromParent.run();
+            synchronized (Agent.getSyncObject()) {
+                removeFromParent.run();
+            }
         } catch (Throwable e) {
             agentIO.writeSevereError("Error removing from parent: " + e.getMessage());
         }

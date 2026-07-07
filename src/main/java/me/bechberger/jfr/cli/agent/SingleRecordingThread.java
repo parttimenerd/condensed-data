@@ -120,16 +120,7 @@ public class SingleRecordingThread extends RecordingThread {
 
     private void triggerStop() {
         if (triggeredStop.compareAndSet(false, true)) {
-            // we're currently stuck in JFR code, so we need to stop the recording
-            // from a different thread so we don't deadlock
-            Thread t =
-                    new Thread(
-                            () -> {
-                                synchronized (Agent.getSyncObject()) {
-                                    stop();
-                                }
-                            },
-                            "cjfr-single-stop");
+            Thread t = new Thread(this::stop, "cjfr-single-stop");
             t.setDaemon(true);
             t.start();
         }
@@ -154,7 +145,12 @@ public class SingleRecordingThread extends RecordingThread {
         } else {
             agentIO.writeSevereError(
                     "Could not acquire writerLock within 2s during close;"
-                            + " abandoning writer (best-effort shutdown)");
+                            + " closing writer without lock (best-effort shutdown)");
+            try {
+                jfrWriter.close();
+            } catch (Throwable t) {
+                agentIO.writeSevereError("Best-effort writer close failed: " + t.getMessage());
+            }
             agentIO.writeOutput(
                     "Condensed recording to "
                             + path
