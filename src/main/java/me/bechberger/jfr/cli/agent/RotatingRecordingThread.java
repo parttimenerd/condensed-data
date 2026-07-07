@@ -82,8 +82,7 @@ public class RotatingRecordingThread extends RecordingThread {
         agentIO.writeOutput("Condensed recording to " + pathTemplate + " started");
         this.rotationWatchdog =
                 new Thread(
-                        this::runRotationWatchdog,
-                        "cjfr-rotation-watchdog[" + pathTemplate + "]");
+                        this::runRotationWatchdog, "cjfr-rotation-watchdog[" + pathTemplate + "]");
         this.rotationWatchdog.setDaemon(true);
         this.rotationWatchdog.start();
         registerShutdownHook();
