@@ -6,11 +6,16 @@ nav_order: 2
 
 # Getting Started with cjfr
 
-`cjfr` records JFR data directly to a compact `.cjfr` format and provides
-offline analysis without a full JFR toolchain. The main use case is continuous
-GC profiling on production JVMs: low-overhead rotating recordings that fit on
-disk long-term, with instant `summary` output and targeted inflation to `.jfr`
-when you need JDK Mission Control.
+`cjfr` records JFR data directly to a compact `.cjfr` format designed for
+**continuous GC profiling in production**. The core workflow is a rotating
+ring-buffer on each server: the agent writes successive `.cjfr` files, evicts
+the oldest when the cap is hit, and you always have the last N hours of GC history
+on disk at a bounded, predictable storage cost.
+
+Rotating recordings, offline summary without inflation, and targeted JFR slices
+for JDK Mission Control are the three operations this tool is built around.
+
+---
 
 ## Installation
 
@@ -18,205 +23,111 @@ Download the latest JAR from [GitHub Releases](https://github.com/parttimenerd/c
 
 ```shell
 curl -L -o cjfr.jar https://github.com/parttimenerd/condensed-data/releases/latest/download/condensed-data.jar
-```
-
-Or build from source (requires JDK 17+):
-
-```shell
-git clone --recurse-submodules https://github.com/parttimenerd/condensed-data.git
-cd condensed-data
-mvn package -DskipTests
-# JAR is at target/condensed-data.jar
-```
-
-For convenience, create an alias:
-
-```shell
 alias cjfr='java -jar /path/to/cjfr.jar'
 ```
 
----
-
-## 5-Minute Quickstart
-
-### 1. Condense a JFR file
+Requires JDK 17+. Or build from source:
 
 ```shell
-cjfr condense recording.jfr
-# produces recording.cjfr
-```
-
-Print compression statistics while condensing:
-
-```shell
-cjfr condense --statistics recording.jfr
-```
-
-### 2. Inspect the result
-
-```shell
-cjfr summary recording.cjfr
-```
-
-Generate a storage flamegraph to visualize which event types use the most space:
-
-```shell
-cjfr summary --flamegraph flamegraph.html recording.cjfr
-open flamegraph.html
-```
-
-### 3. View specific events
-
-```shell
-cjfr view recording.cjfr jdk.GCHeapSummary
-```
-
-### 4. Inflate back to JFR
-
-When you need to open the recording in JDK Mission Control or another JFR consumer:
-
-```shell
-cjfr inflate recording.cjfr
-# produces recording.inflated.jfr
+git clone --recurse-submodules https://github.com/parttimenerd/condensed-data.git
+cd condensed-data && mvn package -DskipTests
+# JAR is at target/condensed-data.jar
 ```
 
 ---
 
-## Continuous Recording with the Java Agent
+## Continuous Rotating Recording (the main use case)
 
-The built-in Java agent records directly to `.cjfr` without an intermediate JFR
-file on disk. This is the recommended approach for production: lower I/O overhead
-and immediate space savings compared to recording JFR then condensing offline.
-
-### Attach to a running process
+Start a rotating GC recording with the agent — this is the one command most
+production deployments run:
 
 ```shell
-# By main-class substring (case-insensitive)
-cjfr agent myapp start recording.cjfr
+# Keep last 10 × 100 MB ≈ 1 GB of GC history. Names are stable, disk usage bounded.
+java -javaagent:cjfr.jar='start,/var/rec/app_$index.cjfr,--rotating,--max-files=10,--max-size=100m' \
+     -jar myapp.jar
+```
 
-# Check recording status
+Or attach to an already-running process without restart:
+
+```shell
+cjfr agent myapp start '/var/rec/app_$index.cjfr' --rotating --max-files=10 --max-size=100m
+```
+
+> Always **single-quote** the path when it contains `$index` or `$date` to prevent
+> shell expansion.
+
+**How rotation works:** When a file reaches `--max-size` (or `--max-duration`), the
+agent closes it and opens the next. By default, names cycle — `app_0.cjfr`, `app_1.cjfr`,
+…, then back to `app_0.cjfr` — so disk usage is capped at exactly `max-files × max-size`.
+Pass `--new-names` to generate unique names instead (oldest deleted when the cap is hit).
+
+**`--duration` vs `--max-duration`:** `--duration=4h` stops the *whole* recording after
+4 hours. `--max-duration=10m` caps each *individual file* at 10 minutes (rotation trigger).
+Combine both: record for 2 hours total, rotating every 10 minutes.
+
+Check status or stop at any time:
+
+```shell
 cjfr agent myapp status
-
-# Stop recording
 cjfr agent myapp stop
 ```
 
-`myapp` is a case-insensitive substring match on the main class name. You can also use
-a PID directly (`cjfr agent 12345 start`) or `all` to target every discovered JVM.
-
-### Record a process from startup
+Adjust limits while recording is live — no restart needed:
 
 ```shell
-java -javaagent:cjfr.jar=start,recording.cjfr MyApp
+cjfr agent myapp set-max-files 20      # expand ring buffer
+cjfr agent myapp set-max-size 200m     # grow per-file cap
+cjfr agent myapp set-max-duration 15m  # change rotation interval
 ```
 
-The recording runs until the JVM exits.
-
-### Rotating files (for long-running services)
-
-Keep the last 5 files, each up to 100 MB — approximately 500 MB of history on disk:
-
-```shell
-java -javaagent:cjfr.jar='start,/tmp/rec_$index.cjfr,--rotating,--max-files=5,--max-size=100m' MyApp
-```
-
-Or attach at runtime (use single quotes to prevent shell expansion of `$`):
-
-```shell
-cjfr agent myapp start '/tmp/rec_$index.cjfr' --rotating --max-files=5 --max-size=100m
-```
-
-**`--duration` vs `--max-duration`:** `--duration=30m` stops the *whole* recording after
-30 minutes. `--max-duration=5m` caps each *individual rotated file* at 5 minutes (rotation
-trigger). Both can be combined: record for 1 hour total, rotating every 10 minutes.
-
-**`--new-names`:** By default, each rotation reuses the oldest file's name, keeping disk
-usage bounded to exactly `--max-files` names. Pass `--new-names` to always generate a
-fresh name per rotation — files accumulate until `--max-files` is reached, then the
-oldest is deleted.
-
-### Changing limits at runtime
-
-```shell
-cjfr agent myapp set-max-files 20     # expand ring buffer after disk expansion
-cjfr agent myapp set-max-size 200m    # grow per-file cap
-cjfr agent myapp set-max-duration 10m # change rotation interval
-cjfr agent myapp set-duration 2h      # cap total recording length
-```
-
-### Reading agent output
-
-When the CLI attaches (`cjfr agent PID ...`), the agent writes its output to a temporary
-file (`$TMPDIR/jfr-condenser-agent-<pid>-out.log`) which the CLI reads back automatically.
-
-If something goes wrong silently, you can read unread output manually:
-
-```shell
-cjfr agent myapp read
-```
-
-Exit codes are also written to `$TMPDIR/jfr-condenser-agent-<pid>-exit.code` and read
-back by the CLI so non-zero exits are surfaced to the caller.
+See [Production Recording Guide]({% link production-recording.md %}) for the full
+rotation reference, storage sizing, and JFR config options.
 
 ---
 
-## Choosing a Configuration
+## Analysing a Recording
 
-The `--condenser-config` option controls how aggressively events are reduced.
-All configurations produce valid `.cjfr` files that can be inflated back to JFR.
-No data is destroyed that is still needed for accurate GC analysis at that
-level of precision.
-
-| Config | Size (with LZ4, gc_details workload) | Use case |
-|---|---|---|
-| `default` | ~8–42% of original | Full-fidelity GC data, safe default |
-| `reasonable-default` | ~4–17% of original | Good compression, slight data reduction |
-| `reduced-default` | ~1–11% of original | Maximum compression, more lossy |
-
-*Size varies widely: gc_details-heavy recordings compress best; sparse gc-only profiles
-compress least. Ranges from actual renaissance benchmarks.*
-
-> **Default config differs by surface:** `cjfr condense` defaults to `default`. The agent
-> `start` command defaults to `reasonable-default`. Specify `--condenser-config` explicitly
-> if you need consistent behaviour across both.
-
-Example:
+Inspect directly without inflating — fast and JMC-free:
 
 ```shell
-cjfr condense --condenser-config=reduced-default recording.jfr
+# Summary: event counts, GC pause stats, allocation rate
+cjfr summary recording.cjfr
+
+# Context around the worst 10% of pauses (1-minute window per qualifying GC)
+cjfr summary --gc-percentile=90 recording.cjfr
+
+# Summarise across multiple rotation files at once
+cjfr summary app_0.cjfr -i app_1.cjfr -i app_2.cjfr
 ```
 
-Or with the agent:
+Inflate to `.jfr` for JDK Mission Control:
 
 ```shell
-java -javaagent:cjfr.jar='start,recording.cjfr,--condenser-config=reduced-default' MyApp
+# Full inflation
+cjfr inflate recording.cjfr
+
+# Just a 30-minute window — much faster to open in JMC
+cjfr inflate --start="2024-05-24 14:25:00" --duration=30m recording.cjfr incident.jfr
+
+# Only events around the worst GC pauses
+cjfr inflate --gc-percentile=95 recording.cjfr worst-pauses.jfr
 ```
+
+See [Analyzing Recordings]({% link analysis.md %}) for time filters, event filters,
+and multi-file queries.
 
 ---
 
-## Choosing a Compression Algorithm
+## Condensing an Existing JFR File
 
-The inner compression algorithm is independent of event reduction above.
-The CLI accepts exactly three values for `--compression`:
-
-| Algorithm | CLI value | Speed | Ratio | Best for |
-|---|---|---|---|---|
-| LZ4 (default) | `LZ4FRAMED` | Very fast | Good | Agent recording, frequent reads |
-| gzip | `GZIP` | Slow | Good | Long-term archive, toolchain compat |
-| None | `NONE` | Instant | None | Benchmarking, re-compressed transport |
-
-> **Note:** The `.cjfr` format reserves space for additional algorithms, but only
-> `NONE`, `GZIP`, and `LZ4FRAMED` are implemented. Passing any other value
-> (e.g. `--compression=ZSTD`) is rejected by the CLI.
-
-`LZ4FRAMED` uses block-independent framing, which makes files resilient to partial
-corruption and streamable. It is the right default for the agent.
-
-Example (gzip for archival):
+Convert a plain `.jfr` to `.cjfr` for storage:
 
 ```shell
-cjfr condense --compression=GZIP recording.jfr
+cjfr condense recording.jfr          # → recording.cjfr
+cjfr condense --statistics recording.jfr  # show compression ratio
 ```
+
+The agent writes `.cjfr` directly — `condense` is for files you already have.
 
 ---
 
@@ -224,26 +135,27 @@ cjfr condense --compression=GZIP recording.jfr
 
 **`cjfr inflate` fails or produces an empty JFR**
 
-Inflation requires JDK Mission Control libraries on the classpath. Make sure you are
-running with the full JAR (not a stripped inflaterless variant) and JDK 17+.
+Make sure you are using the full JAR (not an inflaterless variant) and JDK 17+.
+Inflaterless JARs are labelled `*-inflaterless*` in the filename.
 
 **Agent attaches but nothing is recorded**
 
-Check that JFR is enabled on the target JVM. It is on by default since JDK 11; older
-distributions may require `-XX:+FlightRecorder`. Run `cjfr agent <pid> status` to
-confirm.
+JFR is enabled by default on JDK 11+; older JVMs may need `-XX:+FlightRecorder`.
+Run `cjfr agent <pid> status` to confirm the recording started.
 
-**Output file is unexpectedly large**
+**Output files are larger than expected**
 
-Try `--condenser-config=reduced-default` for maximum compression, or switch from
-`--compression=LZ4FRAMED` to `--compression=GZIP` for a better ratio at modest cost.
+The agent defaults to `reasonable-default` config. Switch to `reduced-default` for
+maximum compression (~1–4% of original), or use `--compression=GZIP` for a better
+ratio at slower write speed. See [Configuration Reference]({% link configurations.md %}).
 
 ---
 
 ## Further Reading
 
-- [JAR Release Selection Guide]({% link jar-releases.md %}) — which JAR to download for your environment
-- [Configuration Reference]({% link configurations.md %}) — full condenser config and compression trade-offs
-- [Production Recording Guide]({% link production-recording.md %}) — rotating files, live tuning, sizing
-- [Analyzing Recordings]({% link analysis.md %}) — time filters, GC percentile, event filters, multi-file
+- [Production Recording Guide]({% link production-recording.md %}) — rotation knobs, live tuning, storage sizing, JFR config
+- [Configuration Reference]({% link configurations.md %}) — condenser configs and compression algorithms
+- [Analyzing Recordings]({% link analysis.md %}) — time filters, GC percentile, event filters, multi-file queries
 - [Common Workflows]({% link workflows.md %}) — end-to-end recipes
+- [Cookbooks]({% link cookbooks.md %}) — GC regression hunt, fleet monitoring, container deployment, archival
+- [JAR Release Selection]({% link jar-releases.md %}) — pick the right JAR variant for your deployment

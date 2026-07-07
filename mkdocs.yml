@@ -1,0 +1,108 @@
+site_name: "cjfr — Condensed JFR"
+site_description: >-
+  A library and CLI for continuous GC profiling in production JVMs.
+  Records JFR data directly to a compact, self-describing .cjfr format
+  designed for long-running rotating recordings.
+site_url: https://parttimenerd.github.io/condensed-data/
+site_author: SapMachine team, SAP
+repo_name: parttimenerd/condensed-data
+repo_url: https://github.com/parttimenerd/condensed-data
+edit_uri: edit/main/docs/
+
+docs_dir: docs
+site_dir: site
+
+# Do not build content that is not part of the user-facing site.
+exclude_docs: |
+  superpowers/
+
+theme:
+  name: material
+  language: en
+  features:
+    - navigation.sections
+    - navigation.top
+    - navigation.instant
+    - navigation.tracking
+    - toc.follow
+    - content.code.copy
+    - content.code.annotate
+    - content.action.edit
+    - search.suggest
+    - search.highlight
+    - search.share
+  palette:
+    - media: "(prefers-color-scheme: light)"
+      scheme: default
+      primary: indigo
+      accent: indigo
+      toggle:
+        icon: material/brightness-7
+        name: Switch to dark mode
+    - media: "(prefers-color-scheme: dark)"
+      scheme: slate
+      primary: indigo
+      accent: indigo
+      toggle:
+        icon: material/brightness-4
+        name: Switch to light mode
+  icon:
+    repo: fontawesome/brands/github
+    edit: material/pencil
+
+markdown_extensions:
+  - admonition
+  - attr_list
+  - def_list
+  - footnotes
+  - md_in_html
+  - tables
+  - toc:
+      permalink: true
+      permalink_title: Anchor link to this section
+  - pymdownx.details
+  - pymdownx.superfences
+  - pymdownx.tabbed:
+      alternate_style: true
+  - pymdownx.tasklist:
+      custom_checkbox: true
+  - pymdownx.highlight:
+      anchor_linenums: true
+      line_spans: __span
+      pygments_lang_class: true
+  - pymdownx.inlinehilite
+  - pymdownx.snippets
+  - pymdownx.emoji:
+      emoji_index: !!python/name:material.extensions.emoji.twemoji
+      emoji_generator: !!python/name:material.extensions.emoji.to_svg
+
+plugins:
+  - search
+
+extra:
+  social:
+    - icon: fontawesome/brands/github
+      link: https://github.com/parttimenerd/condensed-data
+      name: cjfr on GitHub
+
+copyright: >-
+  MIT licensed. Copyright 2024 SAP SE or an SAP affiliate company,
+  Johannes Bechberger and contributors.
+
+nav:
+  - Home: index.md
+  - Usage:
+      - Getting Started: getting-started.md
+      - Analyzing Recordings: analysis.md
+      - Common Workflows: workflows.md
+  - Reference:
+      - JAR Release Selection: jar-releases.md
+      - Configuration Reference: configurations.md
+      - Production Recording: production-recording.md
+  - Cookbooks:
+      - Overview: cookbooks.md
+      - GC Regression Hunt: cookbook-gc-regression.md
+      - Fleet-Wide Monitoring: cookbook-fleet-monitoring.md
+      - Container & Sidecar Deployment: cookbook-container.md
+      - Archival Pipeline: cookbook-archival.md
+  - File Format Spec (dev): https://github.com/parttimenerd/condensed-data/blob/main/doc/FORMAT.md
