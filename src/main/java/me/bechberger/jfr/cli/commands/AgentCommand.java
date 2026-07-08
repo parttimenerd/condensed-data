@@ -38,7 +38,9 @@ public class AgentCommand implements Callable<Integer> {
 
     @Command(
             name = "read",
-            description = "Read the output of the agent",
+            description =
+                    "Stream the agent's text output (status messages, errors) from its IPC pipe."
+                            + " Polls until the agent closes the pipe.",
             mixinStandardHelpOptions = true)
     public static class ReadCommand implements Callable<Integer> {
 
@@ -48,7 +50,7 @@ public class AgentCommand implements Callable<Integer> {
         @Parameters(
                 index = "0",
                 paramLabel = "OUTPUT",
-                description = "Optional output file path (default: stdout)",
+                description = "File to write agent output to (default: stdout)",
                 defaultValue = "")
         private String outputFile = "";
 

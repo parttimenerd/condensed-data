@@ -19,9 +19,9 @@ import me.bechberger.jfr.cli.FileOptionConverters.ExistingCJFRFileOrZipOrFolderC
 public class InflateCommand implements Callable<Integer> {
 
     /**
-     * All positional args. The last arg is treated as the output .jfr file if it ends with
-     * ".jfr" and there is more than one arg; otherwise all args are input files and the output
-     * path is derived from the first input.
+     * All positional args. The last arg is treated as the output .jfr file if it ends with ".jfr"
+     * and there is more than one arg; otherwise all args are input files and the output path is
+     * derived from the first input.
      */
     @Parameters(
             arity = "1..*",

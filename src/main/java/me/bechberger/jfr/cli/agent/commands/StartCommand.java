@@ -47,8 +47,10 @@ public class StartCommand implements Callable<Integer> {
     @Option(
             names = "--rotating",
             description =
-                    "Use rotating files and replace $date and $index in the file names, if no"
-                            + " place holder is specified, replaces '.cjfr' with '_$index.cjfr'",
+                    "Write rotating files. Replaces $date and $index in the path; if neither"
+                            + " placeholder is present, '_$index' is inserted before '.cjfr'."
+                            + " Requires --max-files >= 1 and at least one of --max-size or"
+                            + " --max-duration.",
             defaultValue = "false")
     private boolean rotating;
 

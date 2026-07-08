@@ -23,29 +23,23 @@ import me.bechberger.jfr.cli.CLIUtils.ConfigurationConverter;
 import me.bechberger.jfr.cli.Constants;
 import me.bechberger.jfr.cli.FileOptionConverters.*;
 
-@Command(name = "condense", description = "Condense a JFR file", mixinStandardHelpOptions = true)
+@Command(
+        name = "condense",
+        description = "Condense one or more JFR files (or a folder/ZIP) into .cjfr format",
+        mixinStandardHelpOptions = true)
 public class CondenseCommand implements Callable<Integer> {
 
-    // optional out path, compress flag, statistics flag
-
+    /**
+     * All positional args. The last arg is treated as the output .cjfr file if it ends with ".cjfr"
+     * and there is more than one arg; otherwise all args are inputs and the output path is derived
+     * from the first input.
+     */
     @Parameters(
-            description = "The input .jfr file, can be a folder, or a zip",
-            converter = ExistingJFRFileOrZipOrFolderConverter.class)
-    private Path inputFile;
-
-    @Parameters(
-            index = "1",
-            arity = "0..1",
-            description = "The output file, default is the inputFile with the ending *.cjfr",
-            defaultValue = "",
-            converter = CJFRFileConverter.class)
-    private Path outputFile;
-
-    @Option(
-            names = {"-i", "--inputs"},
-            description = "Additional input files",
-            converter = ExistingJFRFileOrZipOrFolderConverter.class)
-    private List<Path> inputFiles = new ArrayList<>();
+            arity = "1..*",
+            description =
+                    "Input .jfr files (folders or zips), optionally followed by the output .cjfr"
+                            + " file. If the last argument ends with .cjfr it is used as output.")
+    private List<String> args = new ArrayList<>();
 
     @Option(
             names = {"--no-compression"},
@@ -82,28 +76,50 @@ public class CondenseCommand implements Callable<Integer> {
             split = ",")
     private List<String> eventTypes;
 
-    private Path getOutputFile() {
-        if (outputFile.toString().isEmpty()) {
-            if (!inputFiles.isEmpty()) {
-                throw new IllegalArgumentException(
-                        "Only one file is allowed if no output file given");
-            }
-            var inputName = inputFile.getFileName().toString();
-            String outputName;
-            if (inputName.endsWith(".jfr")) {
-                outputName = inputName.substring(0, inputName.length() - ".jfr".length()) + ".cjfr";
-            } else if (inputName.endsWith(".zip")) {
-                var baseName = inputName.substring(0, inputName.length() - ".zip".length());
-                if (baseName.endsWith(".jfr")) {
-                    baseName = baseName.substring(0, baseName.length() - ".jfr".length());
-                }
-                outputName = baseName + ".cjfr";
-            } else {
-                outputName = inputName + ".cjfr";
-            }
-            return inputFile.resolveSibling(outputName);
+    /**
+     * Returns the raw string args that are input files (all except the optional trailing .cjfr).
+     */
+    private List<String> inputArgs() {
+        if (args.size() > 1 && args.get(args.size() - 1).endsWith(".cjfr")) {
+            return args.subList(0, args.size() - 1);
         }
-        return outputFile;
+        return args;
+    }
+
+    List<Path> inputs() {
+        var converter = new ExistingJFRFileOrZipOrFolderConverter();
+        List<String> inputArgs = inputArgs();
+        var inputs = new ArrayList<Path>(inputArgs.size());
+        for (String s : inputArgs) {
+            inputs.add(converter.convert(s));
+        }
+        return inputs;
+    }
+
+    private Path getOutputFile() {
+        if (args.size() > 1 && args.get(args.size() - 1).endsWith(".cjfr")) {
+            return new CJFRFileConverter().convert(args.get(args.size() - 1));
+        }
+        // Derive output from the first input
+        if (args.size() > 1) {
+            throw new IllegalArgumentException(
+                    "Only one input file is allowed if no output file given");
+        }
+        var inputPath = Path.of(args.get(0));
+        var inputName = inputPath.getFileName().toString();
+        String outputName;
+        if (inputName.endsWith(".jfr")) {
+            outputName = inputName.substring(0, inputName.length() - ".jfr".length()) + ".cjfr";
+        } else if (inputName.endsWith(".zip")) {
+            var baseName = inputName.substring(0, inputName.length() - ".zip".length());
+            if (baseName.endsWith(".jfr")) {
+                baseName = baseName.substring(0, baseName.length() - ".jfr".length());
+            }
+            outputName = baseName + ".cjfr";
+        } else {
+            outputName = inputName + ".cjfr";
+        }
+        return inputPath.resolveSibling(outputName);
     }
 
     /** Expand a path into individual JFR files, handling folders and ZIPs */
@@ -157,11 +173,8 @@ public class CondenseCommand implements Callable<Integer> {
                                     Constants.VERSION,
                                     configuration.name(),
                                     effectiveCompression))) {
-                var inputs = new ArrayList<Path>();
-                inputs.add(inputFile);
-                inputs.addAll(inputFiles);
                 var resolvedInputs = new ArrayList<Path>();
-                for (var input : inputs) {
+                for (var input : inputs()) {
                     resolvedInputs.addAll(expandJFRPath(input));
                 }
                 if (statistics) {

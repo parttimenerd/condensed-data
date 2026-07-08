@@ -21,13 +21,13 @@ import me.bechberger.jfr.cli.TruncateMode;
 
 @Command(
         name = "view",
-        description = "View a specific event of a condensed JFR file as a table",
+        description = "View a specific event type from a .cjfr or .jfr file as a table",
         mixinStandardHelpOptions = true)
 public class ViewCommand implements Callable<Integer> {
 
     /**
-     * All positional args. The last arg is the event name (it never ends in .cjfr/.jfr/.zip and
-     * is not an existing directory); all preceding args are input files.
+     * All positional args. The last arg is the event name (it never ends in .cjfr/.jfr/.zip and is
+     * not an existing directory); all preceding args are input files.
      */
     @Parameters(
             arity = "2..*",
@@ -41,7 +41,10 @@ public class ViewCommand implements Callable<Integer> {
 
     @Option(
             names = "--truncate",
-            description = "How to truncate the output cells, 'beginning' or 'end'")
+            description =
+                    "How to truncate table cells that are too wide: 'beginning' (keep the end)"
+                            + " or 'end' (keep the beginning, default).",
+            defaultValue = "end")
     private String truncate = "end";
 
     @Option(names = "--cell-height", description = "Height of the table cells")
@@ -91,6 +94,13 @@ public class ViewCommand implements Callable<Integer> {
             }
             if (cellHeight < 1) {
                 System.err.println("Error: --cell-height must be >= 1, got: " + cellHeight);
+                return 2;
+            }
+            try {
+                TruncateMode.fromCliValue(truncate);
+            } catch (IllegalArgumentException e) {
+                System.err.println(
+                        "Error: --truncate must be 'beginning' or 'end', got: " + truncate);
                 return 2;
             }
             String eventName = eventName();

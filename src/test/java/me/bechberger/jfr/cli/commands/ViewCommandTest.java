@@ -275,11 +275,9 @@ public class ViewCommandTest {
         new CommandExecuter(
                         "condense",
                         "T/" + CommandTestUtil.getSampleJFRFileName(),
-                        "T/combined.cjfr",
-                        "-i",
                         "T/" + CommandTestUtil.getSampleJFRFileName(1),
-                        "-i",
-                        "T/" + CommandTestUtil.getSampleJFRFileName(2))
+                        "T/" + CommandTestUtil.getSampleJFRFileName(2),
+                        "T/combined.cjfr")
                 .withFiles(
                         CommandTestUtil.getSampleJFRFile(),
                         CommandTestUtil.getSampleJFRFile(1),

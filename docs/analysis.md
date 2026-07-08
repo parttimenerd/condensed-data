@@ -25,13 +25,13 @@ All three accept the **same filter flags** described below.
 Narrow the window you care about with `--start`, `--end`, or `--duration`.
 Timestamps are in local time unless you include an explicit offset.
 
-| Flag | Format | Example |
+| Flag | Accepted formats | Example |
 |---|---|---|
-| `--start` | `yyyy-MM-dd HH:mm:ss` or ISO-8601 | `--start="2024-05-24 12:07:00"` |
-| `--end` | same | `--end="2024-05-24 12:09:00"` |
-| `--duration` | `1h30m`, `5m`, `30s`, `500ms` | `--duration=2m` |
+| `--start` | `yyyy-MM-dd HH:mm:ss`, `yyyy-MM-ddTHH:mm:ss`, ISO-8601 with timezone | `--start="2024-05-24 12:07:00"` |
+| `--end` | same as `--start` | `--end="2024-05-24 12:09:00"` |
+| `--duration` | `1h30m`, `5m`, `30s`, `500ms`, `100us` | `--duration=2m` |
 
-Combine `--start` + `--end` **or** `--start` + `--duration`. Don't pass all three.
+Combine `--start` + `--end` **or** `--start` + `--duration` (or `--end` + `--duration`). Don't pass all three.
 Use `cjfr summary --short recording.cjfr` to find the recording's start time.
 
 ```shell
@@ -52,9 +52,9 @@ cjfr inflate --start="2024-05-24 12:07:00" --duration=2m \
 ## GC percentile filter
 
 Focus on the worst GC pauses — and the application activity that caused them.
-`--gc-percentile=N` **filters events** to a window (default 1 minute, tunable
-via `--gc-percentile-context`) around every GC whose pause duration is at or above
-the Nth percentile.
+`--gc-percentile=N` keeps only events that fall within the `--gc-percentile-context`
+window (default 1 minute) around every GC whose pause duration is at or above
+the Nth percentile. Pass `0` to disable (default).
 
 - With `cjfr summary`, this changes the **event-count table** — you see counts of
   what happened around the worst pauses. The standard GC Summary section is still
@@ -74,7 +74,8 @@ cjfr summary --gc-percentile=90 --gc-percentile-context=2m recording.cjfr
 cjfr inflate --gc-percentile=95 recording.cjfr pauses.jfr
 ```
 
-`--gc-percentile-context` defaults to `1m`. A smaller value (e.g. `15s`) gives
+`--gc-percentile-context` defaults to `1m`: the time window before and after
+each qualifying GC pause to include. A smaller value (e.g. `15s`) gives
 tighter slices; a larger one (e.g. `5m`) captures longer allocation patterns that
 build up before the pause.
 
@@ -150,7 +151,7 @@ CPU time — useful for understanding which event types dominate file size.
 
 !!! warning "GC Summary is single-file only"
     `cjfr summary` only produces the dedicated **GC Summary** section when querying
-    a **single file**. When multiple `-i` files are passed, the event count table is
+    a **single file**. When multiple files are passed, the event count table is
     merged across all files, but the GC-specific summary section is omitted.
 
     Workarounds:
@@ -184,9 +185,9 @@ cjfr view --start="2024-05-24 12:07:00" --duration=30s --limit=50 \
   recording.cjfr jdk.GCHeapSummary
 ```
 
-`--truncate` accepts `beginning` (truncates the start of long values, keeps the
-end) or `end` (default). For fully-qualified class names in stack traces,
-`beginning` is usually more useful.
+`--truncate` accepts `beginning` (or `begin`) to keep the end of long cell values,
+or `end` (default) to keep the beginning. For fully-qualified class names in stack
+traces, `beginning` is usually more useful.
 
 ---
 
@@ -195,8 +196,9 @@ end) or `end` (default). For fully-qualified class names in stack traces,
 The `reduced-default` condenser config combines some event types into buckets
 (e.g., many `ObjectAllocationSample` events become a single aggregated entry).
 By default, `summary` and `view` expand these back into approximate individual
-events ("reconstitution"). Pass `--no-reconstitution` to read the raw combined
-events instead — faster, and useful when you want aggregate metrics directly.
+events. Pass `--no-reconstitution` to skip expansion and read the raw combined
+events directly. Useful when you want aggregate metrics rather than reconstructed
+individual events.
 
 ```shell
 cjfr summary --no-reconstitution recording.cjfr

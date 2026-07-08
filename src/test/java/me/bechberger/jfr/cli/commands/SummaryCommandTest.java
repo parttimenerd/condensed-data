@@ -959,8 +959,7 @@ public class SummaryCommandTest {
                         reducedCjfr.toString()
                     });
             var result =
-                    new CommandExecuter(
-                                    "summary", defaultCjfr.toString(), reducedCjfr.toString())
+                    new CommandExecuter("summary", defaultCjfr.toString(), reducedCjfr.toString())
                             .run();
             assertThat(result.exitCode()).isEqualTo(0);
             // Should show both configurations

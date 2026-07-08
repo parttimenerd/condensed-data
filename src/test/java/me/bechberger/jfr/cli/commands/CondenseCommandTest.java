@@ -63,16 +63,13 @@ public class CondenseCommandTest {
         assertAll(
                 () -> assertThat(result.exitCode()).isEqualTo(0),
                 () -> assertThat(result.error()).isEmpty(),
-                () -> assertThat(result.output()).contains("*.cjfr"),
+                () -> assertThat(result.output()).contains(".cjfr"),
                 () ->
                         assertThat(result.output())
                                 .contains("--condenser-config")
                                 .contains("reasonable-default")
                                 .contains("reduced-default"),
-                () ->
-                        assertThat(result.output())
-                                .contains("<inputFile>")
-                                .contains("[<outputFile>]"));
+                () -> assertThat(result.output()).contains("<args>"));
     }
 
     /** Check that {@code condense sample.jfr} produces a condensed file {@code sample.cjfr} */
@@ -257,9 +254,8 @@ public class CondenseCommandTest {
         new CommandExecuter(
                         "condense",
                         "T/" + CommandTestUtil.getSampleJFRFileName(),
-                        "T/combined.cjfr",
-                        "-i",
-                        "T/" + CommandTestUtil.getSampleJFRFileName(1))
+                        "T/" + CommandTestUtil.getSampleJFRFileName(1),
+                        "T/combined.cjfr")
                 .withFiles(CommandTestUtil.getSampleJFRFile(), CommandTestUtil.getSampleJFRFile(1))
                 .checkNoError()
                 .checkNoOutput()
@@ -277,7 +273,6 @@ public class CondenseCommandTest {
                 new CommandExecuter(
                                 "condense",
                                 "T/" + CommandTestUtil.getSampleJFRFileName(),
-                                "-i",
                                 "T/" + CommandTestUtil.getSampleJFRFileName(1))
                         .withFiles(
                                 CommandTestUtil.getSampleJFRFile(),
@@ -463,11 +458,9 @@ public class CondenseCommandTest {
         new CommandExecuter(
                         "condense",
                         "T/" + CommandTestUtil.getSampleJFRFileName(),
-                        "T/combined.cjfr",
-                        "-i",
                         "T/" + CommandTestUtil.getSampleJFRFileName(1),
-                        "-i",
                         "T/" + CommandTestUtil.getSampleJFRFileName(2),
+                        "T/combined.cjfr",
                         "-c",
                         "reduced-default",
                         "--no-compression")
@@ -512,7 +505,6 @@ public class CondenseCommandTest {
                 new CommandExecuter(
                                 "condense",
                                 "T/" + CommandTestUtil.getSampleJFRFileName(),
-                                "-i",
                                 "T/" + CommandTestUtil.getSampleJFRFileName(1),
                                 "T/combined.cjfr",
                                 "--statistics")
@@ -624,11 +616,8 @@ public class CondenseCommandTest {
                 new CommandExecuter(
                                 "condense",
                                 "T/" + "large_string.jfr",
-                                "-i",
                                 "T/" + "extreme_numeric.jfr",
-                                "-i",
                                 "T/" + "unicode_string.jfr",
-                                "-i",
                                 "T/" + "many_fields.jfr",
                                 "T/edge_cases_combined.cjfr")
                         .withFiles(
@@ -697,7 +686,6 @@ public class CondenseCommandTest {
                     new CommandExecuter(
                                     "condense",
                                     "T/" + CommandTestUtil.getSampleJFRFileName(),
-                                    "-i",
                                     badJfr.toString(),
                                     "T/output.cjfr")
                             .withFiles(CommandTestUtil.getSampleJFRFile())
@@ -911,9 +899,8 @@ public class CondenseCommandTest {
                                                 "condense",
                                                 "--force",
                                                 "T/" + jfrName,
-                                                "T/multi.cjfr",
-                                                "-i",
-                                                copy.toString())
+                                                copy.toString(),
+                                                "T/multi.cjfr")
                                         .withFiles(jfr)
                                         .checkNoError()
                                         .check(
@@ -1029,9 +1016,8 @@ public class CondenseCommandTest {
                             new String[] {
                                 "condense",
                                 newerJfr.toString(),
-                                output.toString(),
-                                "--inputs",
                                 olderJfr.toString(),
+                                output.toString(),
                                 "--force"
                             });
             assertThat(result.exitCode())

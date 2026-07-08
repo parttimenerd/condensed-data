@@ -157,19 +157,24 @@ public interface EventFilter<C> {
 
         @Option(
                 names = {"--start"},
-                description = "The start time",
+                description =
+                        "Start of time window. Formats: 'yyyy-MM-dd HH:mm:ss',"
+                                + " 'yyyy-MM-ddTHH:mm:ss', or ISO-8601 with timezone offset."
+                                + " Interpreted as local time unless a timezone is included.",
                 converter = InstantConverter.class)
         Instant start;
 
         @Option(
                 names = {"--end"},
-                description = "The end time",
+                description = "End of time window. Same formats as --start.",
                 converter = InstantConverter.class)
         Instant end;
 
         @Option(
                 names = {"--duration"},
-                description = "The duration, don't pass it if both start and end are passed",
+                description =
+                        "Length of time window (requires --start or --end, not both)."
+                                + " Units: h, m, s, ms, us, ns. Examples: '5m', '30s', '1h30m'.",
                 converter = DurationConverter.class)
         Duration duration;
 
@@ -181,22 +186,29 @@ public interface EventFilter<C> {
 
         @Option(
                 names = "--no-reconstitution",
-                description = "Don't reconstitute the events, just read the combined events")
+                description =
+                        "Disable event reconstitution: read combined/bucketed events as-is instead"
+                            + " of expanding them back to approximate individual events. Only"
+                            + " affects recordings made with reduced-default or reasonable-default"
+                            + " condenser configs.")
         boolean noReconstitution;
 
         @Option(
                 names = "--gc-percentile",
                 description =
-                        "Filter out events that happened in the seconds before and after the GC's"
-                            + " with >= n-th percentile duration, e.g. --gc-percentile 90 gives you"
-                            + " all events before, during and after the longest 10% of GC's")
+                        "Keep only events that overlap with the longest GC pauses: pass the"
+                                + " percentile threshold, e.g. 90 keeps events within"
+                                + " --gc-percentile-context of GC pauses at or above the 90th"
+                                + " percentile duration. 0 disables the filter (default).")
         int gcPercentile = 0;
 
         @Option(
                 names = "--gc-percentile-context",
                 description =
-                        "The context to use for the GC percentile filter, e.g."
-                                + " --gc-percentile-context 1m",
+                        "Time window around each qualifying GC pause to include. Events within"
+                                + " this distance before or after a long GC are kept."
+                                + " Units: same as --duration, e.g. '1m', '30s'."
+                                + " Default: 1m.",
                 converter = DurationConverter.class,
                 defaultValue = "1m")
         Duration gcPercentileContext;

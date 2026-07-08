@@ -127,11 +127,7 @@ public class JFRMultiFileTest {
         var args = paths.stream().map(Path::toString).toList();
         assertAll(
                 () -> checkSummaryResult(captureStdout("summary", args)),
-                () ->
-                        checkViewResult(
-                                captureStdout(
-                                        "view",
-                                        combine(args, "TestEvent"))),
+                () -> checkViewResult(captureStdout("view", combine(args, "TestEvent"))),
                 () -> checkInflateResult(args));
     }
 

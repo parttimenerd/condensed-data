@@ -306,12 +306,7 @@ public class InflateCommandTest {
         var cjfrZero = CommandTestUtil.getSampleCJFRFileName();
         var cjfrOne = CommandTestUtil.getSampleCJFRFileName(1);
         var cjfrTwo = CommandTestUtil.getSampleCJFRFileName(2);
-        new CommandExecuter(
-                        "inflate",
-                        "T/" + cjfrZero,
-                        "T/" + cjfrOne,
-                        "T/" + cjfrTwo,
-                        "T/out.jfr")
+        new CommandExecuter("inflate", "T/" + cjfrZero, "T/" + cjfrOne, "T/" + cjfrTwo, "T/out.jfr")
                 .withFiles(
                         CommandTestUtil.getSampleCJFRFile(),
                         CommandTestUtil.getSampleCJFRFile(1),
@@ -529,11 +524,9 @@ public class InflateCommandTest {
         new CommandExecuter(
                         "condense",
                         "T/" + CommandTestUtil.getSampleJFRFileName(),
-                        "T/combined.cjfr",
-                        "-i",
                         "T/" + CommandTestUtil.getSampleJFRFileName(1),
-                        "-i",
-                        "T/" + CommandTestUtil.getSampleJFRFileName(2))
+                        "T/" + CommandTestUtil.getSampleJFRFileName(2),
+                        "T/combined.cjfr")
                 .withFiles(
                         CommandTestUtil.getSampleJFRFile(),
                         CommandTestUtil.getSampleJFRFile(1),

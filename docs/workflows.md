@@ -123,9 +123,8 @@ cjfr summary app_0.cjfr app_1.cjfr app_2.cjfr app_3.cjfr
 # Or use a glob — the shell expands it
 cjfr summary app_*.cjfr
 
-# Merge into a single .cjfr for long-term archival
-# --force is required when the input is already .cjfr (re-condensing)
-cjfr condense --force -i app_1.cjfr -i app_2.cjfr app_0.cjfr archive.cjfr
+# Merge into a single .jfr for tooling that reads JFR directly
+cjfr inflate app_0.cjfr app_1.cjfr app_2.cjfr archive.jfr
 ```
 
 ---

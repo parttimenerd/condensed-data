@@ -170,7 +170,7 @@ public class BugReproducerTest {
                         .run();
 
         assertThat(result.exitCode()).isEqualTo(2);
-        assertThat(result.error()).contains("Unknown truncate mode");
+        assertThat(result.error()).contains("--truncate must be");
     }
 
     /** The CLI should accept all supported user-facing spellings. */
