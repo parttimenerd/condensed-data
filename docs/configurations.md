@@ -17,7 +17,7 @@ All configurations produce valid `.cjfr` files. Loss is one-way: data reduced
 during condensing cannot be recovered on inflation.
 
 For GC profiling, `reasonable-default` is the right choice for almost all production
-deployments — it preserves all GC pause durations, heap sizes, promotion data,
+deployments; it preserves all GC pause durations, heap sizes, promotion data,
 and allocation rates at millisecond precision, which is far more than enough for
 GC tuning and capacity planning.
 
@@ -72,7 +72,7 @@ short or zero-valued GC data.
 | PLAB promotion events | per-event | combined |
 | Unnecessary addresses | included | dropped |
 
-*bfloat16: 16-bit brain floating-point format used for heap size fields. PLAB: Promotion Local Allocation Buffer — per-thread buffer used during young-to-old promotion in G1GC. BCI: bytecode index (position within a method's bytecode, used for precise source-line mapping).*
+*bfloat16: 16-bit brain floating-point format used for heap size fields. PLAB: Promotion Local Allocation Buffer; per-thread buffer used during young-to-old promotion in G1GC. BCI: bytecode index (position within a method's bytecode, used for precise source-line mapping).*
 
 ---
 
@@ -100,7 +100,7 @@ recordings where storage cost outweighs per-event granularity.
 | G1 heap region changes | per-event | combined |
 | MonitorEnter / ThreadPark | per-event | combined |
 
-*TLAB: Thread-Local Allocation Buffer — fast-path per-thread allocation region; TLAB/PLAB events record individual object allocation sizes. Combined means only the total bytes allocated per rotation interval is preserved.*
+*TLAB: Thread-Local Allocation Buffer; fast-path per-thread allocation region; TLAB/PLAB events record individual object allocation sizes. Combined means only the total bytes allocated per rotation interval is preserved.*
 
 ---
 
@@ -166,5 +166,5 @@ comes from choosing the condenser config; compression on top is incremental.
 *Lower bound = gc_details-heavy workloads (many events); upper bound = sparse gc-only profiles. Measured on renaissance benchmarks.*
 
 For most production deployments: `reasonable-default` + `LZ4FRAMED` (the agent
-default) is the right choice — fast writes, fast reads, 4–17% of original size
+default) is the right choice; fast writes, fast reads, 4–17% of original size
 depending on workload type.

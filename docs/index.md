@@ -4,21 +4,23 @@ title: Home
 
 # cjfr — Condensed JFR
 
-Developed by the [SapMachine](https://sap.github.io/SapMachine/) team at SAP — the same team behind SAP's production OpenJDK distribution and used in SAP's own production environments.
-
 `cjfr` is a library and CLI for continuous profiling in production JVMs using JFR.
 The agent writes JFR data directly to a compact `.cjfr` format with a built-in
 rotating ring-buffer: keep the last N files, each capped by size or time, so you
 always have recent history without runaway disk growth.
 
-Recordings can be queried offline with `cjfr summary` (no inflation, no JMC),
-inflated to standard `.jfr` for JDK Mission Control, or sliced to just the
-window around a GC event or incident.
+Recordings can be queried offline with `cjfr summary`,
+inflated to standard `.jfr` for [JDK Mission Control](https://adoptium.net/jmc),
+[Firefox Profiler](https://parttimenerd.github.io/firefox-profiler/),
+[jfr-query](https://parttimenerd.github.io/jfr-query/), or other JFR-capable tools,
+or sliced to just the window around a GC event or incident.
+
+*An experimental tool by the [SapMachine](https://sap.github.io/SapMachine/) team.*
 
 ## Why use cjfr instead of raw JFR?
 
 Standard JFR with `gc_details` produces ~250 MB/hour per JVM. Keeping weeks of data
-across a fleet is expensive. The naive alternative — gzip at night, rotate weekly —
+across a fleet is expensive. The naive alternative (gzip at night, rotate weekly)
 leaves you with stale data and no way to query it without unpacking.
 
 `cjfr` solves three things together:
@@ -30,11 +32,11 @@ leaves you with stale data and no way to query it without unpacking.
    that difference compounds.
 3. **Lossy reduction where precision isn't needed.** `reasonable-default` trades
    sub-millisecond timestamp precision for a 2–4× size reduction on top of LZ4
-   compression — precision that matters for nanosecond benchmarking but not for
+   compression; precision that matters for nanosecond benchmarking but not for
    GC pause analysis. `reduced-default` goes further: aggregate allocation metrics,
-   16-frame stacks, combined exception events — suitable for fleet-wide long-term storage.
+   16-frame stacks, combined exception events; suitable for fleet-wide long-term storage.
 
-`cjfr` captures all standard JFR events — GC pauses, heap summaries, CPU samples,
+`cjfr` captures all standard JFR events: GC pauses, heap summaries, CPU samples,
 allocation events, lock contention, safepoints. The condenser config controls how
 aggressively they are reduced; the JFR config (`--config`) controls which events
 are captured in the first place. Works with G1GC, ZGC, Shenandoah, and Serial/Parallel GC.
@@ -137,6 +139,5 @@ cjfr summary --gc-percentile=95 app_0.cjfr app_1.cjfr   # worst pause context
 
 - Source: [github.com/parttimenerd/condensed-data](https://github.com/parttimenerd/condensed-data)
 - Releases: [github.com/parttimenerd/condensed-data/releases](https://github.com/parttimenerd/condensed-data/releases)
-- File format spec: [doc/FORMAT.md](https://github.com/parttimenerd/condensed-data/blob/main/doc/FORMAT.md)
 
-License: MIT.
+[MIT License](https://github.com/parttimenerd/condensed-data/blob/main/LICENSE).

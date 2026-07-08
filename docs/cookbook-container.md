@@ -5,7 +5,7 @@ title: "Cookbook: Container and Sidecar Deployment"
 # Cookbook: Container and Sidecar Deployment
 
 **Situation:** You want to record GC data inside a Docker container with minimal
-footprint and pull the `.cjfr` files out for offline analysis — without the container
+footprint and pull the `.cjfr` files out for offline analysis; without the container
 needing `cjfr inflate` capability.
 
 ---
@@ -15,7 +15,7 @@ needing `cjfr inflate` capability.
 ```dockerfile
 FROM eclipse-temurin:21-jre
 
-# ~1.5 MB agent JAR — no inflate, no JMC dependencies
+# ~1.5 MB agent JAR; no inflate, no JMC dependencies
 ADD https://github.com/parttimenerd/condensed-data/releases/latest/download/condensed-data-linux-amd64-inflaterless.jar \
     /opt/cjfr/cjfr-agent.jar
 
@@ -60,7 +60,7 @@ workstation:
 # Copy from container
 docker cp mycontainer:/var/rec/. ./recordings/
 
-# Summary — no inflate needed
+# Summary; no inflate needed
 cjfr summary recordings/app_0.cjfr recordings/app_1.cjfr
 
 # Inflate the interesting window
@@ -73,7 +73,7 @@ cjfr inflate --start="2024-05-24 14:00:00" --duration=1h \
 
 ### For absolute minimum JAR size (~450 KB)
 
-Use the minimal variant — LZ4FRAMED and GZIP, ProGuard-optimised:
+Use the minimal variant; LZ4FRAMED and GZIP, ProGuard-optimised:
 
 ```shell
 condensed-data-linux-amd64-inflaterless-minimal.jar

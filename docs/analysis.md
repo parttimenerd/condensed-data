@@ -4,7 +4,7 @@ title: Analyzing Recordings
 
 # Analyzing Recordings
 
-`cjfr` queries `.cjfr` files directly — no inflation needed. All analysis
+`cjfr` queries `.cjfr` files directly; no inflation needed. All analysis
 commands accept the same filtering flags, so you can zero in on the
 30-second GC storm you care about before deciding whether to inflate the full recording.
 
@@ -14,7 +14,7 @@ commands accept the same filtering flags, so you can zero in on the
 |---|---|
 | `cjfr summary` | Aggregate stats: event counts, GC summary, allocation rate |
 | `cjfr view <FILE> <EVENT>` | Tabular view of one event type |
-| `cjfr inflate` | Convert to JFR for JDK Mission Control, async-profiler, etc. |
+| `cjfr inflate` | Convert to JFR for [JDK Mission Control](https://adoptium.net/jmc), [Firefox Profiler](https://parttimenerd.github.io/firefox-profiler/), [jfr-query](https://parttimenerd.github.io/jfr-query/), async-profiler, etc. |
 
 All three accept the **same filter flags** described below.
 
@@ -51,15 +51,15 @@ cjfr inflate --start="2024-05-24 12:07:00" --duration=2m \
 
 ## GC percentile filter
 
-Focus on the worst GC pauses — and the application activity that caused them.
+Focus on the worst GC pauses and the application activity that caused them.
 `--gc-percentile=N` keeps only events that fall within the `--gc-percentile-context`
 window (default 1 minute) around every GC whose pause duration is at or above
 the Nth percentile. Pass `0` to disable (default).
 
-- With `cjfr summary`, this changes the **event-count table** — you see counts of
+- With `cjfr summary`, this changes the **event-count table**: you see counts of
   what happened around the worst pauses. The standard GC Summary section is still
   shown when the input is a single file.
-- With `cjfr inflate`, this produces a `.jfr` containing only those windows —
+- With `cjfr inflate`, this produces a `.jfr` containing only those windows;
   much smaller than a full inflation and fast to open in JMC.
 - With `cjfr view`, it restricts the event listing to those windows.
 
@@ -86,6 +86,9 @@ build up before the pause.
 Pass `--events` to include only specific JFR event types. Accepts a
 comma-separated list, and is repeatable.
 
+For a full reference of available JFR event types and their fields, see
+[JFR Events](https://sap.github.io/jfrevents/25.html).
+
 ```shell
 # Summary counting only GC events
 cjfr summary --events=jdk.GarbageCollection,jdk.GCHeapSummary recording.cjfr
@@ -108,7 +111,7 @@ Useful event groups for GC analysis:
 | Allocation pressure | `jdk.ObjectAllocationInNewTLAB`, `jdk.ObjectAllocationOutsideTLAB`, `jdk.ObjectAllocationSample` |
 | Full GC picture | `jdk.GarbageCollection`, `jdk.GCHeapSummary`, `jdk.TenuringDistribution`, `jdk.GCReferenceStatistics`, `jdk.GCCPUTime` |
 
-**Collector-specific pause fields in `jdk.GarbageCollection`** — the pause field name
+**Collector-specific pause fields in `jdk.GarbageCollection`:** the pause field name
 varies by GC algorithm. When using `cjfr view --json` or scripting against JSON output:
 
 | Collector | Pause field(s) | Unit |
@@ -124,7 +127,7 @@ varies by GC algorithm. When using `cjfr view --json` or scripting against JSON 
 
 ## Working with multiple files
 
-All files are merged in time order — the normal way to work with a rotating recording set.
+All files are merged in time order; the normal way to work with a rotating recording set.
 
 !!! warning "GC Summary is single-file only"
     `cjfr summary` only produces the dedicated **GC Summary** section when querying
@@ -133,7 +136,7 @@ All files are merged in time order — the normal way to work with a rotating re
 
     Workarounds:
 
-    - Run `summary --short` on the most recent rotation file per host — it is
+    - Run `summary --short` on the most recent rotation file per host; it is
       usually representative.
     - Run `summary --json` on each file individually and aggregate `.gc.p95Micros`
       / `.gc.maxMicros` (values in microseconds).
@@ -173,7 +176,7 @@ cjfr summary --flamegraph storage.html recording.cjfr  # storage flamegraph by e
 ```
 
 The `--flamegraph` output shows **byte distribution** across event types, not
-CPU time — useful for understanding which event types dominate file size.
+CPU time; useful for understanding which event types dominate file size.
 
 ---
 

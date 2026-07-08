@@ -36,7 +36,7 @@ cd condensed-data && mvn package -DskipTests
 
 ## Continuous Rotating Recording (the main use case)
 
-Start a rotating GC recording with the agent — this is the one command most
+Start a rotating GC recording with the agent; this is the one command most
 production deployments run:
 
 ```shell
@@ -71,7 +71,7 @@ config options.
 
 ## Analysing a Recording
 
-Inspect directly without inflating — fast and JMC-free:
+Inspect directly without inflating; fast and JMC-free:
 
 ```shell
 # Summary: event counts, GC pause stats, allocation rate
@@ -84,18 +84,24 @@ cjfr summary --gc-percentile=90 recording.cjfr
 cjfr summary app_0.cjfr app_1.cjfr app_2.cjfr
 ```
 
-Inflate to `.jfr` for JDK Mission Control:
+Inflate to `.jfr` for JDK Mission Control or other JFR viewers:
 
 ```shell
 # Full inflation
 cjfr inflate recording.cjfr
 
-# Just a 30-minute window — much faster to open in JMC
+# Just a 30-minute window; much faster to open in JMC
 cjfr inflate --start="2024-05-24 14:25:00" --duration=30m recording.cjfr incident.jfr
 
 # Only events around the worst GC pauses
 cjfr inflate --gc-percentile=95 recording.cjfr worst-pauses.jfr
 ```
+
+Inflated `.jfr` files can be opened in:
+
+- [JDK Mission Control](https://adoptium.net/jmc): full-featured JFR analysis GUI
+- [Firefox Profiler](https://parttimenerd.github.io/firefox-profiler/): web-based, no install, good for flame graphs
+- [jfr-query](https://parttimenerd.github.io/jfr-query/): web-based JFR query tool
 
 See [Analyzing Recordings](analysis.md) for time filters, event filters,
 and multi-file queries.
@@ -126,9 +132,9 @@ See [Configuration Reference](configurations.md).
 
 ## Further Reading
 
-- [Production Recording Guide](production-recording.md) — rotation knobs, live tuning, storage sizing, JFR config
-- [Configuration Reference](configurations.md) — condenser configs and compression algorithms
-- [Analyzing Recordings](analysis.md) — time filters, GC percentile, event filters, multi-file queries
-- [Common Workflows](workflows.md) — end-to-end recipes including condensing existing JFR files
-- [Cookbooks](cookbook-gc-regression.md) — GC regression hunt, fleet monitoring, container deployment, archival
-- [JAR Release Selection](jar-releases.md) — pick the right JAR variant for your deployment
+- [Production Recording Guide](production-recording.md): rotation knobs, live tuning, storage sizing, JFR config
+- [Configuration Reference](configurations.md): condenser configs and compression algorithms
+- [Analyzing Recordings](analysis.md): time filters, GC percentile, event filters, multi-file queries
+- [Common Workflows](workflows.md): end-to-end recipes including condensing existing JFR files
+- [Cookbooks](cookbook-gc-regression.md): GC regression hunt, fleet monitoring, container deployment, archival
+- [JAR Release Selection](jar-releases.md): pick the right JAR variant for your deployment

@@ -5,7 +5,7 @@ title: Common Workflows
 # Common Workflows
 
 Practical recipes for the most common `cjfr` use cases.
-Each workflow is self-contained — copy the commands, substitute your paths.
+Each workflow is self-contained; copy the commands, substitute your paths.
 
 ---
 
@@ -41,8 +41,8 @@ cjfr agent myapp status
 
 ## Recording on a server, analysing locally
 
-For the full fleet recording workflow — server-side agent setup, transferring files,
-and running offline analysis — see [Production Recording](production-recording.md)
+For the full fleet recording workflow; server-side agent setup, transferring files,
+and running offline analysis; see [Production Recording](production-recording.md)
 and the [Fleet-Wide Monitoring Cookbook](cookbook-fleet-monitoring.md).
 
 ---
@@ -62,11 +62,11 @@ cjfr inflate \
   app_0.cjfr app_1.cjfr app_2.cjfr \
   incident.jfr
 
-# Step 3: open in JDK Mission Control
+# Step 3: open in a JFR viewer; JDK Mission Control, Firefox Profiler, or jfr-query
 jmc incident.jfr
 ```
 
-The time-range filter is applied across the merged file set — you don't need to know
+The time-range filter is applied across the merged file set; you don't need to know
 which rotation file contains the incident window.
 
 ---
@@ -91,7 +91,7 @@ start time, then build your window from there.
 
 ## Extracting only GC events
 
-Produce a minimal JFR containing just what you need for GC analysis — much
+Produce a minimal JFR containing just what you need for GC analysis; much
 smaller than a full inflation, and faster to open in Mission Control.
 
 ```shell
@@ -120,7 +120,7 @@ When a recording spans several rotation files, combine them for analysis:
 # Summarise the whole day
 cjfr summary app_0.cjfr app_1.cjfr app_2.cjfr app_3.cjfr
 
-# Or use a glob — the shell expands it
+# Or use a glob; the shell expands it
 cjfr summary app_*.cjfr
 
 # Merge into a single .jfr for tooling that reads JFR directly
@@ -205,7 +205,7 @@ cjfr view recording.cjfr jdk.GCHeapSummary
 
 ## Changing limits on a running recording
 
-You can tune rotation settings while the agent is recording — no restart needed:
+You can tune rotation settings while the agent is recording; no restart needed:
 
 ```shell
 cjfr agent myapp set-max-files 20      # expand ring buffer after disk expansion

@@ -5,12 +5,12 @@ title: "Cookbook: Fleet-Wide GC Monitoring"
 # Cookbook: Fleet-Wide GC Monitoring
 
 **Situation:** You run cjfr on 20+ servers and want a consolidated view of GC health
-across the fleet — pause percentiles, allocation rates, heap trends — without copying
+across the fleet; pause percentiles, allocation rates, heap trends; without copying
 every recording to a central machine.
 
 ---
 
-### On each server — start rotating recording
+### On each server; start rotating recording
 
 Use the smallest agent JAR that fits your deployment. For a known Linux host:
 
@@ -19,7 +19,7 @@ Use the smallest agent JAR that fits your deployment. For a known Linux host:
 curl -L -o /opt/cjfr/cjfr-agent.jar \
   https://github.com/parttimenerd/condensed-data/releases/latest/download/condensed-data-linux-amd64-inflaterless.jar
 
-# Start at JVM launch — keep 24 hours at 100 MB/file
+# Start at JVM launch; keep 24 hours at 100 MB/file
 java -javaagent:/opt/cjfr/cjfr-agent.jar=\
 'start,/var/rec/app_$index.cjfr,--rotating,--max-files=24,--max-size=100m,--max-duration=1h' \
   -jar myapp.jar
@@ -45,7 +45,7 @@ done
 ### Summarise per server
 
 Query each server's most recent file for a quick GC summary. The GC Summary section
-is only produced for single-file queries — use the most recent file as a representative:
+is only produced for single-file queries; use the most recent file as a representative:
 
 ```shell
 for host in fleet/*/; do
