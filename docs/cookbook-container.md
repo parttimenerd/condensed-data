@@ -105,7 +105,7 @@ containers:
   - name: myapp
     env:
       - name: JAVA_TOOL_OPTIONS
-        # Kubernetes env values are not shell-expanded — $index reaches the JVM literally
+        # Kubernetes env values are not shell-expanded; $index reaches the JVM literally
         value: "-javaagent:/agent/cjfr-agent.jar=start,/var/rec/app_$index.cjfr,--rotating,--max-files=10,--max-size=100m"
     volumeMounts:
       - name: gc-recordings

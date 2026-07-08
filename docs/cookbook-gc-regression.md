@@ -62,9 +62,17 @@ compared to inflating the full recording.
 `cjfr view --json` emits one JSON object per event; pipe to `jq` to project the
 fields you care about.
 
-!!! note "Units"
+!!! note "Units and collector-specific fields"
     `longestPause` and `sumOfPauses` in `view --json` output are in **nanoseconds**.
     (The `summary --json` GC section uses **microseconds** — the `.gc.p95Micros` field.)
+
+    `longestPause` and `sumOfPauses` are G1GC field names. **ZGC** and **Shenandoah**
+    records use `duration` instead. For those collectors, replace the `jq` projection:
+    ```shell
+    # ZGC / Shenandoah
+    cjfr view --json after_0.cjfr jdk.GarbageCollection \
+      | jq '.[] | {gcId, cause, duration}'
+    ```
 
 ```shell
 # Before: show GC events with cause, pause, and heap usage

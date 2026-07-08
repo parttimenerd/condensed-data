@@ -108,11 +108,37 @@ Useful event groups for GC analysis:
 | Allocation pressure | `jdk.ObjectAllocationInNewTLAB`, `jdk.ObjectAllocationOutsideTLAB`, `jdk.ObjectAllocationSample` |
 | Full GC picture | `jdk.GarbageCollection`, `jdk.GCHeapSummary`, `jdk.TenuringDistribution`, `jdk.GCReferenceStatistics`, `jdk.GCCPUTime` |
 
+**Collector-specific pause fields in `jdk.GarbageCollection`** — the pause field name
+varies by GC algorithm. When using `cjfr view --json` or scripting against JSON output:
+
+| Collector | Pause field(s) | Unit |
+|---|---|---|
+| G1GC | `longestPause`, `sumOfPauses` | nanoseconds |
+| ZGC | `duration` | nanoseconds |
+| Shenandoah | `duration` | nanoseconds |
+| Serial / Parallel | `longestPause`, `sumOfPauses` | nanoseconds |
+
+`cjfr summary --json` always reports `.gc.p95Micros` and `.gc.maxMicros` in **microseconds** regardless of collector, derived from the collector's pause field.
+
 ---
 
 ## Working with multiple files
 
 All files are merged in time order — the normal way to work with a rotating recording set.
+
+!!! warning "GC Summary is single-file only"
+    `cjfr summary` only produces the dedicated **GC Summary** section when querying
+    a **single file**. When multiple files are passed, the event count table is
+    merged across all files, but the GC-specific summary section is omitted.
+
+    Workarounds:
+
+    - Run `summary --short` on the most recent rotation file per host — it is
+      usually representative.
+    - Run `summary --json` on each file individually and aggregate `.gc.p95Micros`
+      / `.gc.maxMicros` (values in microseconds).
+    - Or `inflate` the multi-file set to a single `.jfr` and re-run
+      `summary --short` on that single output.
 
 For `cjfr summary`, pass all files as positional arguments (glob expansion works too):
 
@@ -148,20 +174,6 @@ cjfr summary --flamegraph storage.html recording.cjfr  # storage flamegraph by e
 
 The `--flamegraph` output shows **byte distribution** across event types, not
 CPU time — useful for understanding which event types dominate file size.
-
-!!! warning "GC Summary is single-file only"
-    `cjfr summary` only produces the dedicated **GC Summary** section when querying
-    a **single file**. When multiple files are passed, the event count table is
-    merged across all files, but the GC-specific summary section is omitted.
-
-    Workarounds:
-
-    - Run `summary --short` on the most recent rotation file per host — it is
-      usually representative.
-    - Run `summary --json` on each file individually and aggregate `.gc.p95Micros`
-      / `.gc.maxMicros` (values in microseconds).
-    - Or `inflate` the multi-file set to a single `.jfr` and re-run
-      `summary --short` on that single output.
 
 ---
 

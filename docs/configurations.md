@@ -64,13 +64,15 @@ short or zero-valued GC data.
 |---|---|---|
 | Timestamp resolution | nanosecond | millisecond |
 | Duration resolution | nanosecond | microsecond |
-| Memory sizes | lossless integer | bfloat16 (~0.4% error) |
+| Memory sizes | lossless integer | bfloat16 (~0.4% relative error, e.g. ±4 MB on a 1 GB heap) |
 | Stack depth limit | unlimited | 32 frames |
 | BCI / source line in stacks | yes | no |
 | Zero-count tenured ages | included | dropped |
 | Sub-threshold GC pauses | included | dropped |
 | PLAB promotion events | per-event | combined |
 | Unnecessary addresses | included | dropped |
+
+*bfloat16: 16-bit brain floating-point format used for heap size fields. PLAB: Promotion Local Allocation Buffer — per-thread buffer used during young-to-old promotion in G1GC. BCI: bytecode index (position within a method's bytecode, used for precise source-line mapping).*
 
 ---
 
@@ -97,6 +99,8 @@ recordings where storage cost outweighs per-event granularity.
 | Exception events | per-event | combined (same exception class) |
 | G1 heap region changes | per-event | combined |
 | MonitorEnter / ThreadPark | per-event | combined |
+
+*TLAB: Thread-Local Allocation Buffer — fast-path per-thread allocation region; TLAB/PLAB events record individual object allocation sizes. Combined means only the total bytes allocated per rotation interval is preserved.*
 
 ---
 
@@ -130,9 +134,10 @@ cjfr condense --compression=<value> recording.jfr
 
 Accepted values: `NONE`, `GZIP`, `LZ4FRAMED`.
 
-> **Note:** The `.cjfr` format reserves space for additional algorithms, but only
-> `NONE`, `GZIP`, and `LZ4FRAMED` are implemented. Passing any other value is
-> rejected by the CLI.
+!!! note
+    The `.cjfr` format reserves space for additional algorithms, but only
+    `NONE`, `GZIP`, and `LZ4FRAMED` are implemented. Passing any other value is
+    rejected by the CLI.
 
 | Value | Speed (write) | Speed (read) | Ratio | Use case |
 |---|---|---|---|---|

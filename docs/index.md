@@ -4,33 +4,49 @@ title: Home
 
 # cjfr — Condensed JFR
 
-`cjfr` is a library and CLI for continuous GC profiling in production JVMs.
-It records JFR data directly to a compact, self-describing `.cjfr` format
-designed for **long-running rotating recordings**: the agent keeps a bounded
-ring-buffer of GC history on each server — the last N files, each capped by
-size or time — so you always have recent data without runaway disk growth.
+Developed by the [SapMachine](https://sap.github.io/SapMachine/) team at SAP — the same team behind SAP's production OpenJDK distribution and used in SAP's own production environments.
+
+`cjfr` is a library and CLI for continuous profiling in production JVMs using JFR.
+The agent writes JFR data directly to a compact `.cjfr` format with a built-in
+rotating ring-buffer: keep the last N files, each capped by size or time, so you
+always have recent history without runaway disk growth.
 
 Recordings can be queried offline with `cjfr summary` (no inflation, no JMC),
 inflated to standard `.jfr` for JDK Mission Control, or sliced to just the
 window around a GC event or incident.
 
-Developed by the [SapMachine](https://sap.github.io/SapMachine/) team at SAP.
+## Why use cjfr instead of raw JFR?
 
-## Why use cjfr?
+Standard JFR with `gc_details` produces ~250 MB/hour per JVM. Keeping weeks of data
+across a fleet is expensive. The naive alternative — gzip at night, rotate weekly —
+leaves you with stale data and no way to query it without unpacking.
 
-Standard JFR files are large — a gc_details-heavy workload produces ~250 MB/hour.
-Keeping weeks of data on each node is expensive. `cjfr` shrinks that by 4–30×
-without losing anything GC-relevant:
+`cjfr` solves three things together:
+
+1. **Bounded disk usage during recording.** The agent's ring-buffer evicts old files
+   automatically. No cron job, no manual cleanup, no "disk full at 3am" incident.
+2. **Query without inflation.** `cjfr summary` reads a compact footer in milliseconds.
+   Inflating a 200 MB JFR to query one field takes seconds. On a fleet of 100 nodes
+   that difference compounds.
+3. **Lossy reduction where precision isn't needed.** `reasonable-default` trades
+   sub-millisecond timestamp precision for a 2–4× size reduction on top of LZ4
+   compression — precision that matters for nanosecond benchmarking but not for
+   GC pause analysis. `reduced-default` goes further: aggregate allocation metrics,
+   16-frame stacks, combined exception events — suitable for fleet-wide long-term storage.
+
+`cjfr` captures all standard JFR events — GC pauses, heap summaries, CPU samples,
+allocation events, lock contention, safepoints. The condenser config controls how
+aggressively they are reduced; the JFR config (`--config`) controls which events
+are captured in the first place. Works with G1GC, ZGC, Shenandoah, and Serial/Parallel GC.
 
 | Approach | Typical size (gc_details-heavy) | Notes |
 |---|---|---|
-| Raw JFR | 100% | Full fidelity |
-| `cjfr default` + LZ4FRAMED | 8–42% | No loss |
+| Raw JFR | 100% (~250 MB/hour) | Full fidelity |
+| `cjfr default` + LZ4FRAMED | 8–42% | Lossless |
 | `cjfr reasonable-default` + LZ4FRAMED | 4–17% | Millisecond timestamps, 32-frame stacks |
 | `cjfr reduced-default` + LZ4FRAMED | 1–11% | Aggregate metrics, combined allocation events |
 
-The agent writes directly to `.cjfr` — no intermediate JFR file, no extra disk I/O.
-Compression is `LZ4FRAMED` (default, fast) or `GZIP` (better ratio, archival).
+*Measured on renaissance gc_details benchmarks. Sparse gc-only profiles produce smaller files.*
 
 ## Install
 
@@ -41,7 +57,7 @@ curl -L -o cjfr.jar https://github.com/parttimenerd/condensed-data/releases/late
 alias cjfr='java -jar '"$(pwd)"'/cjfr.jar'
 ```
 
-Requires JDK 17+. The JAR is self-contained — no installation, no classpath setup.
+Requires JDK 17+. The JAR is self-contained; no installation, no classpath setup.
 
 ## Quick example
 

@@ -102,19 +102,6 @@ and multi-file queries.
 
 ---
 
-## Condensing an Existing JFR File
-
-Convert a plain `.jfr` to `.cjfr` for storage:
-
-```shell
-cjfr condense recording.jfr          # → recording.cjfr
-cjfr condense --statistics recording.jfr  # show compression ratio
-```
-
-The agent writes `.cjfr` directly — `condense` is for files you already have.
-
----
-
 ## Troubleshooting
 
 **`cjfr inflate` fails or produces an empty JFR**
@@ -129,9 +116,11 @@ Run `cjfr agent <pid> status` to confirm the recording started.
 
 **Output files are larger than expected**
 
-The agent defaults to `reasonable-default` config. Switch to `reduced-default` for
-maximum compression (~1–11% of original), or use `--compression=GZIP` for a better
-ratio at slower write speed. See [Configuration Reference](configurations.md).
+The agent uses `reasonable-default` condensing with `LZ4FRAMED` compression by
+default. If that is still too large, switch to `reduced-default` for more aggressive
+event reduction (~1–11% of the raw JFR), or add `--compression=GZIP` for a better
+byte-level ratio at the cost of slower writes. Both changes are independent.
+See [Configuration Reference](configurations.md).
 
 ---
 
@@ -140,6 +129,6 @@ ratio at slower write speed. See [Configuration Reference](configurations.md).
 - [Production Recording Guide](production-recording.md) — rotation knobs, live tuning, storage sizing, JFR config
 - [Configuration Reference](configurations.md) — condenser configs and compression algorithms
 - [Analyzing Recordings](analysis.md) — time filters, GC percentile, event filters, multi-file queries
-- [Common Workflows](workflows.md) — end-to-end recipes
+- [Common Workflows](workflows.md) — end-to-end recipes including condensing existing JFR files
 - [Cookbooks](cookbook-gc-regression.md) — GC regression hunt, fleet monitoring, container deployment, archival
 - [JAR Release Selection](jar-releases.md) — pick the right JAR variant for your deployment

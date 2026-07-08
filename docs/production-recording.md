@@ -23,7 +23,7 @@ java -javaagent:/opt/cjfr/cjfr.jar='start,/var/recordings/app_$index.cjfr,--rota
     ```
     JAVA_TOOL_OPTIONS=-javaagent:/opt/cjfr/cjfr.jar=start,/var/rec/app_$index.cjfr,--rotating,--max-files=10,--max-size=100m
     ```
-    The JVM parses `JAVA_TOOL_OPTIONS` itself — no shell quoting needed for `$index`.
+    The JVM parses `JAVA_TOOL_OPTIONS` itself; no shell quoting needed for `$index`.
     See [Container & Sidecar Deployment](cookbook-container.md) for a full Docker example.
 
 ### Attaching to a running process
@@ -86,6 +86,13 @@ Log-shippers that watch by filename will see the file change in-place.
 `app_2.cjfr`, …). When `max-files` is reached, the *oldest* file is deleted.
 Names are never reused. Log-shippers watching by inode handle this correctly,
 but the file-name set grows until `max-files` cap is hit.
+
+**Choosing for log-shippers:** Use `--new-names` with `$date` in the path if you
+are shipping files with Filebeat, Fluentd, or similar tools that track files by
+inode. These tools reliably ingest completed files before they are deleted, as long
+as the shipper is faster than your rotation interval. For fixed-path setups where
+the shipper reads by filename, use the default (name reuse) mode and ensure
+`max-files × max-size` is large enough to cover upload delays.
 
 ---
 
@@ -194,17 +201,18 @@ cjfr agent myapp stop
 
 ## Storage Sizing
 
-These figures are measured on renaissance gc_details benchmarks. Actual sizes depend
-heavily on workload type — sparse gc-only profiles produce much smaller files.
+These figures are the **output `.cjfr` file size**, not the input JFR size.
+Measured on renaissance gc_details benchmarks with LZ4FRAMED compression (the default).
+Actual sizes depend heavily on workload type — sparse gc-only profiles produce much smaller files.
 
-| Condenser config | MB/hour (gc_details-heavy) | MB/hour (gc-only sparse) |
+| Condenser config | `.cjfr` output MB/hour (gc_details-heavy) | `.cjfr` output MB/hour (gc-only sparse) |
 |---|---|---|
 | `default` | ~300 MB/hour | ~25 MB/hour |
 | `reasonable-default` (agent default) | ~130 MB/hour | ~10 MB/hour |
 | `reduced-default` | ~70 MB/hour | ~6 MB/hour |
 
-*Based on a 7m52s renaissance benchmark with ~242 MB of gc_details JFR.
-For gc-only sparse profiles (renaissance-all_gc_G1.jfr, 29 MB), multiply by ~0.1.
+*Based on a 7m52s renaissance benchmark where the equivalent raw JFR was ~242 MB (~1.8 GB/hour).
+For gc-only sparse profiles (renaissance-all_gc_G1.jfr, 29 MB input), output is roughly 10% of the gc_details rate.
 Actual results depend on GC frequency, thread count, and allocation rate.*
 
 ---

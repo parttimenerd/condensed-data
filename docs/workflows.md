@@ -141,9 +141,18 @@ cjfr summary --short recording.cjfr
 # Step 2: extract the 30-minute window around the event
 cjfr inflate --start="2024-05-24 14:25:00" --duration=30m recording.cjfr window.jfr
 
-# Step 3: re-condense the window if you want to keep it in .cjfr format
+# Step 3 (optional): re-condense back to .cjfr for long-term storage
 cjfr condense --condenser-config=reasonable-default window.jfr window.cjfr
 ```
+
+!!! warning "Re-condensing an inflated recording loses additional precision"
+    If the original `.cjfr` was recorded with `reasonable-default` (millisecond
+    timestamps, 32-frame stacks), inflating it produces a `.jfr` that already
+    reflects those reductions. Re-condensing that `.jfr` applies the same reductions
+    again: no extra data is lost (there is nothing left to lose), but you do not
+    recover what was already discarded. If you need the sliced window at full
+    original precision, go back to the original `.cjfr` and slice it directly with
+    `cjfr inflate --start=... --duration=...` without re-condensing.
 
 ---
 
@@ -153,10 +162,10 @@ cjfr condense --condenser-config=reasonable-default window.jfr window.cjfr
 a single `.cjfr` alongside the folder:
 
 ```shell
-cjfr condense /path/to/jfr-folder/
-# produces /path/to/jfr-folder.cjfr
+cjfr condense recordings/
+# produces recordings.cjfr
 
-cjfr condense --condenser-config=reasonable-default /path/to/jfr-folder/
+cjfr condense --condenser-config=reasonable-default recordings/
 ```
 
 ---
