@@ -135,9 +135,8 @@ public class ViewCommandTest {
                 new CommandExecuter(
                                 "view",
                                 "T/" + CommandTestUtil.getSampleCJFRFileName(),
-                                "TestEvent",
-                                "-i",
-                                "T/" + CommandTestUtil.getSampleCJFRFileName(1))
+                                "T/" + CommandTestUtil.getSampleCJFRFileName(1),
+                                "TestEvent")
                         .withFiles(
                                 CommandTestUtil.getSampleCJFRFile(),
                                 CommandTestUtil.getSampleCJFRFile(1))
@@ -475,9 +474,8 @@ public class ViewCommandTest {
                 new CommandExecuter(
                                 "view",
                                 "T/" + CommandTestUtil.getSampleCJFRFileName(),
-                                "jdk.GarbageCollection",
-                                "-i",
-                                "T/" + CommandTestUtil.getSampleCJFRFileName(1))
+                                "T/" + CommandTestUtil.getSampleCJFRFileName(1),
+                                "jdk.GarbageCollection")
                         .withFiles(
                                 CommandTestUtil.getSampleCJFRFile(),
                                 CommandTestUtil.getSampleCJFRFile(1))

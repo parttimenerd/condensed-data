@@ -40,13 +40,8 @@ import org.jetbrains.annotations.Nullable;
 public class SummaryCommand implements Callable<Integer> {
 
     @Parameters(
-            description = "The input .cjfr or .jfr file, can be a folder, or a zip",
-            converter = ExistingCJFROrJFRFileOrZipOrFolderConverter.class)
-    private Path inputFile;
-
-    @Option(
-            names = {"-i", "--inputs"},
-            description = "Additional input files",
+            description = "The input .cjfr or .jfr files, can be folders or zips",
+            arity = "1..*",
             converter = ExistingCJFROrJFRFileOrZipOrFolderConverter.class)
     private List<Path> inputFiles = new ArrayList<>();
 
@@ -91,11 +86,10 @@ public class SummaryCommand implements Callable<Integer> {
             System.err.println("Error: --limit must be >= 0 (or -1 for no limit), got: " + limit);
             return 2;
         }
-        inputFiles.add(0, inputFile);
         try {
             // Fast path: single .cjfr file with footer present and no special flags
             if (canUseFastPath()) {
-                var footer = CJFRFooterReader.tryRead(inputFile);
+                var footer = CJFRFooterReader.tryRead(inputFiles.get(0));
                 if (footer.isPresent()) {
                     var summary = summaryFromFooter(footer.get());
                     if (json) {

@@ -80,10 +80,10 @@ done
 ```shell
 # After identifying server2 as the outlier:
 cjfr summary --gc-percentile=90 fleet/server2/app_0.cjfr \
-  -i fleet/server2/app_1.cjfr -i fleet/server2/app_2.cjfr
+  fleet/server2/app_1.cjfr fleet/server2/app_2.cjfr
 
 cjfr inflate --gc-percentile=90 fleet/server2/app_0.cjfr \
-  -i fleet/server2/app_1.cjfr \
+  fleet/server2/app_1.cjfr \
   fleet/server2/worst-pauses.jfr
 ```
 

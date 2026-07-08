@@ -13,15 +13,15 @@ both before and after the release and need to identify what changed.
 ### Step 1 — Get a high-level diff
 
 ```shell
-# Before the release
-cjfr summary --short before_0.cjfr -i before_1.cjfr -i before_2.cjfr
+# Before the release — use the most recent single file for the GC Summary section
+cjfr summary --short before_0.cjfr
 
 # After the release
-cjfr summary --short after_0.cjfr -i after_1.cjfr -i after_2.cjfr
+cjfr summary --short after_0.cjfr
 ```
 
 `--short` skips the event-count table and prints only the GC/allocation summary —
-fastest way to compare pause stats and heap usage across two recordings.
+fastest way to compare pause stats and heap usage between two recordings.
 
 ---
 
@@ -30,7 +30,7 @@ fastest way to compare pause stats and heap usage across two recordings.
 ```shell
 # Show event-type distribution only around the top 5% of GC pauses
 cjfr summary --gc-percentile=95 --gc-percentile-context=2m \
-  after_0.cjfr -i after_1.cjfr -i after_2.cjfr
+  after_0.cjfr after_1.cjfr after_2.cjfr
 ```
 
 `--gc-percentile=95` filters the event table to events that fall within `--gc-percentile-context`
@@ -45,7 +45,7 @@ whether high `jdk.ObjectAllocationSample` counts or safepoint events are co-loca
 ```shell
 # Inflate only the high-pause events into a small JFR
 cjfr inflate --gc-percentile=95 \
-  after_0.cjfr -i after_1.cjfr -i after_2.cjfr \
+  after_0.cjfr after_1.cjfr after_2.cjfr \
   regression-pauses.jfr
 
 # Open in JMC

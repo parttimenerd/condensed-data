@@ -41,64 +41,9 @@ cjfr agent myapp status
 
 ## Recording on a server, analysing locally
 
-The typical fleet setup: record with the agent on each server, copy `.cjfr`
-files to a workstation, then `summary`/`inflate` without touching the server again.
-
-```
-server                          local machine
-──────────────────────────      ──────────────────────────────────────
-agent → .cjfr               →→  scp/rsync
-                             →→  cjfr summary (no inflate needed)
-                             →→  cjfr inflate → .jfr → JDK Mission Control
-```
-
-The universal JAR, platform JAR, and inflaterless JAR all use LZ4FRAMED by
-default — any of them can be used as the agent, and the output is readable by
-the full JAR on your workstation. The inflaterless JAR cannot run `inflate`
-but is otherwise identical for recording.
-
-**On the server** (use the smallest JAR that fits your deployment):
-
-```shell
-# Platform-inflaterless JAR: ~1.5 MB, no inflate capability, minimal deps
-# Download the right platform JAR for your server OS/arch from GitHub Releases
-curl -L -o cjfr.jar \
-  https://github.com/parttimenerd/condensed-data/releases/latest/download/condensed-data-linux-amd64-inflaterless.jar
-
-# Start rotating recording (~130 MB/hr for gc_details-heavy workloads)
-java -javaagent:cjfr.jar='start,/var/rec/app_$index.cjfr,--rotating,--max-files=10,--max-size=100m' \
-     -jar myapp.jar
-```
-
-**Copy to local machine:**
-
-```shell
-scp server:/var/rec/app_*.cjfr ./recordings/
-```
-
-**Analyse locally** without inflating (fast, no JMC needed):
-
-```shell
-# Summary across all files
-cjfr summary recordings/app_0.cjfr -i recordings/app_1.cjfr -i recordings/app_2.cjfr
-
-# Check the worst GC pauses
-cjfr summary --gc-percentile=90 recordings/app_0.cjfr \
-  -i recordings/app_1.cjfr -i recordings/app_2.cjfr
-```
-
-**Inflate to JFR for JDK Mission Control** (needs the full JAR locally):
-
-```shell
-# Merge all files into one JFR
-cjfr inflate -i recordings/app_1.cjfr -i recordings/app_2.cjfr \
-  recordings/app_0.cjfr full-recording.jfr
-
-# Or just a specific time window
-cjfr inflate --start="2024-05-24 08:00:00" --duration=1h \
-  recordings/app_0.cjfr -i recordings/app_1.cjfr -i recordings/app_2.cjfr \
-  last-hour.jfr
-```
+For the full fleet recording workflow — server-side agent setup, transferring files,
+and running offline analysis — see [Production Recording](production-recording.md)
+and the [Fleet-Wide Monitoring Cookbook](cookbook-fleet-monitoring.md).
 
 ---
 
@@ -109,12 +54,12 @@ and you want a single JFR covering just the 30 minutes around the incident.
 
 ```shell
 # Step 1: find out when the recording starts
-cjfr summary --short app_0.cjfr -i app_1.cjfr -i app_2.cjfr
+cjfr summary --short app_0.cjfr app_1.cjfr app_2.cjfr
 
 # Step 2: extract the window across all files into a single JFR
 cjfr inflate \
   --start="2024-05-24 14:25:00" --duration=30m \
-  app_0.cjfr -i app_1.cjfr -i app_2.cjfr \
+  app_0.cjfr app_1.cjfr app_2.cjfr \
   incident.jfr
 
 # Step 3: open in JDK Mission Control
@@ -172,16 +117,16 @@ cjfr inflate --gc-percentile=95 recording.cjfr worst-pauses.jfr
 When a recording spans several rotation files, combine them for analysis:
 
 ```shell
-# Summarise the whole day (first file positional, rest via -i)
-cjfr summary app_0.cjfr -i app_1.cjfr -i app_2.cjfr -i app_3.cjfr
+# Summarise the whole day
+cjfr summary app_0.cjfr app_1.cjfr app_2.cjfr app_3.cjfr
+
+# Or use a glob — the shell expands it
+cjfr summary app_*.cjfr
 
 # Merge into a single .cjfr for long-term archival
+# --force is required when the input is already .cjfr (re-condensing)
 cjfr condense --force -i app_1.cjfr -i app_2.cjfr app_0.cjfr archive.cjfr
 ```
-
-!!! note "No glob shorthand"
-    `cjfr summary rec_*.cjfr` does not work — only one positional file is accepted.
-    Pass remaining files with `-i rec_1.cjfr -i rec_2.cjfr …` or use a loop for large sets.
 
 ---
 
@@ -263,23 +208,7 @@ cjfr agent myapp set-duration 4h       # cap total recording length
 
 ---
 
-## Reducing JAR size for a specific platform
+## Choosing the right JAR for your platform
 
-The universal JAR bundles native LZ4 libraries for all platforms. For a
-production deployment on a known OS/architecture, strip it down:
-
-```shell
-# See what platforms are available
-python3 reduce-jar.py reduce cjfr.jar --list-platforms
-
-# Linux/amd64-only JAR (~2 MB platform)
-python3 reduce-jar.py reduce cjfr.jar cjfr-linux.jar --platform linux/amd64
-
-# Same, but also strip the inflate/JMC-writer code (~450 KB with compression)
-# Note: inflaterless JAR cannot run cjfr inflate, but is otherwise identical for recording
-python3 reduce-jar.py reduce cjfr.jar cjfr-linux-minimal.jar \
-  --platform linux/amd64 --without-jmc
-```
-
-Pre-built variants are on [GitHub Releases](https://github.com/parttimenerd/condensed-data/releases/latest).
-See [JAR Release Selection](jar-releases.md) for the full comparison.
+To select the smallest JAR that fits your deployment (platform-specific,
+inflaterless, or minimal), see [JAR Release Selection](jar-releases.md).

@@ -125,23 +125,14 @@ public class JFRMultiFileTest {
 
     private void check(List<Path> paths) {
         var args = paths.stream().map(Path::toString).toList();
-        var properArgs = new ArrayList<String>();
-        properArgs.add(args.get(0));
-        for (int i = 1; i < args.size(); i++) {
-            properArgs.add("-i");
-            properArgs.add(args.get(i));
-        }
         assertAll(
-                () -> checkSummaryResult(captureStdout("summary", properArgs)),
+                () -> checkSummaryResult(captureStdout("summary", args)),
                 () ->
                         checkViewResult(
                                 captureStdout(
                                         "view",
-                                        combine(
-                                                args.get(0),
-                                                "TestEvent",
-                                                properArgs.subList(1, properArgs.size())))),
-                () -> checkInflateResult(properArgs));
+                                        combine(args, "TestEvent"))),
+                () -> checkInflateResult(args));
     }
 
     @SuppressWarnings("unused") // kept for potential future use
@@ -157,6 +148,13 @@ public class JFRMultiFileTest {
         combined.add(val);
         combined.add(val2);
         combined.addAll(args);
+        return combined;
+    }
+
+    /** Files first, event name last — matches ViewCommand's positional convention. */
+    private List<String> combine(List<String> files, String eventName) {
+        var combined = new ArrayList<>(files);
+        combined.add(eventName);
         return combined;
     }
 
@@ -207,11 +205,12 @@ public class JFRMultiFileTest {
 
     private void checkInflateResult(List<String> args) throws IOException {
         Path tmpJfrFile = Files.createTempFile("jfr-cli-test", ".jfr");
-        args = new ArrayList<>(args);
-        args.addAll(1, List.of(tmpJfrFile.toString()));
-        args.add(0, "inflate");
-        args.add(1, "--force");
-        JFRCLI.execute(args.toArray(String[]::new));
+        var fullArgs = new ArrayList<String>();
+        fullArgs.add("inflate");
+        fullArgs.add("--force");
+        fullArgs.addAll(args);
+        fullArgs.add(tmpJfrFile.toString());
+        JFRCLI.execute(fullArgs.toArray(String[]::new));
         var events = RecordingFile.readAllEvents(tmpJfrFile);
         for (int i = 0; i < 4; i++) {
             assertThat(events.get(i).getStartTime().getEpochSecond()).isNotEqualTo(0);

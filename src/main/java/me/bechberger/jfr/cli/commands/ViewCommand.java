@@ -25,19 +25,16 @@ import me.bechberger.jfr.cli.TruncateMode;
         mixinStandardHelpOptions = true)
 public class ViewCommand implements Callable<Integer> {
 
+    /**
+     * All positional args. The last arg is the event name (it never ends in .cjfr/.jfr/.zip and
+     * is not an existing directory); all preceding args are input files.
+     */
     @Parameters(
-            description = "The input .cjfr or .jfr file, can be a folder, or a zip",
-            converter = ExistingCJFROrJFRFileOrZipOrFolderConverter.class)
-    private Path inputFile;
-
-    @Option(
-            names = {"-i", "--inputs"},
-            description = "Additional input files",
-            converter = ExistingCJFROrJFRFileOrZipOrFolderConverter.class)
-    private List<Path> inputFiles = new ArrayList<>();
-
-    @Parameters(index = "1", description = "The event name", paramLabel = "EVENT_NAME", arity = "1")
-    private String eventName;
+            arity = "2..*",
+            description =
+                    "One or more input .cjfr or .jfr files followed by the EVENT_NAME. The event"
+                            + " name is the last argument and does not end with .cjfr or .jfr.")
+    private List<String> args = new ArrayList<>();
 
     @Option(names = "--width", description = "Width of the table")
     private int width = 160;
@@ -61,9 +58,28 @@ public class ViewCommand implements Callable<Integer> {
     @Option(names = "--json", description = "Output events as JSON", defaultValue = "false")
     private boolean json;
 
+    /** Returns the event name: the last positional arg. */
+    private String eventName() {
+        return args.get(args.size() - 1);
+    }
+
+    /** Returns the input file paths: all positional args except the last. */
+    private List<Path> inputs() {
+        var converter = new ExistingCJFROrJFRFileOrZipOrFolderConverter();
+        var inputs = new ArrayList<Path>(args.size() - 1);
+        for (String s : args.subList(0, args.size() - 1)) {
+            inputs.add(converter.convert(s));
+        }
+        return inputs;
+    }
+
     @Override
     public Integer call() {
         try {
+            if (args.size() < 2) {
+                System.err.println("Error: at least one input file and an event name are required");
+                return 2;
+            }
             if (limit < -1) {
                 System.err.println(
                         "Error: --limit must be >= 0 (or -1 for no limit), got: " + limit);
@@ -77,13 +93,14 @@ public class ViewCommand implements Callable<Integer> {
                 System.err.println("Error: --cell-height must be >= 1, got: " + cellHeight);
                 return 2;
             }
+            String eventName = eventName();
             if (eventName.contains(",")) {
                 System.err.println(
                         "Error: EVENT_NAME does not support comma-separated types."
                                 + " Use --events instead.");
                 return 2;
             }
-            inputFiles.add(0, inputFile);
+            var inputFiles = inputs();
             // Ensure the positional EVENT_NAME is included in the --events filter
             // so it doesn't get filtered out at the reader level (Bugs 73/133/192)
             eventFilterOptionMixin.ensureEventTypeIncluded(eventName);
@@ -117,11 +134,12 @@ public class ViewCommand implements Callable<Integer> {
                     System.err.println("No events found at all.");
                 } else {
                     System.err.println("Did you mean one of these events:");
+                    final String finalEventName = eventName;
                     seenTypes.stream()
                             .sorted(
                                     (a, b) -> {
-                                        int distA = CLIUtils.editDistance(a, eventName);
-                                        int distB = CLIUtils.editDistance(b, eventName);
+                                        int distA = CLIUtils.editDistance(a, finalEventName);
+                                        int distB = CLIUtils.editDistance(b, finalEventName);
                                         if (distA != distB) {
                                             return Integer.compare(distA, distB);
                                         }

@@ -93,14 +93,13 @@ nav:
   - Home: index.md
   - Usage:
       - Getting Started: getting-started.md
+      - Production Recording: production-recording.md
       - Analyzing Recordings: analysis.md
       - Common Workflows: workflows.md
   - Reference:
-      - JAR Release Selection: jar-releases.md
       - Configuration Reference: configurations.md
-      - Production Recording: production-recording.md
+      - JAR Release Selection: jar-releases.md
   - Cookbooks:
-      - Overview: cookbooks.md
       - GC Regression Hunt: cookbook-gc-regression.md
       - Fleet-Wide Monitoring: cookbook-fleet-monitoring.md
       - Container & Sidecar Deployment: cookbook-container.md

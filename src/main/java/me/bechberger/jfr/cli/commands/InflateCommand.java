@@ -18,25 +18,17 @@ import me.bechberger.jfr.cli.FileOptionConverters.ExistingCJFRFileOrZipOrFolderC
         mixinStandardHelpOptions = true)
 public class InflateCommand implements Callable<Integer> {
 
+    /**
+     * All positional args. The last arg is treated as the output .jfr file if it ends with
+     * ".jfr" and there is more than one arg; otherwise all args are input files and the output
+     * path is derived from the first input.
+     */
     @Parameters(
-            index = "0",
-            description = "The input .cjfr file, can be a folder, or a zip",
-            converter = ExistingCJFRFileOrZipOrFolderConverter.class)
-    private Path inputFile;
-
-    @Parameters(
-            index = "1",
-            arity = "0..1",
-            description = "The output JFR file",
-            defaultValue = "",
-            converter = FileOptionConverters.JFRFileConverter.class)
-    private Path outputFile = null;
-
-    @Option(
-            names = {"-i", "--inputs"},
-            description = "Additional input files",
-            converter = ExistingCJFRFileOrZipOrFolderConverter.class)
-    private List<Path> inputFiles = new ArrayList<>();
+            arity = "1..*",
+            description =
+                    "Input .cjfr files (folders or zips), optionally followed by the output .jfr"
+                            + " file. If the last argument ends with .jfr it is used as output.")
+    private List<String> args = new ArrayList<>();
 
     @Option(
             names = {"-f", "--force"},
@@ -48,26 +40,38 @@ public class InflateCommand implements Callable<Integer> {
     Spec spec;
 
     List<Path> inputs() {
-        var inputs = new ArrayList<Path>();
-        inputs.add(inputFile);
-        inputs.addAll(inputFiles);
+        var converter = new ExistingCJFRFileOrZipOrFolderConverter();
+        List<String> inputArgs = inputArgs();
+        var inputs = new ArrayList<Path>(inputArgs.size());
+        for (String s : inputArgs) {
+            inputs.add(converter.convert(s));
+        }
         return inputs;
     }
 
-    Path getOutputFile() {
-        if (outputFile.toString().isEmpty()) {
-            if (!inputFiles.isEmpty()) {
-                throw new IllegalArgumentException(
-                        "Only one file is allowed if no output file given");
-            }
-            var inputName = inputFile.getFileName().toString();
-            if (inputName.endsWith(".cjfr")) {
-                return inputFile.resolveSibling(inputName.replace(".cjfr", ".inflated.jfr"));
-            }
-            // For zip/folder-like inputs, always create a distinct output path.
-            return inputFile.resolveSibling(inputName + ".inflated.jfr");
+    /** Returns the raw string args that are input files (all except the optional trailing .jfr). */
+    private List<String> inputArgs() {
+        if (args.size() > 1 && args.get(args.size() - 1).endsWith(".jfr")) {
+            return args.subList(0, args.size() - 1);
         }
-        return outputFile;
+        return args;
+    }
+
+    Path getOutputFile() {
+        if (args.size() > 1 && args.get(args.size() - 1).endsWith(".jfr")) {
+            return new FileOptionConverters.JFRFileConverter().convert(args.get(args.size() - 1));
+        }
+        // Derive output from the first input
+        if (args.size() > 1) {
+            throw new IllegalArgumentException(
+                    "Only one input file is allowed if no output file given");
+        }
+        var inputName = Path.of(args.get(0)).getFileName().toString();
+        var inputPath = Path.of(args.get(0));
+        if (inputName.endsWith(".cjfr")) {
+            return inputPath.resolveSibling(inputName.replace(".cjfr", ".inflated.jfr"));
+        }
+        return inputPath.resolveSibling(inputName + ".inflated.jfr");
     }
 
     public Integer call() {

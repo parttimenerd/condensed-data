@@ -111,20 +111,25 @@ Useful event groups for GC analysis:
 
 ## Working with multiple files
 
-Pass `-i` to add more input files. All files are merged in time order,
-which is the normal way to work with a rotating recording set.
-Only one positional file is accepted — pass all others with `-i`.
+All files are merged in time order — the normal way to work with a rotating recording set.
+
+For `cjfr summary`, pass all files as positional arguments (glob expansion works too):
 
 ```shell
 # Summary across a whole day of rotating recordings
-cjfr summary rec_0.cjfr -i rec_1.cjfr -i rec_2.cjfr
+cjfr summary rec_0.cjfr rec_1.cjfr rec_2.cjfr
+cjfr summary rec_*.cjfr
+```
 
+For `cjfr inflate` and `cjfr view`, all input files come first as positional arguments, with the output file (`.jfr`) last for inflate, and the event name last for view:
+
+```shell
 # Inflate multiple files into a single JFR
-cjfr inflate -i rec_1.cjfr -i rec_2.cjfr rec_0.cjfr merged.jfr
+cjfr inflate rec_0.cjfr rec_1.cjfr rec_2.cjfr merged.jfr
 
 # Combine multi-file with time range: extract 5-minute window across the set
-cjfr inflate -i rec_1.cjfr --start="2024-05-24 03:00:00" --duration=5m \
-  rec_0.cjfr window.jfr
+cjfr inflate --start="2024-05-24 03:00:00" --duration=5m \
+  rec_0.cjfr rec_1.cjfr window.jfr
 ```
 
 ---

@@ -29,8 +29,7 @@ VOLUME /var/rec
 ### Start with rotating recording
 
 ```dockerfile
-ENV JAVA_TOOL_OPTIONS="-javaagent:/opt/cjfr/cjfr-agent.jar=\
-start,/var/rec/app_$\{index\}.cjfr,--rotating,--max-files=5,--max-size=100m"
+ENV JAVA_TOOL_OPTIONS="-javaagent:/opt/cjfr/cjfr-agent.jar=start,/var/rec/app_\$index.cjfr,--rotating,--max-files=5,--max-size=100m"
 ```
 
 Or pass it at `docker run` time:
@@ -42,11 +41,13 @@ docker run \
   myapp:latest
 ```
 
-!!! warning "Escape `$index` in shell strings"
-    Inside double-quoted shell strings (including `docker run -e "…"` and
-    Dockerfile `ENV` lines), the shell expands `$index` to empty before the JVM
-    sees it. Use `\$index` (or single-quote the value) so the literal placeholder
-    reaches the agent.
+!!! warning "Escape `$index`"
+    **`docker run -e "…"` (shell string):** the shell expands `$index` to empty
+    before Docker sees it. Use `\$index` in double-quoted strings.
+
+    **Dockerfile `ENV` line:** Docker performs its own variable substitution on
+    `ENV` values using declared `ARG`/`ENV`. Use `\$index` to pass the literal
+    placeholder through to the JVM.
 
 ---
 
@@ -60,11 +61,11 @@ workstation:
 docker cp mycontainer:/var/rec/. ./recordings/
 
 # Summary — no inflate needed
-cjfr summary recordings/app_0.cjfr -i recordings/app_1.cjfr
+cjfr summary recordings/app_0.cjfr recordings/app_1.cjfr
 
 # Inflate the interesting window
 cjfr inflate --start="2024-05-24 14:00:00" --duration=1h \
-  recordings/app_0.cjfr -i recordings/app_1.cjfr \
+  recordings/app_0.cjfr recordings/app_1.cjfr \
   recordings/incident.jfr
 ```
 
@@ -104,6 +105,7 @@ containers:
   - name: myapp
     env:
       - name: JAVA_TOOL_OPTIONS
+        # Kubernetes env values are not shell-expanded — $index reaches the JVM literally
         value: "-javaagent:/agent/cjfr-agent.jar=start,/var/rec/app_$index.cjfr,--rotating,--max-files=10,--max-size=100m"
     volumeMounts:
       - name: gc-recordings

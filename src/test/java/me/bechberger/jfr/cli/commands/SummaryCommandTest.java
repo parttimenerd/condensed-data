@@ -148,9 +148,7 @@ public class SummaryCommandTest {
                                 shortSummary,
                                 "summary",
                                 "T/" + CommandTestUtil.getSampleCJFRFileName(),
-                                "-i",
                                 "T/" + CommandTestUtil.getSampleCJFRFileName(1),
-                                "-i",
                                 "T/" + CommandTestUtil.getSampleCJFRFileName(2)))
                 .withFiles(
                         CommandTestUtil.getSampleCJFRFile(),
@@ -574,7 +572,6 @@ public class SummaryCommandTest {
                 new CommandExecuter(
                                 "summary",
                                 "T/" + CommandTestUtil.getSampleCJFRFileName(),
-                                "-i",
                                 "T/" + CommandTestUtil.getSampleCJFRFileName(1),
                                 "--events",
                                 "TestEvent",
@@ -963,7 +960,7 @@ public class SummaryCommandTest {
                     });
             var result =
                     new CommandExecuter(
-                                    "summary", defaultCjfr.toString(), "-i", reducedCjfr.toString())
+                                    "summary", defaultCjfr.toString(), reducedCjfr.toString())
                             .run();
             assertThat(result.exitCode()).isEqualTo(0);
             // Should show both configurations

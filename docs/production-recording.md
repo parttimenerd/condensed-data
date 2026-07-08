@@ -39,8 +39,10 @@ cjfr agent 12345 start '/var/recordings/app_$index.cjfr' --rotating --max-files=
 cjfr agent all start '/var/recordings/$index.cjfr' --rotating --max-files=5 --max-size=50m
 ```
 
-> **Single-quote the path** when using `$index` or `$date` in shell to prevent variable expansion:
-> `'/var/recordings/app_$index.cjfr'` not `"/var/recordings/app_$index.cjfr"`.
+!!! warning "Single-quote the path"
+    When the output path contains `$index` or `$date`, always **single-quote** it
+    in shell to prevent expansion: `'/var/recordings/app_$index.cjfr'`, not
+    `"/var/recordings/app_$index.cjfr"`.
 
 ---
 
@@ -81,7 +83,7 @@ on the next rotation. Disk usage is bounded to exactly `max-files × max-size`.
 Log-shippers that watch by filename will see the file change in-place.
 
 **`--new-names`:** Every rotation generates a new name (`app_0.cjfr`, `app_1.cjfr`,
-`app_11.cjfr`, …). When `max-files` is reached, the *oldest* file is deleted.
+`app_2.cjfr`, …). When `max-files` is reached, the *oldest* file is deleted.
 Names are never reused. Log-shippers watching by inode handle this correctly,
 but the file-name set grows until `max-files` cap is hit.
 
@@ -195,10 +197,10 @@ cjfr agent myapp stop
 These figures are measured on renaissance gc_details benchmarks. Actual sizes depend
 heavily on workload type — sparse gc-only profiles produce much smaller files.
 
-| Condenser config | GB/hour (gc_details-heavy) | MB/hour (gc-only sparse) |
+| Condenser config | MB/hour (gc_details-heavy) | MB/hour (gc-only sparse) |
 |---|---|---|
-| `default` | ~0.3 GB/hour | ~25 MB/hour |
-| `reasonable-default` (agent default) | ~0.13 GB/hour | ~10 MB/hour |
+| `default` | ~300 MB/hour | ~25 MB/hour |
+| `reasonable-default` (agent default) | ~130 MB/hour | ~10 MB/hour |
 | `reduced-default` | ~70 MB/hour | ~6 MB/hour |
 
 *Based on a 7m52s renaissance benchmark with ~242 MB of gc_details JFR.

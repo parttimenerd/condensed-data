@@ -32,28 +32,6 @@ without losing anything GC-relevant:
 The agent writes directly to `.cjfr` — no intermediate JFR file, no extra disk I/O.
 Compression is `LZ4FRAMED` (default, fast) or `GZIP` (better ratio, archival).
 
-## How it works
-
-```
-   ┌──────────────┐     writes            ┌────────────────┐
-   │ Java agent   │ ────────────────────▶ │  app_0.cjfr    │
-   │ (in-process) │      rotating         │  app_1.cjfr    │
-   └──────────────┘      ring-buffer      │  app_2.cjfr …  │
-          │                               └────────┬───────┘
-          │ set-max-files, set-max-size            │
-          │ set-max-duration (live tuning)         │
-          ▼                                        ▼
-   ┌──────────────┐          ┌──────────────────────────────┐
-   │  cjfr agent  │          │  cjfr summary  (no inflate)  │
-   │  status/stop │          │  cjfr view     (per-event)   │
-   │  set-max-*   │
-   └──────────────┘          │  cjfr inflate → .jfr → JMC   │
-                             └──────────────────────────────┘
-```
-
-The agent writes `.cjfr` **directly** — no intermediate `.jfr` file and no extra
-disk I/O. Rotation caps disk usage at `max-files × max-size`.
-
 ## Install
 
 Download the latest JAR from [GitHub Releases](https://github.com/parttimenerd/condensed-data/releases/latest):
@@ -83,15 +61,8 @@ cjfr agent myapp start '/var/rec/app_$index.cjfr' --rotating --max-files=10 --ma
 Check GC health without inflating:
 
 ```shell
-cjfr summary app_0.cjfr -i app_1.cjfr -i app_2.cjfr
-cjfr summary --gc-percentile=95 app_0.cjfr -i app_1.cjfr   # worst pause context
-```
-
-Condense an existing JFR file:
-
-```shell
-cjfr condense recording.jfr
-# → recording.cjfr (typically 4–13% of original)
+cjfr summary app_0.cjfr app_1.cjfr app_2.cjfr
+cjfr summary --gc-percentile=95 app_0.cjfr app_1.cjfr   # worst pause context
 ```
 
 ## Documentation

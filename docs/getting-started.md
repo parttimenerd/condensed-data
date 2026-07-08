@@ -40,7 +40,7 @@ Start a rotating GC recording with the agent — this is the one command most
 production deployments run:
 
 ```shell
-# Keep last 10 × 100 MB ≈ 1 GB of GC history. Names are stable, disk usage bounded.
+# Keep last 10 × 100 MB ≈ 1 GB of GC history
 java -javaagent:cjfr.jar='start,/var/rec/app_$index.cjfr,--rotating,--max-files=10,--max-size=100m' \
      -jar myapp.jar
 ```
@@ -56,16 +56,6 @@ cjfr agent myapp start '/var/rec/app_$index.cjfr' --rotating --max-files=10 --ma
     in shell to prevent expansion: `'/var/rec/app_$index.cjfr'`, not
     `"/var/rec/app_$index.cjfr"`.
 
-**How rotation works:** When a file reaches `--max-size` (or `--max-duration`), the
-agent closes it and opens the next. By default, names cycle — `app_0.cjfr`, `app_1.cjfr`,
-…, then back to `app_0.cjfr` — so disk usage is capped at exactly `max-files × max-size`.
-Pass `--new-names` to generate unique names instead (oldest deleted when the cap is hit).
-
-!!! tip "`--duration` vs `--max-duration`"
-    `--duration=4h` stops the **whole recording** after 4 hours.
-    `--max-duration=10m` caps **each individual file** at 10 minutes (rotation trigger).
-    Combine both: record for 2 hours total, rotating every 10 minutes.
-
 Check status or stop at any time:
 
 ```shell
@@ -73,16 +63,9 @@ cjfr agent myapp status
 cjfr agent myapp stop
 ```
 
-Adjust limits while recording is live — no restart needed:
-
-```shell
-cjfr agent myapp set-max-files 20      # expand ring buffer
-cjfr agent myapp set-max-size 200m     # grow per-file cap
-cjfr agent myapp set-max-duration 15m  # change rotation interval
-```
-
-See [Production Recording Guide](production-recording.md) for the full
-rotation reference, storage sizing, and JFR config options.
+See [Production Recording Guide](production-recording.md) for rotation knobs,
+live tuning, storage sizing, `$index` vs `$date` path placeholders, and JFR
+config options.
 
 ---
 
@@ -98,7 +81,7 @@ cjfr summary recording.cjfr
 cjfr summary --gc-percentile=90 recording.cjfr
 
 # Summarise across multiple rotation files at once
-cjfr summary app_0.cjfr -i app_1.cjfr -i app_2.cjfr
+cjfr summary app_0.cjfr app_1.cjfr app_2.cjfr
 ```
 
 Inflate to `.jfr` for JDK Mission Control:
@@ -147,7 +130,7 @@ Run `cjfr agent <pid> status` to confirm the recording started.
 **Output files are larger than expected**
 
 The agent defaults to `reasonable-default` config. Switch to `reduced-default` for
-maximum compression (~1–4% of original), or use `--compression=GZIP` for a better
+maximum compression (~1–11% of original), or use `--compression=GZIP` for a better
 ratio at slower write speed. See [Configuration Reference](configurations.md).
 
 ---
@@ -158,5 +141,5 @@ ratio at slower write speed. See [Configuration Reference](configurations.md).
 - [Configuration Reference](configurations.md) — condenser configs and compression algorithms
 - [Analyzing Recordings](analysis.md) — time filters, GC percentile, event filters, multi-file queries
 - [Common Workflows](workflows.md) — end-to-end recipes
-- [Cookbooks](cookbooks.md) — GC regression hunt, fleet monitoring, container deployment, archival
+- [Cookbooks](cookbook-gc-regression.md) — GC regression hunt, fleet monitoring, container deployment, archival
 - [JAR Release Selection](jar-releases.md) — pick the right JAR variant for your deployment

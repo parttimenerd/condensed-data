@@ -34,22 +34,22 @@ All variants are published as CI artifacts and in GitHub Releases.
 | **Universal-inflaterless** | `condensed-data-universal-inflaterless.jar` | 8.1 MB | JMC classes, jetbrains/owasp stubs | `cjfr inflate` |
 | **Platform** | `condensed-data-linux-amd64.jar` | 2.1 MB | Native libs for 17 other platforms | nothing |
 | **Platform-inflaterless** | `condensed-data-linux-amd64-inflaterless.jar` | 1.5 MB | Native libs for other platforms + JMC | `cjfr inflate` |
-| **Platform-minimal** | `condensed-data-linux-amd64-minimal.jar` | 505 KB | As platform + all POMs | `cjfr inflate` |
+| **Platform-minimal** | `condensed-data-linux-amd64-minimal.jar` | 505 KB | As platform + all POMs | nothing |
 | **Platform-inflaterless-minimal** | `condensed-data-linux-amd64-inflaterless-minimal.jar` | 441 KB | All of the above + JMC | `cjfr inflate` |
 
 *Sizes shown for linux/amd64. Other platforms are similar; JARs with no LZ4 native lib for that platform (e.g. linux/arm) are ~50 KB smaller.*
 
 ## Capability Matrix
 
-| Capability | Universal | Platform | Inflaterless | Minimal |
-|---|---|---|---|---|
-| `cjfr condense` | ✓ | ✓ | ✓ | ✓ |
-| `cjfr summary` | ✓ | ✓ | ✓ | ✓ |
-| `cjfr view` | ✓ | ✓ | ✓ | ✓ |
-| Java agent (`-javaagent`) | ✓ | ✓ | ✓ | ✓ |
-| `cjfr inflate` | ✓ | ✓ | ✗ | ✗ |
-| GZIP compression | ✓ | ✓ | ✓ | ✓ |
-| LZ4FRAMED compression | ✓ | ✓ | ✓ | ✓ |
+| Capability | Universal | Platform | Inflaterless | Minimal | Inflaterless-minimal |
+|---|---|---|---|---|---|
+| `cjfr condense` | ✓ | ✓ | ✓ | ✓ | ✓ |
+| `cjfr summary` | ✓ | ✓ | ✓ | ✓ | ✓ |
+| `cjfr view` | ✓ | ✓ | ✓ | ✓ | ✓ |
+| Java agent (`-javaagent`) | ✓ | ✓ | ✓ | ✓ | ✓ |
+| `cjfr inflate` | ✓ | ✓ | ✗ | ✓ | ✗ |
+| GZIP compression | ✓ | ✓ | ✓ | ✓ | ✓ |
+| LZ4FRAMED compression | ✓ | ✓ | ✓ | ✓ | ✓ |
 
 ## Recommended Choices by Persona
 
@@ -61,9 +61,8 @@ It includes `inflate` for round-trip to JMC and works on any platform out of the
 needs none of the JMC writer machinery.
 
 **Size-critical sidecar / Java agent in a thin container**: Use
-`condensed-data-<platform>-inflaterless-minimal.jar` (~450 KB). Minimal JARs support
-`LZ4FRAMED` and `GZIP` compression — the size savings come from stripping ZSTD/XZ codec
-classes and POM files, not from removing GZIP. The recording file is still fully readable
+`condensed-data-<platform>-inflaterless-minimal.jar` (~441 KB). Minimal JARs support
+`LZ4FRAMED` and `GZIP` compression. The recording file is still fully readable
 by any full JAR.
 
 **Fleet-wide scraper that only calls `condense` or `summary`**: Use
