@@ -5,6 +5,8 @@ import static me.bechberger.util.TimeUtil.formatDuration;
 import static me.bechberger.util.TimeUtil.formatInstant;
 
 import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.text.ParseException;
 import java.time.Duration;
 import java.time.Instant;
@@ -60,7 +62,7 @@ public abstract class RecordingThread implements Runnable {
         var parsedJfrConfig =
                 jfrConfig.isEmpty()
                         ? jdk.jfr.Configuration.getConfiguration("default")
-                        : jdk.jfr.Configuration.getConfiguration(jfrConfig);
+                        : loadJfrConfiguration(jfrConfig);
         agentIO.writeInfo("Using config " + parsedJfrConfig.getName());
         this.miscJfrConfig = miscJfrConfig;
         var parsedMiscJfrConfig = parseJfrSettings(miscJfrConfig);
@@ -68,6 +70,18 @@ public abstract class RecordingThread implements Runnable {
         RecordingStream rs = new RecordingStream(parsedJfrConfig);
         this.recordingStream = rs;
         this.removeFromParent = removeFromParent;
+    }
+
+    static jdk.jfr.Configuration loadJfrConfiguration(String name)
+            throws IOException, ParseException {
+        // If it looks like a path or ends with .jfc, try loading as a file first
+        Path path = Path.of(name);
+        if (Files.exists(path)) {
+            return jdk.jfr.Configuration.create(path);
+        }
+        // Strip .jfc suffix for predefined lookup (JDK expects "gc_details" not "gc_details.jfc")
+        String lookupName = name.endsWith(".jfc") ? name.substring(0, name.length() - 4) : name;
+        return jdk.jfr.Configuration.getConfiguration(lookupName);
     }
 
     private static Map<String, String> parseJfrSettings(String settings) {

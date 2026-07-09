@@ -40,7 +40,10 @@ public class StartCommand implements Callable<Integer> {
 
     @Option(
             names = "--config",
-            description = "The JFR generatorConfiguration to use.",
+            description =
+                    "The JFR configuration to use: a predefined name (e.g. 'default',"
+                            + " 'profile', 'gc_details'), a name with .jfc suffix, or a path to a"
+                            + " .jfc file.",
             defaultValue = "default")
     private String jfrConfig = "default";
 
