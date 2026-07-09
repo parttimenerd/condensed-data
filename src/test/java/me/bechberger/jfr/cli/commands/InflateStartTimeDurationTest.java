@@ -33,7 +33,9 @@ import org.junit.jupiter.api.Test;
 @InflaterRelated
 public class InflateStartTimeDurationTest {
 
-    /** JFR chunk header: magic(4)+version(4)+chunkSize(8)+cpOffset(8)+metaOffset(8)+startNanos(8). */
+    /**
+     * JFR chunk header: magic(4)+version(4)+chunkSize(8)+cpOffset(8)+metaOffset(8)+startNanos(8).
+     */
     private static long readChunkStartTimeNanos(Path jfrFile) throws Exception {
         return readHeaderLong(jfrFile, 32);
     }
@@ -85,8 +87,8 @@ public class InflateStartTimeDurationTest {
 
     /**
      * Reproduces the agent recording path: events are streamed through {@link
-     * BasicJFRWriter#processEvent} (not {@code processJFRFile(Path)}), so the universe start time is
-     * the first event's start and the written {@code lastStartTimeNanos} equals the start time.
+     * BasicJFRWriter#processEvent} (not {@code processJFRFile(Path)}), so the universe start time
+     * is the first event's start and the written {@code lastStartTimeNanos} equals the start time.
      * After inflating, the chunk header must still carry a non-zero, realistic duration.
      */
     @Test
@@ -147,8 +149,7 @@ public class InflateStartTimeDurationTest {
                 .describedAs("inflated chunk start should be a real timestamp: %s", inflatedStart)
                 .isGreaterThan(Instant.parse("2020-01-01T00:00:00Z").getEpochSecond());
         assertThat(Math.abs(firstStart.getEpochSecond() - inflatedStart.getEpochSecond()))
-                .describedAs(
-                        "chunk start: firstEvent=%s inflated=%s", firstStart, inflatedStart)
+                .describedAs("chunk start: firstEvent=%s inflated=%s", firstStart, inflatedStart)
                 .isLessThanOrEqualTo(1L);
 
         // Duration must reflect the ~400ms span between the first and last event, not near zero.
@@ -167,8 +168,8 @@ public class InflateStartTimeDurationTest {
     /**
      * The chunk-header duration must be written without relying on reflective mutation of JMC's
      * final {@code RecordingImpl.duration} field. Reflective final-field mutation is deprecated on
-     * JDK 26 and will be blocked in a future release; when it fails the old code silently produced a
-     * near-zero duration. This exercises the reflection-free header patch directly.
+     * JDK 26 and will be blocked in a future release; when it fails the old code silently produced
+     * a near-zero duration. This exercises the reflection-free header patch directly.
      */
     @Test
     public void patchChunkHeaderDurationWritesOffset40() throws Exception {
@@ -246,7 +247,8 @@ public class InflateStartTimeDurationTest {
         assertThat(headerDurationNanos)
                 .describedAs("header duration must not be the 1 ns placeholder after toJFRFile")
                 .isGreaterThan(1L);
-        // The three events span ~400ms; the patched duration should reflect that, not a stale value.
+        // The three events span ~400ms; the patched duration should reflect that, not a stale
+        // value.
         assertThat(headerDurationNanos)
                 .describedAs("header duration should cover the ~400ms event span")
                 .isGreaterThanOrEqualTo(Duration.ofMillis(300).toNanos());
@@ -262,7 +264,8 @@ public class InflateStartTimeDurationTest {
     @Test
     public void patchChunkHeaderDurationPatchesAllChunks() throws Exception {
         // Build a synthetic 3-chunk file: each chunk is a valid header with a known chunkSize and a
-        // bogus 1 ns duration. We don't need real event bodies — patchChunkHeaderDuration only reads
+        // bogus 1 ns duration. We don't need real event bodies — patchChunkHeaderDuration only
+        // reads
         // magic + chunkSize and writes offset 40.
         int chunkSize = 64; // >= header duration offset + 8, and large enough to advance past
         int numChunks = 3;

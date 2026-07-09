@@ -716,7 +716,8 @@ public class WritingJFRReader {
         }
     }
 
-    public static void toJFRFile(JFRReader reader, Path output) {        Path path = toJFRFile(reader);
+    public static void toJFRFile(JFRReader reader, Path output) {
+        Path path = toJFRFile(reader);
         try {
             Path parent = output.getParent();
             if (parent != null) {
