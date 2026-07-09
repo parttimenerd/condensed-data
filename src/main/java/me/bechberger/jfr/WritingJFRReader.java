@@ -649,32 +649,6 @@ public class WritingJFRReader {
             if (recording == null) {
                 initRecording();
             }
-            // Update the duration field (which is final in RecordingImpl) to reflect
-            // the actual recording span now that all events have been processed.
-            // At initRecording() time, getDuration() returns a near-zero value because
-            // the CJFR's lastStartTimeNanos hasn't been updated yet.
-            long actualDuration = Math.max(1, reader.getDuration().toNanos());
-            try {
-                java.lang.reflect.Field durationField =
-                        RecordingImpl.class.getDeclaredField("duration");
-                durationField.setAccessible(true);
-
-                // Remove final modifier to allow reflective write
-                java.lang.reflect.Field modifiersField;
-                try {
-                    modifiersField = java.lang.reflect.Field.class.getDeclaredField("modifiers");
-                    modifiersField.setAccessible(true);
-                    modifiersField.setInt(
-                            durationField,
-                            durationField.getModifiers() & ~java.lang.reflect.Modifier.FINAL);
-                } catch (NoSuchFieldException e) {
-                    // Java 12+: modifiers field is hidden; setAccessible(true) is enough
-                }
-
-                durationField.setLong(recording, actualDuration);
-            } catch (ReflectiveOperationException e) {
-                // Fall back to the initially-set (inaccurate) duration if reflection fails
-            }
             recording.close();
             outputStream.close();
         } catch (IOException e) {
@@ -682,8 +656,67 @@ public class WritingJFRReader {
         }
     }
 
-    public static void toJFRFile(JFRReader reader, Path output) {
-        Path path = toJFRFile(reader);
+    /**
+     * The correct recording duration in nanoseconds, known only after all events have been read
+     * (the CJFR's {@code lastStartTimeNanos} is advanced as timestamps are inflated). Always at
+     * least 1 ns so the JFR chunk header never carries a zero/negative duration.
+     */
+    public long getActualDurationNanos() {
+        return Math.max(1, reader.getDuration().toNanos());
+    }
+
+    /** JFR chunk header layout: magic(4) 'FLR\0', major(2), minor(2), chunkSize(8) @ offset 8. */
+    private static final byte[] JFR_MAGIC = {'F', 'L', 'R', 0};
+
+    /** Offset of the duration field within a JFR chunk header (after startNanos @ 32). */
+    private static final int CHUNK_HEADER_DURATION_OFFSET = 40;
+
+    /** Offset of the chunk size field within a JFR chunk header. */
+    private static final int CHUNK_HEADER_SIZE_OFFSET = 8;
+
+    /**
+     * Writes {@code durationNanos} into the duration field (offset 40) of every chunk header in a
+     * JFR file, without reflectively mutating JMC's final {@code RecordingImpl.duration}.
+     *
+     * <p>JMC's {@code RecordingImpl} sets its {@code duration} field at construction, but the true
+     * recording span is only known after all events have been inflated. The previous approach
+     * mutated that final field via reflection; on JDK 26 reflective final-field mutation is
+     * deprecated (and will be blocked in a future release), and on failure it silently fell back to
+     * a near-zero duration. Patching the serialized header afterward is annotation- and
+     * reflection-free, so it cannot regress the same way.
+     *
+     * @throws IOException if the file cannot be read/written, or is not a valid JFR file
+     */
+    public static void patchChunkHeaderDuration(Path jfrFile, long durationNanos)
+            throws IOException {
+        try (var raf = new java.io.RandomAccessFile(jfrFile.toFile(), "rw")) {
+            long fileLength = raf.length();
+            long chunkStart = 0;
+            byte[] magic = new byte[JFR_MAGIC.length];
+            while (chunkStart + CHUNK_HEADER_DURATION_OFFSET + 8 <= fileLength) {
+                raf.seek(chunkStart);
+                raf.readFully(magic);
+                if (!Arrays.equals(magic, JFR_MAGIC)) {
+                    throw new IOException(
+                            "Not a JFR chunk at offset "
+                                    + chunkStart
+                                    + " in "
+                                    + jfrFile
+                                    + " (bad magic)");
+                }
+                raf.seek(chunkStart + CHUNK_HEADER_SIZE_OFFSET);
+                long chunkSize = raf.readLong();
+                raf.seek(chunkStart + CHUNK_HEADER_DURATION_OFFSET);
+                raf.writeLong(durationNanos);
+                if (chunkSize <= 0) {
+                    break; // size not finalized; only one chunk expected
+                }
+                chunkStart += chunkSize;
+            }
+        }
+    }
+
+    public static void toJFRFile(JFRReader reader, Path output) {        Path path = toJFRFile(reader);
         try {
             Path parent = output.getParent();
             if (parent != null) {
@@ -722,6 +755,9 @@ public class WritingJFRReader {
                 }
             }
             writingJFRReader.close();
+            // Patch the chunk-header duration reflection-free now that the true recording span is
+            // known (all events read). JMC wrote a placeholder (>=1 ns) at construction time.
+            patchChunkHeaderDuration(tmp, writingJFRReader.getActualDurationNanos());
             return tmp;
         } catch (IOException e) {
             throw new RuntimeException(e);
