@@ -278,4 +278,39 @@ public class WritingJFRReaderTest {
                             + infStart);
         }
     }
+
+    /**
+     * Guards against the chunk-header start-time corruption observed in a real condense-inflate run
+     * (colleague's HA_condenser_JFR.inflated.sum reported Start = 1970-01-01 epoch). The inflated
+     * JFR chunk header must carry a plausible recent start time derived from the recording, not the
+     * near-zero epoch fallback.
+     */
+    @Test
+    public void testInflatedChunkHeaderStartIsNotEpoch() throws Exception {
+        var cjfrPath = CommandTestUtil.getSampleCJFRFile();
+        var reader = new BasicJFRReader(new CondensedInputStream(Files.newInputStream(cjfrPath)));
+        var baos = new ByteArrayOutputStream();
+        var writingReader = new WritingJFRReader(reader, baos);
+        while (writingReader.readNextJFREvent() != null) {
+            // drain all events
+        }
+        writingReader.close();
+
+        byte[] jfr = baos.toByteArray();
+        assertTrue(jfr.length > 40, "Inflated JFR should have a chunk header");
+        // Chunk header: startNanos is a big-endian long at offset 32.
+        long startNanos = 0;
+        for (int i = 0; i < 8; i++) {
+            startNanos = (startNanos << 8) | (jfr[32 + i] & 0xFFL);
+        }
+        // A real recording starts well after 1970. Anything within the first day of the
+        // epoch (< 24h in nanos) means the epoch fallback fired instead of a real start.
+        long oneDayNanos = 24L * 60 * 60 * 1_000_000_000L;
+        assertTrue(
+                startNanos > oneDayNanos,
+                "Inflated chunk-header start should be a real timestamp, not the 1970 epoch"
+                        + " fallback; got "
+                        + startNanos
+                        + " ns");
+    }
 }

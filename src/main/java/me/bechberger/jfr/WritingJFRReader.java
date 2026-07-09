@@ -116,13 +116,40 @@ public class WritingJFRReader {
     }
 
     void initRecording() {
+        initRecording(null);
+    }
+
+    /**
+     * Initialises the output recording, deriving the chunk-header start time from the CJFR
+     * universe.
+     *
+     * <p>The universe start time can still be unresolved ({@code -1}) when the very first event is
+     * read, which previously made the code silently fall back to a start of 1 ns — producing a JFR
+     * header dated 1970-01-01 (observed in a real condense→inflate run). When a {@code
+     * firstEventStart} is available we use it as the fallback instead of the meaningless 1 ns, so
+     * the header reflects reality rather than the epoch.
+     */
+    void initRecording(@Nullable Instant firstEventStart) {
         long startTimeNanos =
                 reader.getStartTime().getEpochSecond() * 1_000_000_000L
                         + reader.getStartTime().getNano();
+        if (startTimeNanos <= 0 && firstEventStart != null) {
+            long fromEvent =
+                    firstEventStart.getEpochSecond() * 1_000_000_000L + firstEventStart.getNano();
+            if (fromEvent > 0) {
+                startTimeNanos = fromEvent;
+            }
+        }
         long durationNanos = Math.max(1, reader.getDuration().toNanos());
         // Use epoch-based startTicks so JFR reader computes:
         //   wall_time = startNanos + (eventTick - startTicks) = eventTick
         // For uninitialized universe (no events read yet), fall back to safe defaults
+        if (startTimeNanos <= 0) {
+            System.err.println(
+                    "WARNING: recording start time could not be resolved; the inflated JFR chunk"
+                        + " header will be dated near 1970-01-01. This indicates the CJFR universe"
+                        + " start time and the first event's startTime were both unavailable.");
+        }
         long startTicks = startTimeNanos > 0 ? startTimeNanos : 1;
         long startTimestamp = startTimeNanos > 0 ? startTimeNanos : 1;
         this.recording =
@@ -148,7 +175,13 @@ public class WritingJFRReader {
             return null;
         }
         if (recording == null) {
-            initRecording();
+            Instant firstEventStart = null;
+            try {
+                firstEventStart = event.getInstant("startTime");
+            } catch (RuntimeException ignored) {
+                // event without a resolvable startTime; fall back to universe-derived value
+            }
+            initRecording(firstEventStart);
         }
         if (reconstitutor.isCombinedEvent(event)) {
             combinedEventCount.put(
@@ -675,6 +708,13 @@ public class WritingJFRReader {
     private static final int CHUNK_HEADER_SIZE_OFFSET = 8;
 
     /**
+     * Upper bound on a plausible recording duration: 366 days in nanoseconds. Values above this
+     * indicate the {@code lastStartTimeNanos}/{@code startTimeNanos} arithmetic went wrong (as in
+     * the observed 62287129 s ≈ 721 day corruption), not a genuinely long recording.
+     */
+    private static final long MAX_PLAUSIBLE_DURATION_NANOS = 366L * 24 * 60 * 60 * 1_000_000_000L;
+
+    /**
      * Writes {@code durationNanos} into the duration field (offset 40) of every chunk header in a
      * JFR file, without reflectively mutating JMC's final {@code RecordingImpl.duration}.
      *
@@ -686,9 +726,29 @@ public class WritingJFRReader {
      * reflection-free, so it cannot regress the same way.
      *
      * @throws IOException if the file cannot be read/written, or is not a valid JFR file
+     * @throws IllegalArgumentException if {@code durationNanos} is non-positive or implausibly
+     *     large
      */
     public static void patchChunkHeaderDuration(Path jfrFile, long durationNanos)
             throws IOException {
+        if (durationNanos <= 0) {
+            throw new IllegalArgumentException(
+                    "Refusing to write non-positive chunk-header duration "
+                            + durationNanos
+                            + " ns into "
+                            + jfrFile
+                            + "; the recording duration was not resolved correctly");
+        }
+        if (durationNanos > MAX_PLAUSIBLE_DURATION_NANOS) {
+            throw new IllegalArgumentException(
+                    "Refusing to write implausibly large chunk-header duration "
+                            + durationNanos
+                            + " ns ("
+                            + (durationNanos / 1_000_000_000L)
+                            + " s) into "
+                            + jfrFile
+                            + "; this indicates corrupt start/last-timestamp bookkeeping");
+        }
         try (var raf = new java.io.RandomAccessFile(jfrFile.toFile(), "rw")) {
             long fileLength = raf.length();
             long chunkStart = 0;

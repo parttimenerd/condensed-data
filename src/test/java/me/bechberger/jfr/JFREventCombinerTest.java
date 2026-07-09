@@ -478,6 +478,47 @@ public class JFREventCombinerTest {
         }
     }
 
+    /**
+     * Guard against the GCPhaseParallel event-count drop observed in a real condense-inflate run
+     * (colleague's recording: 50359 jdk.GCPhaseParallel events collapsed to 9026 after inflate).
+     *
+     * <p>Each jdk.GCPhaseParallel event records one worker's phase timing; the combiner stores them
+     * as an array per (gcId, name) and the reconstitutor must flatMap every worker struct back out.
+     * If the reconstitutor emits one event per (gcId, name) instead of one per worker, the count
+     * collapses. This test asserts the count is preserved 1:1 through combine-reconstitute.
+     */
+    @Test
+    public void testGCPhaseParallelCountIsPreserved() {
+        var res =
+                runJFRWithCombiner(
+                        Map.of(
+                                "jdk.GCPhaseParallel",
+                                new CombinerAndReconstitutor("jdk.combined.GCPhaseParallel")),
+                        Configuration.DEFAULT
+                                .withCombineEventsWithoutDataLoss(true)
+                                .withCombinePLABPromotionEvents(false),
+                        () -> {
+                            for (int i = 0; i < 10; i++) {
+                                System.out.println(new byte[64 * 1024 * 1024].length);
+                                System.gc();
+                            }
+                        });
+        long recorded =
+                res.recordedEvents.stream()
+                        .filter(e -> e.getEventType().getName().equals("jdk.GCPhaseParallel"))
+                        .count();
+        long reconstituted =
+                res.readEvents.stream()
+                        .filter(e -> e.getType().getTypeName().equals("jdk.GCPhaseParallel"))
+                        .count();
+        assertTrue(recorded > 0, "Test should record some jdk.GCPhaseParallel events");
+        assertEquals(
+                recorded,
+                reconstituted,
+                "jdk.GCPhaseParallel count must be preserved through condense-inflate; "
+                        + "a drop here reproduces the colleague's 50359 to 9026 regression");
+    }
+
     private static <T, V> void assertMapEquals(Map<T, V> expected, Map<T, V> actual) {
         assertMapEquals(expected, actual, (k, v) -> false);
     }
