@@ -21,19 +21,12 @@ public interface EventFilter<C> {
     /**
      * Gets startTime/endTime as Instant, handling both Instant and Long (nanoseconds) storage
      * (combined events store timestamps as Long).
+     *
+     * @deprecated Use {@link me.bechberger.condensed.ReadStruct#getInstant(String)} instead.
      */
+    @Deprecated
     static @Nullable Instant getInstant(ReadStruct event, String field) {
-        Object val = event.get(field);
-        if (val == null) {
-            return null;
-        }
-        if (val instanceof Instant inst) {
-            return inst;
-        }
-        if (val instanceof Long nanos) {
-            return Instant.ofEpochSecond(0, nanos);
-        }
-        throw new ClassCastException("Cannot convert " + val.getClass().getName() + " to Instant");
+        return event.getInstant(field);
     }
 
     /**

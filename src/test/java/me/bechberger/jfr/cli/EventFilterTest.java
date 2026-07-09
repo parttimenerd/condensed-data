@@ -51,14 +51,14 @@ public class EventFilterTest {
     public void testGetInstantWithInstant() {
         Instant now = Instant.now();
         var event = makeEvent("test", Map.of("startTime", now), "startTime");
-        assertEquals(now, EventFilter.getInstant(event, "startTime"));
+        assertEquals(now, event.getInstant("startTime"));
     }
 
     @Test
     public void testGetInstantWithLong() {
         long nanos = 1_000_000_000L; // 1 second in nanos
         var event = makeEvent("test", Map.of("startTime", nanos), "startTime");
-        Instant result = EventFilter.getInstant(event, "startTime");
+        Instant result = event.getInstant("startTime");
         assertEquals(Instant.ofEpochSecond(0, nanos), result);
     }
 
@@ -69,13 +69,13 @@ public class EventFilterTest {
         var ids = new HashMap<String, Integer>();
         ids.put("startTime", null);
         var event = new ReadStruct(type, new HashMap<>(), ids, (f, id) -> null);
-        assertNull(EventFilter.getInstant(event, "startTime"));
+        assertNull(event.getInstant("startTime"));
     }
 
     @Test
     public void testGetInstantWithWrongType() {
         var event = makeEvent("test", Map.of("startTime", "not-an-instant"), "startTime");
-        assertThrows(ClassCastException.class, () -> EventFilter.getInstant(event, "startTime"));
+        assertThrows(ClassCastException.class, () -> event.getInstant("startTime"));
     }
 
     // --- createBasicFilter tests ---
@@ -227,7 +227,7 @@ public class EventFilterTest {
                 (event, ctx) -> event.getType().getName().equals("jdk.CPULoad");
         EventFilter.SinglePhaseEventFilter<Void> filterTime =
                 (event, ctx) -> {
-                    var st = EventFilter.getInstant(event, "startTime");
+                    var st = event.getInstant("startTime");
                     return st != null && st.isAfter(Instant.parse("2025-01-01T00:00:00Z"));
                 };
 

@@ -1,5 +1,6 @@
 package me.bechberger.condensed;
 
+import java.time.Instant;
 import java.util.*;
 import java.util.function.BiFunction;
 import me.bechberger.condensed.types.StructType;
@@ -158,12 +159,30 @@ public class ReadStruct implements Map<String, Object>, ReadContainer<ReadStruct
         return value;
     }
 
+    @SuppressWarnings("unchecked")
     public <T> T get(Class<T> clazz, String key) {
-        return clazz.cast(get(key));
+        Object val = get(key);
+        if (clazz == Instant.class && val instanceof Long nanos) {
+            return (T) Instant.ofEpochSecond(0, nanos);
+        }
+        return clazz.cast(val);
     }
 
     public <T> T get(String key, Class<T> clazz) {
-        return clazz.cast(get(key));
+        return get(clazz, key);
+    }
+
+    /**
+     * Gets a timestamp field as Instant, handling both Instant and Long (nanoseconds) storage.
+     * Combined events may store timestamps as Long nanoseconds-since-epoch rather than Instant.
+     */
+    public @Nullable Instant getInstant(String key) {
+        Object val = get(key);
+        if (val == null) return null;
+        if (val instanceof Instant inst) return inst;
+        if (val instanceof Long nanos) return Instant.ofEpochSecond(0, nanos);
+        throw new ClassCastException(
+                "Cannot convert " + val.getClass().getName() + " to Instant for field " + key);
     }
 
     @SuppressWarnings("unchecked")

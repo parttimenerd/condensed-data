@@ -2,6 +2,7 @@ package me.bechberger.condensed;
 
 import static org.junit.jupiter.api.Assertions.*;
 
+import java.time.Instant;
 import java.util.*;
 import me.bechberger.condensed.Universe.EmbeddingType;
 import me.bechberger.condensed.types.IntType;
@@ -311,5 +312,45 @@ public class ReadStructTest {
         var struct = makeStruct(Map.of("a", 1L), "a");
         assertNotNull(struct.getType());
         assertEquals("testStruct", struct.getType().getName());
+    }
+
+    // --- getInstant and get(Instant.class, key) ---
+
+    @Test
+    public void testGetInstantWhenValueIsInstant() {
+        Instant expected = Instant.ofEpochSecond(1_000_000L, 12345);
+        var struct = makeStruct(Map.of("startTime", (Object) expected), "startTime");
+        assertEquals(expected, struct.getInstant("startTime"));
+    }
+
+    @Test
+    public void testGetInstantWhenValueIsLong() {
+        long nanos = 1_000_000_000_123L;
+        var struct = makeStruct(Map.of("startTime", nanos), "startTime");
+        assertEquals(Instant.ofEpochSecond(0, nanos), struct.getInstant("startTime"));
+    }
+
+    @Test
+    public void testGetInstantWhenValueIsNull() {
+        var map = new HashMap<String, Object>();
+        map.put("startTime", null);
+        var struct = makeStruct(map, "startTime");
+        assertNull(struct.getInstant("startTime"));
+    }
+
+    @Test
+    public void testGetClassInstantWhenValueIsInstant() {
+        Instant expected = Instant.ofEpochSecond(0, 42_000_000_000L);
+        var struct = makeStruct(Map.of("startTime", (Object) expected), "startTime");
+        assertEquals(expected, struct.get(Instant.class, "startTime"));
+    }
+
+    @Test
+    public void testGetClassInstantWhenValueIsLongDoesNotThrow() {
+        long nanos = 999_000_000_000L;
+        var struct = makeStruct(Map.of("startTime", nanos), "startTime");
+        // Previously threw ClassCastException: Cannot cast Long to Instant
+        Instant result = struct.get(Instant.class, "startTime");
+        assertEquals(Instant.ofEpochSecond(0, nanos), result);
     }
 }
