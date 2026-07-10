@@ -19,7 +19,6 @@ import me.bechberger.femtocli.annotations.Parameters;
 import me.bechberger.jfr.BasicJFRWriter;
 import me.bechberger.jfr.Configuration;
 import me.bechberger.jfr.cli.CLIUtils;
-import me.bechberger.jfr.cli.CLIUtils.ConfigurationConverter;
 import me.bechberger.jfr.cli.Constants;
 import me.bechberger.jfr.cli.FileOptionConverters.*;
 
@@ -64,11 +63,51 @@ public class CondenseCommand implements Callable<Integer> {
     @Option(
             names = {"-c", "--condenser-config"},
             description =
-                    "The configuration to use, possible values: default, reasonable-default,"
-                            + " reduced-default",
-            defaultValue = "default",
-            converter = ConfigurationConverter.class)
-    private Configuration configuration;
+                    "The configuration to use, possible values: default, lossless,"
+                        + " reasonable-default, reduced-default, archival-max. 'archival-max' is a"
+                        + " shortcut for reduced-default data reductions plus MAX_COMPRESSION.",
+            defaultValue = "default")
+    private String configName;
+
+    @Option(
+            names = {"--compression-level"},
+            description =
+                    "Compression effort, possible values: ${COMPLETION-CANDIDATES}. Higher levels"
+                            + " trade CPU for smaller files.")
+    private Compression.CompressionLevel compressionLevel = null;
+
+    /** The special CLI-only config name that expands to reduced-default + MAX_COMPRESSION. */
+    private static final String ARCHIVAL_MAX = "archival-max";
+
+    /** Resolves {@link #configName} to a {@link Configuration}, handling the archival-max alias. */
+    private Configuration resolveConfiguration() {
+        if (ARCHIVAL_MAX.equals(configName)) {
+            return Configuration.REDUCED_DEFAULT;
+        }
+        if (!Configuration.configurations.containsKey(configName)) {
+            throw new IllegalArgumentException(
+                    "Invalid value for --condenser-config: Unknown configuration: "
+                            + configName
+                            + ", use one of "
+                            + Configuration.configurations.keySet()
+                            + " or the archival-max shortcut");
+        }
+        return Configuration.configurations.get(configName);
+    }
+
+    /**
+     * The compression level to write into the header: an explicit --compression-level wins,
+     * otherwise archival-max implies MAX_COMPRESSION, otherwise the default HIGH_COMPRESSION.
+     */
+    private Compression.CompressionLevel resolveCompressionLevel() {
+        if (compressionLevel != null) {
+            return compressionLevel;
+        }
+        if (ARCHIVAL_MAX.equals(configName)) {
+            return Compression.CompressionLevel.MAX_COMPRESSION;
+        }
+        return Compression.CompressionLevel.HIGH_COMPRESSION;
+    }
 
     @Option(
             names = {"--events"},
@@ -153,6 +192,8 @@ public class CondenseCommand implements Callable<Integer> {
         long resolvedInputSize = 0;
         Path tempFile = null;
         try {
+            Configuration configuration = resolveConfiguration();
+            Compression.CompressionLevel level = resolveCompressionLevel();
             Path finalOutput = getOutputFile();
             CLIUtils.checkOutputFileWritable(finalOutput, force);
             Path parentDir =
@@ -172,7 +213,8 @@ public class CondenseCommand implements Callable<Integer> {
                                     "condensed jfr cli",
                                     Constants.VERSION,
                                     configuration.name(),
-                                    effectiveCompression))) {
+                                    effectiveCompression,
+                                    level))) {
                 var resolvedInputs = new ArrayList<Path>();
                 for (var input : inputs()) {
                     resolvedInputs.addAll(expandJFRPath(input));

@@ -156,13 +156,35 @@ public class CondensedInputStream extends InputStream {
             throw new NoStartStringException(startString);
         }
         startStringRead = true;
+        int version = (int) readUnsignedVarint();
+        if (version > Constants.VERSION) {
+            throw new RIOException.UnsupportedFormatVersionException(version, Constants.VERSION);
+        }
+        String generatorName = readString();
+        String generatorVersion = readString();
+        String generatorConfiguration = readString();
+        String compressionName = readString();
+        Compression compression;
+        try {
+            compression = Compression.valueOf(compressionName);
+        } catch (IllegalArgumentException e) {
+            throw new RIOException.UnknownCompressionException(compressionName, e);
+        }
+        int levelOrdinal = (int) readUnsignedVarint();
+        Compression.CompressionLevel[] levels = Compression.CompressionLevel.values();
+        if (levelOrdinal < 0 || levelOrdinal >= levels.length) {
+            throw new RIOException(
+                    "Invalid compression level ordinal in start header: " + levelOrdinal);
+        }
+        Compression.CompressionLevel compressionLevel = levels[levelOrdinal];
         StartMessage message =
                 new StartMessage(
-                        (int) readUnsignedVarint(),
-                        readString(),
-                        readString(),
-                        readString(),
-                        Compression.valueOf(readString()));
+                        version,
+                        generatorName,
+                        generatorVersion,
+                        generatorConfiguration,
+                        compression,
+                        compressionLevel);
         this.inputStream = message.compression().wrap(inputStream);
         universe.setStartMessage(message);
     }

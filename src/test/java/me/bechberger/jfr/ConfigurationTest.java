@@ -103,9 +103,17 @@ public class ConfigurationTest {
 
     @Test
     public void testPredefinedConfigurations() {
-        assertEquals(3, Configuration.configurations.size());
+        assertEquals(4, Configuration.configurations.size());
         assertNotNull(Configuration.configurations.get("default"));
         assertNotNull(Configuration.configurations.get("reasonable-default"));
         assertNotNull(Configuration.configurations.get("reduced-default"));
+        assertNotNull(Configuration.configurations.get("lossless"));
+    }
+
+    @Test
+    public void testLosslessMatchesDefault() {
+        // "lossless" is an alias for the default (no data reduction), differing only in name.
+        assertEquals(Configuration.DEFAULT.withName("lossless"), Configuration.LOSSLESS);
+        assertEquals(Configuration.LOSSLESS, Configuration.configurations.get("lossless"));
     }
 }

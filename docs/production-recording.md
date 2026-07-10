@@ -180,6 +180,18 @@ java -javaagent:cjfr.jar='start,/var/rec/app_$index.cjfr,--rotating,--max-files=
 Use the `platform-inflaterless-minimal` JAR (~450 KB) for the smallest possible
 agent footprint. The `.cjfr` files are still readable by any full-size JAR offline.
 
+!!! tip "Squeeze further at archival time"
+    The agent records with fast compression to keep write overhead low. When you
+    later move recordings to cold storage, re-condense them offline for the
+    smallest files:
+
+    ```shell
+    cjfr condense --condenser-config archival-max app.cjfr archive.cjfr
+    ```
+
+    `archival-max` = `reduced-default` reductions + `MAX_COMPRESSION`. You can also
+    set the level directly with `--compression-level=MAX_COMPRESSION`.
+
 ---
 
 ## Checking Recording Status

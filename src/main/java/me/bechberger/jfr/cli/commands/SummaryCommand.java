@@ -77,6 +77,13 @@ public class SummaryCommand implements Callable<Integer> {
             defaultValue = "-1")
     private int limit;
 
+    @Option(
+            names = {"--ignore-integrity"},
+            description =
+                    "Skip the whole-file CRC32 integrity check and proceed even if the input file"
+                            + " is corrupted")
+    private boolean ignoreIntegrity = false;
+
     public Integer call() {
         if (shortSummary && full) {
             System.err.println("Error: --short and --full are mutually exclusive");
@@ -87,6 +94,11 @@ public class SummaryCommand implements Callable<Integer> {
             return 2;
         }
         try {
+            if (!ignoreIntegrity) {
+                for (Path input : inputFiles) {
+                    CJFRFooterReader.verify(input);
+                }
+            }
             // Fast path: single .cjfr file with footer present and no special flags
             if (canUseFastPath()) {
                 var footer = CJFRFooterReader.tryRead(inputFiles.get(0));

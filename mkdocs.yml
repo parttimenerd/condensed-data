@@ -98,6 +98,7 @@ nav:
       - Common Workflows: workflows.md
   - Reference:
       - Configuration Reference: configurations.md
+      - File Format: format.md
       - JAR Release Selection: jar-releases.md
   - Cookbooks:
       - GC Regression Hunt: cookbook-gc-regression.md

@@ -182,6 +182,66 @@ public class CondenseCommandTest {
     }
 
     @Test
+    public void testUsingLosslessConfig() throws Exception {
+        new CommandExecuter(
+                        "condense",
+                        "T/" + CommandTestUtil.getSampleJFRFileName(),
+                        "T/test.cjfr",
+                        "--condenser-config",
+                        "lossless")
+                .withFiles(CommandTestUtil.getSampleJFRFile())
+                .check(
+                        (result, files) -> {
+                            result.assertNoErrorOrOutput();
+                            var testFile = files.get("test.cjfr");
+                            assertThat(readConfiguration(testFile).name()).isEqualTo("lossless");
+                        })
+                .run();
+    }
+
+    @Test
+    public void testArchivalMaxUsesReducedDefaultAndMaxCompression() throws Exception {
+        new CommandExecuter(
+                        "condense",
+                        "T/" + CommandTestUtil.getSampleJFRFileName(),
+                        "T/test.cjfr",
+                        "--condenser-config",
+                        "archival-max")
+                .withFiles(CommandTestUtil.getSampleJFRFile())
+                .check(
+                        (result, files) -> {
+                            result.assertNoErrorOrOutput();
+                            var testFile = files.get("test.cjfr");
+                            // archival-max expands to reduced-default data reductions ...
+                            assertThat(readConfiguration(testFile).name())
+                                    .isEqualTo("reduced-default");
+                            // ... plus the strongest compression level, carried in the header.
+                            assertThat(readStartMessage(testFile).compressionLevel())
+                                    .isEqualTo(Compression.CompressionLevel.MAX_COMPRESSION);
+                        })
+                .run();
+    }
+
+    @Test
+    public void testCompressionLevelOptionRoundTrips() throws Exception {
+        new CommandExecuter(
+                        "condense",
+                        "T/" + CommandTestUtil.getSampleJFRFileName(),
+                        "T/test.cjfr",
+                        "--compression-level",
+                        "MAX_COMPRESSION")
+                .withFiles(CommandTestUtil.getSampleJFRFile())
+                .check(
+                        (result, files) -> {
+                            result.assertNoErrorOrOutput();
+                            var testFile = files.get("test.cjfr");
+                            assertThat(readStartMessage(testFile).compressionLevel())
+                                    .isEqualTo(Compression.CompressionLevel.MAX_COMPRESSION);
+                        })
+                .run();
+    }
+
+    @Test
     public void testUsingNoCompression() throws Exception {
         AtomicLong nonCompressedSize = new AtomicLong();
         new CommandExecuter(

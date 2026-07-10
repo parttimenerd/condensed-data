@@ -1,6 +1,7 @@
 package me.bechberger.jfr;
 
 import java.lang.reflect.InvocationTargetException;
+import java.util.List;
 import java.util.Map;
 
 /**
@@ -90,6 +91,12 @@ public record Configuration(
                     .withCombineG1HeapRegionTypeChangeEvents(true)
                     .withCombineBlockingEvents(true);
 
+    /**
+     * Explicit alias for {@link #DEFAULT}: no data reduction at all. Handy as a clearly-named "keep
+     * everything" preset that pairs with a stronger compression level.
+     */
+    public static final Configuration LOSSLESS = DEFAULT.withName("lossless");
+
     public Configuration(
             String name,
             long timeStampTicksPerSecond,
@@ -148,6 +155,7 @@ public record Configuration(
     public static final Map<String, Configuration> configurations =
             Map.of(
                     "default", DEFAULT,
+                    "lossless", LOSSLESS,
                     "reasonable-default", REASONABLE_DEFAULT,
                     "reduced-default", REDUCED_DEFAULT);
 
@@ -278,5 +286,46 @@ public record Configuration(
     @Override
     public int compareTo(Configuration o) {
         return name.compareTo(o.name);
+    }
+
+    /**
+     * Renders a Markdown table of the boolean data-reduction flags for the built-in presets (one
+     * row per boolean record component, one column per preset). Used to keep {@code
+     * docs/configurations.md} in sync with the code.
+     */
+    public static String toFlagTable() {
+        var presets = List.of(DEFAULT, LOSSLESS, REASONABLE_DEFAULT, REDUCED_DEFAULT);
+        var booleanComponents =
+                java.util.Arrays.stream(Configuration.class.getRecordComponents())
+                        .filter(c -> c.getType() == boolean.class)
+                        .toList();
+        var sb = new StringBuilder();
+        // header
+        sb.append("| flag |");
+        for (var p : presets) {
+            sb.append(' ').append(p.name()).append(" |");
+        }
+        sb.append('\n');
+        // separator
+        sb.append("| --- |");
+        for (int i = 0; i < presets.size(); i++) {
+            sb.append(" --- |");
+        }
+        sb.append('\n');
+        // rows
+        for (var c : booleanComponents) {
+            sb.append("| ").append(c.getName()).append(" |");
+            for (var p : presets) {
+                boolean value;
+                try {
+                    value = (boolean) c.getAccessor().invoke(p);
+                } catch (IllegalAccessException | InvocationTargetException e) {
+                    throw new RuntimeException(e);
+                }
+                sb.append(' ').append(value ? "yes" : "no").append(" |");
+            }
+            sb.append('\n');
+        }
+        return sb.toString();
     }
 }

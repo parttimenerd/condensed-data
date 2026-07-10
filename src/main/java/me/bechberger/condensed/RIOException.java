@@ -1,5 +1,7 @@
 package me.bechberger.condensed;
 
+import java.nio.file.Path;
+
 /** Unchecked IOException wrapper */
 public class RIOException extends RuntimeException {
     public RIOException(String message, Throwable cause) {
@@ -33,6 +35,39 @@ public class RIOException extends RuntimeException {
     public static class CannotCloseStreamException extends RIOException {
         public CannotCloseStreamException(Throwable cause) {
             super("Cannot close stream", cause);
+        }
+    }
+
+    /** The file declares a format version this reader does not understand. */
+    public static class UnsupportedFormatVersionException extends RIOException {
+        public UnsupportedFormatVersionException(int found, int max) {
+            super(
+                    "Unsupported condensed-data format version "
+                            + found
+                            + " (this build supports up to version "
+                            + max
+                            + "). The file was written by a newer tool.");
+        }
+    }
+
+    /** The start header names a compression algorithm this build does not know. */
+    public static class UnknownCompressionException extends RIOException {
+        public UnknownCompressionException(String name, Throwable cause) {
+            super("Unknown compression algorithm in start header: " + name, cause);
+        }
+    }
+
+    /** The whole-file CRC32 in the footer does not match the recomputed value. */
+    public static class IntegrityCheckException extends RIOException {
+        public IntegrityCheckException(Path file, long expected, long actual) {
+            super(
+                    "Integrity check failed for "
+                            + file
+                            + ": footer CRC32 = "
+                            + Long.toHexString(expected)
+                            + " but recomputed CRC32 = "
+                            + Long.toHexString(actual)
+                            + ". The file is corrupted. Use --ignore-integrity to bypass.");
         }
     }
 }

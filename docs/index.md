@@ -107,6 +107,10 @@ cjfr summary --gc-percentile=95 app_0.cjfr app_1.cjfr   # worst pause context
 
     Condenser configs and compression algorithms.
 
+-   :material-file-code: **[File Format](format.md)**
+
+    On-disk `.cjfr` layout, encoding, footer, and integrity checks.
+
 -   :material-package-variant: **[JAR Release Selection](jar-releases.md)**
 
     Pick the right JAR variant (universal / platform / minimal).

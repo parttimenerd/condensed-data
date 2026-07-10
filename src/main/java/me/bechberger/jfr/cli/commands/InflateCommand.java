@@ -35,6 +35,13 @@ public class InflateCommand implements Callable<Integer> {
             description = "Overwrite existing output file")
     private boolean force = false;
 
+    @Option(
+            names = {"--ignore-integrity"},
+            description =
+                    "Skip the whole-file CRC32 integrity check and proceed even if the input file"
+                            + " is corrupted")
+    private boolean ignoreIntegrity = false;
+
     @Mixin EventFilterOptionMixin eventFilterOptionMixin;
 
     Spec spec;
@@ -83,6 +90,11 @@ public class InflateCommand implements Callable<Integer> {
     public static class Impl {
         public static void run(InflateCommand cmd) throws Exception {
             CLIUtils.checkOutputFileWritable(cmd.getOutputFile(), cmd.force);
+            if (!cmd.ignoreIntegrity) {
+                for (Path input : cmd.inputs()) {
+                    me.bechberger.condensed.CJFRFooterReader.verify(input);
+                }
+            }
             var jfrReader =
                     me.bechberger.jfr.CombiningJFRReader.fromPaths(
                             cmd.inputs(),

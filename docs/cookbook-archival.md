@@ -9,6 +9,28 @@ with LZ4FRAMED compression) and want to archive them long-term at maximum compre
 
 ---
 
+### Shortcut: `archival-max`
+
+For the common "smallest possible file, read time irrelevant" case, use the
+`archival-max` shortcut instead of spelling out the config and level:
+
+```shell
+cjfr condense --condenser-config archival-max recording.jfr archive.cjfr
+```
+
+`archival-max` expands to `reduced-default` data reductions plus
+`MAX_COMPRESSION`. It is equivalent to:
+
+```shell
+cjfr condense --condenser-config reduced-default \
+  --compression-level MAX_COMPRESSION recording.jfr archive.cjfr
+```
+
+The rest of this page shows the individual knobs (`--condenser-config`,
+`--compression`, `--compression-level`) for when you want finer control.
+
+---
+
 ### Condense a folder of JFR files
 
 ```shell
@@ -63,6 +85,12 @@ find "$YEAR_DIR" -name "*.jfr" | while read -r jfr; do
   fi
 done
 ```
+
+!!! tip "The summary check now validates integrity too"
+    `cjfr summary` verifies the file's whole-file CRC32 before reading, so the
+    verification step above also catches a `.cjfr` that was written or copied
+    incorrectly — not just one that fails to parse. A corrupted archive fails the
+    check and the original JFR is kept.
 
 ---
 

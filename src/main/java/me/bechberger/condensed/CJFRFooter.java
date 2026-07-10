@@ -25,11 +25,30 @@ public record CJFRFooter(
         Map<String, Long> eventCounts,
         @Nullable GcStats gcStats,
         @Nullable CpuStats cpuStats,
-        @Nullable AllocStats allocStats) {
+        @Nullable AllocStats allocStats,
+        /**
+         * CRC32 over the on-disk bytes {@code [0, footerStart)} (start header + compressed main
+         * stream). Filled in by {@link CondensedOutputStream#writeFooter} just before
+         * serialization; 0 when constructed by the collector before the stream is finalized.
+         */
+        long mainStreamCrc32) {
 
     public static final int CURRENT_VERSION = 1;
     public static final int FOOTER_TYPE_ID = 7;
     public static final byte[] MAGIC = {'C', 'J', 'F', 'R'};
+
+    public CJFRFooter withMainStreamCrc32(long crc) {
+        return new CJFRFooter(
+                version,
+                totalEvents,
+                startTimeMicros,
+                durationMicros,
+                eventCounts,
+                gcStats,
+                cpuStats,
+                allocStats,
+                crc);
+    }
 
     public record GcStats(
             long gcCount,
@@ -94,6 +113,7 @@ public record CJFRFooter(
         writeUnsignedVarInt(out, totalEvents);
         writeSignedLong8(out, startTimeMicros);
         writeSignedVarInt(out, durationMicros);
+        writeSignedLong8(out, mainStreamCrc32);
 
         writeUnsignedVarInt(out, eventCounts.size());
         for (var e : eventCounts.entrySet()) {
@@ -176,6 +196,7 @@ public record CJFRFooter(
         long totalEvents = readUnsignedVarint(in);
         long startTimeMicros = readSignedLong8(in);
         long durationMicros = readSignedVarint(in);
+        long mainStreamCrc32 = readSignedLong8(in);
 
         int n = (int) readUnsignedVarint(in);
         Map<String, Long> eventCounts = new LinkedHashMap<>(n * 2);
@@ -195,7 +216,8 @@ public record CJFRFooter(
                 Collections.unmodifiableMap(eventCounts),
                 gcStats,
                 cpuStats,
-                allocStats);
+                allocStats,
+                mainStreamCrc32);
     }
 
     private static GcStats readGcStats(DataInputStream in) throws IOException {

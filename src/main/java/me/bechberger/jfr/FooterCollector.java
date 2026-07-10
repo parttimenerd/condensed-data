@@ -255,7 +255,8 @@ public final class FooterCollector {
                 Map.copyOf(eventCounts),
                 buildGcStatsOrNull(),
                 buildCpuStatsOrNull(),
-                buildAllocStatsOrNull());
+                buildAllocStatsOrNull(),
+                0L);
     }
 
     private GcStats buildGcStatsOrNull() {

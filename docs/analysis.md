@@ -220,3 +220,26 @@ cjfr summary --no-reconstitution recording.cjfr
 ```
 
 This has no effect on files produced with `default` or `reasonable-default`.
+
+---
+
+## Integrity checks
+
+`cjfr inflate` and `cjfr summary` verify a whole-file CRC32 (stored in the file's
+footer) before reading. If a `.cjfr` file has been corrupted — silent bit-rot,
+a truncated copy, a bad transfer — the command aborts with an integrity error
+rather than producing garbage output.
+
+Verification only runs for direct file inputs. It is skipped (and noted) for
+inputs that cannot be re-read, such as a `.cjfr` entry inside a ZIP.
+
+If a file is corrupted but you still want to salvage what you can, bypass the
+check:
+
+```shell
+cjfr summary --ignore-integrity recording.cjfr
+cjfr inflate --ignore-integrity recording.cjfr out.jfr
+```
+
+Older files written before the CRC feature carry no checksum and are read without
+a warning.

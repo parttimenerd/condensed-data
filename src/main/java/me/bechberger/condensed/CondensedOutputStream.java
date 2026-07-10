@@ -7,7 +7,6 @@ import java.io.OutputStream;
 import java.io.UnsupportedEncodingException;
 import java.util.function.Consumer;
 import java.util.function.Function;
-import me.bechberger.condensed.Compression.CompressionLevel;
 import me.bechberger.condensed.Message.StartMessage;
 import me.bechberger.condensed.Universe.HashAndEqualsConfig;
 import me.bechberger.condensed.stats.BasicStatistic;
@@ -59,7 +58,7 @@ public class CondensedOutputStream extends OutputStream {
             this.outputStream =
                     startMessage
                             .compression()
-                            .wrap(this.outputStream, CompressionLevel.HIGH_COMPRESSION);
+                            .wrap(this.outputStream, startMessage.compressionLevel());
         }
     }
 
@@ -100,6 +99,7 @@ public class CondensedOutputStream extends OutputStream {
         writeString(startMessage.generatorVersion());
         writeString(startMessage.generatorConfiguration());
         writeString(startMessage.compression().name());
+        writeUnsignedVarInt(startMessage.compressionLevel().ordinal());
     }
 
     static byte[] useCompressed(Consumer<CondensedOutputStream> consumer) {
@@ -462,7 +462,10 @@ public class CondensedOutputStream extends OutputStream {
                 throw new RIOException("Can't close compression stream before writing footer", e);
             }
         }
-        byte[] zlibBytes = footer.toCompressedBytes();
+        // Snapshot the CRC over [0, footerStart): the compressor is closed above, so
+        // underlyingCountingStream has received exactly the start header + compressed main stream.
+        long mainStreamCrc = underlyingCountingStream.crc32();
+        byte[] zlibBytes = footer.withMainStreamCrc32(mainStreamCrc).toCompressedBytes();
         int len = zlibBytes.length;
         try {
             underlyingCountingStream.write(CJFRFooter.FOOTER_TYPE_ID);
