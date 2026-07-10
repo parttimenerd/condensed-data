@@ -111,6 +111,14 @@ jobs:
           --with-minimal \
           --minimal-output-dir target/platform-jars-minimal/
 
+    # action-gh-release updates an existing release's assets but does NOT re-point an
+    # already-existing tag at target_commitish, so the `latest` tag would drift behind
+    # the newest main commit. Force-move the tag ourselves first so tag == release commit.
+    - name: Move latest tag to current commit
+      run: |
+        git tag -f latest ${{ github.sha }}
+        git push -f origin latest
+
     - name: Publish rolling latest release
       uses: softprops/action-gh-release@v2
       with:
