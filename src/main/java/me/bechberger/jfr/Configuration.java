@@ -38,6 +38,7 @@ public record Configuration(
         boolean combineExceptionEvents,
         boolean combineG1HeapRegionTypeChangeEvents,
         boolean combineBlockingEvents,
+        boolean dropGCWorkerThreadFromGCPhaseParallel,
         long cpuBucketSeconds)
         implements Comparable<Configuration> {
 
@@ -52,6 +53,7 @@ public record Configuration(
                     -1,
                     true,
                     true,
+                    false,
                     false,
                     false,
                     false,
@@ -89,7 +91,8 @@ public record Configuration(
                     .withMaxStackTraceDepth(16)
                     .withCombineExceptionEvents(true)
                     .withCombineG1HeapRegionTypeChangeEvents(true)
-                    .withCombineBlockingEvents(true);
+                    .withCombineBlockingEvents(true)
+                    .withDropGCWorkerThreadFromGCPhaseParallel(true);
 
     /**
      * Explicit alias for {@link #DEFAULT}: no data reduction at all. Handy as a clearly-named "keep
@@ -125,6 +128,7 @@ public record Configuration(
                 sumObjectSizes,
                 ignoreZeroSizedTenuredAges,
                 ignoreTooShortGCPauses,
+                false,
                 false,
                 false,
                 false,
@@ -245,6 +249,10 @@ public record Configuration(
 
     public Configuration withCpuBucketSeconds(long cpuBucketSeconds) {
         return withFieldValue("cpuBucketSeconds", cpuBucketSeconds);
+    }
+
+    public Configuration withDropGCWorkerThreadFromGCPhaseParallel(boolean drop) {
+        return withFieldValue("dropGCWorkerThreadFromGCPhaseParallel", drop);
     }
 
     public Configuration withFieldValue(String fieldName, Object value) {

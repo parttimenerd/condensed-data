@@ -14,6 +14,7 @@ import me.bechberger.condensed.CondensedInputStream;
 import me.bechberger.condensed.CondensedOutputStream;
 import me.bechberger.condensed.Message.StartMessage;
 import me.bechberger.condensed.ReadStruct;
+import me.bechberger.condensed.stats.EventWriteTree;
 import me.bechberger.condensed.types.CondensedType;
 import me.bechberger.condensed.types.IntType;
 import me.bechberger.condensed.types.StructType;
@@ -519,6 +520,139 @@ public class JFREventCombinerTest {
                         + "a drop here reproduces the colleague's 50359 to 9026 regression");
     }
 
+    /**
+     * The GCPhaseParallel combiner groups per-worker timings under a per-gcId map keyed by the
+     * phase name ("ObjCopy", "ScanHR", ...). There are only ~30 distinct names but they repeat
+     * across every GC id, so writing each key inline re-serializes the same short UTF-8 strings
+     * thousands of times. Measured on a real recording this was ~125 KB (44%) of the combined
+     * event's bytes.
+     *
+     * <p>The name key must therefore be stored by reference (a small varint index into a per-type
+     * string cache), so the total String bytes attributed to the combined GCPhaseParallel node stay
+     * bounded by the distinct-name vocabulary rather than growing with the number of GC ids.
+     */
+    @Test
+    public void testGCPhaseParallelNameKeyIsDeduplicated() {
+        EventWriteTree[] rootHolder = new EventWriteTree[1];
+        var res =
+                runJFRWithCombinerCapturingStats(
+                        Map.of(
+                                "jdk.GCPhaseParallel",
+                                new CombinerAndReconstitutor("jdk.combined.GCPhaseParallel")),
+                        Configuration.DEFAULT
+                                .withCombineEventsWithoutDataLoss(true)
+                                .withCombinePLABPromotionEvents(false),
+                        () -> {
+                            for (int i = 0; i < 10; i++) {
+                                System.out.println(new byte[64 * 1024 * 1024].length);
+                                System.gc();
+                            }
+                        },
+                        rootHolder);
+
+        long recorded =
+                res.recordedEvents.stream()
+                        .filter(e -> e.getEventType().getName().equals("jdk.GCPhaseParallel"))
+                        .count();
+        assertTrue(recorded > 100, "Test should record many jdk.GCPhaseParallel events");
+
+        // Locate the combined GCPhaseParallel node and sum the String bytes beneath it.
+        EventWriteTree combined = findNode(rootHolder[0], "jdk.combined.GCPhaseParallel");
+        assertNotNull(
+                combined, "Should have a jdk.combined.GCPhaseParallel node in the write tree");
+        long stringBytes = sumBytesForCause(combined, "String");
+
+        // With dedup the phase names cost a tiny fixed vocabulary (a few hundred bytes even with
+        // ~30 names). Inline would cost ~8+ bytes per (gcId, name) pair, i.e. thousands of bytes.
+        // Assert the String bytes are far below what inlining every recorded event would produce.
+        assertTrue(
+                stringBytes < recorded,
+                "Phase-name String bytes ("
+                        + stringBytes
+                        + ") must be far below the recorded-event count ("
+                        + recorded
+                        + "); a value near or above it means names are written inline per gcId "
+                        + "instead of by reference.");
+    }
+
+    /**
+     * In reduced-default the per-worker eventThread reference is low-value (worker durations are
+     * effectively always zero), so the GCWorker struct must omit it entirely. In default/lossless
+     * the thread must still be present (no data loss). We detect the field's presence via the
+     * write-statistics tree: a java.lang.Thread node under the combined GCPhaseParallel node means
+     * the thread field was written.
+     */
+    @Test
+    public void testGCPhaseParallelDropsWorkerThreadOnlyInReducedMode() {
+        Runnable gc =
+                () -> {
+                    for (int i = 0; i < 10; i++) {
+                        System.out.println(new byte[64 * 1024 * 1024].length);
+                        System.gc();
+                    }
+                };
+        var combiners =
+                Map.of(
+                        "jdk.GCPhaseParallel",
+                        new CombinerAndReconstitutor("jdk.combined.GCPhaseParallel"));
+
+        EventWriteTree[] defaultRoot = new EventWriteTree[1];
+        runJFRWithCombinerCapturingStats(
+                combiners,
+                Configuration.DEFAULT
+                        .withCombineEventsWithoutDataLoss(true)
+                        .withCombinePLABPromotionEvents(false),
+                gc,
+                defaultRoot);
+        EventWriteTree defaultCombined = findNode(defaultRoot[0], "jdk.combined.GCPhaseParallel");
+        assertNotNull(defaultCombined, "default: combined node present");
+        assertTrue(
+                sumBytesForCause(defaultCombined, "java.lang.Thread") > 0,
+                "default mode must still write the per-worker eventThread (no data loss)");
+
+        EventWriteTree[] reducedRootHolder = new EventWriteTree[1];
+        runJFRWithCombinerCapturingStats(
+                combiners, Configuration.REDUCED_DEFAULT, gc, reducedRootHolder);
+        EventWriteTree reducedCombined =
+                findNode(reducedRootHolder[0], "jdk.combined.GCPhaseParallel");
+        assertNotNull(reducedCombined, "reduced: combined node present");
+        assertEquals(
+                0,
+                sumBytesForCause(reducedCombined, "java.lang.Thread"),
+                "reduced-default must drop the per-worker eventThread from the GCWorker struct");
+    }
+
+    /** Depth-first search for the first node whose cause name equals {@code causeName}. */
+    private static @Nullable EventWriteTree findNode(EventWriteTree node, String causeName) {
+        if (node == null) {
+            return null;
+        }
+        if (causeName.equals(node.getCauseName())) {
+            return node;
+        }
+        for (var child : node.getChildren()) {
+            var found = findNode(child, causeName);
+            if (found != null) {
+                return found;
+            }
+        }
+        return null;
+    }
+
+    /**
+     * Sum direct bytes of every descendant (and self) whose cause name equals {@code causeName}.
+     */
+    private static long sumBytesForCause(EventWriteTree node, String causeName) {
+        long total = 0;
+        if (causeName.equals(node.getCauseName())) {
+            total += node.getDirectBytesWritten();
+        }
+        for (var child : node.getChildren()) {
+            total += sumBytesForCause(child, causeName);
+        }
+        return total;
+    }
+
     private static <T, V> void assertMapEquals(Map<T, V> expected, Map<T, V> actual) {
         assertMapEquals(expected, actual, (k, v) -> false);
     }
@@ -778,5 +912,60 @@ public class JFREventCombinerTest {
             return new EventCombinerTestResult(
                     recordedEvents, readEvents, reader.getCombinedEventCount());
         }
+    }
+
+    /**
+     * Variant of {@link #runJFRWithCombiner} that enables full write statistics and, after
+     * condensing, stores the statistics context-root tree into {@code rootHolder[0]} so a test can
+     * attribute bytes per write cause. Reconstitution/read-back is skipped because these tests only
+     * assert on the write side.
+     */
+    EventCombinerTestResult runJFRWithCombinerCapturingStats(
+            Map<String, CombinerAndReconstitutor> combiners,
+            Configuration configuration,
+            Runnable createEvents,
+            EventWriteTree[] rootHolder) {
+        List<RecordedEvent> recordedEvents = new ArrayList<>();
+        ByteArrayOutputStream outputStream = new ByteArrayOutputStream();
+        try (CondensedOutputStream out =
+                new CondensedOutputStream(outputStream, StartMessage.DEFAULT)) {
+            out.enableFullStatistics();
+            BasicJFRWriter basicJFRWriter = new BasicJFRWriter(out, configuration);
+            try (RecordingStream rs = new RecordingStream()) {
+                for (var combiner : combiners.entrySet()) {
+                    rs.enable(combiner.getKey());
+                    rs.onEvent(
+                            combiner.getKey(),
+                            event -> {
+                                if (combiner.getValue().combiner != null) {
+                                    var combinerInstance =
+                                            combiner.getValue().combiner.apply(basicJFRWriter);
+                                    basicJFRWriter
+                                            .getEventCombiner()
+                                            .putIfNotThere(
+                                                    event.getEventType(), () -> combinerInstance);
+                                }
+                                basicJFRWriter.processEvent(event);
+                                recordedEvents.add(event);
+                            });
+                }
+                rs.onEvent(
+                        "EventThatEndsRecording",
+                        event -> {
+                            System.out.println("EventThatEndsRecording");
+                            rs.close();
+                        });
+                rs.startAsync();
+                createEvents.run();
+                EventThatEndsRecording.create();
+                System.out.println("Waiting for recording to end");
+                rs.awaitTermination();
+            } catch (InterruptedException e) {
+                throw new RuntimeException(e);
+            }
+            basicJFRWriter.close();
+            rootHolder[0] = out.getStatistics().getContextRoot();
+        }
+        return new EventCombinerTestResult(recordedEvents, List.of(), Map.of());
     }
 }

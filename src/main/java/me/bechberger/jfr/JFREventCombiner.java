@@ -163,11 +163,28 @@ public class JFREventCombiner extends EventCombiner {
         record MapValue<O, K, V>(
                 MapPartValue<O, ? extends K> key,
                 MapEntry<O, V> value,
-                Function<Map<K, V>, List<Entry<K, V>>> mapToList)
+                Function<Map<K, V>, List<Entry<K, V>>> mapToList,
+                EmbeddingType keyEmbedding)
                 implements MapEntry<O, Map<K, V>> {
 
+            MapValue(
+                    MapPartValue<O, ? extends K> key,
+                    MapEntry<O, V> value,
+                    Function<Map<K, V>, List<Entry<K, V>>> mapToList) {
+                this(key, value, mapToList, EmbeddingType.INLINE);
+            }
+
             MapValue(MapPartValue<O, ? extends K> key, MapEntry<O, V> value) {
-                this(key, value, map -> new ArrayList<>(map.entrySet()));
+                this(key, value, map -> new ArrayList<>(map.entrySet()), EmbeddingType.INLINE);
+            }
+
+            /**
+             * Store the map key by reference so repeated keys (e.g. a small fixed vocabulary of
+             * phase names) cost a varint index into a per-type cache instead of being serialized in
+             * full every time.
+             */
+            MapValue<O, K, V> withKeyByReference() {
+                return new MapValue<>(key, value, mapToList, EmbeddingType.REFERENCE);
             }
 
             @Override
@@ -208,7 +225,8 @@ public class JFREventCombiner extends EventCombiner {
                                                                 (CondensedType<?, Object>)
                                                                         key.createType(
                                                                                 out, eventType),
-                                                                Entry::getKey),
+                                                                Entry::getKey,
+                                                                keyEmbedding),
                                                         new Field<>(
                                                                 "value",
                                                                 "",
@@ -1130,27 +1148,34 @@ public class JFREventCombiner extends EventCombiner {
                 BasicJFRWriter basicJFRWriter, Configuration configuration) {
 
             // name -> (GC Thread + worker identifier + duration)
+            // In reduced mode the per-worker eventThread is dropped: worker durations are
+            // effectively always zero, so the thread reference is low-value noise.
+            boolean dropThread = configuration.dropGCWorkerThreadFromGCPhaseParallel();
             // spotless:off
             var gcWorkerDuration = new MapPartValue<RecordedEvent, RecordedEvent>(
                     "gcworkerDuration",
                     (out, eventType) -> (CondensedType) basicJFRWriter.getOutputStream().writeAndStoreType(id -> {
-                        return new StructType<RecordedEvent, ReadStruct>(id, "GCWorker", List.of(
-                                basicJFRWriter.eventFieldToField(eventType.getField("eventThread"), true),
-                                basicJFRWriter.eventFieldToField(eventType.getField("gcWorkerId"), true),
-                                basicJFRWriter.eventFieldToField(eventType.getField("duration"), true)));
+                        List<StructType.Field<RecordedEvent, ?, ?>> fields = new ArrayList<>();
+                        if (!dropThread) {
+                            fields.add(basicJFRWriter.eventFieldToField(eventType.getField("eventThread"), true));
+                        }
+                        fields.add(basicJFRWriter.eventFieldToField(eventType.getField("gcWorkerId"), true));
+                        fields.add(basicJFRWriter.eventFieldToField(eventType.getField("duration"), true));
+                        return new StructType<RecordedEvent, ReadStruct>(id, "GCWorker", fields);
                     }),
                     e -> e);
             // spotless:on
             return new MapValue<>(
-                    new MapPartValue<>(
-                            "name",
-                            (out, eventType) ->
-                                    (CondensedType<String, String>)
-                                            basicJFRWriter.getTypeCached(
-                                                    eventType.getField("name")),
-                            e -> e.getString("name")),
-                    new ArrayValue<>(gcWorkerDuration),
-                    map -> new ArrayList<>(map.entrySet()));
+                            new MapPartValue<>(
+                                    "name",
+                                    (out, eventType) ->
+                                            (CondensedType<String, String>)
+                                                    basicJFRWriter.getTypeCached(
+                                                            eventType.getField("name")),
+                                    e -> e.getString("name")),
+                            new ArrayValue<>(gcWorkerDuration),
+                            map -> new ArrayList<>(map.entrySet()))
+                    .withKeyByReference();
         }
     }
 
@@ -1177,26 +1202,29 @@ public class JFREventCombiner extends EventCombiner {
                                             .map(
                                                     s -> {
                                                         ReadStruct struct = (ReadStruct) s;
-                                                        return builder.put("name", e.getKey())
-                                                                .put(
-                                                                        "eventThread",
-                                                                        struct.get("eventThread"))
+                                                        builder.put("name", e.getKey())
                                                                 .put(
                                                                         "gcWorkerId",
                                                                         struct.get("gcWorkerId"))
                                                                 .put(
                                                                         "duration",
-                                                                        struct.get("duration"))
-                                                                .build();
+                                                                        struct.get("duration"));
+                                                        Object thread = struct.get("eventThread");
+                                                        if (thread != null) {
+                                                            builder.put("eventThread", thread);
+                                                        }
+                                                        return builder.build();
                                                     });
                                 } else {
                                     ReadStruct struct = (ReadStruct) value;
-                                    return java.util.stream.Stream.of(
-                                            builder.put("name", e.getKey())
-                                                    .put("eventThread", struct.get("eventThread"))
-                                                    .put("gcWorkerId", struct.get("gcWorkerId"))
-                                                    .put("duration", struct.get("duration"))
-                                                    .build());
+                                    builder.put("name", e.getKey())
+                                            .put("gcWorkerId", struct.get("gcWorkerId"))
+                                            .put("duration", struct.get("duration"));
+                                    Object thread = struct.get("eventThread");
+                                    if (thread != null) {
+                                        builder.put("eventThread", thread);
+                                    }
+                                    return java.util.stream.Stream.of(builder.build());
                                 }
                             })
                     .toList();
