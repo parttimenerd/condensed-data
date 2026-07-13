@@ -22,7 +22,9 @@ public class StartCommand implements Callable<Integer> {
 
     @Option(
             names = "--condenser-config",
-            description = "The condenser generatorConfiguration to use",
+            description =
+                    "The condenser data-reduction configuration to use, possible values:"
+                            + " default, lossless, reasonable-default, reduced-default",
             defaultValue = "reasonable-default",
             converter = ConfigurationConverter.class)
     private Configuration configuration;

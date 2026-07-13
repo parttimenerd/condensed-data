@@ -152,6 +152,10 @@ public class RotatingRecordingThread extends RecordingThread {
                 triggerStop();
                 return;
             }
+            // Periodic safety flush: push buffered bytes to disk each tick so the live file is
+            // durable if the JVM dies between rotations, and so the observed compression ratio
+            // (used by estimateOnDiskSize) stays fresh.
+            periodicFlush();
             // Always call initNewFile(false) — it re-checks shouldEndFile() under rotationLock,
             // which prevents torn reads of BasicJFRWriter state and avoids double-rotations.
             try {
@@ -546,15 +550,53 @@ public class RotatingRecordingThread extends RecordingThread {
         }
     }
 
+    /** Flush the live writer to disk under the rotation lock; best-effort, safe if stopping. */
+    private void periodicFlush() {
+        if (triggeredStop.get()) {
+            return;
+        }
+        rotationLock.lock();
+        try {
+            State s = this.state;
+            if (s == null || s.jfrWriter == null || triggeredStop.get()) {
+                return;
+            }
+            s.jfrWriter.flush();
+        } catch (Throwable t) {
+            agentIO.writeSevereError("Watchdog: periodic flush failed: " + t.getMessage());
+        } finally {
+            rotationLock.unlock();
+        }
+    }
+
     private boolean shouldEndFile() {
         State s = this.state;
         if (s == null) return false;
-        return (getMaxDuration().toNanos() > 0
-                        && (System.nanoTime() - s.startNanos) > getMaxDuration().toNanos())
-                || (getMaxSize() > 0
-                        && s.jfrWriter != null
-                        && s.jfrWriter.estimateSize() > getMaxSize());
+        if (getMaxDuration().toNanos() > 0
+                && (System.nanoTime() - s.startNanos) > getMaxDuration().toNanos()) {
+            return true;
+        }
+        long maxSize = getMaxSize();
+        if (maxSize <= 0 || s.jfrWriter == null) {
+            return false;
+        }
+        // The compressor buffers whole blocks, so estimateSize() (bytes flushed to disk) can lag
+        // far behind the data actually written. Use estimateOnDiskSize() — an uncompressed×ratio
+        // prediction — as the primary trigger. When the prediction is close to the limit, flush
+        // once and re-check the real on-disk size so we neither rotate too early (pessimistic
+        // ratio) nor overshoot the limit.
+        long estimate = s.jfrWriter.estimateOnDiskSize();
+        if (estimate
+                < (maxSize * SIZE_CONFIRM_FLUSH_FRACTION_NUM) / SIZE_CONFIRM_FLUSH_FRACTION_DEN) {
+            return false;
+        }
+        s.jfrWriter.flush();
+        return s.jfrWriter.estimateSize() > maxSize;
     }
+
+    // Flush-and-confirm once the on-disk estimate reaches 90% of --max-size.
+    private static final long SIZE_CONFIRM_FLUSH_FRACTION_NUM = 9;
+    private static final long SIZE_CONFIRM_FLUSH_FRACTION_DEN = 10;
 
     private boolean shouldEndRecording() {
         long durationNanos = getDuration().toNanos();

@@ -43,51 +43,70 @@ But you can also use its built-in Java agent to directly record condensed JFR fi
 ```shell
 > java -javaagent:target/condensed-data.jar=help
 Usage: java -javaagent:condensed-agent.jar='[COMMAND]'
-Agent for recording condensed JFR files
+Options:
+  h, help         Show this help message and exit.
+  V, version      Print version information and exit.
 Commands:
   start             Start the recording
   stop              Stop the recording
   status            Get the status of the recording
   set-max-size      Set the max file size
-  set-max-duration  Set the max duration of each individual recording when
-                      rotating files
+  set-max-duration  Set the max duration of each individual recording when rotating files
   set-max-files     Set the max file count when rotating
   set-duration      Set the duration of the overall recording
-  help              Print help information
 ```
 ```shell
-> java -javaagent:target/condensed-data.jar=start,--help
-Usage: -javaagent:condensed-agent.jar start [-h] [--new-names] [--rotating]
-       [--verbose] [-c=<jfrConfig>] [-d=<configuration>]
-       [--duration=<duration>] [-m=<miscJfrConfig>]
-       [--max-duration=<maxDuration>] [--max-files=<maxFiles>]
-       [--max-size=<maxSize>] [PATH]
-Start the recording
-      [PATH]                 Path to the recording file .cjfr file
-  -c, --config=<jfrConfig>   The JFR generatorConfiguration to use.
-  -d, --condenser-config=<configuration>
-                             The condenser generatorConfiguration to use,
-                               possible values: default, reasonable-default,
-                               reduced-default
-      --duration=<duration>  The duration of the whole recording, 0 for
-                               unlimited
-  -h, --help                 Show this help message and exit.
-  -m, --misc-jfr-config=<miscJfrConfig>
-                             Additional JFR config, '|' separated, like 'jfr.
-                               ExecutionSample#interval=1s'
-      --max-duration=<maxDuration>
-                             The maximum duration of each individual recording,
-                               0 for unlimited, when rotating files
-      --max-files=<maxFiles> The maximum number of files to keep, when rotating
-                               files
-      --max-size=<maxSize>   The maximum size of the recording file (or the
-                               individual files when rotating files)
-      --new-names            When rotating files, use new names instead of
-                               reusing old ones
-      --rotating             Use rotating files and replace $date and $index in
-                               the file names, if no place holder is specified,
-                               replaces '.cjfr' with '_$index.cjfr'
-      --verbose              Be verbose
+> java -javaagent:target/condensed-data.jar=start,help
+Usage: agent,start,[hV],[max-duration=<maxDuration>],[max-size=<maxSize>],[max-files=<maxFiles>],[new-names],[duration=<duration>],[condenser-config=<configuration>],[misc-jfr-config=<miscJfrConfig>],[verbose],[config=<jfrConfig>],[rotating],[PATH]
+Options:
+      [PATH]                          Path to the recording file .cjfr file
+      condenser-config=<configuration>
+                                      The condenser data-reduction configuration
+                                      to use, possible values: default,
+                                      lossless, reasonable-default,
+                                      reduced-default (default
+                                      reasonable-default)
+      config=<jfrConfig>              The JFR configuration to use: a predefined
+                                      name (e.g. 'default', 'profile',
+                                      'gc_details'), a name with .jfc suffix, or
+                                      a path to a .jfc file. (default default)
+      duration=<duration>             The duration of the whole recording, 0 for
+                                      unlimited (default 0s)
+  h, help                             Show this help message and exit.
+      max-duration=<maxDuration>      The maximum duration of each individual
+                                      recording, 0 for unlimited, when rotating
+                                      files (default 0s)
+      max-files=<maxFiles>            The maximum number of files to keep, when
+                                      rotating files (default 10)
+      max-size=<maxSize>              The maximum size of the recording file (or
+                                      the individual files when rotating files)
+                                      (default 0B)
+      misc-jfr-config=<miscJfrConfig> Additional JFR config, '|' separated, like
+                                      'jfr.ExecutionSample#interval=1s' (default
+                                      )
+      new-names                       When rotating files, use new names instead
+                                      of reusing old ones (default false)
+      rotating                        Write rotating files. Replaces $date and
+                                      $index in the path; if neither placeholder
+                                      is present, '_$index' is inserted before
+                                      '.cjfr'. Requires max-files >= 1 and at
+                                      least one of max-size or max-duration.
+                                      (default false)
+  V, version                          Print version information and exit.
+      verbose                         Be verbose (default false)
+```
+
+Arguments are comma-separated `key=value` pairs (no leading dashes), for example:
+```shell
+java -javaagent:target/condensed-data.jar=start,rotating,max-size=100k,max-files=3,new-names,recording.cjfr
+```
+
+The same agent can be attached to an already-running JVM via the `agent` CLI command
+(TARGET is a PID, a main-class name filter, or `all`):
+```shell
+java -jar target/condensed-data.jar agent <PID> start rotating max-size=100k max-files=3 new-names recording.cjfr
+java -jar target/condensed-data.jar agent <PID> status
+java -jar target/condensed-data.jar agent <PID> stop
 ```
 
 Third-party Bug Hunting

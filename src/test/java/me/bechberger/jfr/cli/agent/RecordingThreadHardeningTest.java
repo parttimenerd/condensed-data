@@ -349,6 +349,158 @@ public class RecordingThreadHardeningTest {
     }
 
     // -------------------------------------------------------------------------
+    // Test: size-based rotation actually fires on compressible data
+    // (regression: estimateSize() reported near-zero mid-block, so --max-size
+    //  never triggered a rotation)
+    // -------------------------------------------------------------------------
+
+    /**
+     * Drives a real in-process recording with a tiny {@code --max-size} and no duration trigger,
+     * generating enough allocation/GC load that many events are recorded. Before the fix the size
+     * trigger compared the compressor's near-zero flushed byte count against --max-size and never
+     * rotated (only 1 file). After the fix it estimates the on-disk size and rotates, producing
+     * several files.
+     */
+    @Test
+    @Timeout(60)
+    public void testSizeBasedRotationProducesMultipleFiles() throws Exception {
+        Path tmp = Files.createTempDirectory("rrt-size-rotate-");
+        tmp.toFile().deleteOnExit();
+
+        // 8KB max-size, up to 50 files (so none are evicted), no duration trigger.
+        var settings = rotatingSettings(Duration.ZERO, 8 * 1024, 50);
+        settings.newNames = true;
+
+        var thread =
+                new RotatingRecordingThread(
+                        tmp.resolve("rec_$index.cjfr").toString(),
+                        Configuration.DEFAULT,
+                        false,
+                        "default",
+                        "",
+                        () -> {},
+                        settings);
+
+        var runner = new Thread(thread, "test-rotating-runner");
+        runner.setDaemon(true);
+        runner.start();
+
+        generateJfrLoad(Duration.ofSeconds(8));
+
+        thread.stop();
+        runner.join(10_000);
+
+        var files = Files.list(tmp).filter(p -> p.toString().endsWith(".cjfr")).toList();
+        assertThat(files.size())
+                .as("size-based rotation must produce multiple files, got: %s", files)
+                .isGreaterThanOrEqualTo(2);
+        for (var f : files) {
+            assertThat(Files.size(f))
+                    .as("rotated file %s must not be empty", f.getFileName())
+                    .isGreaterThan(0);
+        }
+    }
+
+    /**
+     * maxFiles must be enforced under size-based rotation: with a tiny max-size and maxFiles=3, the
+     * ring buffer keeps at most 3 files even though many rotations happen.
+     */
+    @Test
+    @Timeout(60)
+    public void testSizeBasedRotationEnforcesMaxFiles() throws Exception {
+        Path tmp = Files.createTempDirectory("rrt-size-maxfiles-");
+        tmp.toFile().deleteOnExit();
+
+        var settings = rotatingSettings(Duration.ZERO, 8 * 1024, 3);
+        settings.newNames = true;
+
+        var thread =
+                new RotatingRecordingThread(
+                        tmp.resolve("rec_$index.cjfr").toString(),
+                        Configuration.DEFAULT,
+                        false,
+                        "default",
+                        "",
+                        () -> {},
+                        settings);
+
+        var runner = new Thread(thread, "test-rotating-runner-maxfiles");
+        runner.setDaemon(true);
+        runner.start();
+
+        generateJfrLoad(Duration.ofSeconds(8));
+
+        thread.stop();
+        runner.join(10_000);
+
+        var files = Files.list(tmp).filter(p -> p.toString().endsWith(".cjfr")).toList();
+        assertThat(files.size())
+                .as(
+                        "retained file count must not exceed maxFiles under size rotation, got: %s",
+                        files)
+                .isLessThanOrEqualTo(3);
+    }
+
+    /**
+     * With --max-size unset (0) and no duration trigger, size-based rotation must NOT fire — a
+     * single file grows unbounded. Guards against the fix over-rotating when no size limit is set.
+     */
+    @Test
+    @Timeout(30)
+    public void testNoSizeLimitDoesNotRotateBySize() throws Exception {
+        Path tmp = Files.createTempDirectory("rrt-no-size-");
+        tmp.toFile().deleteOnExit();
+
+        // No size and no duration is invalid for rotating mode, so give a long duration trigger
+        // that will not fire during the short load window.
+        var settings = rotatingSettings(Duration.ofHours(1), 0, 50);
+        settings.newNames = true;
+
+        var thread =
+                new RotatingRecordingThread(
+                        tmp.resolve("rec_$index.cjfr").toString(),
+                        Configuration.DEFAULT,
+                        false,
+                        "default",
+                        "",
+                        () -> {},
+                        settings);
+
+        var runner = new Thread(thread, "test-rotating-runner-nosize");
+        runner.setDaemon(true);
+        runner.start();
+
+        generateJfrLoad(Duration.ofSeconds(4));
+
+        thread.stop();
+        runner.join(10_000);
+
+        var files = Files.list(tmp).filter(p -> p.toString().endsWith(".cjfr")).toList();
+        assertThat(files.size())
+                .as(
+                        "with no size limit and a far-off duration trigger, only one file is"
+                                + " written, got: %s",
+                        files)
+                .isEqualTo(1);
+    }
+
+    /** Generate allocation + GC + sleep load so the JFR default config records many events. */
+    private static void generateJfrLoad(Duration duration) throws InterruptedException {
+        long end = System.nanoTime() + duration.toNanos();
+        var sink = new ArrayList<byte[]>();
+        while (System.nanoTime() < end) {
+            for (int i = 0; i < 2_000; i++) {
+                sink.add(new byte[1024]);
+            }
+            if (sink.size() > 20_000) {
+                sink.subList(0, 10_000).clear();
+                System.gc();
+            }
+            Thread.sleep(10);
+        }
+    }
+
+    // -------------------------------------------------------------------------
     // Test: RotatingRecordingThread.deleteOldestFileIfNeeded handles
     // NoSuchFileException without leaving stale entries
     // -------------------------------------------------------------------------

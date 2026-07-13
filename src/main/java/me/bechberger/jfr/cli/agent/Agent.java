@@ -6,7 +6,7 @@ import me.bechberger.femtocli.annotations.Command;
 import me.bechberger.jfr.cli.agent.commands.*;
 
 @Command(
-        name = "-javaagent:condensed-agent.jar",
+        name = "agent",
         description = "Agent for recording condensed JFR files",
         subcommands = {
             StartCommand.class,
@@ -28,7 +28,7 @@ public class Agent implements Runnable {
 
     @Override
     public void run() {
-        spec.usage(AgentIO.getAgentInstance().createPrintStream());
+        spec.usage();
     }
 
     public static void agentmain(String agentArgs, java.lang.instrument.Instrumentation inst) {

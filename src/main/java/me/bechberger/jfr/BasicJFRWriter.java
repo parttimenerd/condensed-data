@@ -952,6 +952,16 @@ public class BasicJFRWriter {
         return out.estimateSize();
     }
 
+    /** Predicted on-disk (compressed) size without forcing a flush. */
+    public long estimateOnDiskSize() {
+        return out.estimateOnDiskSize();
+    }
+
+    /** Flush buffered bytes through the compressor so {@link #estimateSize()} is accurate. */
+    public void flush() {
+        out.flush();
+    }
+
     public Duration getDuration() {
         return universe.getDuration();
     }

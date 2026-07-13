@@ -144,7 +144,22 @@ public class AgentCommandTest {
     }
 
     @Test
-    @Disabled
+    public void rewriteAgentUsage_rootSynopsis() {
+        String out = "Usage: java -javaagent:condensed-agent.jar='[COMMAND]'\nOptions:\n";
+        String rewritten = AgentCommand.rewriteAgentUsage(out, 1234);
+        assertThat(rewritten).contains("Usage: cjfr agent 1234 [COMMAND]");
+        assertThat(rewritten).doesNotContain("-javaagent:condensed-agent.jar");
+    }
+
+    @Test
+    public void rewriteAgentUsage_subcommandSynopsis() {
+        String out = "Usage: agent,start,[hV],[config=<jfrConfig>],[PATH]\nOptions:\n";
+        String rewritten = AgentCommand.rewriteAgentUsage(out, 1234);
+        assertThat(rewritten).contains("Usage: cjfr agent 1234 start");
+        assertThat(rewritten).doesNotContain("Usage: agent,start");
+    }
+
+    @Test
     public void testHelpCommand() throws Exception {
         try (var jvm = new WithRunningJVM()) {
             var res = new CommandExecuter("agent", jvm.pid() + "", "help").checkNoError().run();

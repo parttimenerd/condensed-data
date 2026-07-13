@@ -167,6 +167,67 @@ public class CondensedOutputStreamTest {
         // If we reach here, the sentinel was detected and reading stopped cleanly
     }
 
+    /**
+     * With LZ4 compression the compressor buffers a whole block before flushing, so {@link
+     * CondensedOutputStream#estimateSize()} (bytes actually written to the underlying stream)
+     * reports ~0 mid-block even after a lot of data has been written. This is why size-based
+     * rotation never fired: the trigger compared this near-zero flushed count against --max-size.
+     *
+     * <p>{@link CondensedOutputStream#estimateOnDiskSize()} must instead predict the on-disk size
+     * from the uncompressed byte count and the observed compression ratio, so it grows as data is
+     * written even before a flush. {@link CondensedOutputStream#flush()} must push buffered bytes
+     * through the compressor so {@code estimateSize()} then reflects real on-disk bytes.
+     */
+    @Test
+    public void testEstimateOnDiskSizeGrowsAndFlushMaterializesBytes() {
+        var baos = new ByteArrayOutputStream();
+        var out =
+                new CondensedOutputStream(
+                        baos, StartMessage.DEFAULT.compress(Compression.LZ4FRAMED));
+        out.enableFullStatistics();
+
+        // Write 200 KB of highly compressible data (all zero bytes).
+        byte[] chunk = new byte[4096];
+        for (int i = 0; i < 50; i++) {
+            out.write(chunk);
+        }
+
+        long uncompressed = out.getUncompressedBytes();
+        assertTrue(
+                uncompressed >= 200_000,
+                "Should have recorded ~200KB uncompressed, got " + uncompressed);
+
+        // Before a flush, LZ4 buffers the block, so estimateSize() (flushed on-disk bytes) is tiny.
+        long flushedBefore = out.estimateSize();
+
+        // The on-disk *estimate* must be non-trivial (it grows with the data), not ~0.
+        long estimate = out.estimateOnDiskSize();
+        assertTrue(
+                estimate > flushedBefore,
+                "estimateOnDiskSize ("
+                        + estimate
+                        + ") must exceed the flushed on-disk count ("
+                        + flushedBefore
+                        + ") mid-block");
+        assertTrue(
+                estimate > 0 && estimate <= uncompressed,
+                "estimateOnDiskSize ("
+                        + estimate
+                        + ") must be >0 and <= uncompressed ("
+                        + uncompressed
+                        + ")");
+
+        // A flush must materialize buffered bytes so estimateSize() now reflects real on-disk size.
+        out.flush();
+        long flushedAfter = out.estimateSize();
+        assertTrue(
+                flushedAfter > flushedBefore,
+                "flush() must push buffered bytes to disk: flushed before="
+                        + flushedBefore
+                        + " after="
+                        + flushedAfter);
+    }
+
     private static String bytesToHex(byte[] bytes, int from, int to) {
         var sb = new StringBuilder();
         for (int i = from; i < to; i++) {

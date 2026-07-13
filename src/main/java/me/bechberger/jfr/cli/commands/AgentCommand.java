@@ -357,10 +357,7 @@ public class AgentCommand implements Callable<Integer> {
             while (true) {
                 String out = agentIO.readOutput();
                 if (out != null) {
-                    System.out.print(
-                            out.replace(
-                                    "Usage: -javaagent:condensed-agent.jar [COMMAND]",
-                                    "Usage: cjfr agent " + pid + " [COMMAND]"));
+                    System.out.print(rewriteAgentUsage(out, pid));
                     idlePolls = 0;
                 } else {
                     idlePolls++;
@@ -405,5 +402,19 @@ public class AgentCommand implements Callable<Integer> {
             }
         }
         return exitCode < 0 ? 1 : exitCode;
+    }
+
+    /**
+     * Rewrites the agent's own usage synopsis (as printed by the in-process agent CLI) into the
+     * attach-mode form the user actually typed. The agent renders its root synopsis from a {@code
+     * customSynopsis} and its subcommand synopsis as a comma-joined path rooted at the {@code
+     * "agent"} command name; both are rewritten to {@code "cjfr agent <pid> ..."}.
+     */
+    static String rewriteAgentUsage(String out, int pid) {
+        String prefix = "cjfr agent " + pid;
+        return out.replace(
+                        "Usage: java -javaagent:condensed-agent.jar='[COMMAND]'",
+                        "Usage: " + prefix + " [COMMAND]")
+                .replace("Usage: agent,", "Usage: " + prefix + " ");
     }
 }

@@ -40,6 +40,9 @@ public class CondensedOutputStream extends OutputStream {
 
     private boolean closed = false;
 
+    /** Uncompressed byte count observed at the most recent {@link #flush()} (0 = never flushed). */
+    private volatile long uncompressedAtLastFlush = 0;
+
     public CondensedOutputStream(OutputStream outputStream, StartMessage startMessage) {
         this(outputStream, startMessage, new Universe());
     }
@@ -433,9 +436,56 @@ public class CondensedOutputStream extends OutputStream {
         return reductions;
     }
 
-    /** Estimates the size of the currently written file in bytes */
+    /**
+     * Real on-disk size in bytes: the count of bytes already flushed through the compressor to the
+     * underlying stream. With block-buffered compression (LZ4FRAMED) this stays near zero until a
+     * block completes or {@link #flush()} is called, so it under-reports the logical size
+     * mid-block. Use {@link #estimateOnDiskSize()} for a size that grows with the data.
+     */
     public long estimateSize() {
         return underlyingCountingStream.writtenBytes();
+    }
+
+    /** Total uncompressed bytes recorded so far (pre-compression logical size). */
+    public long getUncompressedBytes() {
+        return statistic.getBytes();
+    }
+
+    /**
+     * Predicts the on-disk (compressed) size without forcing a flush, by scaling the uncompressed
+     * byte count by the compression ratio observed at the last flush ({@code flushedBytes /
+     * uncompressedAtLastFlush}). Before the first flush the ratio is unknown, so we assume 1.0
+     * (incompressible) — a conservative over-estimate that avoids under-rotating. Callers that need
+     * an exact number near a boundary should {@link #flush()} first, then read {@link
+     * #estimateSize()}.
+     */
+    public long estimateOnDiskSize() {
+        long uncompressed = statistic.getBytes();
+        long flushed = underlyingCountingStream.writtenBytes();
+        if (uncompressedAtLastFlush <= 0 || flushed <= 0) {
+            // No flush observed yet — assume incompressible (ratio 1.0).
+            return uncompressed;
+        }
+        double ratio = (double) flushed / (double) uncompressedAtLastFlush;
+        return Math.round(uncompressed * ratio);
+    }
+
+    /**
+     * Flushes buffered bytes through the compression layer to the underlying stream so {@link
+     * #estimateSize()} reflects the real on-disk size, and refreshes the observed compression ratio
+     * used by {@link #estimateOnDiskSize()}. No-op once closed.
+     */
+    @Override
+    public void flush() {
+        if (closed) {
+            return;
+        }
+        try {
+            outputStream.flush();
+        } catch (IOException e) {
+            throw new RIOException("Can't flush compression stream", e);
+        }
+        uncompressedAtLastFlush = statistic.getBytes();
     }
 
     /** Raw, pre-compression sink. Only safe to use after close() has flushed the compressor. */
