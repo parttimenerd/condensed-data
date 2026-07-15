@@ -337,7 +337,7 @@ public class AgentCommand implements Callable<Integer> {
                                                         .toURI())
                                         .getPath())
                         .toAbsolutePath();
-        if (path.endsWith(".jar")) {
+        if (path.toString().endsWith(".jar")) {
             return path;
         }
         // we are running in the IDE, so return the condensed-data.jar from the folder
