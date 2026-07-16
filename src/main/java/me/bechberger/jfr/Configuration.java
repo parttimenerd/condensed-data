@@ -64,7 +64,7 @@ public record Configuration(
                     false,
                     true, // combineG1HeapRegionTypeChangeEvents: lossless struct-array grouping
                     false,
-                    false,
+                    true, // dropGCWorkerThreadFromGCPhaseParallel: osName derivable from gcWorkerId
                     10L);
 
     /** with conservative lossy compression */

@@ -576,14 +576,13 @@ public class JFREventCombinerTest {
     }
 
     /**
-     * In reduced-default the per-worker eventThread reference is low-value (worker durations are
-     * effectively always zero), so the GCWorker struct must omit it entirely. In default/lossless
-     * the thread must still be present (no data loss). We detect the field's presence via the
-     * write-statistics tree: a java.lang.Thread node under the combined GCPhaseParallel node means
-     * the thread field was written.
+     * The per-worker eventThread for GCPhaseParallel is always "GC Thread#{gcWorkerId}", making it
+     * derivable from gcWorkerId and pure redundancy. All presets drop it from the GCWorker struct.
+     * We detect the field's absence via the write-statistics tree: zero Thread bytes under the
+     * combined GCPhaseParallel node means the thread field was omitted.
      */
     @Test
-    public void testGCPhaseParallelDropsWorkerThreadOnlyInReducedMode() {
+    public void testGCPhaseParallelDropsWorkerThreadInAllPresets() {
         Runnable gc =
                 () -> {
                     for (int i = 0; i < 10; i++) {
@@ -596,30 +595,23 @@ public class JFREventCombinerTest {
                         "jdk.GCPhaseParallel",
                         new CombinerAndReconstitutor("jdk.combined.GCPhaseParallel"));
 
-        EventWriteTree[] defaultRoot = new EventWriteTree[1];
-        runJFRWithCombinerCapturingStats(
-                combiners,
-                Configuration.DEFAULT
-                        .withCombineEventsWithoutDataLoss(true)
-                        .withCombinePLABPromotionEvents(false),
-                gc,
-                defaultRoot);
-        EventWriteTree defaultCombined = findNode(defaultRoot[0], "jdk.combined.GCPhaseParallel");
-        assertNotNull(defaultCombined, "default: combined node present");
-        assertTrue(
-                sumBytesForCause(defaultCombined, "java.lang.Thread") > 0,
-                "default mode must still write the per-worker eventThread (no data loss)");
-
-        EventWriteTree[] reducedRootHolder = new EventWriteTree[1];
-        runJFRWithCombinerCapturingStats(
-                combiners, Configuration.REDUCED_DEFAULT, gc, reducedRootHolder);
-        EventWriteTree reducedCombined =
-                findNode(reducedRootHolder[0], "jdk.combined.GCPhaseParallel");
-        assertNotNull(reducedCombined, "reduced: combined node present");
-        assertEquals(
-                0,
-                sumBytesForCause(reducedCombined, "java.lang.Thread"),
-                "reduced-default must drop the per-worker eventThread from the GCWorker struct");
+        for (var config :
+                List.of(
+                        Configuration.DEFAULT
+                                .withCombineEventsWithoutDataLoss(true)
+                                .withCombinePLABPromotionEvents(false),
+                        Configuration.REDUCED_DEFAULT)) {
+            EventWriteTree[] rootHolder = new EventWriteTree[1];
+            runJFRWithCombinerCapturingStats(combiners, config, gc, rootHolder);
+            EventWriteTree combined = findNode(rootHolder[0], "jdk.combined.GCPhaseParallel");
+            assertNotNull(combined, config.name() + ": combined node present");
+            assertEquals(
+                    0,
+                    sumBytesForCause(combined, "java.lang.Thread"),
+                    config.name()
+                            + ": per-worker eventThread must be dropped (derivable from"
+                            + " gcWorkerId)");
+        }
     }
 
     /** Depth-first search for the first node whose cause name equals {@code causeName}. */
