@@ -53,6 +53,7 @@ public record Configuration(
                     -1,
                     true,
                     true,
+                    true, // combinePLABPromotionEvents: lossless, groups 50k+ events per GC id
                     false,
                     false,
                     false,
@@ -61,8 +62,7 @@ public record Configuration(
                     false,
                     false,
                     false,
-                    false,
-                    false,
+                    true, // combineG1HeapRegionTypeChangeEvents: lossless struct-array grouping
                     false,
                     false,
                     10L);
@@ -77,7 +77,6 @@ public record Configuration(
                     .withIgnoreZeroSizedTenuredAges(true)
                     .withIgnoreTooShortGCPauses(true)
                     .withRemoveBCIAndLineNumberFromStackFrames(true)
-                    .withCombinePLABPromotionEvents(true)
                     .withRemoveUnnecessaryAddresses(true)
                     .withMaxStackTraceDepth(32);
 
@@ -90,7 +89,6 @@ public record Configuration(
                     .withRemoveTypeInformationFromStackFrames(true)
                     .withMaxStackTraceDepth(16)
                     .withCombineExceptionEvents(true)
-                    .withCombineG1HeapRegionTypeChangeEvents(true)
                     .withCombineBlockingEvents(true)
                     .withDropGCWorkerThreadFromGCPhaseParallel(true);
 

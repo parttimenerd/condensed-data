@@ -44,7 +44,8 @@ public class ConfigurationTest {
                 Configuration.DEFAULT
                         .withCombinePLABPromotionEvents(false)
                         .withCombineObjectAllocationSampleEvents(false)
-                        .withCombineEventsWithoutDataLoss(false);
+                        .withCombineEventsWithoutDataLoss(false)
+                        .withCombineG1HeapRegionTypeChangeEvents(false);
         assertFalse(config.eventCombinersEnabled());
     }
 
