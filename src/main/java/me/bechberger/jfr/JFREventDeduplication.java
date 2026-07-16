@@ -34,9 +34,9 @@ public class JFREventDeduplication extends EventDeduplication {
                     "jdk.CompilerConfiguration");
 
     /**
-     * Returns a stable, value-based string key from a field. JFR RecordedObject uses
-     * identity-based equals/hashCode, so complex-type fields cannot be used as HashMap keys
-     * directly. Using toString() gives a stable representation across JFR chunks.
+     * Returns a stable, value-based string key from a field. JFR RecordedObject uses identity-based
+     * equals/hashCode, so complex-type fields cannot be used as HashMap keys directly. Using
+     * toString() gives a stable representation across JFR chunks.
      */
     private static String stableKey(RecordedEvent event, String field) {
         var value = event.getValue(field);

@@ -2159,6 +2159,14 @@ public class JFREventCombiner extends EventCombiner {
                                 .createCombiner(configuration, basicJFRWriter, gcIdPerTimestamp));
             }
         }
+        if (configuration.combineThreadParkLossless() && !configuration.combineBlockingEvents()) {
+            if (eventType.getName().equals("jdk.ThreadPark")) {
+                put(
+                        eventType,
+                        CombinerSpec.Specs.threadParkLossless()
+                                .createCombiner(configuration, basicJFRWriter, gcIdPerTimestamp));
+            }
+        }
     }
 
     private static final Map<
@@ -2233,6 +2241,9 @@ public class JFREventCombiner extends EventCombiner {
                 CombinedEventType.JAVA_ERROR_THROW,
                 CombinerSpec.Specs.javaExceptionThrow("jdk.JavaErrorThrow").createReconstitutor());
         m.put(CombinedEventType.THREAD_PARK, CombinerSpec.Specs.threadPark().createReconstitutor());
+        m.put(
+                CombinedEventType.THREAD_PARK_LOSSLESS,
+                CombinerSpec.Specs.threadParkLossless().createReconstitutor());
         m.put(
                 CombinedEventType.THREAD_SLEEP,
                 CombinerSpec.Specs.threadSleep().createReconstitutor());

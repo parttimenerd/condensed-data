@@ -74,6 +74,12 @@ public class CombinerSpec {
             return new CollectStructArray(structName, Set.of(skipFields));
         }
 
+        /** Collect events as structs in an array with explicit field list (preserves eventThread) */
+        static CollectNamedStructArray collectNamedStructArray(
+                String structName, String... fieldNames) {
+            return new CollectNamedStructArray(structName, List.of(fieldNames));
+        }
+
         /** Store a struct with specified fields per key, last struct wins */
         static StructValue struct(String structName, String... fieldNames) {
             return new StructValue(structName, List.of(fieldNames));
@@ -108,6 +114,16 @@ public class CombinerSpec {
         CollectStructArray(String structName, Set<String> skipFields) {
             this.structName = structName;
             this.skipFields = skipFields;
+        }
+    }
+
+    static final class CollectNamedStructArray implements ValueDef {
+        final String structName;
+        final List<String> fieldNames;
+
+        CollectNamedStructArray(String structName, List<String> fieldNames) {
+            this.structName = structName;
+            this.fieldNames = fieldNames;
         }
     }
 
@@ -164,6 +180,7 @@ public class CombinerSpec {
     private ValueDef valueDef;
     private MapEntryReconstitutor mapEntryReconstitutor;
     private FullReconstitutor fullReconstitutor;
+    private String combinedEventTypeNameOverride;
 
     @SuppressWarnings("rawtypes")
     private Function mapToListTransform;
@@ -174,6 +191,9 @@ public class CombinerSpec {
 
     // Custom key value extractor (for special extractions like getLong)
     private Function<RecordedEvent, ?> customKeyExtractor;
+
+    // Use reference embedding for the map key (allows null keys)
+    private boolean keyByReference = false;
 
     // Custom value type creator (for special types like duration)
     @SuppressWarnings("rawtypes")
@@ -228,6 +248,12 @@ public class CombinerSpec {
         return this;
     }
 
+    /** Use reference embedding for the map key, enabling null keys (e.g. nullable JFR fields). */
+    public CombinerSpec keyByReference() {
+        this.keyByReference = true;
+        return this;
+    }
+
     /** Override value type creation. */
     @SuppressWarnings("rawtypes")
     public CombinerSpec valueType(BiFunction customValueTypeCreator) {
@@ -267,7 +293,16 @@ public class CombinerSpec {
     }
 
     public String getCombinedEventTypeName() {
+        if (combinedEventTypeNameOverride != null) {
+            return combinedEventTypeNameOverride;
+        }
         return originalEventTypeName.replace("jdk.", "jdk.combined.");
+    }
+
+    /** Override the combined event type name (e.g. when two specs cover the same original type). */
+    public CombinerSpec combinedName(String name) {
+        this.combinedEventTypeNameOverride = name;
+        return this;
     }
 
     public GroupingStrategy getGrouping() {
@@ -285,7 +320,8 @@ public class CombinerSpec {
                 mapToListTransform != null
                         ? mapToListTransform
                         : map -> new ArrayList<>(map.entrySet());
-        return new MapValue(key, value, toList);
+        var mapValue = new MapValue(key, value, toList);
+        return keyByReference ? mapValue.withKeyByReference() : mapValue;
     }
 
     @SuppressWarnings({"unchecked", "rawtypes"})
@@ -337,6 +373,23 @@ public class CombinerSpec {
                                                                             id,
                                                                             csa.structName,
                                                                             csa.skipFields)),
+                            e -> e));
+        } else if (valueDef instanceof CollectNamedStructArray) {
+            CollectNamedStructArray cnsa = (CollectNamedStructArray) valueDef;
+            return new ArrayValue<>(
+                    new MapPartValue<RecordedEvent, RecordedEvent>(
+                            valueFieldName,
+                            (out, eventType) ->
+                                    (CondensedType)
+                                            writer.getOutputStream()
+                                                    .writeAndStoreType(
+                                                            id ->
+                                                                    buildNamedStruct(
+                                                                            writer,
+                                                                            eventType,
+                                                                            id,
+                                                                            cnsa.structName,
+                                                                            cnsa.fieldNames)),
                             e -> e));
         } else if (valueDef instanceof StructValue) {
             StructValue sv = (StructValue) valueDef;
@@ -639,6 +692,16 @@ public class CombinerSpec {
                                     return builder.build();
                                 })
                         .toList();
+            } else if (valueDef instanceof CollectNamedStructArray) {
+                List<?> structs = (List<?>) entry.getValue();
+                return structs.stream()
+                        .map(
+                                v -> {
+                                    builder.put(keyFieldName, entry.getKey());
+                                    copyStructFields(builder, (ReadStruct) v);
+                                    return builder.build();
+                                })
+                        .toList();
             } else if (valueDef instanceof StructValue) {
                 StructValue sv = (StructValue) valueDef;
                 builder.put(keyFieldName, entry.getKey());
@@ -798,9 +861,27 @@ public class CombinerSpec {
 
         // --- combineBlockingEvents ---
 
+        static CombinerSpec threadParkLossless() {
+            return CombinerSpec.nextGcIdBased("jdk.ThreadPark")
+                    .combinedName("jdk.combined.ThreadParkLossless")
+                    .mapKeyValue(
+                            "parkedClass",
+                            "occurrences",
+                            ValueDef.collectNamedStructArray(
+                                    "ThreadParkOccurrence",
+                                    "duration",
+                                    "eventThread",
+                                    "stackTrace",
+                                    "timeout",
+                                    "until",
+                                    "address"))
+                    .keyByReference();
+        }
+
         static CombinerSpec threadPark() {
             return CombinerSpec.nextGcIdBased("jdk.ThreadPark")
                     .mapKeyValue("parkedClass", "count", ValueDef.countEvents())
+                    .keyByReference()
                     .reconstitute(
                             new MapEntryReconstitutor() {
                                 @Override

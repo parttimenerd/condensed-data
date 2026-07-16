@@ -38,6 +38,7 @@ public record Configuration(
         boolean combineExceptionEvents,
         boolean combineG1HeapRegionTypeChangeEvents,
         boolean combineBlockingEvents,
+        boolean combineThreadParkLossless,
         boolean dropGCWorkerThreadFromGCPhaseParallel,
         long cpuBucketSeconds)
         implements Comparable<Configuration> {
@@ -64,6 +65,7 @@ public record Configuration(
                     false,
                     true, // combineG1HeapRegionTypeChangeEvents: lossless struct-array grouping
                     false,
+                    true, // combineThreadParkLossless: lossless struct-array grouping by parkedClass
                     true, // dropGCWorkerThreadFromGCPhaseParallel: osName derivable from gcWorkerId
                     10L);
 
@@ -126,6 +128,7 @@ public record Configuration(
                 sumObjectSizes,
                 ignoreZeroSizedTenuredAges,
                 ignoreTooShortGCPauses,
+                false,
                 false,
                 false,
                 false,
@@ -245,6 +248,10 @@ public record Configuration(
         return withFieldValue("combineBlockingEvents", combineBlockingEvents);
     }
 
+    public Configuration withCombineThreadParkLossless(boolean combineThreadParkLossless) {
+        return withFieldValue("combineThreadParkLossless", combineThreadParkLossless);
+    }
+
     public Configuration withCpuBucketSeconds(long cpuBucketSeconds) {
         return withFieldValue("cpuBucketSeconds", cpuBucketSeconds);
     }
@@ -286,7 +293,8 @@ public record Configuration(
                 || combineEventsWithoutDataLoss
                 || combineExceptionEvents
                 || combineG1HeapRegionTypeChangeEvents
-                || combineBlockingEvents;
+                || combineBlockingEvents
+                || combineThreadParkLossless;
     }
 
     @Override
