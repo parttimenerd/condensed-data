@@ -194,6 +194,10 @@ public class CombinerSpec {
     // Custom key value extractor (for special extractions like getLong)
     private Function<RecordedEvent, ?> customKeyExtractor;
 
+    // Struct key: field names to include in the key struct (null = use keyFieldName as scalar)
+    private List<String> keyStructFieldNames;
+    private String keyStructName;
+
     // Use reference embedding for the map key (allows null keys)
     private boolean keyByReference = false;
 
@@ -247,6 +251,16 @@ public class CombinerSpec {
     /** Override key value extraction. */
     public CombinerSpec keyExtractor(Function<RecordedEvent, ?> extractor) {
         this.customKeyExtractor = extractor;
+        return this;
+    }
+
+    /**
+     * Use a struct as the map key instead of a scalar field. The struct contains the given fields
+     * from the event. Allows compound keys while keeping the key self-describing (no hash).
+     */
+    public CombinerSpec keyStructFields(String structName, String... fieldNames) {
+        this.keyStructName = structName;
+        this.keyStructFieldNames = List.of(fieldNames);
         return this;
     }
 
@@ -328,6 +342,22 @@ public class CombinerSpec {
 
     @SuppressWarnings({"unchecked", "rawtypes"})
     private MapPartValue<RecordedEvent, ?> buildKeyPart(BasicJFRWriter writer) {
+        if (keyStructFieldNames != null) {
+            List<String> fieldNames = keyStructFieldNames;
+            String structName = keyStructName;
+            BiFunction typeCreator =
+                    (BiFunction<CondensedOutputStream, EventType, CondensedType>)
+                            (out, et) ->
+                                    out.writeAndStoreType(
+                                            id ->
+                                                    buildNamedStruct(
+                                                            writer,
+                                                            et,
+                                                            id,
+                                                            structName,
+                                                            fieldNames));
+            return new MapPartValue(keyFieldName, typeCreator, e -> e);
+        }
         BiFunction typeCreator =
                 customKeyTypeCreator != null
                         ? customKeyTypeCreator
@@ -504,7 +534,8 @@ public class CombinerSpec {
             return new SpecMapEntryReconstitutor(
                     eventTypeName, keyFieldName, mapEntryReconstitutor);
         }
-        return new SpecDefaultReconstitutor(eventTypeName, keyFieldName, valueFieldName, valueDef);
+        return new SpecDefaultReconstitutor(
+                eventTypeName, keyFieldName, valueFieldName, valueDef, keyStructFieldNames != null);
     }
 
     // ======================== Inner Combiner Classes ========================
@@ -636,16 +667,19 @@ public class CombinerSpec {
         private final String keyFieldName;
         private final String valueFieldName;
         private final ValueDef valueDef;
+        private final boolean structKey;
 
         SpecDefaultReconstitutor(
                 String eventTypeName,
                 String keyFieldName,
                 String valueFieldName,
-                ValueDef valueDef) {
+                ValueDef valueDef,
+                boolean structKey) {
             super(eventTypeName);
             this.keyFieldName = keyFieldName;
             this.valueFieldName = valueFieldName;
             this.valueDef = valueDef;
+            this.structKey = structKey;
         }
 
         @Override
@@ -661,35 +695,47 @@ public class CombinerSpec {
 
         private <E> List<E> reconstituteEntry(EventBuilder<E, ?> builder, Entry<?, ?> entry) {
             if (valueDef instanceof FieldValue || valueDef instanceof SumLong) {
-                return List.of(
-                        builder.put(keyFieldName, entry.getKey())
-                                .put(valueFieldName, entry.getValue())
-                                .build());
+                if (structKey) {
+                    copyStructFields(builder, (ReadStruct) entry.getKey());
+                } else {
+                    builder.put(keyFieldName, entry.getKey());
+                }
+                return List.of(builder.put(valueFieldName, entry.getValue()).build());
             } else if (valueDef instanceof CountEvents) {
                 long count = ((Number) entry.getValue()).longValue();
                 List<E> events = new ArrayList<>();
                 for (long i = 0; i < count; i++) {
-                    events.add(
-                            builder.put(keyFieldName, entry.getKey())
-                                    .put(valueFieldName, entry.getValue())
-                                    .build());
+                    if (structKey) {
+                        copyStructFields(builder, (ReadStruct) entry.getKey());
+                    } else {
+                        builder.put(keyFieldName, entry.getKey());
+                    }
+                    events.add(builder.put(valueFieldName, entry.getValue()).build());
                 }
                 return events;
             } else if (valueDef instanceof CollectArray) {
                 List<?> values = (List<?>) entry.getValue();
                 return values.stream()
                         .map(
-                                v ->
-                                        builder.put(keyFieldName, entry.getKey())
-                                                .put(valueFieldName, v)
-                                                .build())
+                                v -> {
+                                    if (structKey) {
+                                        copyStructFields(builder, (ReadStruct) entry.getKey());
+                                    } else {
+                                        builder.put(keyFieldName, entry.getKey());
+                                    }
+                                    return builder.put(valueFieldName, v).build();
+                                })
                         .toList();
             } else if (valueDef instanceof CollectStructArray) {
                 List<?> structs = (List<?>) entry.getValue();
                 return structs.stream()
                         .map(
                                 v -> {
-                                    builder.put(keyFieldName, entry.getKey());
+                                    if (structKey) {
+                                        copyStructFields(builder, (ReadStruct) entry.getKey());
+                                    } else {
+                                        builder.put(keyFieldName, entry.getKey());
+                                    }
                                     copyStructFields(builder, (ReadStruct) v);
                                     return builder.build();
                                 })
@@ -699,21 +745,33 @@ public class CombinerSpec {
                 return structs.stream()
                         .map(
                                 v -> {
-                                    builder.put(keyFieldName, entry.getKey());
+                                    if (structKey) {
+                                        copyStructFields(builder, (ReadStruct) entry.getKey());
+                                    } else {
+                                        builder.put(keyFieldName, entry.getKey());
+                                    }
                                     copyStructFields(builder, (ReadStruct) v);
                                     return builder.build();
                                 })
                         .toList();
             } else if (valueDef instanceof StructValue) {
                 StructValue sv = (StructValue) valueDef;
-                builder.put(keyFieldName, entry.getKey());
+                if (structKey) {
+                    copyStructFields(builder, (ReadStruct) entry.getKey());
+                } else {
+                    builder.put(keyFieldName, entry.getKey());
+                }
                 ReadStruct data = (ReadStruct) entry.getValue();
                 for (var fieldName : sv.fieldNames) {
                     builder.put(fieldName, data.get(fieldName));
                 }
                 return List.of(builder.build());
             } else if (valueDef instanceof DynamicStructValue) {
-                builder.put(keyFieldName, entry.getKey());
+                if (structKey) {
+                    copyStructFields(builder, (ReadStruct) entry.getKey());
+                } else {
+                    builder.put(keyFieldName, entry.getKey());
+                }
                 copyStructFields(builder, (ReadStruct) entry.getValue());
                 return List.of(builder.build());
             }
@@ -855,10 +913,10 @@ public class CombinerSpec {
         static CombinerSpec g1HeapRegionTypeChange() {
             return CombinerSpec.nextGcIdBased("jdk.G1HeapRegionTypeChange")
                     .mapKeyValue(
-                            "index",
-                            "regionChange",
-                            ValueDef.collectStructArray("G1RegionChange", "index"))
-                    .keyExtractor(e -> e.getLong("index"));
+                            "regionTransition",
+                            "regionList",
+                            ValueDef.collectNamedStructArray("G1RegionEntry", "index", "used"))
+                    .keyStructFields("G1RegionTransition", "from", "to");
         }
 
         static CombinerSpec g1HeapRegionInformation() {

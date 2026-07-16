@@ -419,8 +419,10 @@ public class JFREventCombiner extends EventCombiner {
                                             JFRReduction.TIMESTAMP_REDUCTION.ordinal()),
                                     new Field<S, Object, Object>(
                                             topLevelFieldName,
-                                            basicJFRWriter.getDescription(
-                                                    eventType.getField(topLevelFieldName)),
+                                            eventType.getField(topLevelFieldName) != null
+                                                    ? basicJFRWriter.getDescription(
+                                                            eventType.getField(topLevelFieldName))
+                                                    : "",
                                             (CondensedType)
                                                     valueDefinition.createType(out, eventType),
                                             JFRObjectState::map)));
