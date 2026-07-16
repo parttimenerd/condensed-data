@@ -2046,6 +2046,18 @@ public class JFREventCombiner extends EventCombiner {
                                 configuration,
                                 basicJFRWriter));
             }
+            if (eventType.getName().equals("jdk.GCPhasePause")) {
+                put(
+                        eventType,
+                        new JFREventCombiner.GCPhasePauseLevelCombiner(
+                                "jdk.combined.GCPhasePause", configuration, basicJFRWriter));
+            }
+            if (eventType.getName().equals("jdk.GCPhaseConcurrent")) {
+                put(
+                        eventType,
+                        new JFREventCombiner.GCPhasePauseLevelCombiner(
+                                "jdk.combined.GCPhaseConcurrent", configuration, basicJFRWriter));
+            }
             if (eventType.getName().equals("jdk.GCPhaseParallel")) {
                 put(
                         eventType,
@@ -2103,65 +2115,69 @@ public class JFREventCombiner extends EventCombiner {
 
     private static final Map<
                     CombinedEventType, AbstractReconstitutor<? extends AbstractCombiner<?, ?>>>
-            recons =
-                    Map.ofEntries(
-                            Map.entry(
-                                    CombinedEventType.OBJECT_ALLOCATION_SAMPLE,
-                                    new ObjectAllocationSampleReconstitutor()),
-                            Map.entry(
-                                    CombinedEventType.OBJECT_ALLOCATION_IN_NEW_TLAB,
-                                    new BasicObjectAllocationReconstitutor(
-                                            "jdk.ObjectAllocationInNewTLAB")),
-                            Map.entry(
-                                    CombinedEventType.OBJECT_ALLOCATION_OUTSIDE_TLAB,
-                                    new BasicObjectAllocationReconstitutor(
-                                            "jdk.ObjectAllocationOutsideTLAB")),
-                            Map.entry(
-                                    CombinedEventType.PROMOTE_OBJECT_IN_NEW_PLAB,
-                                    new PromoteObjectReconstitutor("jdk.PromoteObjectInNewPLAB")),
-                            Map.entry(
-                                    CombinedEventType.PROMOTE_OBJECT_OUTSIDE_PLAB,
-                                    new PromoteObjectReconstitutor("jdk.PromoteObjectOutsidePLAB")),
-                            Map.entry(
-                                    CombinedEventType.GC_PHASE_PAUSE_LEVEL1,
-                                    new GCPhasePauseLevelReconstitutor("jdk.GCPhasePauseLevel1")),
-                            Map.entry(
-                                    CombinedEventType.GC_PHASE_PAUSE_LEVEL2,
-                                    new GCPhasePauseLevelReconstitutor("jdk.GCPhasePauseLevel2")),
-                            Map.entry(
-                                    CombinedEventType.GC_PHASE_PAUSE_LEVEL3,
-                                    new GCPhasePauseLevelReconstitutor("jdk.GCPhasePauseLevel3")),
-                            Map.entry(
-                                    CombinedEventType.GC_PHASE_PAUSE_LEVEL4,
-                                    new GCPhasePauseLevelReconstitutor("jdk.GCPhasePauseLevel4")),
-                            Map.entry(
-                                    CombinedEventType.GC_PHASE_CONCURRENT_LEVEL1,
-                                    new GCPhasePauseLevelReconstitutor(
-                                            "jdk.GCPhaseConcurrentLevel1")),
-                            Map.entry(
-                                    CombinedEventType.TENURING_DISTRIBUTION,
-                                    new TenuringDistributionReconstitutor()),
-                            Map.entry(
-                                    CombinedEventType.GC_PHASE_PARALLEL,
-                                    new GCPhaseParallelReconstitutor()),
-                            Map.entry(
-                                    CombinedEventType.GC_REFERENCE_STATISTICS,
-                                    new GCReferenceStatisticsReconstitutor()),
-                            Map.entry(
-                                    CombinedEventType.Z_STATISTICS_COUNTER,
-                                    new ZStatisticsReconstitutor("jdk.ZStatisticsCounter")),
-                            Map.entry(
-                                    CombinedEventType.Z_STATISTICS_SAMPLER,
-                                    new ZStatisticsReconstitutor("jdk.ZStatisticsSampler")),
-                            Map.entry(
-                                    CombinedEventType.OBJECT_COUNT,
-                                    new ObjectCountReconstitutor("jdk.ObjectCount")),
-                            Map.entry(
-                                    CombinedEventType.OBJECT_COUNT_AFTER_GC,
-                                    new ObjectCountReconstitutor("jdk.ObjectCountAfterGC")),
-                            Map.entry(
-                                    CombinedEventType.METASPACE_CHUNK_FREE_LIST_SUMMARY,
-                                    new MetaspaceChunkFreeListSummaryReconstitutor()));
+            recons;
+
+    static {
+        var m =
+                new HashMap<
+                        CombinedEventType,
+                        AbstractReconstitutor<? extends AbstractCombiner<?, ?>>>();
+        m.put(
+                CombinedEventType.OBJECT_ALLOCATION_SAMPLE,
+                new ObjectAllocationSampleReconstitutor());
+        m.put(
+                CombinedEventType.OBJECT_ALLOCATION_IN_NEW_TLAB,
+                new BasicObjectAllocationReconstitutor("jdk.ObjectAllocationInNewTLAB"));
+        m.put(
+                CombinedEventType.OBJECT_ALLOCATION_OUTSIDE_TLAB,
+                new BasicObjectAllocationReconstitutor("jdk.ObjectAllocationOutsideTLAB"));
+        m.put(
+                CombinedEventType.PROMOTE_OBJECT_IN_NEW_PLAB,
+                new PromoteObjectReconstitutor("jdk.PromoteObjectInNewPLAB"));
+        m.put(
+                CombinedEventType.PROMOTE_OBJECT_OUTSIDE_PLAB,
+                new PromoteObjectReconstitutor("jdk.PromoteObjectOutsidePLAB"));
+        m.put(
+                CombinedEventType.GC_PHASE_PAUSE_LEVEL1,
+                new GCPhasePauseLevelReconstitutor("jdk.GCPhasePauseLevel1"));
+        m.put(
+                CombinedEventType.GC_PHASE_PAUSE_LEVEL2,
+                new GCPhasePauseLevelReconstitutor("jdk.GCPhasePauseLevel2"));
+        m.put(
+                CombinedEventType.GC_PHASE_PAUSE_LEVEL3,
+                new GCPhasePauseLevelReconstitutor("jdk.GCPhasePauseLevel3"));
+        m.put(
+                CombinedEventType.GC_PHASE_PAUSE_LEVEL4,
+                new GCPhasePauseLevelReconstitutor("jdk.GCPhasePauseLevel4"));
+        m.put(
+                CombinedEventType.GC_PHASE_CONCURRENT_LEVEL1,
+                new GCPhasePauseLevelReconstitutor("jdk.GCPhaseConcurrentLevel1"));
+        m.put(
+                CombinedEventType.GC_PHASE_PAUSE,
+                new GCPhasePauseLevelReconstitutor("jdk.GCPhasePause"));
+        m.put(
+                CombinedEventType.GC_PHASE_CONCURRENT,
+                new GCPhasePauseLevelReconstitutor("jdk.GCPhaseConcurrent"));
+        m.put(CombinedEventType.TENURING_DISTRIBUTION, new TenuringDistributionReconstitutor());
+        m.put(CombinedEventType.GC_PHASE_PARALLEL, new GCPhaseParallelReconstitutor());
+        m.put(
+                CombinedEventType.GC_REFERENCE_STATISTICS,
+                new GCReferenceStatisticsReconstitutor());
+        m.put(
+                CombinedEventType.Z_STATISTICS_COUNTER,
+                new ZStatisticsReconstitutor("jdk.ZStatisticsCounter"));
+        m.put(
+                CombinedEventType.Z_STATISTICS_SAMPLER,
+                new ZStatisticsReconstitutor("jdk.ZStatisticsSampler"));
+        m.put(CombinedEventType.OBJECT_COUNT, new ObjectCountReconstitutor("jdk.ObjectCount"));
+        m.put(
+                CombinedEventType.OBJECT_COUNT_AFTER_GC,
+                new ObjectCountReconstitutor("jdk.ObjectCountAfterGC"));
+        m.put(
+                CombinedEventType.METASPACE_CHUNK_FREE_LIST_SUMMARY,
+                new MetaspaceChunkFreeListSummaryReconstitutor());
+        recons = Collections.unmodifiableMap(m);
+    }
 
     static Map<CombinedEventType, AbstractReconstitutor<? extends AbstractCombiner<?, ?>>>
             getRecons() {
