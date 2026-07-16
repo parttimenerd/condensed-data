@@ -827,11 +827,34 @@ def _detect_current_platform() -> str:
     return f"{os_name}/{arch}"
 
 
+_JAR_DEPENDENT_TESTS = ",".join([
+    "AgentCommandTest",
+    "AgentTest",
+    "BenchmarkCommandTest",
+    "BugReproducerTest",
+    "ChunkHeaderTest",
+    "CondenseCommandTest",
+    "CustomJFREventBreakingTest",
+    "ExitCodeTest",
+    "InflateCommandTest",
+    "InflateCorruptionTest",
+    "InflateIntegrityTest",
+    "InflateStartTimeDurationTest",
+    "MainCommandTest",
+    "ReconstitutedDurationTest",
+    "SummaryCommandTest",
+    "ViewCommandTest",
+    "WritingJFRReaderTest",
+])
+
+
 def _run_jar_tests(jar_path: str, inflaterless: bool) -> bool:
     """Run Maven tests against the given JAR.
 
     Uses system properties ``cjfr.test.jar`` and, when *inflaterless* is True,
     ``cjfr.test.inflaterless`` to configure the test harness.
+    Only runs tests that actually exercise the JAR via CommandExecuter/cjfr.test.jar;
+    pure unit tests are skipped here since they already ran in the main test step.
     Returns True on success.
     """
     jar_abs = os.path.abspath(jar_path)
@@ -846,6 +869,7 @@ def _run_jar_tests(jar_path: str, inflaterless: bool) -> bool:
     cmd = [
         "mvn", "test", "-pl", ".",
         *sys_props,
+        f"-Dtest={_JAR_DEPENDENT_TESTS}",
         "-q",
     ]
     result = subprocess.run(cmd, cwd=project_dir, capture_output=True, text=True)
