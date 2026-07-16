@@ -65,7 +65,8 @@ public record Configuration(
                     false,
                     true, // combineG1HeapRegionTypeChangeEvents: lossless struct-array grouping
                     false,
-                    true, // combineThreadParkLossless: lossless struct-array grouping by parkedClass
+                    true, // combineThreadParkLossless: lossless struct-array grouping by
+                    // parkedClass
                     true, // dropGCWorkerThreadFromGCPhaseParallel: osName derivable from gcWorkerId
                     10L);
 

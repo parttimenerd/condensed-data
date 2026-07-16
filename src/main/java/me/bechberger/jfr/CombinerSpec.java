@@ -74,7 +74,9 @@ public class CombinerSpec {
             return new CollectStructArray(structName, Set.of(skipFields));
         }
 
-        /** Collect events as structs in an array with explicit field list (preserves eventThread) */
+        /**
+         * Collect events as structs in an array with explicit field list (preserves eventThread)
+         */
         static CollectNamedStructArray collectNamedStructArray(
                 String structName, String... fieldNames) {
             return new CollectNamedStructArray(structName, List.of(fieldNames));
@@ -855,7 +857,16 @@ public class CombinerSpec {
                     .mapKeyValue(
                             "index",
                             "regionChange",
-                            ValueDef.collectStructArray("G1RegionChange", "index", "start"))
+                            ValueDef.collectStructArray("G1RegionChange", "index"))
+                    .keyExtractor(e -> e.getLong("index"));
+        }
+
+        static CombinerSpec g1HeapRegionInformation() {
+            return CombinerSpec.nextGcIdBased("jdk.G1HeapRegionInformation")
+                    .mapKeyValue(
+                            "index",
+                            "regionInfo",
+                            ValueDef.collectStructArray("G1RegionInfo", "index"))
                     .keyExtractor(e -> e.getLong("index"));
         }
 

@@ -2118,6 +2118,12 @@ public class JFREventCombiner extends EventCombiner {
                         CombinerSpec.Specs.g1HeapRegionTypeChange()
                                 .createCombiner(configuration, basicJFRWriter, gcIdPerTimestamp));
             }
+            if (eventType.getName().equals("jdk.G1HeapRegionInformation")) {
+                put(
+                        eventType,
+                        CombinerSpec.Specs.g1HeapRegionInformation()
+                                .createCombiner(configuration, basicJFRWriter, gcIdPerTimestamp));
+            }
         }
         if (configuration.combineExceptionEvents()) {
             if (eventType.getName().equals("jdk.JavaExceptionThrow")) {
@@ -2233,6 +2239,9 @@ public class JFREventCombiner extends EventCombiner {
         m.put(
                 CombinedEventType.G1_HEAP_REGION_TYPE_CHANGE,
                 CombinerSpec.Specs.g1HeapRegionTypeChange().createReconstitutor());
+        m.put(
+                CombinedEventType.G1_HEAP_REGION_INFORMATION,
+                CombinerSpec.Specs.g1HeapRegionInformation().createReconstitutor());
         m.put(
                 CombinedEventType.JAVA_EXCEPTION_THROW,
                 CombinerSpec.Specs.javaExceptionThrow("jdk.JavaExceptionThrow")
