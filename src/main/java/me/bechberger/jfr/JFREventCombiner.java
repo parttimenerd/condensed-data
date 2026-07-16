@@ -2111,6 +2111,36 @@ public class JFREventCombiner extends EventCombiner {
                                 basicJFRWriter));
             }
         }
+        if (configuration.combineG1HeapRegionTypeChangeEvents()) {
+            if (eventType.getName().equals("jdk.G1HeapRegionTypeChange")) {
+                put(
+                        eventType,
+                        CombinerSpec.Specs.g1HeapRegionTypeChange()
+                                .createCombiner(configuration, basicJFRWriter, gcIdPerTimestamp));
+            }
+        }
+        if (configuration.combineExceptionEvents()) {
+            if (eventType.getName().equals("jdk.JavaExceptionThrow")) {
+                put(
+                        eventType,
+                        CombinerSpec.Specs.javaExceptionThrow("jdk.JavaExceptionThrow")
+                                .createCombiner(configuration, basicJFRWriter, gcIdPerTimestamp));
+            }
+        }
+        if (configuration.combineBlockingEvents()) {
+            if (eventType.getName().equals("jdk.ThreadPark")) {
+                put(
+                        eventType,
+                        CombinerSpec.Specs.threadPark()
+                                .createCombiner(configuration, basicJFRWriter, gcIdPerTimestamp));
+            }
+            if (eventType.getName().equals("jdk.ThreadSleep")) {
+                put(
+                        eventType,
+                        CombinerSpec.Specs.threadSleep()
+                                .createCombiner(configuration, basicJFRWriter, gcIdPerTimestamp));
+            }
+        }
     }
 
     private static final Map<
@@ -2160,9 +2190,7 @@ public class JFREventCombiner extends EventCombiner {
                 new GCPhasePauseLevelReconstitutor("jdk.GCPhaseConcurrent"));
         m.put(CombinedEventType.TENURING_DISTRIBUTION, new TenuringDistributionReconstitutor());
         m.put(CombinedEventType.GC_PHASE_PARALLEL, new GCPhaseParallelReconstitutor());
-        m.put(
-                CombinedEventType.GC_REFERENCE_STATISTICS,
-                new GCReferenceStatisticsReconstitutor());
+        m.put(CombinedEventType.GC_REFERENCE_STATISTICS, new GCReferenceStatisticsReconstitutor());
         m.put(
                 CombinedEventType.Z_STATISTICS_COUNTER,
                 new ZStatisticsReconstitutor("jdk.ZStatisticsCounter"));
@@ -2176,6 +2204,19 @@ public class JFREventCombiner extends EventCombiner {
         m.put(
                 CombinedEventType.METASPACE_CHUNK_FREE_LIST_SUMMARY,
                 new MetaspaceChunkFreeListSummaryReconstitutor());
+        m.put(
+                CombinedEventType.G1_HEAP_REGION_TYPE_CHANGE,
+                CombinerSpec.Specs.g1HeapRegionTypeChange().createReconstitutor());
+        m.put(
+                CombinedEventType.JAVA_EXCEPTION_THROW,
+                CombinerSpec.Specs.javaExceptionThrow("jdk.JavaExceptionThrow")
+                        .createReconstitutor());
+        m.put(
+                CombinedEventType.THREAD_PARK,
+                CombinerSpec.Specs.threadPark().createReconstitutor());
+        m.put(
+                CombinedEventType.THREAD_SLEEP,
+                CombinerSpec.Specs.threadSleep().createReconstitutor());
         recons = Collections.unmodifiableMap(m);
     }
 
