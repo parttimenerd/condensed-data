@@ -842,5 +842,53 @@ public class CombinerSpec {
                                 }
                             });
         }
+
+        static CombinerSpec javaMonitorEnter() {
+            return CombinerSpec.nextGcIdBased("jdk.JavaMonitorEnter")
+                    .mapKeyValue("monitorClass", "count", ValueDef.countEvents())
+                    .reconstitute(
+                            new MapEntryReconstitutor() {
+                                @Override
+                                public <E> List<E> reconstitute(
+                                        EventBuilder<E, ?> builder, Object key, Object value) {
+                                    long count = ((Number) value).longValue();
+                                    List<E> events = new ArrayList<>(Math.toIntExact(count));
+                                    for (long i = 0; i < count; i++) {
+                                        events.add(
+                                                builder.put("monitorClass", key)
+                                                        .put("duration", 0L)
+                                                        .put("previousOwner", null)
+                                                        .put("address", 0L)
+                                                        .build());
+                                    }
+                                    return events;
+                                }
+                            });
+        }
+
+        static CombinerSpec javaMonitorWait() {
+            return CombinerSpec.nextGcIdBased("jdk.JavaMonitorWait")
+                    .mapKeyValue("monitorClass", "count", ValueDef.countEvents())
+                    .reconstitute(
+                            new MapEntryReconstitutor() {
+                                @Override
+                                public <E> List<E> reconstitute(
+                                        EventBuilder<E, ?> builder, Object key, Object value) {
+                                    long count = ((Number) value).longValue();
+                                    List<E> events = new ArrayList<>(Math.toIntExact(count));
+                                    for (long i = 0; i < count; i++) {
+                                        events.add(
+                                                builder.put("monitorClass", key)
+                                                        .put("duration", 0L)
+                                                        .put("notifier", null)
+                                                        .put("timeout", 0L)
+                                                        .put("timedOut", false)
+                                                        .put("address", 0L)
+                                                        .build());
+                                    }
+                                    return events;
+                                }
+                            });
+        }
     }
 }

@@ -2146,6 +2146,18 @@ public class JFREventCombiner extends EventCombiner {
                         CombinerSpec.Specs.threadSleep()
                                 .createCombiner(configuration, basicJFRWriter, gcIdPerTimestamp));
             }
+            if (eventType.getName().equals("jdk.JavaMonitorEnter")) {
+                put(
+                        eventType,
+                        CombinerSpec.Specs.javaMonitorEnter()
+                                .createCombiner(configuration, basicJFRWriter, gcIdPerTimestamp));
+            }
+            if (eventType.getName().equals("jdk.JavaMonitorWait")) {
+                put(
+                        eventType,
+                        CombinerSpec.Specs.javaMonitorWait()
+                                .createCombiner(configuration, basicJFRWriter, gcIdPerTimestamp));
+            }
         }
     }
 
@@ -2224,6 +2236,12 @@ public class JFREventCombiner extends EventCombiner {
         m.put(
                 CombinedEventType.THREAD_SLEEP,
                 CombinerSpec.Specs.threadSleep().createReconstitutor());
+        m.put(
+                CombinedEventType.JAVA_MONITOR_ENTER,
+                CombinerSpec.Specs.javaMonitorEnter().createReconstitutor());
+        m.put(
+                CombinedEventType.JAVA_MONITOR_WAIT,
+                CombinerSpec.Specs.javaMonitorWait().createReconstitutor());
         recons = Collections.unmodifiableMap(m);
     }
 

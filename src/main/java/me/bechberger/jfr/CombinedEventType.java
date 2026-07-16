@@ -43,7 +43,9 @@ public enum CombinedEventType {
     METASPACE_SUMMARY("jdk.combined.MetaspaceSummary", "jdk.MetaspaceSummary"),
     PS_HEAP_SUMMARY("jdk.combined.PSHeapSummary", "jdk.PSHeapSummary"),
     THREAD_PARK("jdk.combined.ThreadPark", "jdk.ThreadPark"),
-    THREAD_SLEEP("jdk.combined.ThreadSleep", "jdk.ThreadSleep");
+    THREAD_SLEEP("jdk.combined.ThreadSleep", "jdk.ThreadSleep"),
+    JAVA_MONITOR_ENTER("jdk.combined.JavaMonitorEnter", "jdk.JavaMonitorEnter"),
+    JAVA_MONITOR_WAIT("jdk.combined.JavaMonitorWait", "jdk.JavaMonitorWait");
 
     private final String combinedTypeName;
     private final String originalTypeName;
