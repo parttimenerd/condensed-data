@@ -50,9 +50,32 @@ public class JFREventDeduplicationTest {
     }
 
     @Test
-    public void testThreadAllocationStatisticsIsNotDeduplicated() throws Exception {
-        assertEventTypeIsNotDeduplicated(
-                Path.of("benchmark/renaissance-movie-lens_default_G1.jfr"),
-                "jdk.ThreadAllocationStatistics");
+    public void testThreadAllocationStatisticsDeduplicatesUnchangedEntries() throws Exception {
+        var testJfr = Path.of("benchmark/renaissance-movie-lens_default_G1.jfr");
+        if (!Files.exists(testJfr)) {
+            System.err.println("Skipping: " + testJfr + " not found");
+            return;
+        }
+        var dedup = new JFREventDeduplication(Configuration.DEFAULT);
+
+        int kept = 0;
+        int dropped = 0;
+        try (var recording = new RecordingFile(testJfr)) {
+            while (recording.hasMoreEvents()) {
+                var event = recording.readEvent();
+                if (!event.getEventType().getName().equals("jdk.ThreadAllocationStatistics")) {
+                    continue;
+                }
+                if (dedup.recordAndCheckIfDuplicate(event)) {
+                    dropped++;
+                } else {
+                    kept++;
+                }
+            }
+        }
+
+        assertThat(kept).isGreaterThan(0);
+        // Idle threads emit repeated unchanged values — expect some deduplication
+        assertThat(dropped).isGreaterThan(0);
     }
 }

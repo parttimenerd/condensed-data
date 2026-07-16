@@ -135,8 +135,11 @@ public class JFREventDeduplication extends EventDeduplication {
         // CPULoad: singleton periodic, may repeat between chunks
         putSingleton("jdk.CPULoad");
 
-        // ThreadAllocationStatistics can repeat with identical payload across
-        // periodic emissions. Keeping all entries preserves strict round-trips.
+        // ThreadAllocationStatistics: per-thread periodic, dedup when allocated bytes unchanged
+        put(
+                "jdk.ThreadAllocationStatistics",
+                e -> stableKey(e, "thread"),
+                (a, b) -> a.getLong("allocated") == b.getLong("allocated"));
 
         // FinalizerStatistics can legitimately repeat with identical payload across
         // different timestamps/chunks. Dropping these observations changes event counts
