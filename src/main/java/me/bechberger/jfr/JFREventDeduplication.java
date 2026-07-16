@@ -2,6 +2,7 @@ package me.bechberger.jfr;
 
 import java.util.List;
 import java.util.Objects;
+import jdk.jfr.consumer.RecordedEvent;
 
 /**
  * Deduplication for all events that represent (mostly) static properties, like flags or settings.
@@ -32,27 +33,54 @@ public class JFREventDeduplication extends EventDeduplication {
                     "jdk.CPUTimeStampCounter",
                     "jdk.CompilerConfiguration");
 
+    /**
+     * Returns a stable, value-based string key from a field. JFR RecordedObject uses
+     * identity-based equals/hashCode, so complex-type fields cannot be used as HashMap keys
+     * directly. Using toString() gives a stable representation across JFR chunks.
+     */
+    private static String stableKey(RecordedEvent event, String field) {
+        var value = event.getValue(field);
+        return value == null ? "null" : value.toString();
+    }
+
     public JFREventDeduplication(Configuration configuration) {
         FLAG_EVENTS.forEach(this::putFlag);
         SINGLETON_EVENTS.forEach(this::putSingleton);
 
         put("jdk.NativeLibrary", "name", "baseAddress", "topAddress");
-        put("jdk.ModuleRequire", "source", "requiredModule");
-        put("jdk.ModuleResolution", "exportedPackage", "targetModule");
+        // ModuleRequire: token = (source.name, requiredModule.name) — stable string key
+        put(
+                "jdk.ModuleRequire",
+                e -> stableKey(e, "source") + "|" + stableKey(e, "requiredModule"),
+                (a, b) -> true);
+        // ModuleResolution: token = (exportedPackage, targetModule) — stable string key
+        put(
+                "jdk.ModuleResolution",
+                e -> stableKey(e, "exportedPackage") + "|" + stableKey(e, "targetModule"),
+                (a, b) -> true);
 
         // Per-chunk repeated events with a key field
         put("jdk.InitialEnvironmentVariable", "key", "value");
         put("jdk.InitialSystemProperty", "key", "value");
         put("jdk.InitialSecurityProperty", "key", "value");
         put("jdk.ActiveSetting", e -> e.getLong("id") + "/" + e.getString("name"), "value");
-        put("jdk.ModuleExport", "exportedPackage", "targetModule");
+        // ModuleExport: token = (exportedPackage.name, targetModule.name) — stable string key
+        put(
+                "jdk.ModuleExport",
+                e -> stableKey(e, "exportedPackage") + "|" + stableKey(e, "targetModule"),
+                (a, b) -> true);
 
         // SystemProcess can repeat per chunk with same content
         put("jdk.SystemProcess", "pid", "commandLine");
         put("jdk.NativeLibraryLoad", "name", "success");
 
         // Periodic events that repeat per chunk with same values
-        put("jdk.NetworkUtilization", "networkInterface", "readRate", "writeRate");
+        put(
+                "jdk.NetworkUtilization",
+                e -> stableKey(e, "networkInterface"),
+                (a, b) ->
+                        a.getLong("readRate") == b.getLong("readRate")
+                                && a.getLong("writeRate") == b.getLong("writeRate"));
         put(
                 "jdk.CompilerQueueUtilization",
                 "compiler",
@@ -96,8 +124,13 @@ public class JFREventDeduplication extends EventDeduplication {
         putSingleton("jdk.ExceptionStatistics");
         putSingleton("jdk.GCHeapMemoryUsage");
 
-        // ThreadCPULoad: per-thread, may repeat if load unchanged between chunks
-        put("jdk.ThreadCPULoad", "eventThread", "user", "system");
+        // ThreadCPULoad: per-thread, stable string token for eventThread
+        put(
+                "jdk.ThreadCPULoad",
+                e -> stableKey(e, "eventThread"),
+                (a, b) ->
+                        Float.compare(a.getFloat("user"), b.getFloat("user")) == 0
+                                && Float.compare(a.getFloat("system"), b.getFloat("system")) == 0);
 
         // CPULoad: singleton periodic, may repeat between chunks
         putSingleton("jdk.CPULoad");
@@ -116,8 +149,11 @@ public class JFREventDeduplication extends EventDeduplication {
         put("jdk.JavaAgent", "name", "options", "dynamic");
         put("jdk.NativeAgent", "name", "options", "dynamic", "path");
 
-        // DeprecatedInvocation: endChunk, same methods across chunks
-        put("jdk.DeprecatedInvocation", "method", "forRemoval");
+        // DeprecatedInvocation: endChunk, stable string token for method
+        put(
+                "jdk.DeprecatedInvocation",
+                e -> stableKey(e, "method"),
+                (a, b) -> Objects.equals(a.getValue("forRemoval"), b.getValue("forRemoval")));
 
         // ClassLoaderStatistics can also repeat unchanged across chunks and those
         // observations are still semantically relevant in strict round-trips.
