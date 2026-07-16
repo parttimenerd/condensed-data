@@ -2126,6 +2126,12 @@ public class JFREventCombiner extends EventCombiner {
                         CombinerSpec.Specs.javaExceptionThrow("jdk.JavaExceptionThrow")
                                 .createCombiner(configuration, basicJFRWriter, gcIdPerTimestamp));
             }
+            if (eventType.getName().equals("jdk.JavaErrorThrow")) {
+                put(
+                        eventType,
+                        CombinerSpec.Specs.javaExceptionThrow("jdk.JavaErrorThrow")
+                                .createCombiner(configuration, basicJFRWriter, gcIdPerTimestamp));
+            }
         }
         if (configuration.combineBlockingEvents()) {
             if (eventType.getName().equals("jdk.ThreadPark")) {
@@ -2212,8 +2218,9 @@ public class JFREventCombiner extends EventCombiner {
                 CombinerSpec.Specs.javaExceptionThrow("jdk.JavaExceptionThrow")
                         .createReconstitutor());
         m.put(
-                CombinedEventType.THREAD_PARK,
-                CombinerSpec.Specs.threadPark().createReconstitutor());
+                CombinedEventType.JAVA_ERROR_THROW,
+                CombinerSpec.Specs.javaExceptionThrow("jdk.JavaErrorThrow").createReconstitutor());
+        m.put(CombinedEventType.THREAD_PARK, CombinerSpec.Specs.threadPark().createReconstitutor());
         m.put(
                 CombinedEventType.THREAD_SLEEP,
                 CombinerSpec.Specs.threadSleep().createReconstitutor());
