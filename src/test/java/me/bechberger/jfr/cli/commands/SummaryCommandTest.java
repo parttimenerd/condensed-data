@@ -3,17 +3,17 @@ package me.bechberger.jfr.cli.commands;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.junit.jupiter.api.Assertions.assertAll;
 
-import java.io.IOException;
 import java.io.ByteArrayOutputStream;
+import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import me.bechberger.condensed.CJFRFooter;
-import me.bechberger.condensed.CondensedOutputStream;
-import me.bechberger.condensed.Message.StartMessage;
 import java.util.List;
 import java.util.Map;
 import jdk.jfr.consumer.RecordingFile;
+import me.bechberger.condensed.CJFRFooter;
 import me.bechberger.condensed.Compression;
+import me.bechberger.condensed.CondensedOutputStream;
+import me.bechberger.condensed.Message.StartMessage;
 import me.bechberger.jfr.cli.Constants;
 import me.bechberger.util.json.JSONParser;
 import me.bechberger.util.json.Util;
@@ -306,7 +306,9 @@ public class SummaryCommandTest {
         var baos = new ByteArrayOutputStream();
         try (var out = new CondensedOutputStream(baos, StartMessage.DEFAULT)) {
             // startTimeMicros=1_000_000 (arbitrary), durationMicros=500 (500µs)
-            var footer = new CJFRFooter(1, 0L, 1_000_000L, 500L, java.util.Map.of(), null, null, null, 0L);
+            var footer =
+                    new CJFRFooter(
+                            1, 0L, 1_000_000L, 500L, java.util.Map.of(), null, null, null, 0L);
             out.writeFooter(footer);
         }
         var tmpFile = Files.createTempFile("summary-sub-ms-test", ".cjfr");
@@ -319,8 +321,8 @@ public class SummaryCommandTest {
                             (result, files) -> {
                                 assertThat(result.output())
                                         .describedAs(
-                                                "Duration: should not be '0s' for a 500µs recording."
-                                                        + " Got: %s",
+                                                "Duration: should not be '0s' for a 500µs"
+                                                        + " recording. Got: %s",
                                                 result.output())
                                         .doesNotContain("Duration: 0s")
                                         .contains("Duration:");

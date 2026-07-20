@@ -276,9 +276,7 @@ public class SummaryCommand implements Callable<Integer> {
             sb.append(" Compression: ").append(this.compression()).append("\n");
             sb.append(" Start: ").append(TimeUtil.formatInstant(this.start())).append("\n");
             sb.append(" End: ").append(TimeUtil.formatInstant(this.end())).append("\n");
-            sb.append(" Duration: ")
-                    .append(TimeUtil.formatDuration(this.duration()))
-                    .append("\n");
+            sb.append(" Duration: ").append(TimeUtil.formatDuration(this.duration())).append("\n");
             sb.append(" Events: ").append(this.eventCount()).append("\n");
             if (!shortSummary && !this.eventCounts().isEmpty()) {
                 sb.append("\n");
@@ -546,8 +544,7 @@ public class SummaryCommand implements Callable<Integer> {
             json.put("start-epoch", start().toEpochMilli());
             json.put("end", TimeUtil.formatInstant(end()));
             json.put("end-epoch", end().toEpochMilli());
-            json.put(
-                    "duration", TimeUtil.formatDuration(duration()));
+            json.put("duration", TimeUtil.formatDuration(duration()));
             json.put("duration-millis", duration().toMillis());
             json.put("count", eventCount());
 

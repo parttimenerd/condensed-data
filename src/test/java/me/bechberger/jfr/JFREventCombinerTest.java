@@ -567,11 +567,11 @@ public class JFREventCombinerTest {
                         .count();
         assertTrue(
                 nonZeroDurations > 0,
-                "At least one reconstituted jdk.GCPhaseParallel event must have a non-zero "
-                        + "duration under reasonable-default config (durationTicksPerSecond=1_000_000"
-                        + " gives 1µs precision, enough for typical 1–100µs worker phases). "
-                        + "All-zero durations reproduce the bug where topLevel=true caused the "
-                        + "nested duration field to use 1ms timestamp precision instead.");
+                "At least one reconstituted jdk.GCPhaseParallel event must have a non-zero duration"
+                    + " under reasonable-default config (durationTicksPerSecond=1_000_000 gives 1µs"
+                    + " precision, enough for typical 1–100µs worker phases). All-zero durations"
+                    + " reproduce the bug where topLevel=true caused the nested duration field to"
+                    + " use 1ms timestamp precision instead.");
     }
 
     /**
