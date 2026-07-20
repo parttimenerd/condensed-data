@@ -1162,7 +1162,7 @@ public class JFREventCombiner extends EventCombiner {
                             fields.add(basicJFRWriter.eventFieldToField(eventType.getField("eventThread"), true));
                         }
                         fields.add(basicJFRWriter.eventFieldToField(eventType.getField("gcWorkerId"), true));
-                        fields.add(basicJFRWriter.eventFieldToField(eventType.getField("duration"), true));
+                        fields.add(basicJFRWriter.eventFieldToField(eventType.getField("duration"), false));
                         return new StructType<RecordedEvent, ReadStruct>(id, "GCWorker", fields);
                     }),
                     e -> e);

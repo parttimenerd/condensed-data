@@ -4,7 +4,6 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
 import java.time.Instant;
-import java.time.temporal.ChronoUnit;
 import java.util.*;
 import java.util.Locale;
 import java.util.concurrent.Callable;
@@ -278,7 +277,7 @@ public class SummaryCommand implements Callable<Integer> {
             sb.append(" Start: ").append(TimeUtil.formatInstant(this.start())).append("\n");
             sb.append(" End: ").append(TimeUtil.formatInstant(this.end())).append("\n");
             sb.append(" Duration: ")
-                    .append(TimeUtil.formatDuration(this.duration().truncatedTo(ChronoUnit.MILLIS)))
+                    .append(TimeUtil.formatDuration(this.duration()))
                     .append("\n");
             sb.append(" Events: ").append(this.eventCount()).append("\n");
             if (!shortSummary && !this.eventCounts().isEmpty()) {
@@ -441,7 +440,10 @@ public class SummaryCommand implements Callable<Integer> {
             for (int i = 0; i < totalBuckets; i++) {
                 long fromSec = (long) i * bucketSeconds;
                 long toSec = fromSec + bucketSeconds;
-                timeCol[i] = fromSec + "–" + toSec + " s";
+                timeCol[i] =
+                        TimeUtil.formatDuration(Duration.ofSeconds(fromSec))
+                                + "–"
+                                + TimeUtil.formatDuration(Duration.ofSeconds(toSec));
 
                 gcRunsCol[i] = "—";
                 totalGcCol[i] = "—";
@@ -545,7 +547,7 @@ public class SummaryCommand implements Callable<Integer> {
             json.put("end", TimeUtil.formatInstant(end()));
             json.put("end-epoch", end().toEpochMilli());
             json.put(
-                    "duration", TimeUtil.formatDuration(duration().truncatedTo(ChronoUnit.MILLIS)));
+                    "duration", TimeUtil.formatDuration(duration()));
             json.put("duration-millis", duration().toMillis());
             json.put("count", eventCount());
 

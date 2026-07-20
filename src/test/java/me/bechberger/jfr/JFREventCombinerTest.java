@@ -521,6 +521,60 @@ public class JFREventCombinerTest {
     }
 
     /**
+     * Guard against GCPhaseParallel worker durations being silently zeroed under configs with
+     * reduced timestamp precision (e.g. reasonable-default: timeStampTicksPerSecond=1_000 = 1ms).
+     *
+     * <p>The duration field inside the GCWorker nested struct must use durationTicksPerSecond (1µs
+     * for reasonable-default) not timeStampTicksPerSecond (1ms). When topLevel=true was passed to
+     * eventFieldToField for the nested duration field, the 1ms precision caused every sub-ms worker
+     * duration (typically 1–100µs) to be stored as zero. The view then displayed "0s" for all
+     * GCPhaseParallel events.
+     */
+    @Test
+    public void testGCPhaseParallelDurationsPreservedWithReducedTimestampPrecision() {
+        // reasonable-default: timeStampTicksPerSecond=1_000 (1ms), durationTicksPerSecond=1_000_000
+        // (1µs). Before the fix, the nested duration field used timestamp precision (1ms), zeroing
+        // all sub-ms worker durations.
+        var config =
+                Configuration.REASONABLE_DEFAULT
+                        .withCombineEventsWithoutDataLoss(true)
+                        .withCombinePLABPromotionEvents(false);
+        var res =
+                runJFRWithCombiner(
+                        Map.of(
+                                "jdk.GCPhaseParallel",
+                                new CombinerAndReconstitutor("jdk.combined.GCPhaseParallel")),
+                        config,
+                        () -> {
+                            for (int i = 0; i < 5; i++) {
+                                System.out.println(new byte[64 * 1024 * 1024].length);
+                                System.gc();
+                            }
+                        });
+        long recorded =
+                res.recordedEvents.stream()
+                        .filter(e -> e.getEventType().getName().equals("jdk.GCPhaseParallel"))
+                        .count();
+        assertTrue(recorded > 0, "Test should record some jdk.GCPhaseParallel events");
+
+        // At least one reconstituted event must have a non-zero duration. Before the fix every
+        // worker duration was zeroed because the nested struct used timestamp precision (1ms)
+        // instead of duration precision (1µs), truncating all sub-ms GCPhaseParallel durations.
+        long nonZeroDurations =
+                res.readEvents.stream()
+                        .filter(e -> e.getType().getTypeName().equals("jdk.GCPhaseParallel"))
+                        .filter(e -> TypedValueUtil.getLong(e, "duration") != 0)
+                        .count();
+        assertTrue(
+                nonZeroDurations > 0,
+                "At least one reconstituted jdk.GCPhaseParallel event must have a non-zero "
+                        + "duration under reasonable-default config (durationTicksPerSecond=1_000_000"
+                        + " gives 1µs precision, enough for typical 1–100µs worker phases). "
+                        + "All-zero durations reproduce the bug where topLevel=true caused the "
+                        + "nested duration field to use 1ms timestamp precision instead.");
+    }
+
+    /**
      * The GCPhaseParallel combiner groups per-worker timings under a per-gcId map keyed by the
      * phase name ("ObjCopy", "ScanHR", ...). There are only ~30 distinct names but they repeat
      * across every GC id, so writing each key inline re-serializes the same short UTF-8 strings

@@ -4,7 +4,12 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.junit.jupiter.api.Assertions.assertAll;
 
 import java.io.IOException;
+import java.io.ByteArrayOutputStream;
+import java.nio.file.Files;
 import java.nio.file.Path;
+import me.bechberger.condensed.CJFRFooter;
+import me.bechberger.condensed.CondensedOutputStream;
+import me.bechberger.condensed.Message.StartMessage;
 import java.util.List;
 import java.util.Map;
 import jdk.jfr.consumer.RecordingFile;
@@ -283,6 +288,47 @@ public class SummaryCommandTest {
                                     .doesNotContain("Event Type");
                         })
                 .run();
+    }
+
+    /**
+     * Guard against sub-millisecond recording durations being displayed as "0s" in the summary
+     * header.
+     *
+     * <p>Before the fix, {@code truncatedTo(ChronoUnit.MILLIS)} was applied to the duration before
+     * passing it to {@code formatDuration}. Any duration shorter than 1ms was truncated to zero,
+     * producing "Duration: 0s". The fix removes the truncation so {@code formatDuration} receives
+     * the full-precision value and can emit "500.0us" or "1.234ms" as appropriate.
+     */
+    @Test
+    public void testSubMillisecondDurationIsNotDisplayedAsZero() throws Exception {
+        // Build a minimal CJFR with durationMicros=500 (500µs). The footer is the only source of
+        // the "Duration:" line in `cjfr summary` output.
+        var baos = new ByteArrayOutputStream();
+        try (var out = new CondensedOutputStream(baos, StartMessage.DEFAULT)) {
+            // startTimeMicros=1_000_000 (arbitrary), durationMicros=500 (500µs)
+            var footer = new CJFRFooter(1, 0L, 1_000_000L, 500L, java.util.Map.of(), null, null, null, 0L);
+            out.writeFooter(footer);
+        }
+        var tmpFile = Files.createTempFile("summary-sub-ms-test", ".cjfr");
+        try {
+            Files.write(tmpFile, baos.toByteArray());
+            new CommandExecuter("summary", "T/" + tmpFile.getFileName())
+                    .withFiles(tmpFile)
+                    .checkNoError()
+                    .check(
+                            (result, files) -> {
+                                assertThat(result.output())
+                                        .describedAs(
+                                                "Duration: should not be '0s' for a 500µs recording."
+                                                        + " Got: %s",
+                                                result.output())
+                                        .doesNotContain("Duration: 0s")
+                                        .contains("Duration:");
+                            })
+                    .run();
+        } finally {
+            Files.deleteIfExists(tmpFile);
+        }
     }
 
     @Test
