@@ -67,7 +67,8 @@ public record Configuration(
                     false,
                     true, // combineThreadParkLossless: lossless struct-array grouping by
                     // parkedClass
-                    true, // dropGCWorkerThreadFromGCPhaseParallel: osName derivable from gcWorkerId
+                    false, // dropGCWorkerThreadFromGCPhaseParallel: kept by default (and in
+                    // reasonable-default); only reduced-default drops it
                     10L);
 
     /** with conservative lossy compression */
