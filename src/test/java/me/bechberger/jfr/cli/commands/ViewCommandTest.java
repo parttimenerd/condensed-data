@@ -204,26 +204,9 @@ public class ViewCommandTest {
     }
 
     @Test
-    public void testEventsFilterDoesNotExcludePositionalEventName() throws Exception {
-        // Bug 73/133/192: --events should NOT filter out the positional EVENT_NAME
-        // When --events specifies a different type, EVENT_NAME should still be auto-included
-        var result =
-                new CommandExecuter(
-                                "view",
-                                "T/" + CommandTestUtil.getSampleCJFRFileName(),
-                                "AnotherEvent",
-                                "--events",
-                                "TestEvent")
-                        .withFiles(CommandTestUtil.getSampleCJFRFile())
-                        .checkNoError()
-                        .run();
-        // AnotherEvent should be shown despite --events only listing TestEvent
-        assertThat(result.output()).contains("AnotherEvent");
-    }
-
-    @Test
-    public void testEventsFilterIncludesPositionalEventName() throws Exception {
-        // When --events includes the EVENT_NAME, everything works as before
+    public void testEventsOptionIsNotAvailableForView() throws Exception {
+        // view only ever displays the single positional EVENT_NAME, so --events would do nothing.
+        // It is hidden via @IgnoreOptions and must be rejected as an unknown option.
         var result =
                 new CommandExecuter(
                                 "view",
@@ -232,14 +215,14 @@ public class ViewCommandTest {
                                 "--events",
                                 "TestEvent")
                         .withFiles(CommandTestUtil.getSampleCJFRFile())
-                        .checkNoError()
                         .run();
-        assertThat(result.output()).contains("TestEvent");
+        assertThat(result.exitCode()).isNotEqualTo(0);
+        assertThat(result.error()).contains("Unknown option");
     }
 
     @Test
     public void testEventsFilterWithoutPositionalStillWorks() throws Exception {
-        // --events without conflicting with EVENT_NAME should still work
+        // viewing a single event type by its positional EVENT_NAME still works
         var result =
                 new CommandExecuter(
                                 "view", "T/" + CommandTestUtil.getSampleCJFRFileName(), "TestEvent")
@@ -583,7 +566,7 @@ public class ViewCommandTest {
                 new CommandExecuter("view", "profile.cjfr", "jdk.GarbageCollection,jdk.ThreadStart")
                         .run();
         assertThat(result.exitCode()).isEqualTo(2);
-        assertThat(result.error()).contains("--events");
+        assertThat(result.error()).contains("comma-separated");
     }
 
     @Test

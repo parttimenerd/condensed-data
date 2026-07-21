@@ -23,6 +23,9 @@ import me.bechberger.jfr.cli.TruncateMode;
         name = "view",
         description = "View a specific event type from a .cjfr or .jfr file as a table",
         mixinStandardHelpOptions = true)
+// --events is inherited from EventFilterOptionMixin but is useless here: view only ever displays
+// the single positional EVENT_NAME, so an extra type filter can't change the output.
+@IgnoreOptions(exclude = {"--events"})
 public class ViewCommand implements Callable<Integer> {
 
     /**
@@ -107,7 +110,7 @@ public class ViewCommand implements Callable<Integer> {
             if (eventName.contains(",")) {
                 System.err.println(
                         "Error: EVENT_NAME does not support comma-separated types."
-                                + " Use --events instead.");
+                                + " view shows a single event type.");
                 return 2;
             }
             var inputFiles = inputs();
