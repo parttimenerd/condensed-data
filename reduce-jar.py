@@ -694,8 +694,25 @@ def _ensure_femtojar_cli() -> str:
 # ---------------------------------------------------------------------------
 
 FEMTOCLI_GROUP_PATH = "me/bechberger/util/femtocli"
-FEMTOCLI_VERSION = "0.4.0"
 FEMTOCLI_SOURCE_DIR = os.path.join(os.path.dirname(__file__), "femtocli")
+
+
+def _femtocli_version() -> str:
+    """Read the femtocli dependency version from pom.xml so this script never
+    drifts from the actual dependency when it is bumped."""
+    pom = os.path.join(os.path.dirname(__file__), "pom.xml")
+    try:
+        with open(pom, encoding="utf-8") as f:
+            content = f.read()
+    except OSError:
+        return "0.4.1"
+    m = re.search(
+        r"<artifactId>femtocli</artifactId>\s*<version>([^<]+)</version>", content
+    )
+    return m.group(1).strip() if m else "0.4.1"
+
+
+FEMTOCLI_VERSION = _femtocli_version()
 FEMTOCLI_MINIMAL_M2_JAR = os.path.join(
     os.path.expanduser("~"),
     ".m2",
