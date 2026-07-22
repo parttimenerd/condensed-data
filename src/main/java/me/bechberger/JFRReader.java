@@ -38,5 +38,14 @@ public interface JFRReader {
 
     Instant getEndTime();
 
+    /**
+     * The source recording's {@code gmtOffset} (milliseconds east of UTC) captured at condense
+     * time, or {@code Long.MIN_VALUE} when unknown. Used at inflate to restore the recording's
+     * original timezone in the JFR metadata region.
+     */
+    default long getGmtOffsetMillis() {
+        return Long.MIN_VALUE;
+    }
+
     CondensedInputStream getInputStream();
 }

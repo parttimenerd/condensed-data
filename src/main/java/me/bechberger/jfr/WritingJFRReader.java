@@ -161,6 +161,12 @@ public class WritingJFRReader {
                                     r.withTimestamp(startTimestamp);
                                     r.withDuration(durationNanos);
                                 });
+        // Re-inject the source recording's timezone (captured at condense) so the inflated chunk's
+        // metadata region carries the original gmtOffset and jfr print renders local time, not UTC.
+        long gmtOffsetMillis = reader.getGmtOffsetMillis();
+        if (gmtOffsetMillis != Universe.GMT_OFFSET_UNSET) {
+            this.recording.setGmtOffset(gmtOffsetMillis, null);
+        }
     }
 
     public @Nullable TypedValue readNextJFREvent() {
@@ -400,12 +406,27 @@ public class WritingJFRReader {
      * CJFR).
      */
     private Type getOrCreateAnnotationType(String name, boolean hasValue) {
+        // Content-type annotations (@DataAmount, @MemoryAddress, @Percentage, @Frequency,
+        // @Timespan, @Timestamp, ...) must themselves carry the @ContentType meta-annotation,
+        // otherwise `jfr print` will not apply unit/format rendering and shows raw numbers (bytes,
+        // decimal addresses, fractions). The predefined JDK annotation types are not initialized in
+        // the recording, so register jdk.jfr.ContentType as a custom type and reference it.
+        // Resolve it before the computeIfAbsent below to avoid reentrant HashMap mutation.
+        Type contentType = null;
+        if (!name.equals("jdk.jfr.ContentType")
+                && BasicJFRWriter.Annotations.isContentTypeAnnotation(name)) {
+            contentType = getOrCreateAnnotationType("jdk.jfr.ContentType", false);
+        }
+        Type resolvedContentType = contentType;
         return customAnnotationTypes.computeIfAbsent(
                 name,
                 n ->
                         recording.registerAnnotationType(
                                 n,
                                 builder -> {
+                                    if (resolvedContentType != null) {
+                                        builder.addAnnotation(resolvedContentType);
+                                    }
                                     if (hasValue) {
                                         builder.addField("value", Builtin.STRING);
                                     }
@@ -430,12 +451,51 @@ public class WritingJFRReader {
 
     private static long convertTimespanToUnit(
             Duration duration, BasicJFRWriter.ParsedFieldDescription parsed) {
+        if (isUnsetTimespanSentinel(duration)) {
+            return Long.MIN_VALUE;
+        }
+        if (isForeverTimespanSentinel(duration)) {
+            return Long.MAX_VALUE;
+        }
         return duration.toNanos() / computeTimespanUnit(parsed).divisor;
     }
 
     /** Fast path: pre-computed unit divisor, no stream/filter allocation */
     private static long convertTimespanToUnit(Duration duration, UnitDivisor unit) {
+        if (isUnsetTimespanSentinel(duration)) {
+            return Long.MIN_VALUE;
+        }
+        if (isForeverTimespanSentinel(duration)) {
+            return Long.MAX_VALUE;
+        }
         return duration.toNanos() / unit.divisor;
+    }
+
+    /**
+     * JFR uses {@code Long.MIN_VALUE} as the "unset" sentinel for {@code @Timespan} longs (e.g.
+     * {@code GCConfiguration.pauseTarget = N/A}). {@link JFRReduction#TIMESPAN_REDUCTION} stores it
+     * as {@code Long.MIN_VALUE} nanos, but the condensed varint's per-field multiplier quantizes it
+     * on the way out, so the reconstructed duration is no longer bit-exactly {@code Long.MIN_VALUE}
+     * nanos. Real timespans are clamped to +/-365 days ({@link
+     * me.bechberger.util.TimeUtil#MAX_DURATION_SECONDS}), which is ~3.15e16 ns, whereas the
+     * quantized sentinel is ~-9.2e18 ns — two orders of magnitude more negative — so a threshold at
+     * twice the clamp bound cleanly separates the sentinel from any legitimate value.
+     */
+    private static boolean isUnsetTimespanSentinel(Duration duration) {
+        // seconds guard first to avoid Duration.toNanos() overflow on the huge sentinel duration.
+        return duration.getSeconds() < -2L * me.bechberger.util.TimeUtil.MAX_DURATION_SECONDS;
+    }
+
+    /**
+     * JFR uses {@code Long.MAX_VALUE} as the "Forever" sentinel for {@code @Timespan} longs (e.g.
+     * {@code ActiveRecording.maxAge}/{@code recordingDuration} = Forever). It is carried through
+     * reduction as {@code Duration.ofNanos(Long.MAX_VALUE)} ({@code getSeconds() ~= 9.2e9}); the
+     * per-field varint multiplier quantizes it in lossy presets, so match by threshold rather than
+     * exact value. Real timespans are clamped to +/-365 days ({@code MAX_DURATION_SECONDS}, ~3.15e7
+     * s), so a threshold at twice the clamp bound cleanly separates the sentinel.
+     */
+    private static boolean isForeverTimespanSentinel(Duration duration) {
+        return duration.getSeconds() > 2L * me.bechberger.util.TimeUtil.MAX_DURATION_SECONDS;
     }
 
     /**
@@ -448,13 +508,32 @@ public class WritingJFRReader {
                 instant, BasicJFRWriter.parseFieldDescription(fieldDescription));
     }
 
+    /**
+     * JFR uses {@code Long.MIN_VALUE} as the "unset" sentinel for {@code @Timestamp} longs (e.g.
+     * {@code ThreadPark.until = N/A} when a thread parks with no deadline). JMC's {@code
+     * getInstant} maps that raw sentinel to {@link Instant#MIN}; {@link
+     * JFRReduction#TIMESTAMP_REDUCTION} carries {@code Instant.MIN} through as {@code
+     * Long.MIN_VALUE} (bit-exact, since the timestamp varint uses multiplier 1). Detect that exact
+     * instant here so the reconstructed field is written back as {@code Long.MIN_VALUE} rather than
+     * a huge bogus epoch value.
+     */
+    private static boolean isUnsetTimestampSentinel(Instant instant) {
+        return instant.equals(Instant.MIN);
+    }
+
     private static long convertTimestampToUnit(
             Instant instant, BasicJFRWriter.ParsedFieldDescription parsed) {
+        if (isUnsetTimestampSentinel(instant)) {
+            return Long.MIN_VALUE;
+        }
         return toNanoSeconds(instant) / computeTimestampUnit(parsed).divisor;
     }
 
     /** Fast path: pre-computed unit divisor, no stream/filter allocation */
     private static long convertTimestampToUnit(Instant instant, UnitDivisor unit) {
+        if (isUnsetTimestampSentinel(instant)) {
+            return Long.MIN_VALUE;
+        }
         return toNanoSeconds(instant) / unit.divisor;
     }
 

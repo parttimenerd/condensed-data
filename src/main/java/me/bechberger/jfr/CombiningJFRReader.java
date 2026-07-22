@@ -382,6 +382,11 @@ public class CombiningJFRReader implements JFRReader {
     }
 
     @Override
+    public long getGmtOffsetMillis() {
+        return readers.get(0).reader().getUniverse().getGmtOffsetMillis();
+    }
+
+    @Override
     public Instant getEndTime() {
         return readers.stream()
                 .map(reader -> reader.reader().getEndTime())

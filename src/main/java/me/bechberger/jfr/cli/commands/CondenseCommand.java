@@ -227,6 +227,7 @@ public class CondenseCommand implements Callable<Integer> {
                 var basicJFRWriter = new BasicJFRWriter(out, configuration);
                 // Read chunk header start times to get the actual recording start
                 long minStartNanos = Long.MAX_VALUE;
+                long gmtOffsetMillis = me.bechberger.jfr.Universe.GMT_OFFSET_UNSET;
                 for (var input : resolvedInputs) {
                     try {
                         minStartNanos =
@@ -236,7 +237,12 @@ public class CondenseCommand implements Callable<Integer> {
                     } catch (IOException ignored) {
                         // fall back to first-event start time
                     }
+                    if (gmtOffsetMillis == me.bechberger.jfr.Universe.GMT_OFFSET_UNSET) {
+                        // Preserve the first input's recording timezone across inflate.
+                        gmtOffsetMillis = BasicJFRWriter.readChunkGmtOffsetMillis(input);
+                    }
                 }
+                basicJFRWriter.setGmtOffsetMillis(gmtOffsetMillis);
                 if (minStartNanos != Long.MAX_VALUE) {
                     basicJFRWriter.writeConfigurationAndUniverseIfNeeded(minStartNanos);
                 }

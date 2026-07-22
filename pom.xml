@@ -39,32 +39,63 @@
     <build>
         <plugins>
             <plugin>
-                <artifactId>maven-assembly-plugin</artifactId>
-                <version>3.6.0</version>
-                <configuration>
-                    <descriptorRefs>
-                        <descriptorRef>jar-with-dependencies</descriptorRef>
-                    </descriptorRefs>
-                    <finalName>${project.artifactId}</finalName>
-                    <appendAssemblyId>false</appendAssemblyId>
-                    <archive>
-                        <manifestEntries>
-                            <Main-Class>me.bechberger.jfr.cli.JFRCLI</Main-Class>
-                            <Premain-Class>me.bechberger.jfr.cli.agent.Agent</Premain-Class>
-                            <Agent-Class>me.bechberger.jfr.cli.agent.Agent</Agent-Class>
-                            <Enable-Native-Access>ALL-UNNAMED</Enable-Native-Access>
-                        </manifestEntries>
-                    </archive>
-                </configuration>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-shade-plugin</artifactId>
+                <version>3.5.1</version>
                 <executions>
                     <execution>
                         <id>all-assembly</id>
                         <phase>package</phase>
                         <goals>
-                            <goal>single</goal>
+                            <goal>shade</goal>
                         </goals>
+                        <configuration>
+                            <!-- Produce target/condensed-data.jar as the runnable uber-jar.
+                                 Unlike assembly's jar-with-dependencies, shade lets the project's
+                                 own classes win over dependency classes on collision, so the
+                                 vendored org.openjdk.jmc.flightrecorder.writer overrides
+                                 (Chunk/MetadataImpl/RecordingImpl) actually take effect. -->
+                            <finalName>${project.artifactId}</finalName>
+                            <shadedArtifactAttached>false</shadedArtifactAttached>
+                            <createDependencyReducedPom>false</createDependencyReducedPom>
+                            <transformers>
+                                <transformer
+                                    implementation="org.apache.maven.plugins.shade.resource.ManifestResourceTransformer">
+                                    <manifestEntries>
+                                        <Main-Class>me.bechberger.jfr.cli.JFRCLI</Main-Class>
+                                        <Premain-Class>me.bechberger.jfr.cli.agent.Agent</Premain-Class>
+                                        <Agent-Class>me.bechberger.jfr.cli.agent.Agent</Agent-Class>
+                                        <Enable-Native-Access>ALL-UNNAMED</Enable-Native-Access>
+                                    </manifestEntries>
+                                </transformer>
+                                <transformer
+                                    implementation="org.apache.maven.plugins.shade.resource.ServicesResourceTransformer"/>
+                            </transformers>
+                            <filters>
+                                <filter>
+                                    <artifact>*:*</artifact>
+                                    <excludes>
+                                        <exclude>META-INF/*.SF</exclude>
+                                        <exclude>META-INF/*.DSA</exclude>
+                                        <exclude>META-INF/*.RSA</exclude>
+                                        <exclude>module-info.class</exclude>
+                                    </excludes>
+                                </filter>
+                            </filters>
+                        </configuration>
                     </execution>
                 </executions>
+            </plugin>
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-jar-plugin</artifactId>
+                <configuration>
+                    <archive>
+                        <manifest>
+                            <mainClass>me.bechberger.jfr.cli.JFRCLI</mainClass>
+                        </manifest>
+                    </archive>
+                </configuration>
             </plugin>
             <plugin>
                 <artifactId>maven-surefire-plugin</artifactId>

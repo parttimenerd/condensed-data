@@ -237,4 +237,9 @@ public class BasicJFRReader implements JFRReader {
     public Instant getEndTime() {
         return Instant.ofEpochSecond(0, getUniverse().getLastStartTimeNanos());
     }
+
+    @Override
+    public long getGmtOffsetMillis() {
+        return getUniverse().getGmtOffsetMillis();
+    }
 }

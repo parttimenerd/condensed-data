@@ -58,11 +58,19 @@ public class BasicJFRWriter {
 
         public Annotations(List<AnnotationElement> annotations) {
             this.annotations = annotations;
-            this.contentTypeAnnotation =
+            var contentTypes =
                     annotations.stream()
                             .filter(a -> isContentTypeAnnotation(a.getTypeName()))
+                            .toList();
+            // @Unsigned is a content-type annotation but is the least specific one: fields like
+            // OldObjectSample.allocationTime carry both @Unsigned and @Timestamp/@Timespan. We must
+            // pick the specific annotation (Timestamp/Timespan/DataAmount/...) so tick->epoch and
+            // unit conversions apply; otherwise the value is stored as a raw unsigned varint.
+            this.contentTypeAnnotation =
+                    contentTypes.stream()
+                            .filter(a -> !a.getTypeName().equals("jdk.jfr.Unsigned"))
                             .findFirst()
-                            .orElse(null);
+                            .orElseGet(() -> contentTypes.stream().findFirst().orElse(null));
             this.isUnsigned =
                     annotations.stream().anyMatch(a -> a.getTypeName().equals("jdk.jfr.Unsigned"));
         }
@@ -81,7 +89,7 @@ public class BasicJFRWriter {
                     .orElse(null);
         }
 
-        private static boolean isContentTypeAnnotation(String typeName) {
+        public static boolean isContentTypeAnnotation(String typeName) {
             return isAnnotationContentTypeAnnotation.computeIfAbsent(
                     typeName,
                     t -> {
@@ -567,7 +575,11 @@ public class BasicJFRWriter {
     }
 
     private GetterAndCachedType gettObjectFunction(ValueDescriptor field, boolean topLevel) {
-        String contentType = field.getContentType();
+        // JMC's ValueDescriptor.getContentType() returns null when a field carries more than one
+        // content-type annotation (e.g. @Unsigned + @Timestamp on OldObjectSample.allocationTime),
+        // which would drop the tick->epoch conversion. Resolve via our own Annotations, which
+        // deprioritizes @Unsigned in favor of the specific content type.
+        String contentType = new Annotations(field.getAnnotationElements()).getContentType();
         if (contentType != null && contentType.equals("jdk.jfr.Timestamp")) {
             return new GetterAndCachedType(
                     event -> getValueOrDefault(event, field, e -> e.getInstant(field.getName())),
@@ -728,10 +740,33 @@ public class BasicJFRWriter {
         // Use the no-arg getDuration() for the built-in event duration field,
         // because getDuration("duration") requires @Timespan annotation which
         // may be missing in some JFR file chunks.
+        String fieldName = field.getName();
+        boolean builtinDuration = fieldName.equals("duration") && topLevel;
         Function<RecordedObject, Object> getter =
-                field.getName().equals("duration") && topLevel
+                builtinDuration
                         ? event -> ((RecordedEvent) event).getDuration()
-                        : event -> event.getDuration(field.getName());
+                        : event -> {
+                            // JFR uses Long.MIN_VALUE as the "unset" sentinel for @Timespan longs
+                            // (e.g. GCConfiguration.pauseTarget = N/A). Routing it through Duration
+                            // and TimeUtil.clamp would collapse it to a bogus -365d value, so
+                            // detect
+                            // the raw sentinel and carry it as Duration.ofNanos(Long.MIN_VALUE),
+                            // which JFRReduction.TIMESPAN_REDUCTION preserves losslessly.
+                            long raw = event.getLong(fieldName);
+                            if (raw == Long.MIN_VALUE) {
+                                return Duration.ofNanos(Long.MIN_VALUE);
+                            }
+                            // JFR uses Long.MAX_VALUE as the "Forever" sentinel for @Timespan
+                            // longs (e.g. ActiveRecording.maxAge/recordingDuration). getDuration
+                            // returns Duration.ofMillis(Long.MAX_VALUE), which TimeUtil.clamp
+                            // collapses to a bogus 365d. Carry it as
+                            // Duration.ofNanos(Long.MAX_VALUE)
+                            // so JFRReduction.TIMESPAN_REDUCTION can preserve it losslessly.
+                            if (raw == Long.MAX_VALUE) {
+                                return Duration.ofNanos(Long.MAX_VALUE);
+                            }
+                            return event.getDuration(fieldName);
+                        };
         return new GetterAndCachedType(
                 getter,
                 getCachedTimespanType(1_000_000_000 / ticksPerSec),
@@ -830,16 +865,6 @@ public class BasicJFRWriter {
             case "jdk.G1HeapRegionTypeChange" ->
                     // from == to
                     event.getString("from").equals(event.getString("to"));
-            case "jdk.MetaspaceChunkFreeListSummary" ->
-                    // all zero
-                    event.getLong("specializedChunks") == 0
-                            && event.getLong("specializedChunksTotalSize") == 0
-                            && event.getLong("smallChunks") == 0
-                            && event.getLong("smallChunksTotalSize") == 0
-                            && event.getLong("mediumChunks") == 0
-                            && event.getLong("mediumChunksTotalSize") == 0
-                            && event.getLong("humongousChunks") == 0
-                            && event.getLong("humongousChunksTotalSize") == 0;
             default -> false;
         };
     }
@@ -860,6 +885,15 @@ public class BasicJFRWriter {
             universe.setLastStartTimeNanos(universe.getStartTimeNanos());
             writeUniverse();
         }
+    }
+
+    /**
+     * Records the source recording's {@code gmtOffset} (milliseconds east of UTC) so it is
+     * persisted with the universe and can be re-injected at inflate. Must be called before {@link
+     * #writeConfigurationAndUniverseIfNeeded}. {@link Universe#GMT_OFFSET_UNSET} leaves it unset.
+     */
+    public void setGmtOffsetMillis(long gmtOffsetMillis) {
+        universe.setGmtOffsetMillis(gmtOffsetMillis);
     }
 
     public void processEvent(RecordedEvent event) {
@@ -917,9 +951,160 @@ public class BasicJFRWriter {
         }
     }
 
+    /**
+     * Reads the source recording's {@code gmtOffset} (milliseconds east of UTC) from the JFR chunk
+     * metadata region, so it can be preserved across a condense→inflate roundtrip (otherwise the
+     * inflated file loses its timezone and {@code jfr print} renders every timestamp in UTC).
+     *
+     * <p>The JFR metadata event lives at chunk-header offset 0x18 (byte 24). Its layout mirrors
+     * what the JMC writer produces: a LEB128 event size + type id, then the header longs
+     * (startTime, duration, metadataId), then a LEB128 string-constant pool, then the element tree.
+     * The root element's children include a {@code <region>} element whose {@code gmtOffset}
+     * attribute carries the value as a decimal string (e.g. {@code "3600000"} for CET). Returns
+     * {@link Universe#GMT_OFFSET_UNSET} if the file has no region gmtOffset or cannot be parsed.
+     */
+    public static long readChunkGmtOffsetMillis(Path jfrFile) {
+        try {
+            byte[] data = java.nio.file.Files.readAllBytes(jfrFile);
+            if (data.length < 32
+                    || data[0] != 'F'
+                    || data[1] != 'L'
+                    || data[2] != 'R'
+                    || data[3] != 0) {
+                return Universe.GMT_OFFSET_UNSET;
+            }
+            long metaOff = readLongRaw(data, 24); // chunk-header metadataOffset
+            if (metaOff <= 0 || metaOff >= data.length) {
+                return Universe.GMT_OFFSET_UNSET;
+            }
+            long[] cursor = {metaOff};
+            readVarLong(data, cursor); // event size
+            readVarLong(data, cursor); // event type id (0 = metadata)
+            readVarLong(data, cursor); // startTime
+            readVarLong(data, cursor); // duration
+            readVarLong(data, cursor); // metadataId
+            long stringCount = readVarLong(data, cursor);
+            if (stringCount < 0 || stringCount > data.length) {
+                return Universe.GMT_OFFSET_UNSET;
+            }
+            String[] strings = new String[(int) stringCount];
+            for (int i = 0; i < stringCount; i++) {
+                strings[i] = readMetadataString(data, cursor);
+            }
+            String gmtOffset = findRegionGmtOffset(data, cursor, strings);
+            if (gmtOffset == null) {
+                return Universe.GMT_OFFSET_UNSET;
+            }
+            return Long.parseLong(gmtOffset.trim());
+        } catch (RuntimeException | java.io.IOException e) {
+            return Universe.GMT_OFFSET_UNSET;
+        }
+    }
+
+    private static long readLongRaw(byte[] data, int offset) {
+        long v = 0;
+        for (int i = 0; i < 8; i++) {
+            v = (v << 8) | (data[offset + i] & 0xffL);
+        }
+        return v;
+    }
+
+    /** Reads one LEB128 varint (7 bits/byte, little-endian, high bit = continue). */
+    private static long readVarLong(byte[] data, long[] cursor) {
+        long result = 0;
+        int shift = 0;
+        int pos = (int) cursor[0];
+        while (true) {
+            int b = data[pos++] & 0xff;
+            result |= (long) (b & 0x7f) << shift;
+            if ((b & 0x80) == 0) {
+                break;
+            }
+            shift += 7;
+        }
+        cursor[0] = pos;
+        return result;
+    }
+
+    /**
+     * Reads a single metadata-pool string. JMC encodes an encoding byte then a payload: 0=null,
+     * 1=empty, 3=UTF-8 (varint length + bytes), 4=char array (varint length + varint chars),
+     * 5=Latin-1 (varint length + bytes).
+     */
+    private static String readMetadataString(byte[] data, long[] cursor)
+            throws java.io.IOException {
+        int enc = data[(int) cursor[0]++] & 0xff;
+        switch (enc) {
+            case 0:
+                return null;
+            case 1:
+                return "";
+            case 3:
+                {
+                    int len = (int) readVarLong(data, cursor);
+                    int pos = (int) cursor[0];
+                    String s = new String(data, pos, len, java.nio.charset.StandardCharsets.UTF_8);
+                    cursor[0] = pos + len;
+                    return s;
+                }
+            case 4:
+                {
+                    int len = (int) readVarLong(data, cursor);
+                    StringBuilder sb = new StringBuilder(len);
+                    for (int i = 0; i < len; i++) {
+                        sb.append((char) readVarLong(data, cursor));
+                    }
+                    return sb.toString();
+                }
+            case 5:
+                {
+                    int len = (int) readVarLong(data, cursor);
+                    int pos = (int) cursor[0];
+                    String s =
+                            new String(
+                                    data, pos, len, java.nio.charset.StandardCharsets.ISO_8859_1);
+                    cursor[0] = pos + len;
+                    return s;
+                }
+            default:
+                throw new java.io.IOException("Unknown metadata string encoding: " + enc);
+        }
+    }
+
+    /**
+     * Walks the metadata element tree (each element: nameIdx, attrCount, (keyIdx,valIdx)*,
+     * childCount, children*) and returns the {@code gmtOffset} attribute value of the first element
+     * that carries it (the {@code <region>} element), or null if none.
+     */
+    private static String findRegionGmtOffset(byte[] data, long[] cursor, String[] strings) {
+        long nameIdx = readVarLong(data, cursor);
+        long attrCount = readVarLong(data, cursor);
+        String gmtOffset = null;
+        for (long i = 0; i < attrCount; i++) {
+            long keyIdx = readVarLong(data, cursor);
+            long valIdx = readVarLong(data, cursor);
+            if (keyIdx >= 0
+                    && keyIdx < strings.length
+                    && "gmtOffset".equals(strings[(int) keyIdx])) {
+                if (valIdx >= 0 && valIdx < strings.length) {
+                    gmtOffset = strings[(int) valIdx];
+                }
+            }
+        }
+        long childCount = readVarLong(data, cursor);
+        for (long i = 0; i < childCount; i++) {
+            String childGmt = findRegionGmtOffset(data, cursor, strings);
+            if (childGmt != null && gmtOffset == null) {
+                gmtOffset = childGmt;
+            }
+        }
+        return gmtOffset;
+    }
+
     /** Be sure to close the output stream after writing all events */
     public void processJFRFile(Path file) {
         try {
+            universe.setGmtOffsetMillis(readChunkGmtOffsetMillis(file));
             writeConfigurationAndUniverseIfNeeded(readChunkStartTimeNanos(file));
         } catch (IOException e) {
             // fall back to first-event start time
