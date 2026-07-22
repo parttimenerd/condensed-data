@@ -46,6 +46,15 @@ public enum JFRReduction {
             new ReductionFunction<>() {
                 @Override
                 public Long reduce(Configuration configuration, Universe universe, Instant value) {
+                    // Preserve the JFR "unset" sentinel (Long.MIN_VALUE) for @Timestamp longs
+                    // (e.g. ThreadPark.until = N/A when a thread parks with no deadline). JMC maps
+                    // the raw Long.MIN_VALUE to Instant.MIN; routing that through toNanoSeconds
+                    // overflows and the delta encoding then corrupts it. Carry the sentinel through
+                    // untouched and, crucially, do NOT update lastStartTimeNanos so the delta
+                    // baseline for surrounding timestamps is not poisoned.
+                    if (value.equals(Instant.MIN)) {
+                        return Long.MIN_VALUE;
+                    }
                     long l = toNanoSeconds(value);
                     // difference from last in condensed time units
                     long reduced;
@@ -73,6 +82,12 @@ public enum JFRReduction {
                 @Override
                 public Instant inflate(
                         Configuration configuration, Universe universe, Long reduced) {
+                    // Restore the unset-timestamp sentinel bit-exactly (timeStampType has
+                    // multiplier 1, so Long.MIN_VALUE survives the varint roundtrip). Leave the
+                    // delta baseline untouched, mirroring reduce().
+                    if (reduced == Long.MIN_VALUE) {
+                        return Instant.MIN;
+                    }
                     // difference from last in condensed nanoseconds
                     long nanoSeconds;
                     if (configuration.timeStampTicksPerSecond() == 1_000_000_000L) {
@@ -96,6 +111,23 @@ public enum JFRReduction {
             new ReductionFunction<>() {
                 @Override
                 public Long reduce(Configuration configuration, Universe universe, Duration value) {
+                    // Preserve the JFR "unset" sentinel (Long.MIN_VALUE) for @Timespan longs
+                    // (e.g. GCConfiguration.pauseTarget = N/A) instead of clamping it to -365d.
+                    // The sentinel is carried as Duration.ofNanos(Long.MIN_VALUE); match it by its
+                    // exact seconds/nanos decomposition to avoid Duration.toNanos() overflow on
+                    // genuinely huge durations. Duration.ofNanos(Long.MIN_VALUE) decomposes to
+                    // seconds=-9223372037, nano=145224192.
+                    if (value.getSeconds() == -9223372037L && value.getNano() == 145224192) {
+                        return Long.MIN_VALUE;
+                    }
+                    // Preserve the JFR "Forever" sentinel (Long.MAX_VALUE) for @Timespan longs
+                    // (e.g. ActiveRecording.maxAge = Forever). Carried as
+                    // Duration.ofNanos(Long.MAX_VALUE), which decomposes to seconds=9223372036,
+                    // nano=854775807; match it exactly and skip clamp (which would collapse it to
+                    // +365d).
+                    if (value.getSeconds() == 9223372036L && value.getNano() == 854775807) {
+                        return Long.MAX_VALUE;
+                    }
                     return clamp(value).toNanos();
                 }
 

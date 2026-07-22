@@ -388,6 +388,36 @@ public class JFREventCombinerTest {
                     perAge.getOrDefault(age, 0L) + TypedValueUtil.getLong(event, "objectSize"));
         }
         assertMapEquals(sizePerAgePerClass, reconSizePerAgePerClass);
+
+        // Regression for the "lossless" preset silently dropping plabSize (every value became
+        // -1 byte after inflate). plabSize is per-event data.
+        Map<Long, Long> origPlabCounts = new HashMap<>();
+        for (var event : res.recordedEvents) {
+            origPlabCounts.merge(event.getLong("plabSize"), 1L, Long::sum);
+        }
+        Map<Long, Long> reconPlabCounts = new HashMap<>();
+        for (var event : res.readEvents) {
+            reconPlabCounts.merge(TypedValueUtil.getLong(event, "plabSize"), 1L, Long::sum);
+        }
+        assertFalse(
+                reconPlabCounts.containsKey(-1L),
+                "reconstituted PromoteObjectInNewPLAB must not carry the -1 plabSize sentinel");
+        if (sumObjectSizes) {
+            // Summing mode intentionally collapses to one event per (class, age, plabSize)
+            // bucket, so only the SET of distinct plabSizes is preserved, not the counts.
+            assertEquals(
+                    origPlabCounts.keySet(),
+                    reconPlabCounts.keySet(),
+                    "the set of distinct plabSize values must survive summing combine");
+        } else {
+            // Lossless (array) mode — the DEFAULT/lossless preset — must preserve every event's
+            // plabSize exactly.
+            assertEquals(
+                    origPlabCounts,
+                    reconPlabCounts,
+                    "plabSize value multiset must be preserved losslessly through"
+                            + " combine/reconstitute");
+        }
     }
 
     /**

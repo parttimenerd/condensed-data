@@ -122,6 +122,67 @@ public class CondenseCommandBugTest {
                 .isEqualTo(correctEventCount);
     }
 
+    /**
+     * Bug 256: In the lossless {@code default} config, all {@code
+     * jdk.MetaspaceChunkFreeListSummary} events whose chunk counts are all zero were dropped by
+     * {@code BasicJFRWriter.isUnnecessaryEvent} before ever reaching the combiner. G1 emits these
+     * events with all-zero chunk counts, so a condense→inflate roundtrip lost every one of them
+     * (e.g. 84 → 0), even though the config claims {@code combineEventsWithoutDataLoss}.
+     *
+     * <p>Fix: dropped the all-zero {@code jdk.MetaspaceChunkFreeListSummary} clause from {@code
+     * isUnnecessaryEvent}; the dedicated combiner now preserves these events (with their {@code
+     * when}/{@code metadataType}/{@code gcId}) losslessly.
+     */
+    @Test
+    public void testMetaspaceChunkFreeListSummaryPreservedInDefaultConfig() throws Exception {
+        Path jfrFile = Path.of("profile.jfr");
+        if (!Files.exists(jfrFile)) {
+            return; // skip if sample not available
+        }
+
+        int originalCount = countMetaspaceEvents(jfrFile);
+        if (originalCount == 0) {
+            return; // nothing to assert if the sample has no such events
+        }
+
+        Path tmpDir = Files.createTempDirectory("bug256");
+        Path cjfr = tmpDir.resolve("b256.cjfr");
+        Path inflated = tmpDir.resolve("b256_inflated.jfr");
+        try {
+            me.bechberger.jfr.cli.JFRCLI.execute(
+                    new String[] {"condense", "--force", jfrFile.toString(), cjfr.toString()});
+            me.bechberger.jfr.cli.JFRCLI.execute(
+                    new String[] {"inflate", "--force", cjfr.toString(), inflated.toString()});
+
+            int inflatedCount = countMetaspaceEvents(inflated);
+            assertThat(inflatedCount)
+                    .as(
+                            "All jdk.MetaspaceChunkFreeListSummary events must survive a"
+                                    + " default-config condense→inflate roundtrip (was dropped as"
+                                    + " \"unnecessary\" when chunk counts were all zero)")
+                    .isEqualTo(originalCount);
+        } finally {
+            Files.deleteIfExists(inflated);
+            Files.deleteIfExists(cjfr);
+            Files.deleteIfExists(tmpDir);
+        }
+    }
+
+    private static int countMetaspaceEvents(Path jfr) throws Exception {
+        int count = 0;
+        try (RecordingFile r = new RecordingFile(jfr)) {
+            while (r.hasMoreEvents()) {
+                if (r.readEvent()
+                        .getEventType()
+                        .getName()
+                        .equals("jdk.MetaspaceChunkFreeListSummary")) {
+                    count++;
+                }
+            }
+        }
+        return count;
+    }
+
     private static int countEvents(byte[] data) {
         var reader =
                 new BasicJFRReader(

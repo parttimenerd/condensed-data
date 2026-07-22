@@ -224,8 +224,23 @@ public class ViewCommand implements Callable<Integer> {
 
     private static java.util.LinkedHashMap<String, Object> eventToMap(ReadStruct event) {
         var result = new java.util.LinkedHashMap<String, Object>();
-        for (var key : event.getType().getFieldNames()) {
-            result.put(key, convertValue(event.get(key)));
+        var type = event.getType();
+        for (var key : type.getFieldNames()) {
+            Object value = event.get(key);
+            // Some int fields use Integer.MIN_VALUE as a "not applicable" sentinel, e.g.
+            // OldObjectSample.arrayElements ("... or minimum value for the type int if it is not
+            // an array"). Emit JSON null (the idiomatic N/A) instead of the raw -2147483648, so
+            // JSON consumers don't read it as a real array count. Matches `jfr print`'s "N/A"
+            // and the table view's SentinelIntegerColumn.
+            if (value instanceof Number n && n.longValue() == Integer.MIN_VALUE) {
+                var field = type.getField(key);
+                var desc = field == null ? null : field.description();
+                if (desc != null && desc.contains("minimum value for the type int")) {
+                    result.put(key, null);
+                    continue;
+                }
+            }
+            result.put(key, convertValue(value));
         }
         return result;
     }

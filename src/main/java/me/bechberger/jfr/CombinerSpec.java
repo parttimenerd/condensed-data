@@ -504,7 +504,14 @@ public class CombinerSpec {
             List<String> fieldNames) {
         List<Field<RecordedEvent, ?, ?>> fields = new ArrayList<>();
         for (var fieldName : fieldNames) {
-            fields.add(writer.eventFieldToField(eventType.getField(fieldName), true));
+            // A named field may be absent when re-combining an already-reconstituted event
+            // (e.g. a lossy inflate drops ThreadPark.address). Skip it rather than passing a
+            // null ValueDescriptor to eventFieldToField.
+            var field = eventType.getField(fieldName);
+            if (field == null) {
+                continue;
+            }
+            fields.add(writer.eventFieldToField(field, true));
         }
         return new StructType<>(id, structName, fields);
     }
@@ -594,11 +601,8 @@ public class CombinerSpec {
                             "",
                             (CondensedType<Instant, Instant>)
                                     basicJFRWriter.getTypeCached(eventType.getField("startTime")),
-                            s ->
-                                    JFRReduction.TIMESTAMP_REDUCTION.reduce(
-                                            configuration,
-                                            basicJFRWriter.universe,
-                                            s.endTimestamp)));
+                            s -> s.endTimestamp,
+                            JFRReduction.TIMESTAMP_REDUCTION.ordinal()));
         }
 
         @Override

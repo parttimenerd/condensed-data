@@ -67,6 +67,9 @@ public class CLIUtils {
     }
 
     public static int printError(Throwable throwable) {
+        if (System.getenv("CJFR_DEBUG") != null) {
+            throwable.printStackTrace();
+        }
         System.err.println("Error: " + userErrorMessage(throwable));
         return 1;
     }

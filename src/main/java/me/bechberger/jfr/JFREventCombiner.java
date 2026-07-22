@@ -881,7 +881,11 @@ public class JFREventCombiner extends EventCombiner {
         }
     }
 
-    /** Throws away the thread id. Discards plabSize as it is not meaningfully aggregatable. */
+    /**
+     * Throws away the thread id. Groups by object class and tenured-age and, for
+     * jdk.PromoteObjectInNewPLAB, by plabSize as well, so plabSize is preserved losslessly
+     * (jdk.PromoteObjectOutsidePLAB has no plabSize field).
+     */
     static class PromoteObjectCombiner extends GCIdBasedCombiner {
 
         public PromoteObjectCombiner(
@@ -893,15 +897,16 @@ public class JFREventCombiner extends EventCombiner {
                     typeName,
                     configuration,
                     basicJFRWriter,
-                    createValueDefinition(basicJFRWriter, configuration));
+                    createValueDefinition(basicJFRWriter, configuration, hasPlabSize));
         }
 
         @SuppressWarnings({"rawtypes", "unchecked"})
         private static MapValue<RecordedEvent, ?, ?> createValueDefinition(
-                BasicJFRWriter basicJFRWriter, Configuration configuration) {
+                BasicJFRWriter basicJFRWriter, Configuration configuration, boolean hasPlabSize) {
 
-            // class of object -> (tenured ? 64 : 0) + tenuring age -> (array of sizes or summed
-            // size)
+            // class of object -> (tenured ? 64 : 0) + tenuring age -> [plabSize ->] (array of
+            // sizes or summed size). The optional plabSize level (only for
+            // jdk.PromoteObjectInNewPLAB) keeps plabSize lossless while still grouping.
 
             BiFunction<CondensedOutputStream, EventType, CondensedType<Object, Object>>
                     objectSizeCreator =
@@ -926,6 +931,38 @@ public class JFREventCombiner extends EventCombiner {
                                                             objectSizeCreator,
                                                             e -> e.getLong("objectSize")));
 
+            // Wrap in a plabSize-keyed map so each distinct plabSize gets its own bucket and
+            // roundtrips exactly (PromoteObjectInNewPLAB only; OutsidePLAB has no such field).
+            MapEntry<RecordedEvent, ?> afterAge =
+                    hasPlabSize
+                            ? (MapEntry)
+                                    new MapValue<>(
+                                            new MapPartValue<>(
+                                                    "plabSize",
+                                                    (out, eventType) ->
+                                                            (CondensedType<Object, Object>)
+                                                                    basicJFRWriter.getTypeCached(
+                                                                            eventType.getField(
+                                                                                    "plabSize")),
+                                                    e -> e.getLong("plabSize")),
+                                            objectsMapValue)
+                            : objectsMapValue;
+
+            MapPartValue<RecordedEvent, Long> tenuredAndAgeKey =
+                    new MapPartValue<>(
+                            "tenuredAndAge",
+                            (out, eventType) ->
+                                    out.writeAndStoreType(
+                                            mid ->
+                                                    new IntType(
+                                                            mid,
+                                                            "tenuredAndAge",
+                                                            "",
+                                                            1,
+                                                            false,
+                                                            OverflowMode.ERROR)),
+                            e -> (e.getBoolean("tenured") ? 64 : 0) + e.getLong("tenuringAge"));
+
             return new MapValue<RecordedEvent, Object, Object>(
                     new MapPartValue<>(
                             "objectClass",
@@ -935,23 +972,8 @@ public class JFREventCombiner extends EventCombiner {
                                                     eventType.getField("objectClass")),
                             e -> e.getClass("objectClass")),
                     (MapValue)
-                            new MapValue<>(
-                                    new MapPartValue<>(
-                                            "tenuredAndAge",
-                                            (out, eventType) ->
-                                                    out.writeAndStoreType(
-                                                            mid ->
-                                                                    new IntType(
-                                                                            mid,
-                                                                            "tenuredAndAge",
-                                                                            "",
-                                                                            1,
-                                                                            false,
-                                                                            OverflowMode.ERROR)),
-                                            e ->
-                                                    (e.getBoolean("tenured") ? 64 : 0)
-                                                            + e.getLong("tenuringAge")),
-                                    objectsMapValue));
+                            new MapValue<RecordedEvent, Long, Object>(
+                                    tenuredAndAgeKey, (MapEntry<RecordedEvent, Object>) afterAge));
         }
     }
 
@@ -968,9 +990,7 @@ public class JFREventCombiner extends EventCombiner {
                 ReadStruct combinedReadEvent,
                 EventBuilder<E, ?> builder) {
             builder.addStandardFieldsIfNeeded().put("gcId");
-            if (resultEventType.hasField("plabSize")) {
-                builder.put("plabSize", -1L);
-            }
+            boolean hasPlabSize = resultEventType.hasField("plabSize");
             return combinedReadEvent.asMapEntryList("objectClass").stream()
                     .flatMap(
                             e -> {
@@ -984,27 +1004,35 @@ public class JFREventCombiner extends EventCombiner {
                                                             var tenuringAge = tenAndAge % 64;
                                                             builder.put("tenured", tenured);
                                                             builder.put("tenuringAge", tenuringAge);
-                                                            if (tae.getValue() instanceof Long) {
-                                                                return Stream.of(
-                                                                        builder.put(
-                                                                                        "objectSize",
-                                                                                        tae
-                                                                                                .getValue())
-                                                                                .build());
-                                                            } else {
-                                                                return ((ReadList<Long>)
-                                                                                tae.getValue())
-                                                                        .stream()
-                                                                                .map(
-                                                                                        s ->
-                                                                                                builder.put(
-                                                                                                                "objectSize",
-                                                                                                                s)
-                                                                                                        .build());
+                                                            if (!hasPlabSize) {
+                                                                return emitObjectSizes(
+                                                                        builder, tae.getValue());
                                                             }
+                                                            return ((ReadList<?>) tae.getValue())
+                                                                    .asMapEntryList().stream()
+                                                                            .flatMap(
+                                                                                    pe -> {
+                                                                                        builder.put(
+                                                                                                "plabSize",
+                                                                                                pe
+                                                                                                        .getKey());
+                                                                                        return emitObjectSizes(
+                                                                                                builder,
+                                                                                                pe
+                                                                                                        .getValue());
+                                                                                    });
                                                         });
                             })
                     .toList();
+        }
+
+        /** Emits one event per objectSize (single summed value or an array of sizes). */
+        @SuppressWarnings("unchecked")
+        private static <E> Stream<E> emitObjectSizes(EventBuilder<E, ?> builder, Object sizes) {
+            if (sizes instanceof Long) {
+                return Stream.of(builder.put("objectSize", sizes).build());
+            }
+            return ((ReadList<Long>) sizes).stream().map(s -> builder.put("objectSize", s).build());
         }
     }
 

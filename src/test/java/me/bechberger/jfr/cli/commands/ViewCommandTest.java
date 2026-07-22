@@ -645,6 +645,59 @@ public class ViewCommandTest {
     }
 
     @Test
+    public void testJsonEmitsNullForNotAnArraySentinel() throws Exception {
+        // Bug 259: the table view renders OldObjectSample.arrayElements == Integer.MIN_VALUE
+        // (the JFR "not an array" sentinel) as "N/A", matching `jfr print`, but the --json path
+        // leaked the raw -2147483648, which a JSON consumer would read as a real (negative) array
+        // count. The fix emits JSON null for that specific sentinel field instead.
+        Path profileJfr = Path.of("profile.jfr");
+        if (!Files.exists(profileJfr)) {
+            return;
+        }
+        Path output = Path.of("tmp", "bug259-" + System.nanoTime() + ".cjfr");
+        try {
+            Files.createDirectories(Path.of("tmp"));
+            var condense =
+                    me.bechberger.jfr.cli.JFRCLI.runCapturedWithDispatch(
+                            new String[] {"condense", "--force", "profile.jfr", output.toString()});
+            assertThat(condense.exitCode()).isEqualTo(0);
+
+            var view =
+                    me.bechberger.jfr.cli.JFRCLI.runCapturedWithDispatch(
+                            new String[] {
+                                "view", output.toString(), "jdk.OldObjectSample", "--json"
+                            });
+            assertThat(view.exitCode()).isEqualTo(0);
+            var parsed = me.bechberger.util.json.JSONParser.parse(view.out());
+            assertThat(parsed).isInstanceOf(java.util.List.class);
+            var list = (java.util.List<?>) parsed;
+            assertThat(list).isNotEmpty();
+            boolean sawNull = false;
+            for (var item : list) {
+                @SuppressWarnings("unchecked")
+                var map = (java.util.Map<String, Object>) item;
+                assertThat(map).containsKey("arrayElements");
+                Object arrayElements = map.get("arrayElements");
+                // The raw sentinel must never leak; the "not an array" case must be null.
+                if (arrayElements == null) {
+                    sawNull = true;
+                } else {
+                    assertThat(((Number) arrayElements).longValue())
+                            .as("arrayElements must not leak the raw Integer.MIN_VALUE sentinel")
+                            .isNotEqualTo(Integer.MIN_VALUE);
+                }
+            }
+            assertThat(sawNull)
+                    .as(
+                            "at least one non-array OldObjectSample should render arrayElements as"
+                                    + " null")
+                    .isTrue();
+        } finally {
+            Files.deleteIfExists(output);
+        }
+    }
+
+    @Test
     public void testLimitReturnsChronologicallyFirstEvents() throws Exception {
         // Bug 210: --limit should return the FIRST N events chronologically, not arbitrary ones
         var limitResult =

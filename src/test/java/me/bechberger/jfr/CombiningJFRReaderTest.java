@@ -81,4 +81,50 @@ public class CombiningJFRReaderTest {
                 "CombiningJFRReader on-the-fly condensation should preserve all events "
                         + "from the JFR file");
     }
+
+    /**
+     * Bug 253: Reading a lossy-inflated JFR file (e.g. produced by the reduced-default config)
+     * re-runs the EventCombiner, whose CombinerSpec expects named struct fields that the
+     * reconstituted events may no longer have (e.g. {@code jdk.ThreadPark.address} is dropped on
+     * inflate). {@code CombinerSpec.buildNamedStruct} passed the resulting null {@code
+     * ValueDescriptor} to {@code eventFieldToField}, throwing a NullPointerException at {@code
+     * BasicJFRWriter.getDescription}.
+     *
+     * <p>Reproduction: condense with reduced-default → inflate → read the inflated JFR via
+     * CombiningJFRReader (the summary/view path). This must not throw.
+     */
+    @Test
+    public void testReadingLossyInflatedJFRDoesNotThrow() throws Exception {
+        var tmpDir = Files.createTempDirectory("lossy-inflated-test");
+        var cjfr = tmpDir.resolve("reduced.cjfr");
+        var inflated = tmpDir.resolve("reduced_inflated.jfr");
+        try {
+            var jfr = me.bechberger.jfr.cli.commands.CommandTestUtil.getSampleJFRFile();
+            me.bechberger.jfr.cli.JFRCLI.execute(
+                    new String[] {
+                        "condense",
+                        "--force",
+                        "--condenser-config",
+                        "reduced-default",
+                        jfr.toString(),
+                        cjfr.toString()
+                    });
+            me.bechberger.jfr.cli.JFRCLI.execute(
+                    new String[] {"inflate", "--force", cjfr.toString(), inflated.toString()});
+
+            assertDoesNotThrow(
+                    () -> {
+                        var reader = CombiningJFRReader.fromPaths(List.of(inflated));
+                        while (reader.readNextEvent() != null) {
+                            // exhaust reader; triggers on-the-fly re-condensation via EventCombiner
+                        }
+                    },
+                    "Reading a lossy-inflated JFR must not throw when a combiner's expected "
+                            + "named-struct field was dropped during inflate");
+        } finally {
+            Files.deleteIfExists(cjfr);
+            Files.deleteIfExists(inflated);
+            Files.deleteIfExists(tmpDir);
+        }
+    }
 }

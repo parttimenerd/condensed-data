@@ -274,7 +274,7 @@ public class JFRViewTest {
 
         var rows = column.format(event, 1);
         assertEquals(1, rows.size());
-        assertEquals("alpha, 7", rows.get(0));
+        assertEquals("Name=alpha, Count=7", rows.get(0));
     }
 
     @Test
@@ -331,7 +331,8 @@ public class JFRViewTest {
         var eventWithoutLoader = new ReadStruct(eventType, withoutLoaderValues);
         var column = new JFRView.ClassLoaderColumn("classLoader");
 
-        assertEquals(12, column.width());
+        assertEquals(-1, column.width());
+        // No `type` sub-struct present, so it falls back to the loader `name`.
         assertEquals(List.of("app-loader"), column.format(eventWithLoader, 1));
         assertEquals(List.of("-"), column.format(eventWithoutLoader, 1));
         assertEquals(JFRView.Alignment.LEFT, column.alignment());
@@ -720,5 +721,144 @@ public class JFRViewTest {
         assertTrue(
                 result.get(0).contains("MB"),
                 "Should include formatted memory value: " + result.get(0));
+        // Bug 250: each sub-field must be labeled so the values are not ambiguous
+        assertTrue(
+                result.get(0).contains("Start=") && result.get(0).contains("Committed Size="),
+                "Sub-fields should be labeled: " + result.get(0));
+    }
+
+    /** Bug 250: @MemoryAddress fields render as hex, not raw decimal. */
+    @Test
+    public void testMemoryAddressColumnRendersHex() {
+        var column = new JFRView.MemoryAddressColumn("start");
+        var type = createType("outer", "start");
+        var event = new ReadStruct(type, Map.of("start", 21474836480L));
+        assertEquals(List.of("0x500000000"), column.format(event, 1));
+    }
+
+    /** Bug 251: Integer.MIN_VALUE sentinel renders as N/A. */
+    @Test
+    public void testSentinelIntegerColumnRendersNaForMinValue() {
+        var column = new JFRView.SentinelIntegerColumn("arrayElements", 10);
+        var type = createType("outer", "arrayElements");
+        var event = new ReadStruct(type, Map.of("arrayElements", (long) Integer.MIN_VALUE));
+        assertEquals(List.of("N/A"), column.format(event, 1));
+    }
+
+    @Test
+    public void testSentinelIntegerColumnRendersRealValue() {
+        var column = new JFRView.SentinelIntegerColumn("arrayElements", 10);
+        var type = createType("outer", "arrayElements");
+        var event = new ReadStruct(type, Map.of("arrayElements", 42L));
+        assertEquals(List.of("42"), column.format(event, 1));
+    }
+
+    /**
+     * Bug 254: @DataAmount + @Frequency fields render as a byte rate ("MB/s"), not Hz or a size.
+     */
+    @Test
+    public void testDataRateColumnRendersBytesPerSecond() {
+        var column =
+                new JFRView.DataRateColumn(
+                        "recentAllocationRate", me.bechberger.util.MemoryUtil.MemoryUnit.BYTES);
+        var type = createType("outer", "recentAllocationRate");
+        var event = new ReadStruct(type, Map.of("recentAllocationRate", 472401987L));
+        assertEquals(List.of("450.52MB/s"), column.format(event, 1));
+    }
+
+    @Test
+    public void testDataRateColumnRendersBitsPerSecond() {
+        var column =
+                new JFRView.DataRateColumn(
+                        "readRate", me.bechberger.util.MemoryUtil.MemoryUnit.BITS);
+        var type = createType("outer", "readRate");
+        var event = new ReadStruct(type, Map.of("readRate", 8_000_000L));
+        var rendered = column.format(event, 1).get(0);
+        assertTrue(rendered.endsWith("/s"), "bit-rate should end with /s: " + rendered);
+    }
+
+    /** Bug 255: array object classes render as readable names, not JVM descriptors. */
+    @Test
+    public void testDecodeClassNameArrayDescriptors() {
+        assertEquals("byte[]", JFRView.ClassColumn.decodeClassName("[B"));
+        assertEquals("int[]", JFRView.ClassColumn.decodeClassName("[I"));
+        assertEquals("long[][]", JFRView.ClassColumn.decodeClassName("[[J"));
+        assertEquals(
+                "java.lang.Object[]", JFRView.ClassColumn.decodeClassName("[Ljava/lang/Object;"));
+        assertEquals(
+                "java.util.HashMap$Node[]",
+                JFRView.ClassColumn.decodeClassName("[Ljava/util/HashMap$Node;"));
+    }
+
+    @Test
+    public void testDecodeClassNameNonArray() {
+        assertEquals("java.lang.String", JFRView.ClassColumn.decodeClassName("java/lang/String"));
+        assertEquals("java.lang.String", JFRView.ClassColumn.decodeClassName("java.lang.String"));
+    }
+
+    @Test
+    public void testClassLoaderColumnRendersTypeName() {
+        // jdk.types.ClassLoader: { type: Class{ name }, name }. `jfr print` shows the type name.
+        var typeType = createType("class", "name");
+        var type =
+                new ReadStruct(
+                        typeType,
+                        Map.of("name", "jdk/internal/loader/ClassLoaders$AppClassLoader"));
+        var clType = createType("classLoader", "type", "name");
+        var values = new java.util.HashMap<String, Object>();
+        values.put("type", type);
+        values.put("name", null);
+        var cl = new ReadStruct(clType, values);
+        var eventType = createType("event", "classLoader");
+        var event = new ReadStruct(eventType, Map.of("classLoader", cl));
+
+        var column = new JFRView.ClassLoaderColumn("classLoader");
+        assertEquals(
+                List.of("jdk.internal.loader.ClassLoaders$AppClassLoader"),
+                column.format(event, 1));
+    }
+
+    @Test
+    public void testClassLoaderColumnPrefersTypeOverName() {
+        // Even when the instance `name` (e.g. "app") is present, `jfr print` shows the type name.
+        var typeType = createType("class", "name");
+        var type =
+                new ReadStruct(
+                        typeType,
+                        Map.of("name", "jdk/internal/loader/ClassLoaders$AppClassLoader"));
+        var clType = createType("classLoader", "type", "name");
+        var cl = new ReadStruct(clType, Map.of("type", type, "name", "app"));
+        var eventType = createType("event", "classLoader");
+        var event = new ReadStruct(eventType, Map.of("classLoader", cl));
+
+        var column = new JFRView.ClassLoaderColumn("classLoader");
+        assertEquals(
+                List.of("jdk.internal.loader.ClassLoaders$AppClassLoader"),
+                column.format(event, 1));
+    }
+
+    @Test
+    public void testClassLoaderColumnFallsBackToNameWhenTypeAbsent() {
+        var clType = createType("classLoader", "type", "name");
+        var values = new java.util.HashMap<String, Object>();
+        values.put("type", null);
+        values.put("name", "bootstrap");
+        var cl = new ReadStruct(clType, values);
+        var eventType = createType("event", "classLoader");
+        var event = new ReadStruct(eventType, Map.of("classLoader", cl));
+
+        var column = new JFRView.ClassLoaderColumn("classLoader");
+        assertEquals(List.of("bootstrap"), column.format(event, 1));
+    }
+
+    @Test
+    public void testClassLoaderColumnReturnsDashForNullLoader() {
+        var eventType = createType("event", "classLoader");
+        var values = new java.util.HashMap<String, Object>();
+        values.put("classLoader", null);
+        var event = new ReadStruct(eventType, values);
+
+        var column = new JFRView.ClassLoaderColumn("classLoader");
+        assertEquals(List.of("-"), column.format(event, 1));
     }
 }

@@ -194,6 +194,33 @@ public class JFRView {
         }
     }
 
+    record MemoryAddressColumn(String header, String property) implements Column {
+
+        public MemoryAddressColumn(String property) {
+            this(propertyToHeader(property), property);
+        }
+
+        @Override
+        public int width() {
+            return Math.max(10, header.length());
+        }
+
+        @Override
+        public List<String> format(ReadStruct event, int rows) {
+            var prop = event.get(property);
+            if (prop == null) {
+                return List.of("-");
+            }
+            long value = prop instanceof Number ? ((Number) prop).longValue() : (long) prop;
+            return List.of("0x" + Long.toHexString(value));
+        }
+
+        @Override
+        public Alignment alignment() {
+            return Alignment.RIGHT;
+        }
+    }
+
     record StringColumn(String header, String property) implements Column {
 
         public StringColumn(String property) {
@@ -232,6 +259,39 @@ public class JFRView {
         public List<String> format(ReadStruct event, int rows) {
             var val = event.get(property);
             return List.of(val != null ? String.valueOf(val) : "-");
+        }
+
+        @Override
+        public Alignment alignment() {
+            return Alignment.RIGHT;
+        }
+    }
+
+    /**
+     * Integer column where {@link Integer#MIN_VALUE} is a "not applicable" sentinel (e.g.
+     * OldObjectSample.arrayElements is MIN_VALUE when the object is not an array).
+     */
+    record SentinelIntegerColumn(String header, String property, int width) implements Column {
+
+        public SentinelIntegerColumn(String property, int width) {
+            this(propertyToHeader(property), property, width);
+        }
+
+        @Override
+        public int width() {
+            return Math.max(width, header.length());
+        }
+
+        @Override
+        public List<String> format(ReadStruct event, int rows) {
+            var val = event.get(property);
+            if (val == null) {
+                return List.of("-");
+            }
+            if (val instanceof Number n && n.longValue() == Integer.MIN_VALUE) {
+                return List.of("N/A");
+            }
+            return List.of(String.valueOf(val));
         }
 
         @Override
@@ -351,6 +411,40 @@ public class JFRView {
         }
     }
 
+    /**
+     * Renders a data-rate field (@DataAmount + @Frequency, e.g. bytes/second) as a memory size with
+     * a "/s" suffix, matching the JDK {@code jfr print} output (e.g. {@code 450.5 MB/s}). Without
+     * this, such fields fall through to {@link MemoryColumn} and drop the per-second semantics, or
+     * to {@link FrequencyColumn} and are wrongly labelled Hz.
+     */
+    record DataRateColumn(String header, String property, MemoryUtil.MemoryUnit unit)
+            implements Column {
+
+        public DataRateColumn(String property, MemoryUtil.MemoryUnit unit) {
+            this(propertyToHeader(property), property, unit);
+        }
+
+        @Override
+        public int width() {
+            return Math.max(12, header.length());
+        }
+
+        @Override
+        public List<String> format(ReadStruct event, int rows) {
+            var prop = event.get(property);
+            if (prop == null) {
+                return List.of("-");
+            }
+            long value = prop instanceof Number ? ((Number) prop).longValue() : (long) prop;
+            return List.of(formatMemory(value, 1, 2, unit) + "/s");
+        }
+
+        @Override
+        public Alignment alignment() {
+            return Alignment.RIGHT;
+        }
+    }
+
     record ClassColumn(String header, String property) implements Column {
 
         public ClassColumn(String property) {
@@ -377,7 +471,7 @@ public class JFRView {
                 pkg = klass.get("package", String.class);
             }
             var rawName = klass.get("name", String.class);
-            var klassName = rawName != null ? rawName.replace('/', '.') : "-";
+            var klassName = rawName != null ? decodeClassName(rawName) : "-";
             if (pkg == null) {
                 return List.of(klassName);
             }
@@ -385,6 +479,42 @@ public class JFRView {
                 return List.of(klassName);
             }
             return List.of(pkg + "." + klassName);
+        }
+
+        /**
+         * Decode a JVM class name into its readable form. Array classes are stored as JVM type
+         * descriptors ({@code [B}, {@code [Ljava/lang/Object;}); the JDK {@code jfr print} tool
+         * renders them as {@code byte[]}, {@code java.lang.Object[]}. Non-array names just get
+         * their {@code /} separators turned into {@code .}.
+         */
+        static String decodeClassName(String rawName) {
+            if (!rawName.startsWith("[")) {
+                return rawName.replace('/', '.');
+            }
+            int dims = 0;
+            while (dims < rawName.length() && rawName.charAt(dims) == '[') {
+                dims++;
+            }
+            String element = rawName.substring(dims);
+            String base;
+            if (element.startsWith("L") && element.endsWith(";")) {
+                base = element.substring(1, element.length() - 1).replace('/', '.');
+            } else {
+                base =
+                        switch (element) {
+                            case "B" -> "byte";
+                            case "S" -> "short";
+                            case "I" -> "int";
+                            case "J" -> "long";
+                            case "F" -> "float";
+                            case "D" -> "double";
+                            case "C" -> "char";
+                            case "Z" -> "boolean";
+                            case "V" -> "void";
+                            default -> element.replace('/', '.');
+                        };
+            }
+            return base + "[]".repeat(dims);
         }
 
         @Override
@@ -401,7 +531,7 @@ public class JFRView {
 
         @Override
         public int width() {
-            return Math.max(10, header.length());
+            return -1;
         }
 
         @Override
@@ -410,8 +540,20 @@ public class JFRView {
             if (cl == null) {
                 return List.of("-");
             }
+            // jdk.types.ClassLoader has a `type` (the loader's class) and a `name` (the loader's
+            // instance name, e.g. "app"/"platform", usually null for VM-internal loaders). The JDK
+            // `jfr print` tool renders the type's class name (e.g.
+            // "jdk.internal.loader.ClassLoaders$AppClassLoader"), so prefer that and fall back to
+            // `name` only when the type is unavailable.
+            var type = cl.getStruct("type");
+            if (type != null) {
+                var typeName = type.get("name", String.class);
+                if (typeName != null) {
+                    return List.of(ClassColumn.decodeClassName(typeName));
+                }
+            }
             var name = cl.get("name", String.class);
-            return List.of(name != null ? name : "-");
+            return List.of(name != null && !name.isEmpty() ? name : "-");
         }
 
         @Override
@@ -563,10 +705,10 @@ public class JFRView {
                 if (parts.size() == 1) {
                     return parts.get(0).format(struct, 1);
                 }
-                // Show all fields comma-separated for a compact single-row summary
+                // Show all fields as "label=value" for a compact, unambiguous single-row summary
                 return List.of(
                         parts.stream()
-                                .map(p -> p.format(struct, 1).get(0))
+                                .map(p -> p.header() + "=" + p.format(struct, 1).get(0))
                                 .collect(java.util.stream.Collectors.joining(", ")));
             }
             List<String> ret = new ArrayList<>();
@@ -621,6 +763,22 @@ public class JFRView {
 
     private static Column fieldToColumn(Field<?, ?, ?> field, int avDepth) {
         var typeName = field.type().getName();
+        // @MemoryAddress renders as a hex address regardless of the underlying numeric type.
+        if (hasAnnotation(field, "jdk.jfr.MemoryAddress")) {
+            return new JFRView.MemoryAddressColumn(field.name());
+        }
+        // A @DataAmount + @Frequency field is a data rate (bytes/second or bits/second), e.g.
+        // G1BasicIHOP.recentAllocationRate or NetworkUtilization.readRate. It must render as
+        // "MB/s", not a plain byte size (MemoryColumn) nor Hz (FrequencyColumn).
+        if (hasAnnotation(field, "jdk.jfr.Frequency")
+                && hasAnnotation(field, "jdk.jfr.DataAmount")) {
+            var desc = field.description();
+            var unit =
+                    desc != null && desc.contains("BITS")
+                            ? MemoryUtil.MemoryUnit.BITS
+                            : MemoryUtil.MemoryUnit.BYTES;
+            return new JFRView.DataRateColumn(field.name(), unit);
+        }
         // Check for fields where @Unsigned shadows @Timespan or @Timestamp in the type name
         if (typeName.equals("jdk.jfr.Unsigned")) {
             if (hasAnnotation(field, "jdk.jfr.Timespan")) {
@@ -639,8 +797,16 @@ public class JFRView {
             case "memory BITS", "memory varint BITS" ->
                     new JFRView.MemoryColumn(field.name(), MemoryUtil.MemoryUnit.BITS);
             case "java.lang.String" -> new JFRView.StringColumn(field.name());
-            case "int", "jdk.jfr.Unsigned", "uint1", "uint2", "int1" ->
-                    new JFRView.IntegerColumn(field.name(), 10);
+            case "int", "jdk.jfr.Unsigned", "uint1", "uint2", "int1" -> {
+                // Some int fields use Integer.MIN_VALUE as a "not applicable" sentinel, e.g.
+                // OldObjectSample.arrayElements ("... or minimum value for the type int if it is
+                // not an array"). Render the sentinel as N/A instead of -2147483648.
+                var desc = field.description();
+                if (desc != null && desc.contains("minimum value for the type int")) {
+                    yield new JFRView.SentinelIntegerColumn(field.name(), 10);
+                }
+                yield new JFRView.IntegerColumn(field.name(), 10);
+            }
             case "long" -> {
                 // Fallback for fields that should be timestamp/duration but lost their
                 // type info due to missing annotations in the original JFR file (Bug 168)
