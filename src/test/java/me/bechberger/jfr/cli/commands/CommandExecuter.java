@@ -42,7 +42,8 @@ public class CommandExecuter {
                     "WARNING: Dynamic loading of agents will be disallowed by default in a future"
                             + " release",
                     "Condensed to ",
-                    "Inflated to ");
+                    "Inflated to ",
+                    "inflate progress: ");
 
     @FunctionalInterface
     public interface ConsumerWithException<T> {

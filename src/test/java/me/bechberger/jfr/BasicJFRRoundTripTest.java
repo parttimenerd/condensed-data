@@ -603,7 +603,7 @@ public class BasicJFRRoundTripTest {
     @SuppressWarnings("unchecked")
     public void testGCPhasePauseLevel1Combiner(
             long durationTicksPerSecond, boolean ignoreTooShortGCPauses) {
-        Map<Long, Map<String, Duration>> gcIdToNameToDuration = new HashMap<>();
+        Map<Long, Map<String, List<Duration>>> gcIdToNameToDuration = new HashMap<>();
         ByteArrayOutputStream outputStream = new ByteArrayOutputStream();
         var config =
                 Configuration.DEFAULT
@@ -627,7 +627,8 @@ public class BasicJFRRoundTripTest {
                             var duration = event.getDuration();
                             gcIdToNameToDuration
                                     .computeIfAbsent(gcId, k -> new HashMap<>())
-                                    .put(name, duration);
+                                    .computeIfAbsent(name, k -> new ArrayList<>())
+                                    .add(duration);
                         });
                 rs.onEvent("TestEvent", e -> rs.close());
 
@@ -662,55 +663,67 @@ public class BasicJFRRoundTripTest {
 
                     for (var entry : map) {
                         var name = (String) entry.get("key");
-                        var duration = Duration.ofNanos((Long) entry.get("value"));
-                        Asserters.assertEquals(
-                                nameToDuration.get(name),
-                                duration,
-                                config.timeStampTicksPerSecond(),
-                                "Duration for name "
-                                        + name
-                                        + " does not match (ticks = "
-                                        + config.timeStampTicksPerSecond()
-                                        + ", ignore short = "
-                                        + ignoreTooShortGCPauses
-                                        + ")"
-                                        + " vs "
-                                        + nameToDuration.get(name)
-                                        + " vs "
-                                        + duration);
+                        @SuppressWarnings("unchecked")
+                        var phaseEntries = (ReadList<?>) entry.get("value");
+                        var expectedDurations = nameToDuration.get(name);
+                        assertNotNull(
+                                expectedDurations,
+                                "Reconstituted phase not in source: " + name);
+                        // Same-named parallel sub-phases within a GC id are stored as an array
+                        // of {startTime, duration} structs; every source duration must survive
+                        // (Bug 267). Compare as a multiset.
+                        var expectedNanos =
+                                expectedDurations.stream().mapToLong(Duration::toNanos).sorted().toArray();
+                        var actualNanos = phaseEntries.stream().mapToLong(e -> {
+                            if (e instanceof ReadStruct s) {
+                                Object d = s.get("duration");
+                                return d instanceof Long l ? l : ((Number) d).longValue();
+                            }
+                            return e instanceof Long l ? l : ((Number) e).longValue();
+                        }).sorted().toArray();
+                        assertEquals(
+                                expectedNanos.length,
+                                actualNanos.length,
+                                "Number of durations for name " + name + " does not match");
+                        for (int i = 0; i < expectedNanos.length; i++) {
+                            Asserters.assertEquals(
+                                    Duration.ofNanos(expectedNanos[i]),
+                                    Duration.ofNanos(actualNanos[i]),
+                                    config.timeStampTicksPerSecond(),
+                                    "Duration for name "
+                                            + name
+                                            + " does not match (ticks = "
+                                            + config.timeStampTicksPerSecond()
+                                            + ", ignore short = "
+                                            + ignoreTooShortGCPauses
+                                            + ")");
+                        }
                     }
 
                     if (ignoreTooShortGCPauses) {
-                        // assert that all durations that are not in the map are equal to 0 under
-                        // the ticks
+                        // assert that all names dropped entirely from the map had only
+                        // effectively-zero durations under the tick resolution
                         for (var entry : nameToDuration.entrySet()) {
                             var notInMap =
                                     map.stream()
                                             .noneMatch(e -> e.get("key").equals(entry.getKey()));
                             if (notInMap) {
-                                Asserters.assertEquals(
-                                        Duration.ZERO,
-                                        entry.getValue(),
-                                        config.durationTicksPerSecond(),
-                                        "Duration for name " + entry.getKey() + " is not zero");
-                            } else {
-                                var actualDuration =
-                                        map.stream()
-                                                .filter(e -> e.get("key").equals(entry.getKey()))
-                                                .findFirst()
-                                                .orElseThrow()
-                                                .get("value");
-                                assertNotEquals(
-                                        0L,
-                                        actualDuration,
-                                        "Duration for name " + entry.getKey() + " is zero");
+                                for (var d : entry.getValue()) {
+                                    Asserters.assertEquals(
+                                            Duration.ZERO,
+                                            d,
+                                            config.durationTicksPerSecond(),
+                                            "Duration for name "
+                                                    + entry.getKey()
+                                                    + " is not zero");
+                                }
                             }
                         }
                     } else {
                         assertEquals(
                                 nameToDuration.size(),
                                 map.size(),
-                                "Number of GCPhasePauseLevel1 events does not match");
+                                "Number of GCPhasePauseLevel1 phase names does not match");
                     }
 
                     hadGCPhasePauseLevel1Event = true;

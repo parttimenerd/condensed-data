@@ -172,6 +172,12 @@ public class BasicJFRWriter {
     private final Map<String, FloatType> memoryFloatTypes = new HashMap<>();
     private final Map<String, VarIntType> memoryVarIntTypes = new HashMap<>();
     private StructType<?, ?> reducedStackTraceType;
+    /**
+     * Maps original JFR class IDs to event type names. Populated as event types are registered.
+     * Used to remap {@code jdk.ActiveSetting.id} and {@code jdk.RecordingSetting.id} from numeric
+     * class IDs to stable event type name strings so that inflate can write the correct new ID.
+     */
+    private final Map<Long, String> eventTypeIdToName = new HashMap<>();
     Universe universe = new Universe();
     private boolean wroteConfiguration = false;
     private CondensedType<Universe, Universe> universeType;
@@ -759,13 +765,17 @@ public class BasicJFRWriter {
                             // JFR uses Long.MAX_VALUE as the "Forever" sentinel for @Timespan
                             // longs (e.g. ActiveRecording.maxAge/recordingDuration). getDuration
                             // returns Duration.ofMillis(Long.MAX_VALUE), which TimeUtil.clamp
-                            // collapses to a bogus 365d. Carry it as
-                            // Duration.ofNanos(Long.MAX_VALUE)
+                            // collapses to a bogus 365d. Carry it as Duration.ofNanos(Long.MAX_VALUE)
                             // so JFRReduction.TIMESPAN_REDUCTION can preserve it losslessly.
-                            if (raw == Long.MAX_VALUE) {
+                            // Also covers near-MAX_VALUE values (e.g. ForkJoinPool uses
+                            // Long.MAX_VALUE - N as "wait forever" park deadlines) — any raw
+                            // nanosecond value above twice the clamp bound is semantically "forever"
+                            // and would be destroyed by clamp() anyway, so normalise to the carrier.
+                            Duration d = event.getDuration(fieldName);
+                            if (d.getSeconds() > 2L * me.bechberger.util.TimeUtil.MAX_DURATION_SECONDS) {
                                 return Duration.ofNanos(Long.MAX_VALUE);
                             }
-                            return event.getDuration(fieldName);
+                            return d;
                         };
         return new GetterAndCachedType(
                 getter,
@@ -823,8 +833,42 @@ public class BasicJFRWriter {
     }
 
     @SuppressWarnings({"rawtypes", "unchecked"})
+    /**
+     * Pre-registers all event types from the provided list into {@link #eventTypeIdToName} so that
+     * {@code jdk.ActiveSetting.id} values can be remapped to event type names even when the
+     * {@code jdk.ActiveSetting} events appear before events of the referenced type. Should be
+     * called with the result of {@link RecordingFile#readEventTypes()} before processing events.
+     */
+    public void registerEventTypes(List<? extends jdk.jfr.EventType> types) {
+        for (jdk.jfr.EventType t : types) {
+            eventTypeIdToName.put(t.getId(), t.getName());
+        }
+    }
+
+    /**
+     * Event types whose {@code id} field carries a JFR class ID that must be remapped to a stable
+     * string at condense time so that inflate can write the correct new class ID.
+     *
+     * <p>See {@link WritingJFRReader} for the inflate-side counterpart.
+     */
+    static final Set<String> EVENTS_WITH_TYPE_ID_FIELD =
+            Set.of("jdk.ActiveSetting", "jdk.RecordingSetting");
+
+    private StringType activeSettingIdStringType;
+
+    private StringType getActiveSettingIdStringType() {
+        if (activeSettingIdStringType == null) {
+            activeSettingIdStringType =
+                    out.writeAndStoreType(
+                            id -> new StringType(id, "event type name", "", "UTF-8"));
+        }
+        return activeSettingIdStringType;
+    }
+
     StructType<RecordedEvent, Map<String, Object>> createAndRegisterEventStructType(
             EventType eventType) {
+        // Register this event type's ID→name mapping for ActiveSetting remapping
+        eventTypeIdToName.put(eventType.getId(), eventType.getName());
         return out.writeAndStoreType(
                 id -> {
                     var removedFields =
@@ -833,7 +877,20 @@ public class BasicJFRWriter {
                     var fields =
                             eventType.getFields().stream()
                                     .filter(e -> !removedFields.contains(e.getName()))
-                                    .map(e -> this.<RecordedEvent>eventFieldToField(e, true))
+                                    .map(
+                                            e -> {
+                                                // Remap id field in ActiveSetting/RecordingSetting:
+                                                // store event type name instead of numeric class ID
+                                                if (e.getName().equals("id")
+                                                        && EVENTS_WITH_TYPE_ID_FIELD.contains(
+                                                                eventType.getName())) {
+                                                    return this
+                                                            .<RecordedEvent>
+                                                                    createActiveSettingIdField(e);
+                                                }
+                                                return this.<RecordedEvent>eventFieldToField(
+                                                        e, true);
+                                            })
                                     .toList();
                     return new StructType<>(
                             id,
@@ -842,6 +899,31 @@ public class BasicJFRWriter {
                             (List<Field<RecordedEvent, ?, ?>>) (List) fields,
                             members -> members);
                 });
+    }
+
+    /**
+     * Creates the {@code id} field for {@code jdk.ActiveSetting} / {@code jdk.RecordingSetting}
+     * storing the event type name (String) instead of the original numeric class ID. Inflate can
+     * then reverse-look up the new class ID by name.
+     */
+    @SuppressWarnings("unchecked")
+    private <T extends RecordedObject> Field<T, ?, ?> createActiveSettingIdField(
+            ValueDescriptor field) {
+        String description = getDescription(field);
+        StringType stringType = getActiveSettingIdStringType();
+        Function<T, Object> getter =
+                event -> {
+                    long classId = ((RecordedEvent) event).getLong("id");
+                    // Look up in our running map; fall back to String.valueOf if unknown
+                    return eventTypeIdToName.getOrDefault(classId, String.valueOf(classId));
+                };
+        return new Field<>(
+                field.getName(),
+                description,
+                stringType,
+                getter,
+                EmbeddingType.INLINE,
+                JFRReduction.NONE.ordinal());
     }
 
     private void writeConfiguration() {
@@ -930,6 +1012,11 @@ public class BasicJFRWriter {
     }
 
     public void processJFRFile(RecordingFile r) {
+        try {
+            registerEventTypes(r.readEventTypes());
+        } catch (IOException e) {
+            throw new RuntimeException(e);
+        }
         while (r.hasMoreEvents()) {
             try {
                 processEvent(r.readEvent());
@@ -959,8 +1046,10 @@ public class BasicJFRWriter {
      * <p>The JFR metadata event lives at chunk-header offset 0x18 (byte 24). Its layout mirrors
      * what the JMC writer produces: a LEB128 event size + type id, then the header longs
      * (startTime, duration, metadataId), then a LEB128 string-constant pool, then the element tree.
-     * The root element's children include a {@code <region>} element whose {@code gmtOffset}
-     * attribute carries the value as a decimal string (e.g. {@code "3600000"} for CET). Returns
+     * The root element's children include a {@code <region>} element whose {@code gmtOffset} and
+     * optional {@code dst} attributes carry the standard offset and daylight-saving adjustment as
+     * decimal millisecond strings. This returns their <em>sum</em> (the effective offset {@code jfr
+     * print} renders), e.g. {@code 7200000} for CEST (gmtOffset 3600000 + dst 3600000). Returns
      * {@link Universe#GMT_OFFSET_UNSET} if the file has no region gmtOffset or cannot be parsed.
      */
     public static long readChunkGmtOffsetMillis(Path jfrFile) {
@@ -1073,32 +1162,59 @@ public class BasicJFRWriter {
 
     /**
      * Walks the metadata element tree (each element: nameIdx, attrCount, (keyIdx,valIdx)*,
-     * childCount, children*) and returns the {@code gmtOffset} attribute value of the first element
-     * that carries it (the {@code <region>} element), or null if none.
+     * childCount, children*) and returns the {@code region} element's <em>effective</em> UTC offset
+     * in milliseconds: {@code gmtOffset + dst}. JFR stores the standard-time offset in {@code
+     * gmtOffset} and the daylight-saving adjustment separately in {@code dst}; {@code jfr print}
+     * renders wall-clock time as the sum, so a summer recording (e.g. CEST = gmtOffset 3600000 + dst
+     * 3600000) must carry the combined 7200000 to render correctly. Returns null if no region
+     * carries a gmtOffset.
      */
     private static String findRegionGmtOffset(byte[] data, long[] cursor, String[] strings) {
         long nameIdx = readVarLong(data, cursor);
         long attrCount = readVarLong(data, cursor);
         String gmtOffset = null;
+        String dst = null;
         for (long i = 0; i < attrCount; i++) {
             long keyIdx = readVarLong(data, cursor);
             long valIdx = readVarLong(data, cursor);
-            if (keyIdx >= 0
-                    && keyIdx < strings.length
-                    && "gmtOffset".equals(strings[(int) keyIdx])) {
-                if (valIdx >= 0 && valIdx < strings.length) {
+            if (keyIdx >= 0 && keyIdx < strings.length && valIdx >= 0 && valIdx < strings.length) {
+                String key = strings[(int) keyIdx];
+                if ("gmtOffset".equals(key)) {
                     gmtOffset = strings[(int) valIdx];
+                } else if ("dst".equals(key)) {
+                    dst = strings[(int) valIdx];
                 }
             }
         }
+        String effective = combineOffsetAndDst(gmtOffset, dst);
         long childCount = readVarLong(data, cursor);
         for (long i = 0; i < childCount; i++) {
             String childGmt = findRegionGmtOffset(data, cursor, strings);
-            if (childGmt != null && gmtOffset == null) {
-                gmtOffset = childGmt;
+            if (childGmt != null && effective == null) {
+                effective = childGmt;
             }
         }
-        return gmtOffset;
+        return effective;
+    }
+
+    /**
+     * Sums the standard {@code gmtOffset} and the daylight-saving {@code dst} (both decimal
+     * millisecond strings, dst optional) into the effective offset string that {@code jfr print}
+     * renders. Returns null if gmtOffset is absent/unparseable.
+     */
+    private static String combineOffsetAndDst(String gmtOffset, String dst) {
+        if (gmtOffset == null) {
+            return null;
+        }
+        try {
+            long total = Long.parseLong(gmtOffset.trim());
+            if (dst != null) {
+                total += Long.parseLong(dst.trim());
+            }
+            return Long.toString(total);
+        } catch (NumberFormatException e) {
+            return null;
+        }
     }
 
     /** Be sure to close the output stream after writing all events */

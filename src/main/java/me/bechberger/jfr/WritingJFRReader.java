@@ -71,6 +71,21 @@ public class WritingJFRReader {
     private final FastChunkWriter fastChunkWriter = new FastChunkWriter();
 
     /**
+     * Maps event type name → inflated JMC class ID. Populated lazily as event types are registered
+     * via {@link #createType}. Used to remap {@code jdk.ActiveSetting.id} / {@code
+     * jdk.RecordingSetting.id} from the original recording's class IDs (stored as String event type
+     * names by {@link BasicJFRWriter}) back to the correct inflated class IDs.
+     */
+    private final Map<String, Long> inflatedEventTypeIdByName = new HashMap<>();
+
+    /**
+     * Buffered {@code jdk.ActiveSetting} / {@code jdk.RecordingSetting} events that could not be
+     * resolved yet (referenced event type not yet registered). Flushed at close time when all types
+     * are guaranteed to be registered.
+     */
+    private final List<ReadStruct> deferredActiveSettingEvents = new ArrayList<>();
+
+    /**
      * Cache for sub-struct TypedValue conversions. The condensed format's universe cache returns
      * the same ReadStruct instance for identical cached values (threads, stack traces, etc.), so
      * identity-based lookup avoids redundant conversions and allows the JMC writer to reuse
@@ -189,6 +204,14 @@ public class WritingJFRReader {
             }
             initRecording(firstEventStart);
         }
+        // Workaround for JMC Bug 2 (JMC_FIX.md): jdk.ActiveSetting.id carries a String event
+        // type name (remapped at condense time). The referenced event type may not be registered
+        // yet at this point in the stream — defer these events until close() when all types are
+        // guaranteed to be registered.
+        if (BasicJFRWriter.EVENTS_WITH_TYPE_ID_FIELD.contains(event.getType().getName())) {
+            deferredActiveSettingEvents.add(event);
+            return readNextJFREvent();
+        }
         if (reconstitutor.isCombinedEvent(event)) {
             combinedEventCount.put(
                     event.getType().getName(),
@@ -248,7 +271,11 @@ public class WritingJFRReader {
         }
         Predefined predef = type::getName;
         typeMap.put(type, predef);
-        realTypeMap.put(type, createType(type, isEvent));
+        Type realType = createType(type, isEvent);
+        realTypeMap.put(type, realType);
+        if (isEvent) {
+            inflatedEventTypeIdByName.put(type.getName(), realType.getId());
+        }
         return predef;
     }
 
@@ -542,11 +569,100 @@ public class WritingJFRReader {
                 || type instanceof StringType;
     }
 
+    /**
+     * JMC's StackFrame2Reader hardcodes a 4-field read order (method, lineNumber, bytecodeIndex,
+     * type). When cjfr removes fields via removeBCIAndLineNumberFromStackFrames or
+     * removeTypeInformationFromStackFrames the inflated schema has fewer fields, causing JMC's
+     * reader to desync and crash. Workaround: always emit all 4 fields in canonical order;
+     * missing ones get zero/null defaults from getNullFieldValue() in toTypedValue().
+     *
+     * <p>See JMC_FIX.md Bug 1.
+     */
+    private static final String STACK_FRAME_TYPE = "jdk.types.StackFrame";
+
+    /**
+     * Canonical StackFrame field order required by JMC StackFrame2Reader. Fields not present in
+     * the CJFR schema are padded with their builtin type default; null paddingType means the field
+     * is a struct and must be present in the CJFR schema.
+     */
+    private record StackFrameField(String name, @Nullable Builtin paddingType) {}
+
+    private static final List<StackFrameField> STACK_FRAME_FIELD_ORDER =
+            List.of(
+                    new StackFrameField("method", null), // struct field — always present in CJFR
+                    new StackFrameField("lineNumber", Builtin.INT),
+                    new StackFrameField("bytecodeIndex", Builtin.INT),
+                    new StackFrameField("type", Builtin.STRING));
+
+    private void addStackFrameFields(TypeStructureBuilder builder, StructType<?, ?> structType) {
+        Map<String, ?> cjfrFields =
+                structType.getFields().stream()
+                        .collect(java.util.stream.Collectors.toMap(f -> f.name(), f -> f));
+
+        for (var sfField : STACK_FRAME_FIELD_ORDER) {
+            String fieldName = sfField.name();
+            Builtin paddingType = sfField.paddingType();
+            if (cjfrFields.containsKey(fieldName)) {
+                // Field present in CJFR — emit using normal CJFR metadata
+                var field = (me.bechberger.condensed.types.StructType.Field<?, ?, ?>) cjfrFields.get(fieldName);
+                var parsed = BasicJFRWriter.parseFieldDescription(field.description());
+                var innerType = field.type();
+                Consumer<TypedFieldBuilder> fieldBuilderConsumer =
+                        (TypedFieldBuilder b) -> {
+                            for (var ann : parsed.annotations()) {
+                                boolean hasValue = !ann.values().isEmpty();
+                                Type annotationType =
+                                        getOrCreateAnnotationType(ann.type(), hasValue);
+                                if (hasValue) {
+                                    b.addAnnotation(annotationType, ann.values().get(0).toString());
+                                } else {
+                                    b.addAnnotation(annotationType);
+                                }
+                            }
+                        };
+                var builtin = getPredefinedTypeOfBuiltin(parsed.type());
+                if (builtin != null) {
+                    builder.addField(fieldName, builtin, fieldBuilderConsumer);
+                } else {
+                    var jdk = getPredefinedJDKType(fieldName);
+                    if (jdk != null) {
+                        builder.addField(fieldName, jdk, fieldBuilderConsumer);
+                    } else if (realTypeMap.containsKey(innerType)) {
+                        builder.addField(fieldName, getRealType(innerType, false), fieldBuilderConsumer);
+                    } else {
+                        builder.addField(fieldName, getPredefType(innerType, false), fieldBuilderConsumer);
+                    }
+                }
+            } else {
+                // Field absent in CJFR — pad with builtin default (value will be null/0)
+                builder.addField(fieldName, paddingType);
+            }
+        }
+    }
+
     private Type createType(CondensedType<?, ?> type, boolean isEvent) {
         Consumer<TypeStructureBuilder> builderConsumer =
                 builder -> {
                     if (type instanceof StructType<?, ?> structType) {
+                        if (STACK_FRAME_TYPE.equals(structType.getName())) {
+                            // Workaround for JMC Bug 1 (see JMC_FIX.md): emit all 4 fields in
+                            // canonical order so StackFrame2Reader doesn't desync.
+                            addStackFrameFields(builder, structType);
+                            return;
+                        }
+                        boolean isActiveSettingEvent =
+                                BasicJFRWriter.EVENTS_WITH_TYPE_ID_FIELD.contains(
+                                        structType.getName());
                         for (var field : structType.getFields()) {
+                            // Workaround for JMC Bug 2: id was stored as a String (event type
+                            // name) at condense time; emit it as a long in the inflated schema so
+                            // JMC's TypeIdentifierReader reads it correctly.
+                            if (isActiveSettingEvent
+                                    && field.name().equals("id")
+                                    && field.type() instanceof StringType) {
+                                builder.addField("id", Builtin.LONG);
+                                continue;
+                            }
                             var parsed = BasicJFRWriter.parseFieldDescription(field.description());
                             var isArray = parsed.isArray();
                             var innerType =
@@ -640,6 +756,35 @@ public class WritingJFRReader {
 
     private static final TypedValueImpl[] EMPTY_TYPED_VALUE_ARRAY = new TypedValueImpl[0];
 
+    /**
+     * Returns the inflated JMC class ID for the given event type name. If the type hasn't been
+     * registered yet (because no event of that type has been processed), it is registered eagerly:
+     * first by looking up the CJFR StructType, and if not found there (event types with zero events
+     * are not written to CJFR), by registering a minimal stub event type to obtain a stable class ID.
+     */
+    private long resolveInflatedEventTypeId(String eventTypeName) {
+        Long cached = inflatedEventTypeIdByName.get(eventTypeName);
+        if (cached != null) {
+            return cached;
+        }
+        // Type not yet registered — try to find it in the CJFR type collection and register it
+        var cjfrType = reader.getInputStream().getTypeCollection().getTypeOrNull(eventTypeName);
+        if (cjfrType != null) {
+            getPredefType(cjfrType, true); // registers and populates inflatedEventTypeIdByName
+            Long registered = inflatedEventTypeIdByName.get(eventTypeName);
+            if (registered != null) {
+                return registered;
+            }
+        }
+        // Event type has no events in CJFR (zero occurrences) — register a minimal stub with the
+        // standard JFR event fields (startTime/eventThread/stackTrace) so the JDK JFR parser
+        // doesn't crash on an event type with zero fields.
+        Type stub = recording.registerEventType(eventTypeName, builder -> {});
+        long stubId = stub.getId();
+        inflatedEventTypeIdByName.put(eventTypeName, stubId);
+        return stubId;
+    }
+
     private TypedValue toTypedValue(ReadStruct struct, boolean isEvent, ReadStructPath visited) {
         if (!isEvent) {
             TypedValue cached = subStructCache.get(struct);
@@ -661,8 +806,30 @@ public class WritingJFRReader {
         for (TypedFieldImpl field : jmcFields) {
             String fieldName = field.getName();
             Object value = struct.get(fieldName);
+            // Workaround for JMC Bug 2 (see JMC_FIX.md): id field was stored as event type name
+            // (String) at condense time; remap to the inflated class ID (long) here.
+            if (fieldName.equals("id")
+                    && value instanceof String eventTypeName
+                    && BasicJFRWriter.EVENTS_WITH_TYPE_ID_FIELD.contains(structType.getName())) {
+                long classId = resolveInflatedEventTypeId(eventTypeName);
+                fieldValues.put(
+                        fieldName,
+                        new TypedFieldValueImpl(
+                                field, (TypedValueImpl) field.getType().asValue(classId)));
+                continue;
+            }
             if (value == null) {
-                fieldValues.put(fieldName, getNullFieldValue(field));
+                // JDK JFR runtime uses -1 (not 0) for absent lineNumber/bytecodeIndex in
+                // StackFrames when those fields were removed during condense.
+                if (STACK_FRAME_TYPE.equals(structType.getName())
+                        && (fieldName.equals("lineNumber") || fieldName.equals("bytecodeIndex"))) {
+                    fieldValues.put(
+                            fieldName,
+                            new TypedFieldValueImpl(
+                                    field, (TypedValueImpl) field.getType().asValue((int) -1)));
+                } else {
+                    fieldValues.put(fieldName, getNullFieldValue(field));
+                }
                 continue;
             }
             FieldPlanEntry plan = getFieldPlan(structType, fieldName);
@@ -761,6 +928,13 @@ public class WritingJFRReader {
             if (recording == null) {
                 initRecording();
             }
+            // Flush deferred jdk.ActiveSetting/jdk.RecordingSetting events now that all event
+            // types are registered and inflatedEventTypeIdByName is fully populated.
+            for (ReadStruct deferred : deferredActiveSettingEvents) {
+                var evt = toTypedValue(deferred, true, ROOT_PATH);
+                fastWriteEvent(evt);
+            }
+            deferredActiveSettingEvents.clear();
             recording.close();
             outputStream.close();
         } catch (IOException e) {

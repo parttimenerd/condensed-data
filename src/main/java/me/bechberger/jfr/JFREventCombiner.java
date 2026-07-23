@@ -1109,14 +1109,47 @@ public class JFREventCombiner extends EventCombiner {
                     createValueDefinition(basicJFRWriter, configuration));
         }
 
-        @SuppressWarnings("unchecked")
+        @SuppressWarnings({"unchecked", "rawtypes"})
         private static MapValue<RecordedEvent, ?, ?> createValueDefinition(
                 BasicJFRWriter basicJFRWriter, Configuration configuration) {
 
-            // phase name -> duration
+            // phase name -> [{startTime, duration}, ...]
 
-            BiFunction<CondensedOutputStream, EventType, CondensedType<Long, Long>>
-                    durationCreator = (out, eventType) -> basicJFRWriter.getDurationType();
+            var phaseEntry =
+                    new MapPartValue<RecordedEvent, RecordedEvent>(
+                            "phaseEntry",
+                            (out, eventType) ->
+                                    (CondensedType)
+                                            basicJFRWriter
+                                                    .getOutputStream()
+                                                    .writeAndStoreType(
+                                                            id -> {
+                                                                List<Field<RecordedEvent, ?, ?>>
+                                                                        fields = new ArrayList<>();
+                                                                fields.add(
+                                                                        basicJFRWriter
+                                                                                .eventFieldToField(
+                                                                                        eventType
+                                                                                                .getField(
+                                                                                                        "startTime"),
+                                                                                        true));
+                                                                fields.add(
+                                                                        new Field<>(
+                                                                                "duration",
+                                                                                "",
+                                                                                basicJFRWriter
+                                                                                        .getDurationType(),
+                                                                                e ->
+                                                                                        clamp(e
+                                                                                                        .getDuration())
+                                                                                                .toNanos()));
+                                                                return new StructType<
+                                                                        RecordedEvent, ReadStruct>(
+                                                                        id,
+                                                                        "GCPhaseEntry",
+                                                                        fields);
+                                                            }),
+                            e -> e);
 
             return new MapValue<>(
                     new MapPartValue<>(
@@ -1126,19 +1159,19 @@ public class JFREventCombiner extends EventCombiner {
                                             basicJFRWriter.getTypeCached(
                                                     eventType.getField("name")),
                             e -> e.getString("name")),
-                    new SingleValue<>(
-                            new MapPartValue<>(
-                                    "duration",
-                                    durationCreator,
-                                    e -> clamp(e.getDuration()).toNanos())),
+                    new ArrayValue<>(phaseEntry),
                     map ->
                             configuration.ignoreTooShortGCPauses()
                                     ? map.entrySet().stream()
                                             .filter(
                                                     e ->
-                                                            !basicJFRWriter
-                                                                    .isEffectivelyZeroDuration(
-                                                                            e.getValue()))
+                                                            e.getValue().stream()
+                                                                    .anyMatch(
+                                                                            d ->
+                                                                                    d instanceof RecordedEvent
+                                                                                            && !basicJFRWriter
+                                                                                                    .isEffectivelyZeroDuration(
+                                                                                                            clamp(((RecordedEvent) d).getDuration()).toNanos())))
                                             .toList()
                                     : new ArrayList<>(map.entrySet()));
         }
@@ -1157,7 +1190,37 @@ public class JFREventCombiner extends EventCombiner {
                 EventBuilder<E, ?> builder) {
             builder.put("gcId").addStandardFieldsIfNeeded();
             return combinedReadEvent.asMapEntryList("name").stream()
-                    .map(e -> builder.put("name", "duration", e).build())
+                    .flatMap(
+                            e -> {
+                                Object value = e.getValue();
+                                // Handle both old format (single duration Long / List<Long>) and
+                                // new format (List<ReadStruct {startTime, duration}>).
+                                if (value instanceof List<?> entries) {
+                                    return entries.stream()
+                                            .map(
+                                                    entry -> {
+                                                        if (entry instanceof ReadStruct phaseEntry) {
+                                                            return builder.put("name", e.getKey())
+                                                                    .put(
+                                                                            "startTime",
+                                                                            phaseEntry.get(
+                                                                                    "startTime"))
+                                                                    .put(
+                                                                            "duration",
+                                                                            phaseEntry.get(
+                                                                                    "duration"))
+                                                                    .build();
+                                                        }
+                                                        return builder.put("name", e.getKey())
+                                                                .put("duration", entry)
+                                                                .build();
+                                                    });
+                                }
+                                return java.util.stream.Stream.of(
+                                        builder.put("name", e.getKey())
+                                                .put("duration", value)
+                                                .build());
+                            })
                     .toList();
         }
     }
@@ -1177,7 +1240,7 @@ public class JFREventCombiner extends EventCombiner {
         private static MapValue<RecordedEvent, ?, ?> createValueDefinition(
                 BasicJFRWriter basicJFRWriter, Configuration configuration) {
 
-            // name -> (GC Thread + worker identifier + duration)
+            // name -> (startTime + GC Thread + worker identifier + duration)
             // In reduced mode the per-worker eventThread is dropped: worker durations are
             // effectively always zero, so the thread reference is low-value noise.
             boolean dropThread = configuration.dropGCWorkerThreadFromGCPhaseParallel();
@@ -1186,6 +1249,7 @@ public class JFREventCombiner extends EventCombiner {
                     "gcworkerDuration",
                     (out, eventType) -> (CondensedType) basicJFRWriter.getOutputStream().writeAndStoreType(id -> {
                         List<StructType.Field<RecordedEvent, ?, ?>> fields = new ArrayList<>();
+                        fields.add(basicJFRWriter.eventFieldToField(eventType.getField("startTime"), true));
                         if (!dropThread) {
                             fields.add(basicJFRWriter.eventFieldToField(eventType.getField("eventThread"), true));
                         }
@@ -1239,6 +1303,10 @@ public class JFREventCombiner extends EventCombiner {
                                                                 .put(
                                                                         "duration",
                                                                         struct.get("duration"));
+                                                        Object startTime = struct.get("startTime");
+                                                        if (startTime != null) {
+                                                            builder.put("startTime", startTime);
+                                                        }
                                                         Object thread = struct.get("eventThread");
                                                         if (thread != null) {
                                                             builder.put("eventThread", thread);
@@ -1250,6 +1318,10 @@ public class JFREventCombiner extends EventCombiner {
                                     builder.put("name", e.getKey())
                                             .put("gcWorkerId", struct.get("gcWorkerId"))
                                             .put("duration", struct.get("duration"));
+                                    Object startTime = struct.get("startTime");
+                                    if (startTime != null) {
+                                        builder.put("startTime", startTime);
+                                    }
                                     Object thread = struct.get("eventThread");
                                     if (thread != null) {
                                         builder.put("eventThread", thread);
@@ -1453,7 +1525,7 @@ public class JFREventCombiner extends EventCombiner {
         }
     }
 
-    /** Combines GCReferenceStatistics per GC id: gcId -> type -> count */
+    /** Combines GCReferenceStatistics per GC id: gcId -> type -> {startTime, count} */
     static class GCReferenceStatisticsCombiner extends GCIdBasedCombiner {
 
         public GCReferenceStatisticsCombiner(
@@ -1461,9 +1533,41 @@ public class JFREventCombiner extends EventCombiner {
             super(typeName, configuration, basicJFRWriter, createValueDefinition(basicJFRWriter));
         }
 
-        @SuppressWarnings("unchecked")
+        @SuppressWarnings({"unchecked", "rawtypes"})
         private static MapValue<RecordedEvent, ?, ?> createValueDefinition(
                 BasicJFRWriter basicJFRWriter) {
+            var refEntry =
+                    new MapPartValue<RecordedEvent, RecordedEvent>(
+                            "refEntry",
+                            (out, eventType) ->
+                                    (CondensedType)
+                                            basicJFRWriter
+                                                    .getOutputStream()
+                                                    .writeAndStoreType(
+                                                            id -> {
+                                                                List<Field<RecordedEvent, ?, ?>>
+                                                                        fields = new ArrayList<>();
+                                                                fields.add(
+                                                                        basicJFRWriter
+                                                                                .eventFieldToField(
+                                                                                        eventType
+                                                                                                .getField(
+                                                                                                        "startTime"),
+                                                                                        true));
+                                                                fields.add(
+                                                                        basicJFRWriter
+                                                                                .eventFieldToField(
+                                                                                        eventType
+                                                                                                .getField(
+                                                                                                        "count"),
+                                                                                        true));
+                                                                return new StructType<
+                                                                        RecordedEvent, ReadStruct>(
+                                                                        id,
+                                                                        "GCRefEntry",
+                                                                        fields);
+                                                            }),
+                            e -> e);
             return new MapValue<>(
                     new MapPartValue<>(
                             "type",
@@ -1472,14 +1576,7 @@ public class JFREventCombiner extends EventCombiner {
                                             basicJFRWriter.getTypeCached(
                                                     eventType.getField("type")),
                             e -> e.getString("type")),
-                    new SingleValue<>(
-                            new MapPartValue<>(
-                                    "count",
-                                    (out, eventType) ->
-                                            (CondensedType<Long, Long>)
-                                                    basicJFRWriter.getTypeCached(
-                                                            eventType.getField("count")),
-                                    e -> e.getLong("count"))),
+                    new SingleValue<>(refEntry),
                     map -> new ArrayList<>(map.entrySet()));
         }
     }
@@ -1497,7 +1594,21 @@ public class JFREventCombiner extends EventCombiner {
                 EventBuilder<E, ?> builder) {
             builder.put("gcId").addStandardFieldsIfNeeded();
             return combinedReadEvent.asMapEntryList("type").stream()
-                    .map(e -> builder.put("type", "count", e).build())
+                    .map(
+                            e -> {
+                                builder.put("type", e.getKey());
+                                Object value = e.getValue();
+                                if (value instanceof ReadStruct refEntry) {
+                                    Object startTime = refEntry.get("startTime");
+                                    if (startTime != null) {
+                                        builder.put("startTime", startTime);
+                                    }
+                                    builder.put("count", refEntry.get("count"));
+                                } else {
+                                    builder.put("count", value);
+                                }
+                                return builder.build();
+                            })
                     .toList();
         }
     }
@@ -1517,7 +1628,7 @@ public class JFREventCombiner extends EventCombiner {
                 Configuration configuration,
                 BasicJFRWriter basicJFRWriter,
                 GCIdPerTimestamp gcIdPerTimestamp) {
-            super(typeName, configuration, basicJFRWriter, createValueDefinition(basicJFRWriter));
+            super(typeName, configuration, basicJFRWriter, createValueDefinition(basicJFRWriter, configuration));
             this.gcIdPerTimestamp = gcIdPerTimestamp;
         }
 
@@ -1557,7 +1668,7 @@ public class JFREventCombiner extends EventCombiner {
 
         @SuppressWarnings({"rawtypes", "unchecked"})
         private static MapValue<RecordedEvent, ?, ?> createValueDefinition(
-                BasicJFRWriter basicJFRWriter) {
+                BasicJFRWriter basicJFRWriter, Configuration configuration) {
             var statisticEntry =
                     new MapPartValue<RecordedEvent, RecordedEvent>(
                             "statisticEntry",
@@ -1576,6 +1687,16 @@ public class JFREventCombiner extends EventCombiner {
                                                                                                 .getField(
                                                                                                         "startTime"),
                                                                                         true));
+                                                                var durationField =
+                                                                        eventType.getField(
+                                                                                "duration");
+                                                                if (durationField != null) {
+                                                                    fields.add(
+                                                                            basicJFRWriter
+                                                                                    .eventFieldToField(
+                                                                                            durationField,
+                                                                                            true));
+                                                                }
                                                                 var eventThreadField =
                                                                         eventType.getField(
                                                                                 "eventThread");
@@ -1656,6 +1777,10 @@ public class JFREventCombiner extends EventCombiner {
                                                 entry -> {
                                                     ReadStruct data = (ReadStruct) entry;
                                                     builder.put("startTime", data.get("startTime"));
+                                                    if (data.hasField("duration")) {
+                                                        builder.put(
+                                                                "duration", data.get("duration"));
+                                                    }
                                                     builder.put("id", id);
                                                     if (resultEventType.hasField("eventThread")) {
                                                         builder.put(
@@ -1783,73 +1908,94 @@ public class JFREventCombiner extends EventCombiner {
                                             basicJFRWriter
                                                     .getOutputStream()
                                                     .writeAndStoreType(
-                                                            id ->
-                                                                    new StructType<
+                                                            id -> {
+                                                                    List<Field<RecordedEvent, ?, ?>>
+                                                                            fields =
+                                                                                    new ArrayList<>();
+                                                                    fields.add(
+                                                                            basicJFRWriter
+                                                                                    .eventFieldToField(
+                                                                                            eventType
+                                                                                                    .getField(
+                                                                                                            "startTime"),
+                                                                                            true));
+                                                                    fields.add(
+                                                                            basicJFRWriter
+                                                                                    .eventFieldToField(
+                                                                                            eventType
+                                                                                                    .getField(
+                                                                                                            "when"),
+                                                                                            true));
+                                                                    fields.add(
+                                                                            basicJFRWriter
+                                                                                    .eventFieldToField(
+                                                                                            eventType
+                                                                                                    .getField(
+                                                                                                            "metadataType"),
+                                                                                            true));
+                                                                    fields.add(
+                                                                            basicJFRWriter
+                                                                                    .eventFieldToField(
+                                                                                            eventType
+                                                                                                    .getField(
+                                                                                                            "specializedChunks"),
+                                                                                            true));
+                                                                    fields.add(
+                                                                            basicJFRWriter
+                                                                                    .eventFieldToField(
+                                                                                            eventType
+                                                                                                    .getField(
+                                                                                                            "specializedChunksTotalSize"),
+                                                                                            true));
+                                                                    fields.add(
+                                                                            basicJFRWriter
+                                                                                    .eventFieldToField(
+                                                                                            eventType
+                                                                                                    .getField(
+                                                                                                            "smallChunks"),
+                                                                                            true));
+                                                                    fields.add(
+                                                                            basicJFRWriter
+                                                                                    .eventFieldToField(
+                                                                                            eventType
+                                                                                                    .getField(
+                                                                                                            "smallChunksTotalSize"),
+                                                                                            true));
+                                                                    fields.add(
+                                                                            basicJFRWriter
+                                                                                    .eventFieldToField(
+                                                                                            eventType
+                                                                                                    .getField(
+                                                                                                            "mediumChunks"),
+                                                                                            true));
+                                                                    fields.add(
+                                                                            basicJFRWriter
+                                                                                    .eventFieldToField(
+                                                                                            eventType
+                                                                                                    .getField(
+                                                                                                            "mediumChunksTotalSize"),
+                                                                                            true));
+                                                                    fields.add(
+                                                                            basicJFRWriter
+                                                                                    .eventFieldToField(
+                                                                                            eventType
+                                                                                                    .getField(
+                                                                                                            "humongousChunks"),
+                                                                                            true));
+                                                                    fields.add(
+                                                                            basicJFRWriter
+                                                                                    .eventFieldToField(
+                                                                                            eventType
+                                                                                                    .getField(
+                                                                                                            "humongousChunksTotalSize"),
+                                                                                            true));
+                                                                    return new StructType<
                                                                             RecordedEvent,
                                                                             ReadStruct>(
                                                                             id,
                                                                             "MetaspaceChunkData",
-                                                                            List.of(
-                                                                                    basicJFRWriter
-                                                                                            .eventFieldToField(
-                                                                                                    eventType
-                                                                                                            .getField(
-                                                                                                                    "when"),
-                                                                                                    true),
-                                                                                    basicJFRWriter
-                                                                                            .eventFieldToField(
-                                                                                                    eventType
-                                                                                                            .getField(
-                                                                                                                    "metadataType"),
-                                                                                                    true),
-                                                                                    basicJFRWriter
-                                                                                            .eventFieldToField(
-                                                                                                    eventType
-                                                                                                            .getField(
-                                                                                                                    "specializedChunks"),
-                                                                                                    true),
-                                                                                    basicJFRWriter
-                                                                                            .eventFieldToField(
-                                                                                                    eventType
-                                                                                                            .getField(
-                                                                                                                    "specializedChunksTotalSize"),
-                                                                                                    true),
-                                                                                    basicJFRWriter
-                                                                                            .eventFieldToField(
-                                                                                                    eventType
-                                                                                                            .getField(
-                                                                                                                    "smallChunks"),
-                                                                                                    true),
-                                                                                    basicJFRWriter
-                                                                                            .eventFieldToField(
-                                                                                                    eventType
-                                                                                                            .getField(
-                                                                                                                    "smallChunksTotalSize"),
-                                                                                                    true),
-                                                                                    basicJFRWriter
-                                                                                            .eventFieldToField(
-                                                                                                    eventType
-                                                                                                            .getField(
-                                                                                                                    "mediumChunks"),
-                                                                                                    true),
-                                                                                    basicJFRWriter
-                                                                                            .eventFieldToField(
-                                                                                                    eventType
-                                                                                                            .getField(
-                                                                                                                    "mediumChunksTotalSize"),
-                                                                                                    true),
-                                                                                    basicJFRWriter
-                                                                                            .eventFieldToField(
-                                                                                                    eventType
-                                                                                                            .getField(
-                                                                                                                    "humongousChunks"),
-                                                                                                    true),
-                                                                                    basicJFRWriter
-                                                                                            .eventFieldToField(
-                                                                                                    eventType
-                                                                                                            .getField(
-                                                                                                                    "humongousChunksTotalSize"),
-                                                                                                    true)))),
+                                                                            fields);
+                                                                }),
                             e -> e);
 
             // Use array (list) since there are typically 4 entries per GC (before/after x
@@ -1883,6 +2029,10 @@ public class JFREventCombiner extends EventCombiner {
                     .map(
                             e -> {
                                 ReadStruct data = (ReadStruct) e.getValue();
+                                Object startTime = data.get("startTime");
+                                if (startTime != null) {
+                                    builder.put("startTime", startTime);
+                                }
                                 return builder.put("when", data.get("when"))
                                         .put("metadataType", data.get("metadataType"))
                                         .put("specializedChunks", data.get("specializedChunks"))

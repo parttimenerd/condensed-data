@@ -266,6 +266,7 @@ public class CombiningJFRReader implements JFRReader {
                                     Compression.DEFAULT))) {
                 var writer = new BasicJFRWriter(out, ON_THE_FLY_CONFIG);
                 try (var recording = new jdk.jfr.consumer.RecordingFile(jfrPath)) {
+                    writer.registerEventTypes(recording.readEventTypes());
                     while (recording.hasMoreEvents()) {
                         writer.processEvent(recording.readEvent());
                     }

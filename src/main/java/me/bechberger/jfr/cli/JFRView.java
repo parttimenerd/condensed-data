@@ -85,6 +85,18 @@ public class JFRView {
             } else {
                 return List.of(raw.toString());
             }
+            // JFR uses Long.MIN_VALUE / Long.MAX_VALUE as "N/A" / "Forever" sentinels for
+            // @Timespan longs (e.g. GCConfiguration.pauseTarget, ActiveRecording.maxAge).
+            // The condensed varint multiplier quantizes them, so use a threshold rather than
+            // exact comparison (same approach as WritingJFRReader.convertTimespanToUnit).
+            long seconds = val.getSeconds();
+            long threshold = 2L * me.bechberger.util.TimeUtil.MAX_DURATION_SECONDS;
+            if (seconds < -threshold) {
+                return List.of("N/A");
+            }
+            if (seconds > threshold) {
+                return List.of("Forever");
+            }
             return List.of(formatDuration(val));
         }
 

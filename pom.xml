@@ -285,6 +285,19 @@
             <artifactId>flightrecorder.writer</artifactId>
             <version>9.1.2</version>
         </dependency>
+        <!-- JMC parser (reader) — vendored 10.0.0-SNAPSHOT built from jmc/core -->
+        <dependency>
+            <groupId>org.openjdk.jmc</groupId>
+            <artifactId>flightrecorder</artifactId>
+            <version>10.0.0-SNAPSHOT</version>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.openjdk.jmc</groupId>
+            <artifactId>common</artifactId>
+            <version>10.0.0-SNAPSHOT</version>
+            <scope>test</scope>
+        </dependency>
         <dependency>
             <groupId>me.bechberger.util</groupId>
             <artifactId>femtojson</artifactId>

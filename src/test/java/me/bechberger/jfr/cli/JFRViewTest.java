@@ -861,4 +861,46 @@ public class JFRViewTest {
         var column = new JFRView.ClassLoaderColumn("classLoader");
         assertEquals(List.of("-"), column.format(event, 1));
     }
+
+    // ========== Duration sentinel display (Bug 272) ==========
+
+    @Test
+    public void testDurationColumnRendersNaForMinValueSentinel() {
+        // Long.MIN_VALUE nanos is JFR's "N/A" sentinel (e.g. GCConfiguration.pauseTarget)
+        var eventType = createType("event", "pauseTarget");
+        var event =
+                new ReadStruct(
+                        eventType,
+                        Map.of("pauseTarget", java.time.Duration.ofNanos(Long.MIN_VALUE)));
+        var column = new JFRView.DurationColumn("pauseTarget");
+        assertEquals(List.of("N/A"), column.format(event, 1));
+    }
+
+    @Test
+    public void testDurationColumnRendersForeverForMaxValueSentinel() {
+        // Long.MAX_VALUE nanos is JFR's "Forever" sentinel (e.g. ActiveRecording.maxAge)
+        var eventType = createType("event", "maxAge");
+        var event =
+                new ReadStruct(
+                        eventType, Map.of("maxAge", java.time.Duration.ofNanos(Long.MAX_VALUE)));
+        var column = new JFRView.DurationColumn("maxAge");
+        assertEquals(List.of("Forever"), column.format(event, 1));
+    }
+
+    @Test
+    public void testDurationColumnRendersNaForMinValueLongNanos() {
+        // Same sentinels arriving as raw Long (combined event path)
+        var eventType = createType("event", "pauseTarget");
+        var event = new ReadStruct(eventType, Map.of("pauseTarget", Long.MIN_VALUE));
+        var column = new JFRView.DurationColumn("pauseTarget");
+        assertEquals(List.of("N/A"), column.format(event, 1));
+    }
+
+    @Test
+    public void testDurationColumnRendersForeverForMaxValueLongNanos() {
+        var eventType = createType("event", "maxAge");
+        var event = new ReadStruct(eventType, Map.of("maxAge", Long.MAX_VALUE));
+        var column = new JFRView.DurationColumn("maxAge");
+        assertEquals(List.of("Forever"), column.format(event, 1));
+    }
 }

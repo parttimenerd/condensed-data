@@ -71,18 +71,15 @@ public class ReducedJFRTypes {
                                     new RemovedPrimitiveField(
                                             "type",
                                             Configuration::removeTypeInformationFromStackFrames))),
+                    // start = heapBase + index * regionSize (derivable from index): a raw
+                    // address, so gate on removeUnnecessaryAddresses (lossy presets only), NOT
+                    // ignoreUnnecessaryEvents — otherwise "lossless" would silently drop it.
                     Map.entry(
                             "jdk.G1HeapRegionTypeChange",
-                            entry(
-                                    "jdk.G1HeapRegionTypeChange",
-                                    new RemovedPrimitiveField(
-                                            "start", Configuration::ignoreUnnecessaryEvents))),
+                            entry("jdk.G1HeapRegionTypeChange", addressField("start"))),
                     Map.entry(
                             "jdk.G1HeapRegionInformation",
-                            entry(
-                                    "jdk.G1HeapRegionInformation",
-                                    new RemovedPrimitiveField(
-                                            "start", Configuration::ignoreUnnecessaryEvents))),
+                            entry("jdk.G1HeapRegionInformation", addressField("start"))),
                     Map.entry("jdk.ThreadPark", entry("jdk.ThreadPark", addressField("address"))),
                     // Monitor address fields: raw object addresses, monitorClass provides the
                     // semantic info
@@ -117,19 +114,18 @@ public class ReducedJFRTypes {
                                     "jdk.types.ObjectSpace",
                                     addressField("start"),
                                     addressField("end"))),
-                    // Shenandoah: start = heapBase + index * regionSize (same as G1)
+                    // Shenandoah: start = heapBase + index * regionSize (same as G1); raw
+                    // address, gate on removeUnnecessaryAddresses so lossless keeps it.
                     Map.entry(
                             "jdk.ShenandoahHeapRegionStateChange",
                             entry(
                                     "jdk.ShenandoahHeapRegionStateChange",
-                                    new RemovedPrimitiveField(
-                                            "start", Configuration::ignoreUnnecessaryEvents))),
+                                    addressField("start"))),
                     Map.entry(
                             "jdk.ShenandoahHeapRegionInformation",
                             entry(
                                     "jdk.ShenandoahHeapRegionInformation",
-                                    new RemovedPrimitiveField(
-                                            "start", Configuration::ignoreUnnecessaryEvents))),
+                                    addressField("start"))),
                     // ClassLoaderStatistics: classLoaderData is a raw JVM pointer
                     Map.entry(
                             "jdk.ClassLoaderStatistics",

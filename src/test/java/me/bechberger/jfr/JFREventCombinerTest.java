@@ -510,6 +510,58 @@ public class JFREventCombinerTest {
     }
 
     /**
+     * Guard against a GCPhasePauseLevelN event-count drop (sibling of the GCPhaseParallel bug):
+     * within a single GC id, parallel GC sub-phases can emit multiple events with the SAME phase
+     * name (e.g. G1's "Balance queues"). The combiner stores per-(gcId, name) durations, and if it
+     * uses a single value per name instead of an array, all but the last same-named phase are
+     * dropped. This asserts the count is preserved 1:1 through combine-reconstitute.
+     */
+    @Test
+    public void testGCPhasePauseLevelCountIsPreserved() {
+        for (String type :
+                List.of(
+                        "jdk.GCPhasePauseLevel1",
+                        "jdk.GCPhasePauseLevel2",
+                        "jdk.GCPhasePauseLevel3",
+                        "jdk.GCPhasePauseLevel4")) {
+            var res =
+                    runJFRWithCombiner(
+                            Map.of(
+                                    type,
+                                    new CombinerAndReconstitutor(
+                                            "jdk.combined." + type.substring("jdk.".length()))),
+                            Configuration.DEFAULT
+                                    .withCombineEventsWithoutDataLoss(true)
+                                    .withCombinePLABPromotionEvents(false)
+                                    .withIgnoreTooShortGCPauses(false),
+                            () -> {
+                                for (int i = 0; i < 10; i++) {
+                                    System.out.println(new byte[64 * 1024 * 1024].length);
+                                    System.gc();
+                                }
+                            });
+            long recorded =
+                    res.recordedEvents.stream()
+                            .filter(e -> e.getEventType().getName().equals(type))
+                            .count();
+            long reconstituted =
+                    res.readEvents.stream()
+                            .filter(e -> e.getType().getTypeName().equals(type))
+                            .count();
+            if (recorded == 0) {
+                // Not every GC produces every level; skip levels this run didn't emit.
+                continue;
+            }
+            assertEquals(
+                    recorded,
+                    reconstituted,
+                    type
+                            + " count must be preserved through combine-reconstitute; a drop means"
+                            + " same-named phases within a GC id were collapsed to one entry");
+        }
+    }
+
+    /**
      * Guard against the GCPhaseParallel event-count drop observed in a real condense-inflate run
      * (colleague's recording: 50359 jdk.GCPhaseParallel events collapsed to 9026 after inflate).
      *

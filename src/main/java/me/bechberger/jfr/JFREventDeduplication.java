@@ -20,7 +20,6 @@ public class JFREventDeduplication extends EventDeduplication {
                     "jdk.UnsignedLongFlag");
     private final List<String> SINGLETON_EVENTS =
             List.of(
-                    "jdk.GCConfiguration",
                     "jdk.GCSurvivorConfiguration",
                     "jdk.GCTLABConfiguration",
                     "jdk.GCHeapConfiguration",
@@ -44,10 +43,12 @@ public class JFREventDeduplication extends EventDeduplication {
     }
 
     public JFREventDeduplication(Configuration configuration) {
+        // Statically-valued events: their payload never changes across a recording, so dropping
+        // repeated observations loses no per-timestamp information. Deduped for ALL presets,
+        // including "lossless".
         FLAG_EVENTS.forEach(this::putFlag);
         SINGLETON_EVENTS.forEach(this::putSingleton);
 
-        put("jdk.NativeLibrary", "name", "baseAddress", "topAddress");
         // ModuleRequire: token = (source.name, requiredModule.name) — stable string key
         put(
                 "jdk.ModuleRequire",
@@ -74,6 +75,47 @@ public class JFREventDeduplication extends EventDeduplication {
         put("jdk.SystemProcess", "pid", "commandLine");
         put("jdk.NativeLibraryLoad", "name", "success");
 
+        // Hardware/OS constants — value is fixed for the machine.
+        putSingleton("jdk.PhysicalMemory");
+        putSingleton("jdk.SwapSpace");
+
+        // Agent events: endChunk, identical across chunks
+        put("jdk.JavaAgent", "name", "options", "dynamic");
+        put("jdk.NativeAgent", "name", "options", "dynamic", "path");
+
+        // DeprecatedInvocation: endChunk, keyed by (method, invocationTime) — same call site
+        // re-emitted at every chunk boundary; different call sites (same method, different time)
+        // must NOT be merged.
+        put(
+                "jdk.DeprecatedInvocation",
+                e -> stableKey(e, "method") + "|" + stableKey(e, "invocationTime"),
+                (a, b) -> true);
+
+        // FinalizerStatistics can legitimately repeat with identical payload across
+        // different timestamps/chunks. Dropping these observations changes event counts
+        // after condense+inflate roundtrips, so keep all entries.
+
+        // ClassLoaderStatistics can also repeat unchanged across chunks and those
+        // observations are still semantically relevant in strict round-trips.
+
+        // Periodic time-series events: they are emitted repeatedly with (often) identical
+        // payloads but at distinct timestamps. Deduping them is lossy — it drops those distinct
+        // observations. The "lossless" preset must preserve every observation, so we only
+        // register these de-duplicators for the non-lossless presets.
+        if (!isLosslessPreset(configuration)) {
+            registerPeriodicTimeSeries();
+        }
+    }
+
+    /**
+     * The "lossless" preset promises that every event with a distinct timestamp survives a
+     * condense→inflate roundtrip, so it must not deduplicate periodic time-series observations.
+     */
+    private static boolean isLosslessPreset(Configuration configuration) {
+        return configuration != null && "lossless".equals(configuration.name());
+    }
+
+    private void registerPeriodicTimeSeries() {
         // Periodic events that repeat per chunk with same values
         put(
                 "jdk.NetworkUtilization",
@@ -110,12 +152,14 @@ public class JFREventDeduplication extends EventDeduplication {
         put("jdk.NativeMemoryUsage", "type", "reserved", "committed");
         putSingleton("jdk.NativeMemoryUsageTotal");
 
+        // NativeLibrary is periodic (everyChunk), dedup by name+addresses if unchanged
+        put("jdk.NativeLibrary", "name", "baseAddress", "topAddress");
+
         // Singleton periodic events (one value per chunk, dedup if unchanged)
+        putSingleton("jdk.GCConfiguration");
         putSingleton("jdk.ClassLoadingStatistics");
         putSingleton("jdk.JavaThreadStatistics");
         putSingleton("jdk.CompilerStatistics");
-        putSingleton("jdk.PhysicalMemory");
-        putSingleton("jdk.SwapSpace");
         putSingleton("jdk.SymbolTableStatistics");
         putSingleton("jdk.StringTableStatistics");
         putSingleton("jdk.ResidentSetSize");
@@ -147,16 +191,6 @@ public class JFREventDeduplication extends EventDeduplication {
 
         // JavaMonitorStatistics: singleton periodic event
         putSingleton("jdk.JavaMonitorStatistics");
-
-        // Agent events: endChunk, identical across chunks
-        put("jdk.JavaAgent", "name", "options", "dynamic");
-        put("jdk.NativeAgent", "name", "options", "dynamic", "path");
-
-        // DeprecatedInvocation: endChunk, stable string token for method
-        put(
-                "jdk.DeprecatedInvocation",
-                e -> stableKey(e, "method"),
-                (a, b) -> Objects.equals(a.getValue("forRemoval"), b.getValue("forRemoval")));
 
         // ClassLoaderStatistics can also repeat unchanged across chunks and those
         // observations are still semantically relevant in strict round-trips.

@@ -477,7 +477,7 @@ public class CombinerSpec {
 
     // ======================== Struct Builders ========================
 
-    private static final Set<String> ALWAYS_SKIP = Set.of("startTime", "gcId", "eventThread");
+    private static final Set<String> ALWAYS_SKIP = Set.of("gcId", "eventThread");
 
     private static StructType<RecordedEvent, ReadStruct> buildDynamicStruct(
             BasicJFRWriter writer,
@@ -919,7 +919,8 @@ public class CombinerSpec {
                     .mapKeyValue(
                             "regionTransition",
                             "regionList",
-                            ValueDef.collectNamedStructArray("G1RegionEntry", "index", "used"))
+                            ValueDef.collectNamedStructArray(
+                                    "G1RegionEntry", "index", "start", "used"))
                     .keyStructFields("G1RegionTransition", "from", "to");
         }
 
@@ -942,6 +943,7 @@ public class CombinerSpec {
                             "occurrences",
                             ValueDef.collectNamedStructArray(
                                     "ThreadParkOccurrence",
+                                    "startTime",
                                     "duration",
                                     "eventThread",
                                     "stackTrace",

@@ -255,6 +255,10 @@ public class CondenseCommand implements Callable<Integer> {
                     }
                     firstFile = false;
                     try (RecordingFile r = new RecordingFile(input)) {
+                        // Pre-register all event types so ActiveSetting id remapping works for
+                        // types whose first event hasn't appeared yet when ActiveSetting events
+                        // are processed (Bug 2 fix, see JMC_FIX.md).
+                        basicJFRWriter.registerEventTypes(r.readEventTypes());
                         while (r.hasMoreEvents()) {
                             var e = r.readEvent();
                             String typeName = e.getEventType().getName();
