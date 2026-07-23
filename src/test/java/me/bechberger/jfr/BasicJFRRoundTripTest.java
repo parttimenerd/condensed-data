@@ -667,20 +667,31 @@ public class BasicJFRRoundTripTest {
                         var phaseEntries = (ReadList<?>) entry.get("value");
                         var expectedDurations = nameToDuration.get(name);
                         assertNotNull(
-                                expectedDurations,
-                                "Reconstituted phase not in source: " + name);
+                                expectedDurations, "Reconstituted phase not in source: " + name);
                         // Same-named parallel sub-phases within a GC id are stored as an array
                         // of {startTime, duration} structs; every source duration must survive
                         // (Bug 267). Compare as a multiset.
                         var expectedNanos =
-                                expectedDurations.stream().mapToLong(Duration::toNanos).sorted().toArray();
-                        var actualNanos = phaseEntries.stream().mapToLong(e -> {
-                            if (e instanceof ReadStruct s) {
-                                Object d = s.get("duration");
-                                return d instanceof Long l ? l : ((Number) d).longValue();
-                            }
-                            return e instanceof Long l ? l : ((Number) e).longValue();
-                        }).sorted().toArray();
+                                expectedDurations.stream()
+                                        .mapToLong(Duration::toNanos)
+                                        .sorted()
+                                        .toArray();
+                        var actualNanos =
+                                phaseEntries.stream()
+                                        .mapToLong(
+                                                e -> {
+                                                    if (e instanceof ReadStruct s) {
+                                                        Object d = s.get("duration");
+                                                        return d instanceof Long l
+                                                                ? l
+                                                                : ((Number) d).longValue();
+                                                    }
+                                                    return e instanceof Long l
+                                                            ? l
+                                                            : ((Number) e).longValue();
+                                                })
+                                        .sorted()
+                                        .toArray();
                         assertEquals(
                                 expectedNanos.length,
                                 actualNanos.length,
@@ -713,9 +724,7 @@ public class BasicJFRRoundTripTest {
                                             Duration.ZERO,
                                             d,
                                             config.durationTicksPerSecond(),
-                                            "Duration for name "
-                                                    + entry.getKey()
-                                                    + " is not zero");
+                                            "Duration for name " + entry.getKey() + " is not zero");
                                 }
                             }
                         }

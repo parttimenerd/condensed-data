@@ -133,18 +133,14 @@ public class JFREventDeduplicationTest {
 
         // NativeLibrary (Bug 270): periodic, emitted at start and end of recording —
         // must NOT be deduped under lossless.
-        var defaultNL =
-                countKeptDropped(testJfr, Configuration.DEFAULT, "jdk.NativeLibrary");
-        var losslessNL =
-                countKeptDropped(testJfr, Configuration.LOSSLESS, "jdk.NativeLibrary");
+        var defaultNL = countKeptDropped(testJfr, Configuration.DEFAULT, "jdk.NativeLibrary");
+        var losslessNL = countKeptDropped(testJfr, Configuration.LOSSLESS, "jdk.NativeLibrary");
         assertThat(defaultNL[1]).isGreaterThan(0); // default drops duplicates
         assertThat(losslessNL[1]).isEqualTo(0); // lossless drops none
 
         // GCConfiguration (Bug 270): periodic singleton — same fix as NativeLibrary.
-        var defaultGC =
-                countKeptDropped(testJfr, Configuration.DEFAULT, "jdk.GCConfiguration");
-        var losslessGC =
-                countKeptDropped(testJfr, Configuration.LOSSLESS, "jdk.GCConfiguration");
+        var defaultGC = countKeptDropped(testJfr, Configuration.DEFAULT, "jdk.GCConfiguration");
+        var losslessGC = countKeptDropped(testJfr, Configuration.LOSSLESS, "jdk.GCConfiguration");
         if (defaultGC[0] + defaultGC[1] > 1) {
             assertThat(defaultGC[1]).isGreaterThan(0); // default deduplicates
             assertThat(losslessGC[1]).isEqualTo(0); // lossless keeps all
@@ -157,18 +153,18 @@ public class JFREventDeduplicationTest {
      * The correct key is {@code (method, invocationTime)}: same call site re-emitted per chunk
      * boundary gets deduped; different call sites (same method, different time) are preserved.
      *
-     * <p>Uses {@code renaissance-neo4j-analytics_default_G1.jfr} (1 chunk, 4 distinct call sites
-     * of {@code System.getSecurityManager()}) and {@code renaissance-als_default_G1.jfr} (2
-     * chunks, each emitting 23 unique call sites — expect 23 after dedup, not 46 or 6).
+     * <p>Uses {@code renaissance-neo4j-analytics_default_G1.jfr} (1 chunk, 4 distinct call sites of
+     * {@code System.getSecurityManager()}) and {@code renaissance-als_default_G1.jfr} (2 chunks,
+     * each emitting 23 unique call sites — expect 23 after dedup, not 46 or 6).
      */
     @Test
     public void testDeprecatedInvocationPreservesDistinctCallSites() throws Exception {
         // 1-chunk recording: 4 events with the same method but different invocationTime.
         // All 4 must be kept.
-        var neo4jJfr =
-                Path.of("benchmark/renaissance-neo4j-analytics_default_G1.jfr");
+        var neo4jJfr = Path.of("benchmark/renaissance-neo4j-analytics_default_G1.jfr");
         if (Files.exists(neo4jJfr)) {
-            var result = countKeptDropped(neo4jJfr, Configuration.DEFAULT, "jdk.DeprecatedInvocation");
+            var result =
+                    countKeptDropped(neo4jJfr, Configuration.DEFAULT, "jdk.DeprecatedInvocation");
             assertThat(result[1]).isEqualTo(0); // no drops for single-chunk recording
             assertThat(result[0]).isEqualTo(4); // all 4 distinct call sites preserved
         } else {
@@ -179,7 +175,8 @@ public class JFREventDeduplicationTest {
         // both chunks. Expect 23 after dedup (cross-chunk duplicates removed).
         var alsJfr = Path.of("benchmark/renaissance-als_default_G1.jfr");
         if (Files.exists(alsJfr)) {
-            var result = countKeptDropped(alsJfr, Configuration.DEFAULT, "jdk.DeprecatedInvocation");
+            var result =
+                    countKeptDropped(alsJfr, Configuration.DEFAULT, "jdk.DeprecatedInvocation");
             assertThat(result[0]).isEqualTo(23); // 23 unique call sites
             assertThat(result[1]).isEqualTo(23); // 23 cross-chunk duplicates dropped
         } else {

@@ -118,14 +118,10 @@ public class ReducedJFRTypes {
                     // address, gate on removeUnnecessaryAddresses so lossless keeps it.
                     Map.entry(
                             "jdk.ShenandoahHeapRegionStateChange",
-                            entry(
-                                    "jdk.ShenandoahHeapRegionStateChange",
-                                    addressField("start"))),
+                            entry("jdk.ShenandoahHeapRegionStateChange", addressField("start"))),
                     Map.entry(
                             "jdk.ShenandoahHeapRegionInformation",
-                            entry(
-                                    "jdk.ShenandoahHeapRegionInformation",
-                                    addressField("start"))),
+                            entry("jdk.ShenandoahHeapRegionInformation", addressField("start"))),
                     // ClassLoaderStatistics: classLoaderData is a raw JVM pointer
                     Map.entry(
                             "jdk.ClassLoaderStatistics",

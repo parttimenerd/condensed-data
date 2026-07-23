@@ -569,12 +569,12 @@ public class WritingJFRReaderTest {
 
     /**
      * Regression for Bug 265: the Bug 264 timezone fix carried only the region's {@code gmtOffset}
-     * (standard-time offset) and dropped the {@code dst} (daylight-saving) attribute, so a recording
-     * made during summer time rendered one hour early after inflate ({@code jfr print} renders
-     * {@code gmtOffset + dst}). The fix captures the <em>effective</em> offset ({@code gmtOffset +
-     * dst}) at condense. This test uses a summer-time benchmark recording (CEST = +2h) and asserts
-     * the effective offset both survives the roundtrip and exceeds the +1h standard offset (i.e. the
-     * DST hour was actually captured, not just the base offset).
+     * (standard-time offset) and dropped the {@code dst} (daylight-saving) attribute, so a
+     * recording made during summer time rendered one hour early after inflate ({@code jfr print}
+     * renders {@code gmtOffset + dst}). The fix captures the <em>effective</em> offset ({@code
+     * gmtOffset + dst}) at condense. This test uses a summer-time benchmark recording (CEST = +2h)
+     * and asserts the effective offset both survives the roundtrip and exceeds the +1h standard
+     * offset (i.e. the DST hour was actually captured, not just the base offset).
      */
     @Test
     @InflaterRelated
@@ -613,11 +613,12 @@ public class WritingJFRReaderTest {
                                                 assertEquals(
                                                         origOffset,
                                                         inflatedOffset,
-                                                        "The effective offset (gmtOffset + dst) of a"
-                                                            + " summer-time recording must survive a"
-                                                            + " condense→inflate roundtrip; dropping"
-                                                            + " dst renders inflated timestamps one"
-                                                            + " hour early");
+                                                        "The effective offset (gmtOffset + dst) of"
+                                                                + " a summer-time recording must"
+                                                                + " survive a condense→inflate"
+                                                                + " roundtrip; dropping dst renders"
+                                                                + " inflated timestamps one hour"
+                                                                + " early");
                                             })
                                     .run();
                         })
@@ -627,13 +628,14 @@ public class WritingJFRReaderTest {
     /**
      * Regression for Bug 268: {@code jdk.G1HeapRegionTypeChange.start} (a {@code @MemoryAddress}
      * long) was removed from the reduced type under {@code Configuration::ignoreUnnecessaryEvents},
-     * which is {@code true} for both {@code default} AND {@code lossless} — so the "keep everything"
-     * preset silently dropped it (inflated events had no {@code start} field at all). The field is a
-     * raw address, so its removal now correctly gates on {@code removeUnnecessaryAddresses} (only the
-     * lossy reasonable-/reduced-default presets), matching every other address-field reduction. This
-     * test condenses+inflates a G1-detail benchmark under the default preset and asserts the
-     * {@code (index, start)} multiset of the surviving events (the writer intentionally drops
-     * {@code from == to} "unnecessary" events) is preserved bit-for-bit.
+     * which is {@code true} for both {@code default} AND {@code lossless} — so the "keep
+     * everything" preset silently dropped it (inflated events had no {@code start} field at all).
+     * The field is a raw address, so its removal now correctly gates on {@code
+     * removeUnnecessaryAddresses} (only the lossy reasonable-/reduced-default presets), matching
+     * every other address-field reduction. This test condenses+inflates a G1-detail benchmark under
+     * the default preset and asserts the {@code (index, start)} multiset of the surviving events
+     * (the writer intentionally drops {@code from == to} "unnecessary" events) is preserved
+     * bit-for-bit.
      */
     @Test
     @InflaterRelated
@@ -669,8 +671,8 @@ public class WritingJFRReaderTest {
                                                         sortedMultiset(infPairs),
                                                         "G1HeapRegionTypeChange.start (a"
                                                             + " @MemoryAddress long) must survive a"
-                                                            + " condense→inflate roundtrip under the"
-                                                            + " default/lossless preset — the"
+                                                            + " condense→inflate roundtrip under"
+                                                            + " the default/lossless preset — the"
                                                             + " (index,start) multiset of surviving"
                                                             + " events must match the source");
                                             })
@@ -680,9 +682,9 @@ public class WritingJFRReaderTest {
     }
 
     /**
-     * Collect {@code (index, start)} pairs for {@code jdk.G1HeapRegionTypeChange} events. When {@code
-     * onlyKept} is true, restrict to events the writer keeps ({@code from != to}); the inflated file
-     * only contains kept events, so it passes {@code false}.
+     * Collect {@code (index, start)} pairs for {@code jdk.G1HeapRegionTypeChange} events. When
+     * {@code onlyKept} is true, restrict to events the writer keeps ({@code from != to}); the
+     * inflated file only contains kept events, so it passes {@code false}.
      */
     private static java.util.List<String> g1IndexStartPairs(Path file, boolean onlyKept)
             throws Exception {
@@ -693,12 +695,11 @@ public class WritingJFRReaderTest {
                 .toList();
     }
 
-
     /**
      * JMC Bug 2 workaround (see JMC_FIX.md): jdk.ActiveSetting events must survive a
-     * condense→inflate roundtrip. The id field is remapped from a numeric class ID to the
-     * event type name at condense time, then back to a valid class ID at inflate time.
-     * Previously these events were silently dropped in the inflated output.
+     * condense→inflate roundtrip. The id field is remapped from a numeric class ID to the event
+     * type name at condense time, then back to a valid class ID at inflate time. Previously these
+     * events were silently dropped in the inflated output.
      */
     @Test
     @InflaterRelated
@@ -741,8 +742,8 @@ public class WritingJFRReaderTest {
                                                         sourceCount,
                                                         inflatedCount,
                                                         "jdk.ActiveSetting events must not be"
-                                                            + " dropped during condense→inflate"
-                                                            + " (JMC Bug 2 workaround)");
+                                                                + " dropped during condense→inflate"
+                                                                + " (JMC Bug 2 workaround)");
                                             })
                                     .run();
                         })

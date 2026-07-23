@@ -573,17 +573,17 @@ public class WritingJFRReader {
      * JMC's StackFrame2Reader hardcodes a 4-field read order (method, lineNumber, bytecodeIndex,
      * type). When cjfr removes fields via removeBCIAndLineNumberFromStackFrames or
      * removeTypeInformationFromStackFrames the inflated schema has fewer fields, causing JMC's
-     * reader to desync and crash. Workaround: always emit all 4 fields in canonical order;
-     * missing ones get zero/null defaults from getNullFieldValue() in toTypedValue().
+     * reader to desync and crash. Workaround: always emit all 4 fields in canonical order; missing
+     * ones get zero/null defaults from getNullFieldValue() in toTypedValue().
      *
      * <p>See JMC_FIX.md Bug 1.
      */
     private static final String STACK_FRAME_TYPE = "jdk.types.StackFrame";
 
     /**
-     * Canonical StackFrame field order required by JMC StackFrame2Reader. Fields not present in
-     * the CJFR schema are padded with their builtin type default; null paddingType means the field
-     * is a struct and must be present in the CJFR schema.
+     * Canonical StackFrame field order required by JMC StackFrame2Reader. Fields not present in the
+     * CJFR schema are padded with their builtin type default; null paddingType means the field is a
+     * struct and must be present in the CJFR schema.
      */
     private record StackFrameField(String name, @Nullable Builtin paddingType) {}
 
@@ -604,7 +604,9 @@ public class WritingJFRReader {
             Builtin paddingType = sfField.paddingType();
             if (cjfrFields.containsKey(fieldName)) {
                 // Field present in CJFR — emit using normal CJFR metadata
-                var field = (me.bechberger.condensed.types.StructType.Field<?, ?, ?>) cjfrFields.get(fieldName);
+                var field =
+                        (me.bechberger.condensed.types.StructType.Field<?, ?, ?>)
+                                cjfrFields.get(fieldName);
                 var parsed = BasicJFRWriter.parseFieldDescription(field.description());
                 var innerType = field.type();
                 Consumer<TypedFieldBuilder> fieldBuilderConsumer =
@@ -628,9 +630,11 @@ public class WritingJFRReader {
                     if (jdk != null) {
                         builder.addField(fieldName, jdk, fieldBuilderConsumer);
                     } else if (realTypeMap.containsKey(innerType)) {
-                        builder.addField(fieldName, getRealType(innerType, false), fieldBuilderConsumer);
+                        builder.addField(
+                                fieldName, getRealType(innerType, false), fieldBuilderConsumer);
                     } else {
-                        builder.addField(fieldName, getPredefType(innerType, false), fieldBuilderConsumer);
+                        builder.addField(
+                                fieldName, getPredefType(innerType, false), fieldBuilderConsumer);
                     }
                 }
             } else {
@@ -760,7 +764,8 @@ public class WritingJFRReader {
      * Returns the inflated JMC class ID for the given event type name. If the type hasn't been
      * registered yet (because no event of that type has been processed), it is registered eagerly:
      * first by looking up the CJFR StructType, and if not found there (event types with zero events
-     * are not written to CJFR), by registering a minimal stub event type to obtain a stable class ID.
+     * are not written to CJFR), by registering a minimal stub event type to obtain a stable class
+     * ID.
      */
     private long resolveInflatedEventTypeId(String eventTypeName) {
         Long cached = inflatedEventTypeIdByName.get(eventTypeName);

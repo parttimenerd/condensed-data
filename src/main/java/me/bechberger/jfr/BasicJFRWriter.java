@@ -172,12 +172,14 @@ public class BasicJFRWriter {
     private final Map<String, FloatType> memoryFloatTypes = new HashMap<>();
     private final Map<String, VarIntType> memoryVarIntTypes = new HashMap<>();
     private StructType<?, ?> reducedStackTraceType;
+
     /**
      * Maps original JFR class IDs to event type names. Populated as event types are registered.
      * Used to remap {@code jdk.ActiveSetting.id} and {@code jdk.RecordingSetting.id} from numeric
      * class IDs to stable event type name strings so that inflate can write the correct new ID.
      */
     private final Map<Long, String> eventTypeIdToName = new HashMap<>();
+
     Universe universe = new Universe();
     private boolean wroteConfiguration = false;
     private CondensedType<Universe, Universe> universeType;
@@ -765,14 +767,18 @@ public class BasicJFRWriter {
                             // JFR uses Long.MAX_VALUE as the "Forever" sentinel for @Timespan
                             // longs (e.g. ActiveRecording.maxAge/recordingDuration). getDuration
                             // returns Duration.ofMillis(Long.MAX_VALUE), which TimeUtil.clamp
-                            // collapses to a bogus 365d. Carry it as Duration.ofNanos(Long.MAX_VALUE)
+                            // collapses to a bogus 365d. Carry it as
+                            // Duration.ofNanos(Long.MAX_VALUE)
                             // so JFRReduction.TIMESPAN_REDUCTION can preserve it losslessly.
                             // Also covers near-MAX_VALUE values (e.g. ForkJoinPool uses
                             // Long.MAX_VALUE - N as "wait forever" park deadlines) — any raw
-                            // nanosecond value above twice the clamp bound is semantically "forever"
-                            // and would be destroyed by clamp() anyway, so normalise to the carrier.
+                            // nanosecond value above twice the clamp bound is semantically
+                            // "forever"
+                            // and would be destroyed by clamp() anyway, so normalise to the
+                            // carrier.
                             Duration d = event.getDuration(fieldName);
-                            if (d.getSeconds() > 2L * me.bechberger.util.TimeUtil.MAX_DURATION_SECONDS) {
+                            if (d.getSeconds()
+                                    > 2L * me.bechberger.util.TimeUtil.MAX_DURATION_SECONDS) {
                                 return Duration.ofNanos(Long.MAX_VALUE);
                             }
                             return d;
@@ -835,9 +841,9 @@ public class BasicJFRWriter {
     @SuppressWarnings({"rawtypes", "unchecked"})
     /**
      * Pre-registers all event types from the provided list into {@link #eventTypeIdToName} so that
-     * {@code jdk.ActiveSetting.id} values can be remapped to event type names even when the
-     * {@code jdk.ActiveSetting} events appear before events of the referenced type. Should be
-     * called with the result of {@link RecordingFile#readEventTypes()} before processing events.
+     * {@code jdk.ActiveSetting.id} values can be remapped to event type names even when the {@code
+     * jdk.ActiveSetting} events appear before events of the referenced type. Should be called with
+     * the result of {@link RecordingFile#readEventTypes()} before processing events.
      */
     public void registerEventTypes(List<? extends jdk.jfr.EventType> types) {
         for (jdk.jfr.EventType t : types) {
@@ -859,8 +865,7 @@ public class BasicJFRWriter {
     private StringType getActiveSettingIdStringType() {
         if (activeSettingIdStringType == null) {
             activeSettingIdStringType =
-                    out.writeAndStoreType(
-                            id -> new StringType(id, "event type name", "", "UTF-8"));
+                    out.writeAndStoreType(id -> new StringType(id, "event type name", "", "UTF-8"));
         }
         return activeSettingIdStringType;
     }
@@ -1165,8 +1170,8 @@ public class BasicJFRWriter {
      * childCount, children*) and returns the {@code region} element's <em>effective</em> UTC offset
      * in milliseconds: {@code gmtOffset + dst}. JFR stores the standard-time offset in {@code
      * gmtOffset} and the daylight-saving adjustment separately in {@code dst}; {@code jfr print}
-     * renders wall-clock time as the sum, so a summer recording (e.g. CEST = gmtOffset 3600000 + dst
-     * 3600000) must carry the combined 7200000 to render correctly. Returns null if no region
+     * renders wall-clock time as the sum, so a summer recording (e.g. CEST = gmtOffset 3600000 +
+     * dst 3600000) must carry the combined 7200000 to render correctly. Returns null if no region
      * carries a gmtOffset.
      */
     private static String findRegionGmtOffset(byte[] data, long[] cursor, String[] strings) {
