@@ -25,6 +25,11 @@ jobs:
         git clone --depth=1 https://github.com/parttimenerd/femtocli.git /tmp/femtocli
         cd /tmp/femtocli && mvn install -Pminimal -DskipTests -q
 
+    - name: Install JMC core (SNAPSHOT)
+      run: |
+        git clone --depth=1 https://github.com/openjdk/jmc.git /tmp/jmc
+        cd /tmp/jmc/core && mvn install -DskipTests -q
+
     - name: Run tests
       run: mvn clean test
 
