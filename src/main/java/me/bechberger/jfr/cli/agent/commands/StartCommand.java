@@ -25,7 +25,7 @@ public class StartCommand implements Callable<Integer> {
             description =
                     "The condenser data-reduction configuration to use, possible values:"
                             + " default, lossless, reasonable-default, reduced-default",
-            defaultValue = "reasonable-default",
+            defaultValue = "default",
             converter = ConfigurationConverter.class)
     private Configuration configuration;
 
