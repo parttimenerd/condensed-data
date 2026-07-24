@@ -588,11 +588,7 @@ public class RecordingThreadHardeningTest {
         Thread.sleep(600);
         thread.stop();
 
-        var files =
-                Files.list(tmp)
-                        .filter(p -> p.toString().endsWith(".cjfr"))
-                        .sorted()
-                        .toList();
+        var files = Files.list(tmp).filter(p -> p.toString().endsWith(".cjfr")).sorted().toList();
         assertThat(files).as("at least one rotated file should exist").isNotEmpty();
 
         // Check every written file — config must be consistent across rotations.
