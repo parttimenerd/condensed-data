@@ -237,15 +237,19 @@ public class CombiningJFRReader implements JFRReader {
     }
 
     /**
-     * Configuration for on-the-fly condensation of JFR files. Disables dedup ({@code
-     * ignoreUnnecessaryEvents}) and event combining so that events whose field values were made
-     * identical by lossy compression (e.g. BFloat16) are not incorrectly dropped as duplicates when
-     * re-reading, and the combiner doesn't crash on unfamiliar event types.
+     * Configuration for on-the-fly condensation of JFR files. All combiners and dedup are disabled
+     * so that (a) events are not incorrectly dropped as duplicates due to lossy field coercion
+     * (e.g. BFloat16), (b) the general-purpose combiner cannot crash on unfamiliar event layouts,
+     * and (c) view/inflate of raw .jfr files shows unmodified event structure.
      */
     private static final Configuration ON_THE_FLY_CONFIG =
             Configuration.DEFAULT
+                    .withName("on-the-fly")
                     .withIgnoreUnnecessaryEvents(false)
-                    .withCombineEventsWithoutDataLoss(false);
+                    .withCombineEventsWithoutDataLoss(false)
+                    .withCombinePLABPromotionEvents(false)
+                    .withCombineG1HeapRegionTypeChangeEvents(false)
+                    .withCombineThreadParkLossless(false);
 
     /** Condense a .jfr file on-the-fly and return a reader for the condensed data */
     private static ReaderAndReadEvents readerForJFRFile(

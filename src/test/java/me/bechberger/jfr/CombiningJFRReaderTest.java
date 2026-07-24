@@ -7,6 +7,7 @@ import java.util.ArrayList;
 import java.util.List;
 import jdk.jfr.consumer.RecordedEvent;
 import jdk.jfr.consumer.RecordingFile;
+import me.bechberger.condensed.ReadStruct;
 import org.junit.jupiter.api.Test;
 
 public class CombiningJFRReaderTest {
@@ -126,5 +127,31 @@ public class CombiningJFRReaderTest {
             Files.deleteIfExists(inflated);
             Files.deleteIfExists(tmpDir);
         }
+    }
+
+    /**
+     * ON_THE_FLY_CONFIG must disable all combiners, not just combineEventsWithoutDataLoss. If
+     * combinePLABPromotionEvents (or similar) fires during on-the-fly condensation, view/inflate
+     * sees combined event types (e.g. jdk.combined.PromoteObjectInNewPLAB) instead of raw JFR event
+     * types.
+     */
+    @Test
+    public void testOnTheFlyCondensationDoesNotCombineEvents() throws Exception {
+        var jfrFile = me.bechberger.jfr.cli.commands.CommandTestUtil.getSampleJFRFile();
+
+        List<String> onTheFlyEventTypes = new ArrayList<>();
+        var reader = CombiningJFRReader.fromPaths(List.of(jfrFile));
+        ReadStruct event;
+        while ((event = reader.readNextEvent()) != null) {
+            onTheFlyEventTypes.add(event.getType().getName());
+        }
+
+        assertTrue(
+                onTheFlyEventTypes.stream().noneMatch(n -> n.startsWith("jdk.combined.")),
+                "On-the-fly condensation must not produce combined event types; found: "
+                        + onTheFlyEventTypes.stream()
+                                .filter(n -> n.startsWith("jdk.combined."))
+                                .distinct()
+                                .toList());
     }
 }
