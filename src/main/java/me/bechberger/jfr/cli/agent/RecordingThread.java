@@ -120,8 +120,7 @@ public abstract class RecordingThread implements Runnable {
         return result;
     }
 
-    @SuppressWarnings("unused") // reserved for future use
-    private Configuration getConfiguration() {
+    protected Configuration getConfiguration() {
         return configuration;
     }
 

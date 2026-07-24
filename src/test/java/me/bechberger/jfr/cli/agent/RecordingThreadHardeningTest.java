@@ -9,10 +9,15 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
 import java.util.ArrayList;
+import java.util.List;
 import java.util.concurrent.CountDownLatch;
+import me.bechberger.condensed.CondensedInputStream;
+import me.bechberger.jfr.BasicJFRReader;
 import me.bechberger.jfr.Configuration;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.Timeout;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.MethodSource;
 
 /**
  * Unit tests for hardening fixes in RotatingRecordingThread, SingleRecordingThread, and
@@ -519,5 +524,111 @@ public class RecordingThreadHardeningTest {
         assertFalse(withDate.contains("$date"), "date placeholder must be replaced");
         assertTrue(withDate.endsWith(".cjfr"));
         assertTrue(withDate.startsWith("rec_"));
+    }
+
+    // -------------------------------------------------------------------------
+    // Tests: configurations are properly passed and applied
+    // -------------------------------------------------------------------------
+
+    static List<Configuration> testConfigurations() {
+        return List.of(Configuration.DEFAULT, Configuration.REASONABLE_DEFAULT);
+    }
+
+    /**
+     * SingleRecordingThread must store configuration.name() in the StartMessage and write the
+     * Configuration object so that the timeStampTicksPerSecond survives a roundtrip. This is a
+     * regression test for the bug where both fields defaulted to REASONABLE_DEFAULT regardless of
+     * what was passed.
+     */
+    @ParameterizedTest
+    @MethodSource("testConfigurations")
+    @Timeout(15)
+    public void testSingleRecordingThreadPropagatesConfiguration(Configuration config)
+            throws Exception {
+        Path tmp = Files.createTempDirectory("rrt-config-single-");
+        tmp.toFile().deleteOnExit();
+        Path out = tmp.resolve("rec.cjfr");
+
+        var thread =
+                new SingleRecordingThread(
+                        out.toString(), config, false, "default", "", () -> {}, singleSettings());
+        thread.close();
+
+        assertConfigurationRoundtrip(out, config);
+    }
+
+    /**
+     * RotatingRecordingThread must store configuration.name() in every StartMessage and write the
+     * Configuration object in every file. This is a regression test for the same bug in the
+     * rotating variant.
+     */
+    @ParameterizedTest
+    @MethodSource("testConfigurations")
+    @Timeout(30)
+    public void testRotatingRecordingThreadPropagatesConfiguration(Configuration config)
+            throws Exception {
+        Path tmp = Files.createTempDirectory("rrt-config-rotating-");
+        tmp.toFile().deleteOnExit();
+
+        // Rotate every 100ms so we get at least one complete file quickly.
+        var settings = rotatingSettings(Duration.ofMillis(100), 0, 10);
+        settings.newNames = true;
+
+        var thread =
+                new RotatingRecordingThread(
+                        tmp.resolve("rec_$index.cjfr").toString(),
+                        config,
+                        false,
+                        "default",
+                        "",
+                        () -> {},
+                        settings);
+
+        // Wait for the watchdog to rotate at least once so rec_0.cjfr is fully closed.
+        Thread.sleep(600);
+        thread.stop();
+
+        var files =
+                Files.list(tmp)
+                        .filter(p -> p.toString().endsWith(".cjfr"))
+                        .sorted()
+                        .toList();
+        assertThat(files).as("at least one rotated file should exist").isNotEmpty();
+
+        // Check every written file — config must be consistent across rotations.
+        for (var file : files) {
+            assertConfigurationRoundtrip(file, config);
+        }
+    }
+
+    /**
+     * Open {@code file} as a cjfr stream and assert that the StartMessage stores the expected
+     * config name and that the embedded Configuration object has the expected
+     * timeStampTicksPerSecond.
+     */
+    private static void assertConfigurationRoundtrip(Path file, Configuration expected)
+            throws Exception {
+        try (var is = new CondensedInputStream(Files.newInputStream(file))) {
+            var reader = new BasicJFRReader(is);
+
+            // readTillFirstEvent() triggers the lazy start-header read and processes the
+            // Configuration object that BasicJFRWriter always writes before events.
+            reader.readTillFirstEvent();
+
+            // StartMessage is populated after the first read.
+            var startMsg = reader.getStartMessage();
+            assertThat(startMsg.generatorConfiguration())
+                    .as(
+                            "StartMessage.generatorConfiguration in %s should match"
+                                    + " configuration.name()",
+                            file.getFileName())
+                    .isEqualTo(expected.name());
+
+            assertThat(reader.getConfiguration().timeStampTicksPerSecond())
+                    .as(
+                            "timeStampTicksPerSecond in %s should match the passed configuration",
+                            file.getFileName())
+                    .isEqualTo(expected.timeStampTicksPerSecond());
+        }
     }
 }

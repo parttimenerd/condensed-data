@@ -321,9 +321,9 @@ public class RotatingRecordingThread extends RecordingThread {
                                         Constants.FORMAT_VERSION,
                                         "condensed jfr agent",
                                         Constants.VERSION,
-                                        Agent.getAgentArgs(),
+                                        getConfiguration().name(),
                                         Compression.DEFAULT));
-                newWriter = new BasicJFRWriter(out);
+                newWriter = new BasicJFRWriter(out, getConfiguration());
             } catch (Throwable t) {
                 synchronized (filesLock) {
                     overallWrittenFileCount.decrementAndGet();

@@ -70,9 +70,9 @@ public class SingleRecordingThread extends RecordingThread {
                                     Constants.FORMAT_VERSION,
                                     "condensed jfr agent",
                                     Constants.VERSION,
-                                    Agent.getAgentArgs(),
+                                    configuration.name(),
                                     Compression.DEFAULT));
-            writer = new BasicJFRWriter(condensedOut);
+            writer = new BasicJFRWriter(condensedOut, configuration);
         } catch (Throwable t) {
             if (rawOut != null) {
                 try {
