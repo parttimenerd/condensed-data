@@ -45,10 +45,10 @@ final class ViewRenderer {
     }
 
     /**
-     * The maximum physical line count for a cell in column {@code col}. The CLI {@code --cell-height}
-     * (when the user passed one) overrides everything; otherwise the column's view.ini {@code
-     * cell-height:N} FORMAT value applies (e.g. environment-variables → 20); otherwise a cell is a
-     * single line. Always at least 1.
+     * The maximum physical line count for a cell in column {@code col}. The CLI {@code
+     * --cell-height} (when the user passed one) overrides everything; otherwise the column's
+     * view.ini {@code cell-height:N} FORMAT value applies (e.g. environment-variables → 20);
+     * otherwise a cell is a single line. Always at least 1.
      */
     private int cellHeightFor(int col) {
         if (cliCellHeight != null) {
@@ -82,9 +82,9 @@ final class ViewRenderer {
 
     /**
      * Column header labels: from the COLUMN clause when present; otherwise the field's declared
-     * metadata label (e.g. {@code initialSize} → "Initial Heap Size"), falling back to the raw field
-     * path when no metadata label resolves. A SELECT {@code AS} alias is <em>not</em> a display
-     * label — it only names the column for ORDER BY references — so it is not used here.
+     * metadata label (e.g. {@code initialSize} → "Initial Heap Size"), falling back to the raw
+     * field path when no metadata label resolves. A SELECT {@code AS} alias is <em>not</em> a
+     * display label — it only names the column for ORDER BY references — so it is not used here.
      */
     private static List<String> resolveLabels(
             ViewQuery query, Map<String, List<ReadStruct>> eventsByType) {
@@ -136,7 +136,8 @@ final class ViewRenderer {
 
     /** The per-column FORMAT hint (positional), or null if none for that column. */
     private FormatHint hintFor(int col) {
-        // FORMAT hints are positional per column slot; a bare "none" occupies a slot with no effect.
+        // FORMAT hints are positional per column slot; a bare "none" occupies a slot with no
+        // effect.
         List<FormatHint> hints = query.formatHints();
         if (col < hints.size()) {
             FormatHint h = hints.get(col);
@@ -158,7 +159,8 @@ final class ViewRenderer {
         out.add("");
         out.add(title);
         out.add("-".repeat(title.length()));
-        // A form shows a single (aggregated) row; each SELECT column becomes a "Label: value" block.
+        // A form shows a single (aggregated) row; each SELECT column becomes a "Label: value"
+        // block.
         Row row = rows.isEmpty() ? null : rows.get(0);
         for (int c = 0; c < labels.size(); c++) {
             out.add("");
@@ -294,7 +296,8 @@ final class ViewRenderer {
      * Render one data row, wrapping any cell that overflows its column width into extra physical
      * lines the way {@code jfr view} does: each cell is broken at a hard character boundary into
      * chunks of its column width, the row's line count is the tallest cell, and cells shorter than
-     * that leave blanks on the continuation lines. Non-wrapping cells appear only on the first line.
+     * that leave blanks on the continuation lines. Non-wrapping cells appear only on the first
+     * line.
      */
     private List<String> renderRow(String[] cells, int[] widths, boolean[] rightAlign) {
         int nCols = cells.length;
@@ -323,12 +326,12 @@ final class ViewRenderer {
 
     /**
      * Break {@code s} to fit column {@code width} across at most {@code maxLines} physical lines,
-     * the way {@code jfr view} does. A string within width is a single line. Otherwise it wraps into
-     * {@code width}-char lines; if it needs more than {@code maxLines} lines, the content that would
-     * not fit is elided with a three-dot ellipsis on the boundary line — at the end of the last kept
-     * line for {@code --truncate end}, or at the start of the first line (keeping the tail) for
-     * {@code --truncate beginning}. With {@code maxLines == 1} this collapses to single-line
-     * truncation ({@code "GC Phase P..."} / {@code "...ase Level 1"}).
+     * the way {@code jfr view} does. A string within width is a single line. Otherwise it wraps
+     * into {@code width}-char lines; if it needs more than {@code maxLines} lines, the content that
+     * would not fit is elided with a three-dot ellipsis on the boundary line — at the end of the
+     * last kept line for {@code --truncate end}, or at the start of the first line (keeping the
+     * tail) for {@code --truncate beginning}. With {@code maxLines == 1} this collapses to
+     * single-line truncation ({@code "GC Phase P..."} / {@code "...ase Level 1"}).
      */
     private List<String> wrapCell(String s, int width, int maxLines) {
         if (width <= 0 || s.length() <= width) return List.of(s);
@@ -340,11 +343,16 @@ final class ViewRenderer {
         // Content exceeds the visible box: keep (capacity - 3) characters and mark the elision.
         String ell = "...";
         int keep = Math.max(0, capacity - ell.length());
-        String kept = truncateBeginning ? ell + s.substring(s.length() - keep) : s.substring(0, keep) + ell;
+        String kept =
+                truncateBeginning
+                        ? ell + s.substring(s.length() - keep)
+                        : s.substring(0, keep) + ell;
         return hardWrap(kept, width);
     }
 
-    /** Hard-break {@code s} into {@code width}-char lines (no ellipsis); a short string is one line. */
+    /**
+     * Hard-break {@code s} into {@code width}-char lines (no ellipsis); a short string is one line.
+     */
     private static List<String> hardWrap(String s, int width) {
         if (width <= 0 || s.length() <= width) return List.of(s);
         List<String> out = new ArrayList<>();
@@ -364,7 +372,9 @@ final class ViewRenderer {
         return false;
     }
 
-    /** True if column {@code col} carries a {@code normalized} FORMAT hint (render as % of total). */
+    /**
+     * True if column {@code col} carries a {@code normalized} FORMAT hint (render as % of total).
+     */
     private boolean normalizedFor(int col) {
         List<FormatHint> hints = query.formatHints();
         if (col < hints.size()) {
@@ -379,15 +389,15 @@ final class ViewRenderer {
      * (content/header) width, then reconciles the total against a fill target:
      *
      * <ul>
-     *   <li><b>Target.</b> Views with a {@code cell-height} (wrapping) column fill to {@code width -
-     *       1}; views without one fill to {@code width - 2 + flexCount} (a single flexible column
+     *   <li><b>Target.</b> Views with a {@code cell-height} (wrapping) column fill to {@code width
+     *       - 1}; views without one fill to {@code width - 2 + flexCount} (a single flexible column
      *       stops one short of the terminal, two fill it exactly, and so on).
-     *   <li><b>Grow.</b> When the preferred total is under target, the leftover is split evenly among
-     *       the flexible (text-like) columns; the last flexible column absorbs the rounding
+     *   <li><b>Grow.</b> When the preferred total is under target, the leftover is split evenly
+     *       among the flexible (text-like) columns; the last flexible column absorbs the rounding
      *       remainder.
-     *   <li><b>Shrink.</b> When the preferred total exceeds target, the wrapping ({@code cell-height})
-     *       columns give back the overflow (splitting it evenly) and their content wraps; non-wrapping
-     *       columns keep their preferred width.
+     *   <li><b>Shrink.</b> When the preferred total exceeds target, the wrapping ({@code
+     *       cell-height}) columns give back the overflow (splitting it evenly) and their content
+     *       wraps; non-wrapping columns keep their preferred width.
      * </ul>
      */
     private void distributeFlexibleWidth(int[] widths) {
@@ -415,7 +425,8 @@ final class ViewRenderer {
                 widths[c] += per + (i == flexIdx.size() - 1 ? extra : 0);
             }
         } else if (delta < 0 && !shrinkIdx.isEmpty()) {
-            // Overflow: the wrapping columns give back the excess (evenly), then wrap their content.
+            // Overflow: the wrapping columns give back the excess (evenly), then wrap their
+            // content.
             int over = -delta;
             int per = over / shrinkIdx.size();
             int extra = over - per * shrinkIdx.size();
@@ -443,9 +454,10 @@ final class ViewRenderer {
 
     /**
      * Give each column in {@code idx} an equal slice of {@code budget}, but never more than its
-     * current (preferred) width and never below its header label width. Columns that fit under their
-     * fair share are fixed first; the space they free is re-split among the remaining oversized
-     * columns, repeating until stable. The last still-flexible column absorbs the rounding remainder.
+     * current (preferred) width and never below its header label width. Columns that fit under
+     * their fair share are fixed first; the space they free is re-split among the remaining
+     * oversized columns, repeating until stable. The last still-flexible column absorbs the
+     * rounding remainder.
      */
     private void distributeBudgetEvenly(int[] widths, List<Integer> idx, int budget) {
         List<Integer> remaining = new ArrayList<>(idx);

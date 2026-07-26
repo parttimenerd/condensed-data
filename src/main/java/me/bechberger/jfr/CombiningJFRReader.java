@@ -12,7 +12,7 @@ import me.bechberger.condensed.CondensedInputStream;
 import me.bechberger.condensed.Message.StartMessage;
 import me.bechberger.condensed.RIOException;
 import me.bechberger.condensed.ReadStruct;
-import me.bechberger.condensed.stats.BasicStatistic;
+import me.bechberger.condensed.stats.NoopStatistic;
 import me.bechberger.condensed.stats.Statistic;
 import me.bechberger.jfr.cli.CLIUtils;
 import me.bechberger.jfr.cli.EventFilter;
@@ -43,7 +43,7 @@ public class CombiningJFRReader implements JFRReader {
     }
 
     public static CombiningJFRReader fromPaths(List<Path> paths) {
-        return fromPaths(paths, (EventFilterInstance) null, true, new BasicStatistic());
+        return fromPaths(paths, (EventFilterInstance) null, true, new NoopStatistic());
     }
 
     /**
@@ -96,7 +96,7 @@ public class CombiningJFRReader implements JFRReader {
 
     public static <C> CombiningJFRReader fromPaths(
             List<Path> paths, @Nullable EventFilter<C> filter, boolean reconstitute) {
-        return fromPaths(paths, filter, reconstitute, new BasicStatistic());
+        return fromPaths(paths, filter, reconstitute, new NoopStatistic());
     }
 
     /**
@@ -115,9 +115,9 @@ public class CombiningJFRReader implements JFRReader {
 
     /**
      * As the generic {@link #fromPaths(List, EventFilter, boolean, Statistic, Set)}, but also lets
-     * the caller request lazy materialization ({@code skipRecursiveCompletion}) — the read-back does
-     * not eagerly decode the whole reference tree (stack traces, methods, classes) per event, so a
-     * query that reads only a few fields never builds the objects it discards. See {@link
+     * the caller request lazy materialization ({@code skipRecursiveCompletion}) — the read-back
+     * does not eagerly decode the whole reference tree (stack traces, methods, classes) per event,
+     * so a query that reads only a few fields never builds the objects it discards. See {@link
      * BasicJFRReader.Options}.
      */
     public static <C> CombiningJFRReader fromPaths(
@@ -212,7 +212,7 @@ public class CombiningJFRReader implements JFRReader {
 
     public static CombiningJFRReader fromPaths(
             List<Path> paths, EventFilterInstance filter, boolean reconstitute) {
-        return fromPaths(paths, filter, reconstitute, new BasicStatistic());
+        return fromPaths(paths, filter, reconstitute, new NoopStatistic());
     }
 
     private static List<ReaderAndReadEvents> orderedUniqueReaders(
@@ -410,11 +410,11 @@ public class CombiningJFRReader implements JFRReader {
                 .flatMap(
                         p ->
                                 readersForPath(
-                                                p,
-                                                reconstitute,
-                                                skipRecursiveCompletion,
-                                                statistics,
-                                                onlyEventTypes)
+                                        p,
+                                        reconstitute,
+                                        skipRecursiveCompletion,
+                                        statistics,
+                                        onlyEventTypes)
                                         .stream())
                 .toList();
     }

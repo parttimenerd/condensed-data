@@ -39,10 +39,11 @@ public class BasicJFRReader implements JFRReader {
         final boolean reconstitute;
         final boolean ignoreCloseErrors;
         final boolean skipRecursiveCompletion;
+
         /**
-         * If non-null, combined events are only reconstituted when their output event type is in this
-         * set; combined events producing an unneeded type are dropped BEFORE the expensive expand.
-         * Null = reconstitute everything (default).
+         * If non-null, combined events are only reconstituted when their output event type is in
+         * this set; combined events producing an unneeded type are dropped BEFORE the expensive
+         * expand. Null = reconstitute everything (default).
          */
         final @Nullable Set<String> reconstituteOnlyEventTypes;
 
@@ -191,7 +192,8 @@ public class BasicJFRReader implements JFRReader {
             }
             var event = (ReadStruct) msg.value();
             if (reconstitutor != null && reconstitutor.isCombinedEvent(event)) {
-                // Skip the expensive expand when the events this combined struct would produce are a
+                // Skip the expensive expand when the events this combined struct would produce are
+                // a
                 // type the caller doesn't need (e.g. a named view whose FROM excludes this type).
                 if (reconstituteOnlyEventTypes != null) {
                     String outputType = reconstitutor.outputEventTypeName(event);

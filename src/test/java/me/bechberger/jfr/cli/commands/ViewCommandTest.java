@@ -807,14 +807,14 @@ public class ViewCommandTest {
 
     /**
      * Lazy materialization guard: the view read path enables {@code skipRecursiveCompletion} so
-     * reference trees (stack traces, methods, classes) are only decoded on demand via lazy
-     * {@code get()} instead of being force-completed for every event. This asserts the fields the
-     * query actually reads still render with real content — i.e. lazy decode did not drop data.
+     * reference trees (stack traces, methods, classes) are only decoded on demand via lazy {@code
+     * get()} instead of being force-completed for every event. This asserts the fields the query
+     * actually reads still render with real content — i.e. lazy decode did not drop data.
      *
      * <p>A stack-trace-heavy view (exception-count reads {@code stackTrace.topFrame} nested
-     * method/class references) is the strongest probe: if lazy decode were broken, the frame
-     * column would be blank / N/A. gc-configuration (pure scalars, no references) is the
-     * complementary probe that the common no-reference case is unaffected.
+     * method/class references) is the strongest probe: if lazy decode were broken, the frame column
+     * would be blank / N/A. gc-configuration (pure scalars, no references) is the complementary
+     * probe that the common no-reference case is unaffected.
      */
     @Test
     public void testViewsRenderRealContentWithLazyMaterialization() throws Exception {

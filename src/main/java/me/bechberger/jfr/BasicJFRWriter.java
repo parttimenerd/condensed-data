@@ -22,7 +22,6 @@ import me.bechberger.condensed.CondensedOutputStream;
 import me.bechberger.condensed.CondensedOutputStream.OverflowMode;
 import me.bechberger.condensed.Universe.EmbeddingType;
 import me.bechberger.condensed.Universe.HashAndEqualsConfig;
-import me.bechberger.condensed.stats.Statistic;
 import me.bechberger.condensed.types.*;
 import me.bechberger.condensed.types.FloatType.Type;
 import me.bechberger.condensed.types.StructType.Field;
@@ -209,6 +208,25 @@ public class BasicJFRWriter {
         eventCombiner = new JFREventCombiner(out, configuration, this);
         deduplication = new JFREventDeduplication(configuration);
         footerCollector = new FooterCollector(configuration.cpuBucketSeconds());
+
+        // Seed the id->name map from every event type the JVM has registered. The agent's
+        // RecordingStream path never calls registerEventTypes(), so without this the map is only
+        // filled lazily as events are seen. jdk.ActiveSetting/jdk.RecordingSetting events are
+        // emitted at recording start, before most event types have produced an event, so their
+        // `id` field (a JFR class id) would otherwise fall back to String.valueOf(id) — a bare
+        // number like "110" — which inflate cannot map back to a name and turns into a corrupt
+        // event type literally named "110" (rejected by the JFR metadata reader). Prepopulating
+        // from FlightRecorder gives every id its real name up front.
+        try {
+            if (jdk.jfr.FlightRecorder.isAvailable()) {
+                for (jdk.jfr.EventType t :
+                        jdk.jfr.FlightRecorder.getFlightRecorder().getEventTypes()) {
+                    eventTypeIdToName.putIfAbsent(t.getId(), t.getName());
+                }
+            }
+        } catch (Throwable ignored) {
+            // FlightRecorder unavailable (e.g. no JFR permissions) — fall back to lazy population.
+        }
     }
 
     public BasicJFRWriter(CondensedOutputStream out) {
@@ -652,10 +670,19 @@ public class BasicJFRWriter {
                     },
                     getReducedStackTraceType(field));
         }
+        // The positional accessor returns the RAW internal value from RecordedObject.objects.
+        // getValue(name) additionally structifies nested values: arrays become RecordedObject[] and
+        // struct-typed fields become RecordedObject, both of which downstream StructType/ArrayType
+        // writing requires. The raw path only matches for leaf scalar fields (no sub-fields, not an
+        // array) — e.g. String, boxed primitives, class/thread references handled by the accessor's
+        // own fallback. Everything else must keep getValue(name).
+        boolean leafScalar = field.getFields().isEmpty() && !field.isArray();
+        Function<RecordedObject, Object> getter =
+                leafScalar
+                        ? UnsafeRecordedObjectAccessor.field(field.getName(), null)::get
+                        : e -> e.getValue(field.getName());
         return new GetterAndCachedType(
-                event ->
-                        normalize(
-                                getValueOrDefault(event, field, e -> e.getValue(field.getName()))),
+                event -> normalize(getValueOrDefault(event, field, getter)),
                 getTypeOrNull(TypeIdent.of(field)),
                 reduction);
     }
@@ -842,8 +869,8 @@ public class BasicJFRWriter {
 
     /**
      * Normalize annotation values into JSON-serializable form. Most values are scalars, but some
-     * (e.g. {@code @Category}) carry a {@code String[]}; the JSON printer can't serialize a raw Java
-     * array, so unwrap it into a {@link List}.
+     * (e.g. {@code @Category}) carry a {@code String[]}; the JSON printer can't serialize a raw
+     * Java array, so unwrap it into a {@link List}.
      */
     private static List<Object> normalizeAnnotationValues(List<Object> values) {
         List<Object> out = new ArrayList<>(values.size());
@@ -992,11 +1019,18 @@ public class BasicJFRWriter {
         out.writeMessage(universeType, universe);
     }
 
+    // Positional accessors for the high-volume G1HeapRegionTypeChange from==to check, avoiding a
+    // per-event pair of slow getString(name) lookups.
+    private static final UnsafeRecordedObjectAccessor.FieldAccessor<Object> G1_REGION_FROM =
+            UnsafeRecordedObjectAccessor.field("from", null);
+    private static final UnsafeRecordedObjectAccessor.FieldAccessor<Object> G1_REGION_TO =
+            UnsafeRecordedObjectAccessor.field("to", null);
+
     private boolean isUnnecessaryEvent(RecordedEvent event) {
         return switch (event.getEventType().getName()) {
             case "jdk.G1HeapRegionTypeChange" ->
                     // from == to
-                    event.getString("from").equals(event.getString("to"));
+                    Objects.equals(G1_REGION_FROM.get(event), G1_REGION_TO.get(event));
             default -> false;
         };
     }
@@ -1321,8 +1355,9 @@ public class BasicJFRWriter {
         return deduplication;
     }
 
-    public Statistic getUncompressedStatistic() {
-        return out.getStatistics();
+    /** Total uncompressed (pre-compression) bytes written so far. */
+    public long getUncompressedBytes() {
+        return out.getUncompressedBytes();
     }
 
     public CondensedOutputStream getOutputStream() {

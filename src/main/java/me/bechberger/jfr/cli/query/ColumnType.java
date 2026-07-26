@@ -13,14 +13,15 @@ import me.bechberger.jfr.cli.query.ViewQuery.SelectItem;
 
 /**
  * Resolves, per SELECT column, the JFR content kind that decides display formatting. Raw values
- * alone are ambiguous — a {@code long} may be a byte count ({@code jdk.jfr.DataAmount}), a percentage
- * ({@code jdk.jfr.Percentage}), an address, or a plain number. {@code jfr view} chooses the formatter
- * from the field's declared content type / annotations, so we do the same by walking the SELECT
- * expression's field path down to its declaring {@link StructType.Field} and reading its metadata.
+ * alone are ambiguous — a {@code long} may be a byte count ({@code jdk.jfr.DataAmount}), a
+ * percentage ({@code jdk.jfr.Percentage}), an address, or a plain number. {@code jfr view} chooses
+ * the formatter from the field's declared content type / annotations, so we do the same by walking
+ * the SELECT expression's field path down to its declaring {@link StructType.Field} and reading its
+ * metadata.
  *
  * <p>Timespans and timestamps already arrive as {@link java.time.Duration}/{@link
- * java.time.Instant} from the reader, so those need no hint here; the interesting cases are the ones
- * that stay raw {@code long}/{@code double}: memory and percentage.
+ * java.time.Instant} from the reader, so those need no hint here; the interesting cases are the
+ * ones that stay raw {@code long}/{@code double}: memory and percentage.
  */
 final class ColumnType {
 
@@ -48,10 +49,10 @@ final class ColumnType {
     record Columns(Kind[] kinds, boolean[] flexible) {}
 
     /**
-     * Determine the {@link Kind} and flexibility for each SELECT column. {@code eventsByType} supplies
-     * the concrete {@link StructType}s to read field metadata from. A column whose field type can't be
-     * resolved (aggregate over {@code *}, synthetic {@code eventType}, absent type) is {@link
-     * Kind#PLAIN} and non-flexible.
+     * Determine the {@link Kind} and flexibility for each SELECT column. {@code eventsByType}
+     * supplies the concrete {@link StructType}s to read field metadata from. A column whose field
+     * type can't be resolved (aggregate over {@code *}, synthetic {@code eventType}, absent type)
+     * is {@link Kind#PLAIN} and non-flexible.
      */
     static Columns resolve(ViewQuery query, Map<String, List<ReadStruct>> eventsByType) {
         List<SelectItem> select = query.select();
@@ -71,7 +72,8 @@ final class ColumnType {
         List<String> aliases;
         if (expr instanceof Aggregate agg) {
             // COUNT is always a plain count regardless of its argument.
-            if ("COUNT".equalsIgnoreCase(agg.function()) || "UNIQUE".equalsIgnoreCase(agg.function())) {
+            if ("COUNT".equalsIgnoreCase(agg.function())
+                    || "UNIQUE".equalsIgnoreCase(agg.function())) {
                 return Kind.PLAIN;
             }
             return kindFor(agg.arg(), query, eventsByType);
@@ -113,7 +115,8 @@ final class ColumnType {
             if ("eventType".equals(name)) return Kind.PLAIN;
             StructType<?, ReadStruct> vf = virtualStruct(current, name);
             if (vf != null) {
-                // A synthetic struct-valued field (e.g. stackTrace.topFrame): no scalar content type.
+                // A synthetic struct-valued field (e.g. stackTrace.topFrame): no scalar content
+                // type.
                 if (i == path.size() - 1) return Kind.PLAIN;
                 current = vf;
                 continue;
@@ -137,11 +140,11 @@ final class ColumnType {
     }
 
     /**
-     * Resolve a synthetic struct-valued field that has no declared {@link StructType.Field}. These are
-     * jfr's StackTrace frame accessors — {@code topFrame} (first frame), {@code topNotInitFrame} (first
-     * non-{@code <init>}/{@code <clinit>} frame), {@code topApplicationFrame} (first non-JDK frame) — all
-     * of which surface a {@code frames[]} element. Returns the frames' element struct type, or null if
-     * {@code name} is a real/absent field.
+     * Resolve a synthetic struct-valued field that has no declared {@link StructType.Field}. These
+     * are jfr's StackTrace frame accessors — {@code topFrame} (first frame), {@code
+     * topNotInitFrame} (first non-{@code <init>}/{@code <clinit>} frame), {@code
+     * topApplicationFrame} (first non-JDK frame) — all of which surface a {@code frames[]} element.
+     * Returns the frames' element struct type, or null if {@code name} is a real/absent field.
      */
     private static StructType<?, ReadStruct> virtualStruct(
             StructType<?, ReadStruct> current, String name) {
@@ -336,7 +339,9 @@ final class ColumnType {
         return false;
     }
 
-    /** Whether the leaf field of {@code path} is a text-like (flexible) column, or null if absent. */
+    /**
+     * Whether the leaf field of {@code path} is a text-like (flexible) column, or null if absent.
+     */
     private static Boolean flexibleForPath(StructType<?, ReadStruct> type, List<String> path) {
         StructType<?, ReadStruct> current = type;
         for (int i = 0; i < path.size(); i++) {
@@ -364,9 +369,9 @@ final class ColumnType {
     }
 
     /**
-     * A field is flexible if it renders as free-flowing text: a {@code String}, a class/method/thread
-     * reference, a stack trace, or any nested struct. These mirror {@code jfr view}'s columns with an
-     * unbounded width that expand to fill the terminal.
+     * A field is flexible if it renders as free-flowing text: a {@code String}, a
+     * class/method/thread reference, a stack trace, or any nested struct. These mirror {@code jfr
+     * view}'s columns with an unbounded width that expand to fill the terminal.
      */
     private static boolean isFlexibleField(StructType.Field<?, ?, ?> field) {
         if (field.type() instanceof StructType<?, ?>) return true;

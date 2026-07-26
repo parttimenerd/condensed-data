@@ -45,9 +45,7 @@ final class ViewIniReader {
     private static String readViewIni() {
         try {
             FileSystem jrt = FileSystems.getFileSystem(URI.create("jrt:/"));
-            Path p =
-                    jrt.getPath(
-                            "modules", "jdk.jfr", "jdk/jfr/internal/query/view.ini");
+            Path p = jrt.getPath("modules", "jdk.jfr", "jdk/jfr/internal/query/view.ini");
             if (Files.exists(p)) {
                 return Files.readString(p);
             }
@@ -73,7 +71,9 @@ final class ViewIniReader {
             String trimmed = lines[i].trim();
             if (trimmed.startsWith("[") && trimmed.endsWith("]")) {
                 if (section != null && body != null) {
-                    out.put(shortName(section), new ViewDef(shortName(section), label, shape, body));
+                    out.put(
+                            shortName(section),
+                            new ViewDef(shortName(section), label, shape, body));
                 }
                 section = trimmed.substring(1, trimmed.length() - 1);
                 label = null;
@@ -100,7 +100,9 @@ final class ViewIniReader {
         return out;
     }
 
-    /** Read a (possibly multi-line) quoted value starting at {@code rest}; advance {@code idx[0]}. */
+    /**
+     * Read a (possibly multi-line) quoted value starting at {@code rest}; advance {@code idx[0]}.
+     */
     private static String readQuoted(String[] lines, int[] idx, String rest) {
         if (rest.isEmpty()) return "";
         char quote = rest.charAt(0);

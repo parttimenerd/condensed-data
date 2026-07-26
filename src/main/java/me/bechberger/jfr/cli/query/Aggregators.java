@@ -13,10 +13,10 @@ import java.util.function.Supplier;
  * The closed set of aggregate functions used by JDK {@code view.ini} (stable across JDK 21–27).
  *
  * <p>Each function is a {@link Reducer}: it {@link Reducer#accept accepts} the raw per-row value of
- * its argument expression and, at the end of a group, {@link Reducer#result produces} the aggregated
- * raw value (which the renderer then formats). Registration is explicit in {@link #reducer}; the
- * percentile family ({@code P90}/{@code P95}/{@code P99}/{@code P999}) is handled by a single
- * parameterized branch so new percentiles are a one-line addition.
+ * its argument expression and, at the end of a group, {@link Reducer#result produces} the
+ * aggregated raw value (which the renderer then formats). Registration is explicit in {@link
+ * #reducer}; the percentile family ({@code P90}/{@code P95}/{@code P99}/{@code P999}) is handled by
+ * a single parameterized branch so new percentiles are a one-line addition.
  *
  * <p>To add a function: add a case to {@link #reducer} returning a {@code Supplier<Reducer>}. Value
  * <em>formatting</em> is not this class's concern — reducers return raw {@link Number}/{@link
@@ -49,8 +49,22 @@ final class Aggregators {
 
     private static final Set<String> KNOWN =
             Set.of(
-                    "LAST", "FIRST", "LAST_BATCH", "COUNT", "SUM", "AVG", "MIN", "MAX", "MEDIAN",
-                    "P90", "P95", "P99", "P999", "DIFF", "UNIQUE", "SET");
+                    "LAST",
+                    "FIRST",
+                    "LAST_BATCH",
+                    "COUNT",
+                    "SUM",
+                    "AVG",
+                    "MIN",
+                    "MAX",
+                    "MEDIAN",
+                    "P90",
+                    "P95",
+                    "P99",
+                    "P999",
+                    "DIFF",
+                    "UNIQUE",
+                    "SET");
 
     /**
      * A fresh reducer for {@code fn}. Throws {@link QueryParseException} for an unknown function so
@@ -66,9 +80,9 @@ final class Aggregators {
             case "MAX" -> () -> new MinMaxReducer(false);
             case "FIRST" -> () -> new FirstLastReducer(true);
             case "LAST" -> () -> new FirstLastReducer(false);
-                // LAST_BATCH: the events reaching the reducer are already restricted by
-                // QueryEvaluator to the final periodic-emission batch, so FIRST-like over that
-                // already-filtered subset yields the batch's representative value.
+            // LAST_BATCH: the events reaching the reducer are already restricted by
+            // QueryEvaluator to the final periodic-emission batch, so FIRST-like over that
+            // already-filtered subset yields the batch's representative value.
             case "LAST_BATCH" -> () -> new FirstLastReducer(true);
             case "MEDIAN" -> () -> new PercentileReducer(50);
             case "P90" -> () -> new PercentileReducer(90);
@@ -219,14 +233,17 @@ final class Aggregators {
             if (values.isEmpty()) return null;
             values.sort(null);
             int n = values.size();
-            // jfr interpolates percentiles with the Excel PERCENTILE.EXC method: the 1-based rank is
-            // pct/100 * (n+1); the value is a linear interpolation between the two sorted samples that
+            // jfr interpolates percentiles with the Excel PERCENTILE.EXC method: the 1-based rank
+            // is
+            // pct/100 * (n+1); the value is a linear interpolation between the two sorted samples
+            // that
             // straddle that rank. Verified on a large clean dataset (gc-pauses, n=8600): Median →
             // 2.1675 ms, P90 → 8.2705 ms, P95 → 18.97 ms, P99 → 95.99 ms all match jfr's rendered
             // values. Ranks at or beyond the ends clamp to the first/last sample. NOTE: jfr's P99.9
             // and its small-N percentiles diverge (jfr extrapolates above the max and its small-N
             // output is even internally inconsistent, e.g. P95 > Max); those cannot be reproduced
-            // without reading GPLv2 jdk.jfr.internal.query source, so they are accepted degradations.
+            // without reading GPLv2 jdk.jfr.internal.query source, so they are accepted
+            // degradations.
             double idx0 = pct / 100.0 * (n + 1) - 1; // 0-based fractional index
             double v;
             if (idx0 <= 0) {

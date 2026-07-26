@@ -39,9 +39,9 @@ public record ViewQuery(
 
     /**
      * An ORDER BY term; {@code ref} may be a SELECT alias or a field path. {@code direction} is
-     * {@code DEFAULT} when the query gave no ASC/DESC keyword — the evaluator then picks a direction
-     * from the referenced expression (aggregates sort descending, plain fields ascending), matching
-     * {@code jfr view}.
+     * {@code DEFAULT} when the query gave no ASC/DESC keyword — the evaluator then picks a
+     * direction from the referenced expression (aggregates sort descending, plain fields
+     * ascending), matching {@code jfr view}.
      */
     public record OrderItem(String ref, Direction direction) {
         public enum Direction {
@@ -70,8 +70,8 @@ public record ViewQuery(
 
     /**
      * An alias-alternation (coalesce) access from a join query, e.g. {@code [Y|O].eventType.label}.
-     * The value is taken from whichever of {@code aliases} produced a row for the current group; the
-     * remaining {@code parts} are the dotted field path applied to that row.
+     * The value is taken from whichever of {@code aliases} produced a row for the current group;
+     * the remaining {@code parts} are the dotted field path applied to that row.
      */
     public record Coalesce(List<String> aliases, List<String> parts) implements Expr {
         public String joinedParts() {

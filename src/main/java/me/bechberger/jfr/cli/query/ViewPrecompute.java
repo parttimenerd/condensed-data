@@ -5,7 +5,6 @@ import java.time.Instant;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
-import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
 import me.bechberger.condensed.CJFRFooter.PrecomputedCell;
@@ -16,27 +15,33 @@ import me.bechberger.jfr.cli.query.Aggregators.Reducer;
  * with zero event reads.
  *
  * <p>Public facade over the (package-private) {@link Aggregators} and {@link ColumnType} internals,
- * so the collector ({@code me.bechberger.jfr.FooterCollector}) and the command
- * ({@code me.bechberger.jfr.cli.commands.ViewCommand}) never touch the query package's internal
- * types — they speak only in {@link PrecomputedCell} (which carries the display kind as an ordinal).
+ * so the collector ({@code me.bechberger.jfr.FooterCollector}) and the command ({@code
+ * me.bechberger.jfr.cli.commands.ViewCommand}) never touch the query package's internal types —
+ * they speak only in {@link PrecomputedCell} (which carries the display kind as an ordinal).
  *
- * <p>Correct-by-construction byte-identical: the collector feeds each view's FROM-event field values
- * through the very same {@link Aggregators} reducers the native renderer uses, and the serve side
- * renders through the same {@link ViewRenderer}. Values reverse-engineered from observed {@code jfr
- * view} output only (the GPLv2 {@code view.ini} / {@code jdk.jfr.internal.query} are never copied).
+ * <p>Correct-by-construction byte-identical: the collector feeds each view's FROM-event field
+ * values through the very same {@link Aggregators} reducers the native renderer uses, and the serve
+ * side renders through the same {@link ViewRenderer}. Values reverse-engineered from observed
+ * {@code jfr view} output only (the GPLv2 {@code view.ini} / {@code jdk.jfr.internal.query} are
+ * never copied).
  *
- * <p><b>Extending:</b> add a {@link PView} to {@link #REGISTRY}. After the one footer-format version
- * bump that introduced the precompute block, this is data-only — no format change, and old readers
- * ignore unknown view keys.
+ * <p><b>Extending:</b> add a {@link PView} to {@link #REGISTRY}. After the one footer-format
+ * version bump that introduced the precompute block, this is data-only — no format change, and old
+ * readers ignore unknown view keys.
  */
 public final class ViewPrecompute {
 
     private ViewPrecompute() {}
 
-    /** One SELECT column of a precomputed view: aggregate over {@code field}, displayed as {@code kind}. */
+    /**
+     * One SELECT column of a precomputed view: aggregate over {@code field}, displayed as {@code
+     * kind}.
+     */
     private record PColumn(String reducer, String field, ColumnType.Kind kind) {}
 
-    /** A precomputed FORM view: its {@code viewName}, single {@code fromType}, and ordered columns. */
+    /**
+     * A precomputed FORM view: its {@code viewName}, single {@code fromType}, and ordered columns.
+     */
     private record PView(String viewName, String fromType, List<PColumn> columns) {}
 
     // The three numeric-aggregate FORM views (clean-room, from observed jfr view output).
@@ -65,7 +70,8 @@ public final class ViewPrecompute {
                                     new PColumn("MAX", "jvmSystem", ColumnType.Kind.PERCENTAGE),
                                     new PColumn("MIN", "machineTotal", ColumnType.Kind.PERCENTAGE),
                                     new PColumn("AVG", "machineTotal", ColumnType.Kind.PERCENTAGE),
-                                    new PColumn("MAX", "machineTotal", ColumnType.Kind.PERCENTAGE))),
+                                    new PColumn(
+                                            "MAX", "machineTotal", ColumnType.Kind.PERCENTAGE))),
                     new PView(
                             "exception-count",
                             "jdk.ExceptionStatistics",
@@ -77,11 +83,11 @@ public final class ViewPrecompute {
     // ── collection side ───────────────────────────────────────────────────────
 
     /**
-     * A stateful accumulator that the collector drives during condense. For each incoming event, the
-     * collector looks up {@link #columnsFor} for the event's type and feeds the raw value of each
-     * column's {@code field} (see {@link Column#field}) via {@link #accept}. At the end, {@link
-     * #build} returns the {@code precomputedViews} map for the footer (views with no source events
-     * are omitted).
+     * A stateful accumulator that the collector drives during condense. For each incoming event,
+     * the collector looks up {@link #columnsFor} for the event's type and feeds the raw value of
+     * each column's {@code field} (see {@link Column#field}) via {@link #accept}. At the end,
+     * {@link #build} returns the {@code precomputedViews} map for the footer (views with no source
+     * events are omitted).
      */
     public static final class Accumulator {
         private final Map<String, Reducer[]> reducersByView = new LinkedHashMap<>();
@@ -104,7 +110,9 @@ public final class ViewPrecompute {
             anyByView.put(viewName, true);
         }
 
-        /** The precomputed views map for the footer; views that saw no source events are omitted. */
+        /**
+         * The precomputed views map for the footer; views that saw no source events are omitted.
+         */
         public Map<String, List<PrecomputedCell>> build() {
             Map<String, List<PrecomputedCell>> out = new LinkedHashMap<>();
             for (PView v : REGISTRY) {
@@ -175,9 +183,9 @@ public final class ViewPrecompute {
     // ── serve side ────────────────────────────────────────────────────────────
 
     /**
-     * Render a FORM view directly from footer {@link PrecomputedCell}s, with no event scan. Produces
-     * the identical lines the event-based {@link NativeView#render} would (same {@link ViewRenderer},
-     * same values, same kinds). Returns empty for an unknown/unparseable view.
+     * Render a FORM view directly from footer {@link PrecomputedCell}s, with no event scan.
+     * Produces the identical lines the event-based {@link NativeView#render} would (same {@link
+     * ViewRenderer}, same values, same kinds). Returns empty for an unknown/unparseable view.
      */
     public static Optional<List<String>> render(
             String viewName, List<PrecomputedCell> cellsIn, NativeView.Options options) {

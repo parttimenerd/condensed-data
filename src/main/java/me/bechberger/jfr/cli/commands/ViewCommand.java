@@ -15,8 +15,6 @@ import me.bechberger.condensed.CJFRFooterReader;
 import me.bechberger.condensed.ReadStruct;
 import me.bechberger.femtocli.annotations.*;
 import me.bechberger.jfr.CombiningJFRReader;
-import me.bechberger.jfr.cli.query.NativeView;
-import me.bechberger.jfr.cli.query.ViewPrecompute;
 import me.bechberger.jfr.JMCDependent;
 import me.bechberger.jfr.cli.CLIUtils;
 import me.bechberger.jfr.cli.EventFilter.EventFilterOptionMixin;
@@ -25,6 +23,8 @@ import me.bechberger.jfr.cli.JFRView;
 import me.bechberger.jfr.cli.JFRView.JFRViewConfig;
 import me.bechberger.jfr.cli.JFRView.PrintConfig;
 import me.bechberger.jfr.cli.TruncateMode;
+import me.bechberger.jfr.cli.query.NativeView;
+import me.bechberger.jfr.cli.query.ViewPrecompute;
 
 @Command(
         name = "view",
@@ -172,12 +172,17 @@ public class ViewCommand implements Callable<Integer> {
                 return 2;
             }
 
-            // Fast path for named views: a dot-free name is never a JFR event type (those are always
+            // Fast path for named views: a dot-free name is never a JFR event type (those are
+            // always
             // dotted, e.g. jdk.ObjectCount), so it can only be a named view. Render it natively
-            // *before* the event-name scan below — tryNativeView reads only the view's required event
-            // types, whereas collectMatches would condense the entire recording looking for an event
-            // literally named e.g. "object-statistics" that cannot exist. On a large .jfr this skips
-            // condensing millions of irrelevant events. Guarded exactly as the post-scan native path
+            // *before* the event-name scan below — tryNativeView reads only the view's required
+            // event
+            // types, whereas collectMatches would condense the entire recording looking for an
+            // event
+            // literally named e.g. "object-statistics" that cannot exist. On a large .jfr this
+            // skips
+            // condensing millions of irrelevant events. Guarded exactly as the post-scan native
+            // path
             // (not --verbose, not --json, a known view); an empty result falls through to the scan.
             if (!isDottedEventType(viewName)
                     && !verbose
@@ -213,8 +218,10 @@ public class ViewCommand implements Callable<Integer> {
                                     + "'.");
                     return 2;
                 }
-                // Render the curated named views natively, skipping the .cjfr→.jfr inflation and the
-                // `jfr view` JVM fork. --verbose prints the view's underlying query, a jfr feature we
+                // Render the curated named views natively, skipping the .cjfr→.jfr inflation and
+                // the
+                // `jfr view` JVM fork. --verbose prints the view's underlying query, a jfr feature
+                // we
                 // don't reproduce, so it still delegates. Native render returns empty for views we
                 // can't evaluate (FROM *, unsupported reducers), which fall through to delegation.
                 if (!verbose && NativeView.isKnownView(viewName)) {
@@ -283,10 +290,10 @@ public class ViewCommand implements Callable<Integer> {
      * Attempt to render a known named view natively. Returns the rendered lines, or empty to signal
      * the caller should fall through to {@code jfr view} delegation.
      *
-     * <p>Fast path: if the view's required event types are all absent according to the {@code .cjfr}
-     * footers (which carry per-type counts with no event scan), emit the native "No events found"
-     * line without reading any events. Otherwise scan the inputs once for just the required types and
-     * render from the in-memory events.
+     * <p>Fast path: if the view's required event types are all absent according to the {@code
+     * .cjfr} footers (which carry per-type counts with no event scan), emit the native "No events
+     * found" line without reading any events. Otherwise scan the inputs once for just the required
+     * types and render from the in-memory events.
      */
     private Optional<List<String>> tryNativeView(String viewName) throws Exception {
         Optional<List<String>> reqOpt = NativeView.requiredEventTypes(viewName);
@@ -295,9 +302,12 @@ public class ViewCommand implements Callable<Integer> {
         }
         List<String> required = reqOpt.get();
 
-        // Zero-scan fast path: a single .cjfr input whose footer carries a precomputed exact-aggregate
-        // for this view is rendered straight from the stored cells — no event read at all. Output is
-        // byte-identical to the event-based native render (same ViewRenderer, same values, same Kinds).
+        // Zero-scan fast path: a single .cjfr input whose footer carries a precomputed
+        // exact-aggregate
+        // for this view is rendered straight from the stored cells — no event read at all. Output
+        // is
+        // byte-identical to the event-based native render (same ViewRenderer, same values, same
+        // Kinds).
         Optional<List<String>> served = tryFooterServed(viewName);
         if (served.isPresent()) {
             return served;
@@ -315,7 +325,8 @@ public class ViewCommand implements Callable<Integer> {
     /** Native render options mirroring the {@code jfr view} switches this command accepts. */
     private NativeView.Options nativeOptions() {
         boolean truncateBeginning = TruncateMode.fromCliValue(truncate) == TruncateMode.BEGIN;
-        // -1 means the user did not pass --cell-height, so let each column fall back to its view.ini
+        // -1 means the user did not pass --cell-height, so let each column fall back to its
+        // view.ini
         // cell-height (null); an explicit value overrides the view for every column.
         Integer cell = cellHeight == -1 ? null : cellHeight;
         return new NativeView.Options(effectiveWidth(), cell, truncateBeginning);
@@ -348,9 +359,9 @@ public class ViewCommand implements Callable<Integer> {
     }
 
     /**
-     * True if every {@code required} type totals zero across all inputs AND every input has a readable
-     * {@code .cjfr} footer. If any input lacks a footer (e.g. a plain {@code .jfr}), we can't trust the
-     * counts, so return false and let the caller scan events.
+     * True if every {@code required} type totals zero across all inputs AND every input has a
+     * readable {@code .cjfr} footer. If any input lacks a footer (e.g. a plain {@code .jfr}), we
+     * can't trust the counts, so return false and let the caller scan events.
      */
     private boolean footerSaysAllAbsent(List<String> required) {
         long[] totals = new long[required.size()];
@@ -370,7 +381,10 @@ public class ViewCommand implements Callable<Integer> {
         return true;
     }
 
-    /** Read the inputs once, retaining only events whose fully-qualified type is in {@code required}. */
+    /**
+     * Read the inputs once, retaining only events whose fully-qualified type is in {@code
+     * required}.
+     */
     private List<ReadStruct> readRequiredEvents(List<String> required) throws Exception {
         Set<String> want = new HashSet<>(required);
         var jfrReader =
@@ -378,11 +392,14 @@ public class ViewCommand implements Callable<Integer> {
                         inputs(),
                         eventFilterOptionMixin.createFilter(),
                         !eventFilterOptionMixin.noReconstitution(),
-                        // Lazy materialization: a named view reads only a handful of fields, so don't
-                        // eagerly decode every event's reference tree (stack traces, methods, classes).
-                        // ReadStruct.get() decodes references on demand; unread fields are never built.
+                        // Lazy materialization: a named view reads only a handful of fields, so
+                        // don't
+                        // eagerly decode every event's reference tree (stack traces, methods,
+                        // classes).
+                        // ReadStruct.get() decodes references on demand; unread fields are never
+                        // built.
                         true,
-                        new me.bechberger.condensed.stats.BasicStatistic(),
+                        new me.bechberger.condensed.stats.NoopStatistic(),
                         want);
         List<ReadStruct> events = new ArrayList<>();
         ReadStruct struct;

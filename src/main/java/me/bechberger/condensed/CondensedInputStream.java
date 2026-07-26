@@ -12,6 +12,7 @@ import me.bechberger.condensed.Message.ReadInstance;
 import me.bechberger.condensed.Message.StartMessage;
 import me.bechberger.condensed.RIOException.NoStartStringException;
 import me.bechberger.condensed.stats.BasicStatistic;
+import me.bechberger.condensed.stats.NoopStatistic;
 import me.bechberger.condensed.stats.Statistic;
 import me.bechberger.condensed.stats.WriteCause;
 import me.bechberger.condensed.stats.WriteMode;
@@ -43,7 +44,7 @@ public class CondensedInputStream extends InputStream {
     private boolean skipRecursiveCompletion = false;
     private boolean footerSentinelSeen = false;
 
-    private Statistic statistic = new BasicStatistic();
+    private Statistic statistic = new NoopStatistic();
 
     public CondensedInputStream(InputStream inputStream) {
         this.universe = new Universe();

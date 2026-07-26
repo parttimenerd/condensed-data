@@ -199,6 +199,14 @@ public enum JFRReduction {
                 UnsafeRecordedObjectAccessor.field("method", null);
         private static final FieldAccessor<String> FRAME_TYPE =
                 UnsafeRecordedObjectAccessor.field("type", null);
+        // RecordedMethod field accessors: name/descriptor are leaf strings; type is a
+        // RecordedClass struct whose getId() we still call via the public API.
+        private static final FieldAccessor<String> METHOD_NAME =
+                UnsafeRecordedObjectAccessor.field("name", null);
+        private static final FieldAccessor<String> METHOD_DESCRIPTOR =
+                UnsafeRecordedObjectAccessor.field("descriptor", null);
+        private static final FieldAccessor<jdk.jfr.consumer.RecordedClass> METHOD_TYPE =
+                UnsafeRecordedObjectAccessor.field("type", null);
 
         // Snapshot of a frame's comparison-relevant data, taken at construction time
         // to avoid stale reads from JFR's reusable internal buffers
@@ -238,9 +246,10 @@ public enum JFRReduction {
                 int lineNumber = LINE_NUMBER.get(f);
                 int bytecodeIndex = BYTECODE_INDEX.get(f);
                 var method = METHOD.get(f);
-                long classId = method.getType().getId();
-                String methodName = method.getName();
-                String methodDescriptor = method.getDescriptor();
+                var methodType = METHOD_TYPE.get(method);
+                long classId = methodType.getId();
+                String methodName = METHOD_NAME.get(method);
+                String methodDescriptor = METHOD_DESCRIPTOR.get(method);
                 String frameType = FRAME_TYPE.get(f);
                 frameSnapshots[i] =
                         new FrameSnapshot(

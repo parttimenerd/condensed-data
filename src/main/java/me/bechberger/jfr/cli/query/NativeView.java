@@ -26,13 +26,16 @@ public final class NativeView {
 
     /**
      * Rendering options mirroring the relevant {@code jfr view} switches: terminal {@code width};
-     * {@code cellHeight} (max physical lines a wrapping cell may occupy — {@code null} means the user
-     * did not pass {@code --cell-height}, so each column falls back to its view.ini {@code
-     * cell-height:N} FORMAT value, or 1 if none); and {@code truncateBeginning} (true = elide from the
-     * start with a leading {@code ...}, matching {@code --truncate beginning}).
+     * {@code cellHeight} (max physical lines a wrapping cell may occupy — {@code null} means the
+     * user did not pass {@code --cell-height}, so each column falls back to its view.ini {@code
+     * cell-height:N} FORMAT value, or 1 if none); and {@code truncateBeginning} (true = elide from
+     * the start with a leading {@code ...}, matching {@code --truncate beginning}).
      */
     public record Options(int width, Integer cellHeight, boolean truncateBeginning) {
-        /** Width-only options with {@code jfr view} defaults (view-driven cell-height, end-truncate). */
+        /**
+         * Width-only options with {@code jfr view} defaults (view-driven cell-height,
+         * end-truncate).
+         */
         public Options(int width) {
             this(width, null, false);
         }
@@ -88,8 +91,9 @@ public final class NativeView {
 
     /**
      * Render a view natively. {@code eventsByType} must contain (at least) the types reported by
-     * {@link #requiredEventTypes}; keys are matched flexibly (short name or fully-qualified). Returns
-     * the rendered lines, or empty to signal the caller should delegate to {@code jfr view}.
+     * {@link #requiredEventTypes}; keys are matched flexibly (short name or fully-qualified).
+     * Returns the rendered lines, or empty to signal the caller should delegate to {@code jfr
+     * view}.
      */
     public static Optional<List<String>> render(
             String viewName, Map<String, List<ReadStruct>> eventsByType, Options options) {
@@ -162,13 +166,15 @@ public final class NativeView {
 
     /**
      * Expand a bare {@code SELECT *} into one {@code SelectItem} per field of the single FROM event
-     * type, mirroring {@code jfr view}: fields appear in declaration order, and the synthetic {@code
-     * startTime} field is surfaced under the label "Time" (jfr's convention for {@code *} views).
-     * Queries that are not a single {@code *} over a single FROM type are returned unchanged.
+     * type, mirroring {@code jfr view}: fields appear in declaration order, and the synthetic
+     * {@code startTime} field is surfaced under the label "Time" (jfr's convention for {@code *}
+     * views). Queries that are not a single {@code *} over a single FROM type are returned
+     * unchanged.
      */
     private static ViewQuery expandStar(
             ViewQuery query, Map<String, List<ReadStruct>> eventsByType) {
-        if (query.select().size() != 1 || !(query.select().get(0).expr() instanceof ViewQuery.Star)) {
+        if (query.select().size() != 1
+                || !(query.select().get(0).expr() instanceof ViewQuery.Star)) {
             return query;
         }
         if (query.from().size() != 1) return query;
@@ -181,8 +187,7 @@ public final class NativeView {
         List<String> labels = new ArrayList<>();
         for (var f : st.getFields()) {
             String name = f.name();
-            select.add(
-                    new ViewQuery.SelectItem(new ViewQuery.FieldPath(List.of(name)), null));
+            select.add(new ViewQuery.SelectItem(new ViewQuery.FieldPath(List.of(name)), null));
             // jfr labels the startTime column "Time" in a SELECT * view; other columns use their
             // declared metadata label (resolved later by the renderer), so leave them blank here.
             labels.add("startTime".equals(name) ? "Time" : null);
@@ -190,7 +195,9 @@ public final class NativeView {
         // Only supply explicit labels if we overrode at least one (the startTime → "Time" case);
         // otherwise leave columnLabels empty so the renderer derives metadata labels per column.
         List<String> columnLabels =
-                labels.stream().anyMatch(l -> l != null) ? materializeLabels(st, labels) : List.of();
+                labels.stream().anyMatch(l -> l != null)
+                        ? materializeLabels(st, labels)
+                        : List.of();
         return new ViewQuery(
                 query.shape(),
                 columnLabels,
@@ -203,7 +210,9 @@ public final class NativeView {
                 query.limit());
     }
 
-    /** Fill in null label slots with each field's declared metadata label (falling back to name). */
+    /**
+     * Fill in null label slots with each field's declared metadata label (falling back to name).
+     */
     private static List<String> materializeLabels(
             me.bechberger.condensed.types.StructType<?, ReadStruct> st, List<String> labels) {
         List<String> out = new ArrayList<>(labels.size());
@@ -222,8 +231,8 @@ public final class NativeView {
     /**
      * Normalize a view.ini event-type reference to the JFR event type name. view.ini uses short
      * names (e.g. {@code GarbageCollection}) that correspond to {@code jdk.GarbageCollection}, and
-     * occasionally fully-qualified ones ({@code jdk.Shutdown.reason} style dotted paths); this maps a
-     * bare simple name to the {@code jdk.} namespace, leaving already-qualified names untouched.
+     * occasionally fully-qualified ones ({@code jdk.Shutdown.reason} style dotted paths); this maps
+     * a bare simple name to the {@code jdk.} namespace, leaving already-qualified names untouched.
      */
     static String normalizeType(String type) {
         if (type.contains(".")) return type;
@@ -231,9 +240,9 @@ public final class NativeView {
     }
 
     /**
-     * Build the {@code eventsByType} map the evaluator expects from a flat event list, keyed by both
-     * the fully-qualified type name and its simple name so field/type lookups in the query resolve
-     * regardless of how view.ini spells the type.
+     * Build the {@code eventsByType} map the evaluator expects from a flat event list, keyed by
+     * both the fully-qualified type name and its simple name so field/type lookups in the query
+     * resolve regardless of how view.ini spells the type.
      */
     public static Map<String, List<ReadStruct>> indexByType(List<ReadStruct> events) {
         Map<String, List<ReadStruct>> byType = new LinkedHashMap<>();

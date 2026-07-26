@@ -33,9 +33,9 @@ final class ValueFormatter {
     }
 
     /**
-     * Format {@code value} for a column, applying its FORMAT hint and content {@link ColumnType.Kind}.
-     * The kind resolves raw {@code long}/{@code double} values whose meaning isn't carried by their
-     * runtime type — memory (byte counts) and percentages.
+     * Format {@code value} for a column, applying its FORMAT hint and content {@link
+     * ColumnType.Kind}. The kind resolves raw {@code long}/{@code double} values whose meaning
+     * isn't carried by their runtime type — memory (byte counts) and percentages.
      */
     static String format(Object value, FormatHint hint, ColumnType.Kind kind) {
         String missing = missingText(hint);
@@ -120,7 +120,8 @@ final class ValueFormatter {
         long nanos = d.toNanos();
         // jfr treats the extreme sentinels as "unset": Long.MIN nanos → N/A, Long.MAX → Indefinite.
         // The reader reduces to millisecond precision, so the stored value is within ~1ms of the
-        // raw extreme rather than exactly it; match anything within that tolerance (no real timespan
+        // raw extreme rather than exactly it; match anything within that tolerance (no real
+        // timespan
         // approaches ±292 years).
         if (nanos <= Long.MIN_VALUE + 1_000_000L) return "N/A";
         if (nanos >= Long.MAX_VALUE - 1_000_000L) return "Indefinite";
@@ -166,7 +167,8 @@ final class ValueFormatter {
             u++;
         }
         // jfr renders raw bytes as an integer count, and any larger unit with exactly one decimal.
-        String num = u == 0 ? Long.toString((long) value) : String.format(Locale.ROOT, "%.1f", value);
+        String num =
+                u == 0 ? Long.toString((long) value) : String.format(Locale.ROOT, "%.1f", value);
         String s = num + " " + units[u];
         return neg ? "-" + s : s;
     }
@@ -185,13 +187,16 @@ final class ValueFormatter {
         double abs = Math.abs(v);
         int intDigits = (int) Math.floor(Math.log10(abs)) + 1;
         // jfr caps the decimal places at 6, so a value below 1e-3 shows fewer than 3 significant
-        // figures rather than growing the decimal count: 83ns → 0.000083 ms (6 decimals, 2 sig figs),
-        // not 0.0000830 ms. Verified across all views: jfr never emits more than 6 decimals for a ms
+        // figures rather than growing the decimal count: 83ns → 0.000083 ms (6 decimals, 2 sig
+        // figs),
+        // not 0.0000830 ms. Verified across all views: jfr never emits more than 6 decimals for a
+        // ms
         // value. The cap is a no-op for values ≥ 1e-3 (decimals ≤ 5) and for seconds/counts.
         int decimals = Math.min(6, Math.max(0, 3 - intDigits));
         // Rounding can push the value across a power-of-10 boundary (0.9999 -> 1.00): recompute the
         // integer-digit count from the rounded magnitude so the decimal places match jfr.
-        double rounded = Math.abs(Double.parseDouble(String.format(Locale.ROOT, "%." + decimals + "f", v)));
+        double rounded =
+                Math.abs(Double.parseDouble(String.format(Locale.ROOT, "%." + decimals + "f", v)));
         if (rounded != 0) {
             int roundedIntDigits = (int) Math.floor(Math.log10(rounded)) + 1;
             if (roundedIntDigits > intDigits) {
@@ -210,11 +215,15 @@ final class ValueFormatter {
             ReadStruct method = s.getStruct("method");
             return method != null ? formatMethod(method) : s.toString();
         }
-        // StackTrace selected directly (not via .topFrame): jfr renders it as the top frame's method
-        // signature (e.g. thread-start's Stack Trace column). Empty/absent frames leave the cell blank
+        // StackTrace selected directly (not via .topFrame): jfr renders it as the top frame's
+        // method
+        // signature (e.g. thread-start's Stack Trace column). Empty/absent frames leave the cell
+        // blank
         // so a "missing:" FORMAT hint (N/A) can fill it, matching jfr's N/A for traceless events.
         if (typeName.endsWith(".StackTrace")) {
-            if (s.hasField("frames") && s.get("frames") instanceof List<?> frames && !frames.isEmpty()
+            if (s.hasField("frames")
+                    && s.get("frames") instanceof List<?> frames
+                    && !frames.isEmpty()
                     && frames.get(0) instanceof ReadStruct top) {
                 ReadStruct method = top.hasField("method") ? top.getStruct("method") : null;
                 return method != null ? formatMethod(method) : "";
@@ -232,9 +241,12 @@ final class ValueFormatter {
         if (typeName.endsWith(".Class") || typeName.equals("java.lang.Class")) {
             return className(s);
         }
-        // ClassLoader: jfr renders it as the loader's class (its "type" Class), NOT its "name" field
-        // (e.g. name="app" still displays as jdk.internal.loader.ClassLoaders$AppClassLoader). A null
-        // type leaves the cell empty so a "missing:" FORMAT hint (e.g. null-bootstrap) can replace it.
+        // ClassLoader: jfr renders it as the loader's class (its "type" Class), NOT its "name"
+        // field
+        // (e.g. name="app" still displays as jdk.internal.loader.ClassLoaders$AppClassLoader). A
+        // null
+        // type leaves the cell empty so a "missing:" FORMAT hint (e.g. null-bootstrap) can replace
+        // it.
         if (typeName.endsWith(".ClassLoader")) {
             ReadStruct type = s.getStruct("type");
             return type != null ? className(type) : "";
@@ -251,7 +263,10 @@ final class ValueFormatter {
         return s.toString();
     }
 
-    /** Format a Method struct as {@code fqcn.name(SimpleParamType, ...)}, mirroring {@code jfr view}. */
+    /**
+     * Format a Method struct as {@code fqcn.name(SimpleParamType, ...)}, mirroring {@code jfr
+     * view}.
+     */
     private static String formatMethod(ReadStruct method) {
         ReadStruct type = method.getStruct("type");
         String cls = type != null ? className(type) : "";

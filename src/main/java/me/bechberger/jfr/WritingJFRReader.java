@@ -645,10 +645,10 @@ public class WritingJFRReader {
     }
 
     /**
-     * Re-attach the event type's own {@code @Label} and {@code @Description} from the condensed type
-     * description (a {@code ["label","description"]} JSON array written by {@link
-     * BasicJFRWriter#getEventDescription}). jfr's {@code eventType.label} accessor and the metadata's
-     * type label rely on these; without them the inflated type renders "N/A".
+     * Re-attach the event type's own {@code @Label} and {@code @Description} from the condensed
+     * type description (a {@code ["label","description"]} JSON array written by {@link
+     * BasicJFRWriter#getEventDescription}). jfr's {@code eventType.label} accessor and the
+     * metadata's type label rely on these; without them the inflated type renders "N/A".
      */
     private void addEventTypeAnnotations(TypeStructureBuilder builder, String description) {
         if (description == null || description.isEmpty()) {
@@ -692,7 +692,8 @@ public class WritingJFRReader {
         Consumer<TypeStructureBuilder> builderConsumer =
                 builder -> {
                     if (type instanceof StructType<?, ?> structType) {
-                        // Re-attach the event type's own @Label/@Description. Condense stores them as
+                        // Re-attach the event type's own @Label/@Description. Condense stores them
+                        // as
                         // a ["label","description"] JSON array in the type description (see
                         // BasicJFRWriter.getEventDescription); without re-adding them the inflated
                         // type has no type-level @Label, so jfr's eventType.label accessor renders
@@ -836,10 +837,51 @@ public class WritingJFRReader {
         // Event type has no events in CJFR (zero occurrences) — register a minimal stub with the
         // standard JFR event fields (startTime/eventThread/stackTrace) so the JDK JFR parser
         // doesn't crash on an event type with zero fields.
+        //
+        // Legacy-file guard: older agent-condensed files stored jdk.ActiveSetting.id as a bare
+        // numeric string (e.g. "110") when the referenced event type had not been seen yet — the
+        // name was lost. A stub event type named "110" is not a valid Java type name and is
+        // rejected by the JFR metadata reader. In that case, treat the number as the raw class id
+        // and do NOT fabricate a type; the setting simply points at an id with no resolvable type,
+        // which the JFR reader tolerates.
+        if (!isValidJavaTypeName(eventTypeName)) {
+            try {
+                long rawId = Long.parseLong(eventTypeName);
+                inflatedEventTypeIdByName.put(eventTypeName, rawId);
+                return rawId;
+            } catch (NumberFormatException ignored) {
+                // not numeric either — fall through to stub so we fail loudly rather than silently.
+            }
+        }
         Type stub = recording.registerEventType(eventTypeName, builder -> {});
         long stubId = stub.getId();
         inflatedEventTypeIdByName.put(eventTypeName, stubId);
         return stubId;
+    }
+
+    /** Mirror of the JDK's class-name check: no empty parts, no leading digits. */
+    private static boolean isValidJavaTypeName(String name) {
+        if (name == null || name.isEmpty()) {
+            return false;
+        }
+        int start = 0;
+        int len = name.length();
+        while (true) {
+            int dot = name.indexOf('.', start);
+            int end = dot < 0 ? len : dot;
+            if (end == start || !Character.isJavaIdentifierStart(name.charAt(start))) {
+                return false;
+            }
+            for (int i = start + 1; i < end; i++) {
+                if (!Character.isJavaIdentifierPart(name.charAt(i))) {
+                    return false;
+                }
+            }
+            if (dot < 0) {
+                return true;
+            }
+            start = dot + 1;
+        }
     }
 
     private TypedValue toTypedValue(ReadStruct struct, boolean isEvent, ReadStructPath visited) {

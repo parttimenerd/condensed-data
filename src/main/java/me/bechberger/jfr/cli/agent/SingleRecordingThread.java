@@ -73,6 +73,8 @@ public class SingleRecordingThread extends RecordingThread {
                                     configuration.name(),
                                     Compression.DEFAULT));
             writer = new BasicJFRWriter(condensedOut, configuration);
+            writer.setGmtOffsetMillis(
+                    java.util.TimeZone.getDefault().getOffset(System.currentTimeMillis()));
         } catch (Throwable t) {
             if (rawOut != null) {
                 try {
@@ -177,7 +179,7 @@ public class SingleRecordingThread extends RecordingThread {
         long sizeUncompressed;
         try {
             sizeOnDrive = jfrWriter.estimateSize();
-            sizeUncompressed = jfrWriter.getUncompressedStatistic().getBytes();
+            sizeUncompressed = jfrWriter.getUncompressedBytes();
         } catch (Throwable t) {
             return List.of(
                     Map.entry("mode", "single file"),

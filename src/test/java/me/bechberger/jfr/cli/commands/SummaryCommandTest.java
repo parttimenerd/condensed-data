@@ -308,8 +308,16 @@ public class SummaryCommandTest {
             // startTimeMicros=1_000_000 (arbitrary), durationMicros=500 (500µs)
             var footer =
                     new CJFRFooter(
-                            1, 0L, 1_000_000L, 500L, java.util.Map.of(), null, null, null,
-                            java.util.Map.of(), 0L);
+                            1,
+                            0L,
+                            1_000_000L,
+                            500L,
+                            java.util.Map.of(),
+                            null,
+                            null,
+                            null,
+                            java.util.Map.of(),
+                            0L);
             out.writeFooter(footer);
         }
         var tmpFile = Files.createTempFile("summary-sub-ms-test", ".cjfr");

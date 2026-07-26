@@ -10,6 +10,7 @@ import java.util.function.Function;
 import me.bechberger.condensed.Message.StartMessage;
 import me.bechberger.condensed.Universe.HashAndEqualsConfig;
 import me.bechberger.condensed.stats.BasicStatistic;
+import me.bechberger.condensed.stats.NoopStatistic;
 import me.bechberger.condensed.stats.Statistic;
 import me.bechberger.condensed.stats.WriteCause;
 import me.bechberger.condensed.stats.WriteMode;
@@ -36,9 +37,16 @@ public class CondensedOutputStream extends OutputStream {
 
     private Reductions reductions = Reductions.NONE;
 
-    private Statistic statistic = new BasicStatistic();
+    private Statistic statistic = new NoopStatistic();
 
     private boolean closed = false;
+
+    /**
+     * Total uncompressed bytes written so far (pre-compression logical size). Load-bearing writer
+     * state — drives {@link #estimateOnDiskSize()} and file/block rotation — so it lives here
+     * rather than inside the optional {@link Statistic}, which may be a no-op.
+     */
+    private long uncompressedBytes = 0;
 
     /** Uncompressed byte count observed at the most recent {@link #flush()} (0 = never flushed). */
     private volatile long uncompressedAtLastFlush = 0;
@@ -385,6 +393,7 @@ public class CondensedOutputStream extends OutputStream {
     public void write(int b) {
         try {
             outputStream.write(b);
+            uncompressedBytes += 1;
             statistic.record(1);
         } catch (IOException e) {
             throw new RIOException("Can't write byte", e);
@@ -394,6 +403,7 @@ public class CondensedOutputStream extends OutputStream {
     @Override
     public void write(byte @NotNull [] b) {
         try {
+            uncompressedBytes += b.length;
             statistic.record(b.length);
             outputStream.write(b);
         } catch (IOException e) {
@@ -448,7 +458,7 @@ public class CondensedOutputStream extends OutputStream {
 
     /** Total uncompressed bytes recorded so far (pre-compression logical size). */
     public long getUncompressedBytes() {
-        return statistic.getBytes();
+        return uncompressedBytes;
     }
 
     /**
@@ -460,7 +470,7 @@ public class CondensedOutputStream extends OutputStream {
      * #estimateSize()}.
      */
     public long estimateOnDiskSize() {
-        long uncompressed = statistic.getBytes();
+        long uncompressed = uncompressedBytes;
         long flushed = underlyingCountingStream.writtenBytes();
         if (uncompressedAtLastFlush <= 0 || flushed <= 0) {
             // No flush observed yet — assume incompressible (ratio 1.0).
@@ -485,7 +495,7 @@ public class CondensedOutputStream extends OutputStream {
         } catch (IOException e) {
             throw new RIOException("Can't flush compression stream", e);
         }
-        uncompressedAtLastFlush = statistic.getBytes();
+        uncompressedAtLastFlush = uncompressedBytes;
     }
 
     /** Raw, pre-compression sink. Only safe to use after close() has flushed the compressor. */

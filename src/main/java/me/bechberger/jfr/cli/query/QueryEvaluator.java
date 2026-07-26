@@ -302,14 +302,20 @@ final class QueryEvaluator {
             }
             return r.result();
         }
-        // Non-aggregate expr in a grouped select: take the value from a representative row. When the
-        // view has a LAST_BATCH column, prefer a last-batch representative so a non-aggregate column
+        // Non-aggregate expr in a grouped select: take the value from a representative row. When
+        // the
+        // view has a LAST_BATCH column, prefer a last-batch representative so a non-aggregate
+        // column
         // reflects the final batch too.
         // For most views the SELECT column is the GROUP BY key (constant within the group), so the
-        // choice of representative row is immaterial. It matters only for a multi-type UNION where a
-        // non-aggregate column (e.g. eventType.label) varies within a group — as in gc-pause-phases,
-        // where a phase name can occur under several GCPhasePauseLevelN types. jfr's representative is
-        // whichever event its internal chronological iteration visits last, which is not reproducible
+        // choice of representative row is immaterial. It matters only for a multi-type UNION where
+        // a
+        // non-aggregate column (e.g. eventType.label) varies within a group — as in
+        // gc-pause-phases,
+        // where a phase name can occur under several GCPhasePauseLevelN types. jfr's representative
+        // is
+        // whichever event its internal chronological iteration visits last, which is not
+        // reproducible
         // from a per-FROM-type grouping; first-row matches the common case and is left as-is (the
         // divergence is a documented known diff for multi-level phase-name collisions).
         if (!group.isEmpty()) {
@@ -414,8 +420,9 @@ final class QueryEvaluator {
      * Canonicalize a group-key value. {@code jfr view} groups struct-valued keys (a stack frame,
      * method, thread, class) by their <em>displayed</em> identity rather than raw struct equality —
      * e.g. all samples whose top frame is the same method collapse into one group even when their
-     * bytecode index or line number differs. Mapping a struct key to its formatted string reproduces
-     * that: two structs that render identically share a group. Non-struct keys pass through unchanged.
+     * bytecode index or line number differs. Mapping a struct key to its formatted string
+     * reproduces that: two structs that render identically share a group. Non-struct keys pass
+     * through unchanged.
      */
     private static Object canonicalKey(Object value) {
         if (value instanceof ReadStruct s) {
@@ -449,8 +456,7 @@ final class QueryEvaluator {
             java.util.Comparator<Row> c =
                     (a, b) ->
                             compareCells(
-                                    cellForOrder(a, oi.ref(), idx),
-                                    cellForOrder(b, oi.ref(), idx));
+                                    cellForOrder(a, oi.ref(), idx), cellForOrder(b, oi.ref(), idx));
             if (descending(oi, idx, rows)) c = c.reversed();
             comparators.add(c);
         }
@@ -466,8 +472,8 @@ final class QueryEvaluator {
      * When a query gives no ORDER BY, {@code jfr view} still imposes a default order on grouped/
      * aggregated output: it sorts by the <em>last</em> column. A magnitude column (Number or
      * Duration) sorts descending (largest first); a textual column sorts ascending (e.g.
-     * system-processes with no ORDER BY comes out ordered by its Command Line column). A non-grouped,
-     * non-aggregated projection (one row per event) is never reordered.
+     * system-processes with no ORDER BY comes out ordered by its Command Line column). A
+     * non-grouped, non-aggregated projection (one row per event) is never reordered.
      */
     private List<Row> applyDefaultOrder(List<Row> rows) {
         if (rows.isEmpty()) return rows;
@@ -502,8 +508,8 @@ final class QueryEvaluator {
      * The effective sort direction: explicit ASC/DESC wins; with no keyword, {@code jfr view}
      * defaults to descending for a magnitude column (Number/Duration — largest first) and ascending
      * for textual or time columns. Time (Instant) columns sort chronologically (ascending) and an
-     * aggregate over a String (e.g. {@code LAST(key)}) sorts ascending, so the decision is made from
-     * the actual cell type rather than aggregate-ness.
+     * aggregate over a String (e.g. {@code LAST(key)}) sorts ascending, so the decision is made
+     * from the actual cell type rather than aggregate-ness.
      */
     private boolean descending(OrderItem oi, int idx, List<Row> rows) {
         return switch (oi.direction()) {
@@ -524,7 +530,9 @@ final class QueryEvaluator {
         return false;
     }
 
-    /** ORDER BY may reference a SELECT alias or field; resolve to a SELECT column index, else -1. */
+    /**
+     * ORDER BY may reference a SELECT alias or field; resolve to a SELECT column index, else -1.
+     */
     private int selectIndexFor(String ref) {
         for (int i = 0; i < query.select().size(); i++) {
             SelectItem item = query.select().get(i);
@@ -579,10 +587,10 @@ final class QueryEvaluator {
     }
 
     /**
-     * The final periodic-emission batch timestamp for {@code LAST_BATCH}: the global maximum
-     * {@code startTime} across all filtered events (all FROM types combined — the batch is the
-     * shared final emission, e.g. object-statistics' last GC). Returns {@code null} if no event
-     * carries a readable {@code startTime}.
+     * The final periodic-emission batch timestamp for {@code LAST_BATCH}: the global maximum {@code
+     * startTime} across all filtered events (all FROM types combined — the batch is the shared
+     * final emission, e.g. object-statistics' last GC). Returns {@code null} if no event carries a
+     * readable {@code startTime}.
      */
     private static Instant lastBatchTimestamp(List<ReadStruct> events) {
         Instant max = null;
@@ -613,11 +621,11 @@ final class QueryEvaluator {
     }
 
     /**
-     * Return the group in the iteration order an aggregate needs. Order-sensitive functions
-     * ({@code DIFF} = last−first, {@code FIRST}/{@code LAST}, {@code LAST_BATCH}) require
-     * chronological order; a multi-type FROM is concatenated per-type rather than interleaved, so
-     * sort a copy by {@code startTime}. Order-insensitive functions (COUNT/SUM/AVG/MIN/MAX/…) keep
-     * the original group untouched.
+     * Return the group in the iteration order an aggregate needs. Order-sensitive functions ({@code
+     * DIFF} = last−first, {@code FIRST}/{@code LAST}, {@code LAST_BATCH}) require chronological
+     * order; a multi-type FROM is concatenated per-type rather than interleaved, so sort a copy by
+     * {@code startTime}. Order-insensitive functions (COUNT/SUM/AVG/MIN/MAX/…) keep the original
+     * group untouched.
      */
     private static List<ReadStruct> orderedForAggregate(String fn, List<ReadStruct> group) {
         String f = fn.toUpperCase(java.util.Locale.ROOT);
@@ -669,7 +677,8 @@ final class QueryEvaluator {
     /** The aliases an aggregate's argument references (for join aggregates). */
     private static List<String> aliasesOf(Expr arg) {
         if (arg instanceof Coalesce c) return c.aliases();
-        if (arg instanceof FieldPath fp && fp.parts().size() >= 2) return List.of(fp.parts().get(0));
+        if (arg instanceof FieldPath fp && fp.parts().size() >= 2)
+            return List.of(fp.parts().get(0));
         return List.of();
     }
 

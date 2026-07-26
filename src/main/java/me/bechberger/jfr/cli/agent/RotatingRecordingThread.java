@@ -324,6 +324,8 @@ public class RotatingRecordingThread extends RecordingThread {
                                         getConfiguration().name(),
                                         Compression.DEFAULT));
                 newWriter = new BasicJFRWriter(out, getConfiguration());
+                newWriter.setGmtOffsetMillis(
+                        java.util.TimeZone.getDefault().getOffset(System.currentTimeMillis()));
             } catch (Throwable t) {
                 synchronized (filesLock) {
                     overallWrittenFileCount.decrementAndGet();
@@ -640,7 +642,7 @@ public class RotatingRecordingThread extends RecordingThread {
                     Map.entry("current-size-on-drive", formatMemory(s.jfrWriter.estimateSize(), 3)),
                     Map.entry(
                             "current-size-uncompressed",
-                            formatMemory(s.jfrWriter.getUncompressedStatistic().getBytes(), 3)),
+                            formatMemory(s.jfrWriter.getUncompressedBytes(), 3)),
                     Map.entry(
                             "path", path != null ? path.toAbsolutePath().toString() : pathTemplate),
                     Map.entry("current-file-start", formatInstant(s.start)),
