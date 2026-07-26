@@ -43,6 +43,8 @@ public class CLIUtils {
             Object result = run.invoke(null, command);
             if (result instanceof String s) {
                 System.out.println(s);
+            } else if (result instanceof Integer exitCode) {
+                return exitCode;
             }
         } catch (ClassNotFoundException e) {
             System.err.println(

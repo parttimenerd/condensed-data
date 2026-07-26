@@ -266,8 +266,8 @@ public class CustomJFREventBreakingTest {
                             var viewResult =
                                     new CommandExecuter(
                                                     "view",
-                                                    map.get("special_double.cjfr").toString(),
-                                                    "SpecialDoubleEvent")
+                                                    "SpecialDoubleEvent",
+                                                    map.get("special_double.cjfr").toString())
                                             .run();
                             assertThat(viewResult.exitCode())
                                     .as("view SpecialDoubleEvent must exit 0")

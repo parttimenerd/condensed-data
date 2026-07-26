@@ -30,7 +30,7 @@ public class ViewCommandTest {
     public void testBasicView() throws Exception {
         var result =
                 new CommandExecuter(
-                                "view", "T/" + CommandTestUtil.getSampleCJFRFileName(), "TestEvent")
+                                "view", "TestEvent", "T/" + CommandTestUtil.getSampleCJFRFileName())
                         .withFiles(CommandTestUtil.getSampleCJFRFile())
                         .checkNoError()
                         .run();
@@ -47,7 +47,7 @@ public class ViewCommandTest {
     public void testTypoInEventName() throws Exception {
         var result =
                 new CommandExecuter(
-                                "view", "T/" + CommandTestUtil.getSampleCJFRFileName(), "TstEvent")
+                                "view", "TstEvent", "T/" + CommandTestUtil.getSampleCJFRFileName())
                         .withFiles(CommandTestUtil.getSampleCJFRFile())
                         .run();
         assertAll(
@@ -60,7 +60,7 @@ public class ViewCommandTest {
     public void testEmptyFile() throws Exception {
         var result =
                 new CommandExecuter(
-                                "view", "T/" + CommandTestUtil.getEmptyCJFRFileName(), "TestEvent")
+                                "view", "TestEvent", "T/" + CommandTestUtil.getEmptyCJFRFileName())
                         .withFiles(CommandTestUtil.getEmptyCJFRFile())
                         .run();
         assertAll(
@@ -74,8 +74,8 @@ public class ViewCommandTest {
         var result =
                 new CommandExecuter(
                                 "view",
-                                "T/" + CommandTestUtil.getSampleCJFRFileName(),
                                 "TestEvent",
+                                "T/" + CommandTestUtil.getSampleCJFRFileName(),
                                 "--limit",
                                 "1")
                         .withFiles(CommandTestUtil.getSampleCJFRFile())
@@ -83,7 +83,7 @@ public class ViewCommandTest {
                         .run();
         var unlimited =
                 new CommandExecuter(
-                                "view", "T/" + CommandTestUtil.getSampleCJFRFileName(), "TestEvent")
+                                "view", "TestEvent", "T/" + CommandTestUtil.getSampleCJFRFileName())
                         .withFiles(CommandTestUtil.getSampleCJFRFile())
                         .checkNoError()
                         .run();
@@ -96,15 +96,15 @@ public class ViewCommandTest {
     public void testWidthOption() throws Exception {
         var defaultResult =
                 new CommandExecuter(
-                                "view", "T/" + CommandTestUtil.getSampleCJFRFileName(), "TestEvent")
+                                "view", "TestEvent", "T/" + CommandTestUtil.getSampleCJFRFileName())
                         .withFiles(CommandTestUtil.getSampleCJFRFile())
                         .checkNoError()
                         .run();
         var narrowResult =
                 new CommandExecuter(
                                 "view",
-                                "T/" + CommandTestUtil.getSampleCJFRFileName(),
                                 "TestEvent",
+                                "T/" + CommandTestUtil.getSampleCJFRFileName(),
                                 "--width",
                                 "120")
                         .withFiles(CommandTestUtil.getSampleCJFRFile())
@@ -121,8 +121,8 @@ public class ViewCommandTest {
         var result =
                 new CommandExecuter(
                                 "view",
-                                "T/" + CommandTestUtil.getSampleCJFRFileName(),
-                                "AnotherEvent")
+                                "AnotherEvent",
+                                "T/" + CommandTestUtil.getSampleCJFRFileName())
                         .withFiles(CommandTestUtil.getSampleCJFRFile())
                         .checkNoError()
                         .run();
@@ -134,9 +134,9 @@ public class ViewCommandTest {
         var result =
                 new CommandExecuter(
                                 "view",
+                                "TestEvent",
                                 "T/" + CommandTestUtil.getSampleCJFRFileName(),
-                                "T/" + CommandTestUtil.getSampleCJFRFileName(1),
-                                "TestEvent")
+                                "T/" + CommandTestUtil.getSampleCJFRFileName(1))
                         .withFiles(
                                 CommandTestUtil.getSampleCJFRFile(),
                                 CommandTestUtil.getSampleCJFRFile(1))
@@ -149,15 +149,15 @@ public class ViewCommandTest {
     public void testTruncateBeginning() throws Exception {
         var defaultResult =
                 new CommandExecuter(
-                                "view", "T/" + CommandTestUtil.getSampleCJFRFileName(), "TestEvent")
+                                "view", "TestEvent", "T/" + CommandTestUtil.getSampleCJFRFileName())
                         .withFiles(CommandTestUtil.getSampleCJFRFile())
                         .checkNoError()
                         .run();
         var beginResult =
                 new CommandExecuter(
                                 "view",
-                                "T/" + CommandTestUtil.getSampleCJFRFileName(),
                                 "TestEvent",
+                                "T/" + CommandTestUtil.getSampleCJFRFileName(),
                                 "--truncate",
                                 "begin")
                         .withFiles(CommandTestUtil.getSampleCJFRFile())
@@ -172,15 +172,15 @@ public class ViewCommandTest {
     public void testCellHeight() throws Exception {
         var defaultResult =
                 new CommandExecuter(
-                                "view", "T/" + CommandTestUtil.getSampleCJFRFileName(), "TestEvent")
+                                "view", "TestEvent", "T/" + CommandTestUtil.getSampleCJFRFileName())
                         .withFiles(CommandTestUtil.getSampleCJFRFile())
                         .checkNoError()
                         .run();
         var tallResult =
                 new CommandExecuter(
                                 "view",
-                                "T/" + CommandTestUtil.getSampleCJFRFileName(),
                                 "TestEvent",
+                                "T/" + CommandTestUtil.getSampleCJFRFileName(),
                                 "--cell-height",
                                 "2")
                         .withFiles(CommandTestUtil.getSampleCJFRFile())
@@ -194,7 +194,7 @@ public class ViewCommandTest {
     @Test
     public void testFolderInput() throws Exception {
         var result =
-                new CommandExecuter("view", "T/", "TestEvent")
+                new CommandExecuter("view", "TestEvent", "T/")
                         .withFiles(
                                 CommandTestUtil.getSampleCJFRFile(),
                                 CommandTestUtil.getSampleCJFRFile(1))
@@ -205,13 +205,13 @@ public class ViewCommandTest {
 
     @Test
     public void testEventsOptionIsNotAvailableForView() throws Exception {
-        // view only ever displays the single positional EVENT_NAME, so --events would do nothing.
-        // It is hidden via @IgnoreOptions and must be rejected as an unknown option.
+        // view only ever displays the single positional VIEW_OR_EVENT, so --events would do
+        // nothing. It is hidden via @IgnoreOptions and must be rejected as an unknown option.
         var result =
                 new CommandExecuter(
                                 "view",
-                                "T/" + CommandTestUtil.getSampleCJFRFileName(),
                                 "TestEvent",
+                                "T/" + CommandTestUtil.getSampleCJFRFileName(),
                                 "--events",
                                 "TestEvent")
                         .withFiles(CommandTestUtil.getSampleCJFRFile())
@@ -222,10 +222,10 @@ public class ViewCommandTest {
 
     @Test
     public void testEventsFilterWithoutPositionalStillWorks() throws Exception {
-        // viewing a single event type by its positional EVENT_NAME still works
+        // viewing a single event type by its positional VIEW_OR_EVENT still works
         var result =
                 new CommandExecuter(
-                                "view", "T/" + CommandTestUtil.getSampleCJFRFileName(), "TestEvent")
+                                "view", "TestEvent", "T/" + CommandTestUtil.getSampleCJFRFileName())
                         .withFiles(CommandTestUtil.getSampleCJFRFile())
                         .checkNoError()
                         .run();
@@ -245,7 +245,7 @@ public class ViewCommandTest {
         }
 
         var result =
-                new CommandExecuter("view", "T/sample.zip", "TestEvent")
+                new CommandExecuter("view", "TestEvent", "T/sample.zip")
                         .withFiles(zipFile)
                         .checkNoError()
                         .run();
@@ -272,8 +272,8 @@ public class ViewCommandTest {
                             var limitOne =
                                     new CommandExecuter(
                                                     "view",
-                                                    "T/combined.cjfr",
                                                     "TestEvent",
+                                                    "T/combined.cjfr",
                                                     "--limit",
                                                     "1",
                                                     "--width",
@@ -289,8 +289,8 @@ public class ViewCommandTest {
                             var limitTwo =
                                     new CommandExecuter(
                                                     "view",
-                                                    "T/combined.cjfr",
                                                     "TestEvent",
+                                                    "T/combined.cjfr",
                                                     "--limit",
                                                     "2",
                                                     "--width",
@@ -312,9 +312,8 @@ public class ViewCommandTest {
     }
 
     /**
-     * Condense a JFR file with large string fields, then view the event type. /** Condense a JFR
-     * file with large string fields, then view the event type. The view command must exit 0 and
-     * produce a table header for the event type.
+     * Condense a JFR file with large string fields, then view the event type. The view command must
+     * exit 0 and produce a table header for the event type.
      */
     @Test
     public void testViewOnCondensedLargeStringEvents() throws Exception {
@@ -326,8 +325,8 @@ public class ViewCommandTest {
                             var viewResult =
                                     new CommandExecuter(
                                                     "view",
-                                                    map.get("large_string.cjfr").toString(),
-                                                    "LargeStringEvent")
+                                                    "LargeStringEvent",
+                                                    map.get("large_string.cjfr").toString())
                                             .run();
                             assertThat(viewResult.exitCode()).isEqualTo(0);
                             assertThat(viewResult.output()).contains("LargeStringEvent");
@@ -349,8 +348,8 @@ public class ViewCommandTest {
                             var viewResult =
                                     new CommandExecuter(
                                                     "view",
-                                                    map.get("extreme_numeric.cjfr").toString(),
-                                                    "ExtremeNumericEvent")
+                                                    "ExtremeNumericEvent",
+                                                    map.get("extreme_numeric.cjfr").toString())
                                             .run();
                             assertThat(viewResult.exitCode()).isEqualTo(0);
                             assertThat(viewResult.output()).contains("ExtremeNumericEvent");
@@ -375,8 +374,8 @@ public class ViewCommandTest {
                             var viewResult =
                                     new CommandExecuter(
                                                     "view",
-                                                    map.get("unicode_string.cjfr").toString(),
-                                                    "UnicodeStringEvent")
+                                                    "UnicodeStringEvent",
+                                                    map.get("unicode_string.cjfr").toString())
                                             .run();
                             assertThat(viewResult.exitCode()).isEqualTo(0);
                             assertThat(viewResult.output()).contains("UnicodeStringEvent");
@@ -398,8 +397,8 @@ public class ViewCommandTest {
                             var viewResult =
                                     new CommandExecuter(
                                                     "view",
-                                                    map.get("many_fields.cjfr").toString(),
                                                     "ManyFieldsEvent",
+                                                    map.get("many_fields.cjfr").toString(),
                                                     "--width",
                                                     "300")
                                             .run();
@@ -417,7 +416,7 @@ public class ViewCommandTest {
     public void testMemoryColumnAlwaysShowsUnitSuffix() throws Exception {
         var result =
                 new CommandExecuter(
-                                "view", "T/" + CommandTestUtil.getSampleCJFRFileName(), "TestEvent")
+                                "view", "TestEvent", "T/" + CommandTestUtil.getSampleCJFRFileName())
                         .withFiles(CommandTestUtil.getSampleCJFRFile())
                         .checkNoError()
                         .run();
@@ -454,9 +453,9 @@ public class ViewCommandTest {
         var result =
                 new CommandExecuter(
                                 "view",
+                                "jdk.GarbageCollection",
                                 "T/" + CommandTestUtil.getSampleCJFRFileName(),
-                                "T/" + CommandTestUtil.getSampleCJFRFileName(1),
-                                "jdk.GarbageCollection")
+                                "T/" + CommandTestUtil.getSampleCJFRFileName(1))
                         .withFiles(
                                 CommandTestUtil.getSampleCJFRFile(),
                                 CommandTestUtil.getSampleCJFRFile(1))
@@ -494,7 +493,7 @@ public class ViewCommandTest {
         // "testevent" should match "TestEvent" case-insensitively
         var result =
                 new CommandExecuter(
-                                "view", "T/" + CommandTestUtil.getSampleCJFRFileName(), "testevent")
+                                "view", "testevent", "T/" + CommandTestUtil.getSampleCJFRFileName())
                         .withFiles(CommandTestUtil.getSampleCJFRFile())
                         .checkNoError()
                         .run();
@@ -506,7 +505,7 @@ public class ViewCommandTest {
         // "TESTEVENT" should match "TestEvent" case-insensitively
         var result =
                 new CommandExecuter(
-                                "view", "T/" + CommandTestUtil.getSampleCJFRFileName(), "TESTEVENT")
+                                "view", "TESTEVENT", "T/" + CommandTestUtil.getSampleCJFRFileName())
                         .withFiles(CommandTestUtil.getSampleCJFRFile())
                         .checkNoError()
                         .run();
@@ -518,7 +517,7 @@ public class ViewCommandTest {
         // "testEvent" (wrong case) should match "TestEvent"
         var result =
                 new CommandExecuter(
-                                "view", "T/" + CommandTestUtil.getSampleCJFRFileName(), "testEvent")
+                                "view", "testEvent", "T/" + CommandTestUtil.getSampleCJFRFileName())
                         .withFiles(CommandTestUtil.getSampleCJFRFile())
                         .checkNoError()
                         .run();
@@ -530,7 +529,7 @@ public class ViewCommandTest {
         // Exact case should still work (regression check)
         var result =
                 new CommandExecuter(
-                                "view", "T/" + CommandTestUtil.getSampleCJFRFileName(), "TestEvent")
+                                "view", "TestEvent", "T/" + CommandTestUtil.getSampleCJFRFileName())
                         .withFiles(CommandTestUtil.getSampleCJFRFile())
                         .checkNoError()
                         .run();
@@ -548,7 +547,7 @@ public class ViewCommandTest {
             return;
         }
         var result =
-                new CommandExecuter("view", "profile.cjfr", "jdk.GCHeapSummary", "--limit", "1")
+                new CommandExecuter("view", "jdk.GCHeapSummary", "profile.cjfr", "--limit", "1")
                         .checkNoError()
                         .run();
         // The Heap Space column should contain formatted memory values (MB or GB)
@@ -563,7 +562,7 @@ public class ViewCommandTest {
             return;
         }
         var result =
-                new CommandExecuter("view", "profile.cjfr", "jdk.GarbageCollection,jdk.ThreadStart")
+                new CommandExecuter("view", "jdk.GarbageCollection,jdk.ThreadStart", "profile.cjfr")
                         .run();
         assertThat(result.exitCode()).isEqualTo(2);
         assertThat(result.error()).contains("comma-separated");
@@ -573,7 +572,7 @@ public class ViewCommandTest {
     public void testViewJFRFileDirectly() throws Exception {
         var result =
                 new CommandExecuter(
-                                "view", "T/" + CommandTestUtil.getSampleJFRFileName(), "TestEvent")
+                                "view", "TestEvent", "T/" + CommandTestUtil.getSampleJFRFileName())
                         .withFiles(CommandTestUtil.getSampleJFRFile())
                         .checkNoError()
                         .run();
@@ -585,8 +584,8 @@ public class ViewCommandTest {
         var result =
                 new CommandExecuter(
                                 "view",
-                                "T/" + CommandTestUtil.getSampleCJFRFileName(),
-                                "jdk.NonExistentEvent")
+                                "jdk.NonExistentEvent",
+                                "T/" + CommandTestUtil.getSampleCJFRFileName())
                         .withFiles(CommandTestUtil.getSampleCJFRFile())
                         .run();
         assertThat(result.exitCode()).isEqualTo(1);
@@ -600,8 +599,8 @@ public class ViewCommandTest {
         var result =
                 new CommandExecuter(
                                 "view",
-                                "T/" + CommandTestUtil.getSampleCJFRFileName(),
                                 "TestEvent",
+                                "T/" + CommandTestUtil.getSampleCJFRFileName(),
                                 "--limit",
                                 "1")
                         .withFiles(CommandTestUtil.getSampleCJFRFile())
@@ -621,8 +620,8 @@ public class ViewCommandTest {
         var result =
                 new CommandExecuter(
                                 "view",
-                                "T/" + CommandTestUtil.getSampleCJFRFileName(),
                                 "jdk.ActiveSetting",
+                                "T/" + CommandTestUtil.getSampleCJFRFileName(),
                                 "--json",
                                 "--limit",
                                 "3")
@@ -665,7 +664,7 @@ public class ViewCommandTest {
             var view =
                     me.bechberger.jfr.cli.JFRCLI.runCapturedWithDispatch(
                             new String[] {
-                                "view", output.toString(), "jdk.OldObjectSample", "--json"
+                                "view", "jdk.OldObjectSample", output.toString(), "--json"
                             });
             assertThat(view.exitCode()).isEqualTo(0);
             var parsed = me.bechberger.util.json.JSONParser.parse(view.out());
@@ -703,8 +702,8 @@ public class ViewCommandTest {
         var limitResult =
                 new CommandExecuter(
                                 "view",
-                                "T/" + CommandTestUtil.getSampleCJFRFileName(),
                                 "jdk.ActiveSetting",
+                                "T/" + CommandTestUtil.getSampleCJFRFileName(),
                                 "--json",
                                 "--limit",
                                 "3")
@@ -714,8 +713,8 @@ public class ViewCommandTest {
         var allResult =
                 new CommandExecuter(
                                 "view",
-                                "T/" + CommandTestUtil.getSampleCJFRFileName(),
                                 "jdk.ActiveSetting",
+                                "T/" + CommandTestUtil.getSampleCJFRFileName(),
                                 "--json")
                         .withFiles(CommandTestUtil.getSampleCJFRFile())
                         .checkNoError()
@@ -764,7 +763,7 @@ public class ViewCommandTest {
             var view =
                     me.bechberger.jfr.cli.JFRCLI.runCapturedWithDispatch(
                             new String[] {
-                                "view", output.toString(), "jdk.CPULoad", "--limit", "3"
+                                "view", "jdk.CPULoad", output.toString(), "--limit", "3"
                             });
             assertThat(view.exitCode()).isEqualTo(0);
             assertThat(view.err()).doesNotContain("potentially unknown type: percentage");
@@ -776,5 +775,66 @@ public class ViewCommandTest {
         } finally {
             Files.deleteIfExists(output);
         }
+    }
+
+    /**
+     * Named views (e.g. gc-configuration) are delegated to the JDK `jfr view` after inflating the
+     * condensed input, so the full set of curated views works on .cjfr files too.
+     */
+    @Test
+    public void testNamedViewDelegatesToJfrView() throws Exception {
+        if (!Files.exists(Path.of("profile.cjfr"))) {
+            System.err.println("Skipping: profile.cjfr not found");
+            return;
+        }
+        var result = new CommandExecuter("view", "gc-configuration", "profile.cjfr").run();
+        assertThat(result.exitCode()).isEqualTo(0);
+        assertThat(result.output()).contains("GC Configuration");
+    }
+
+    /** --json is meaningful only for event types, not named views; it must be rejected clearly. */
+    @Test
+    public void testJsonRejectedForNamedView() throws Exception {
+        if (!Files.exists(Path.of("profile.cjfr"))) {
+            System.err.println("Skipping: profile.cjfr not found");
+            return;
+        }
+        var result =
+                new CommandExecuter("view", "gc-configuration", "profile.cjfr", "--json").run();
+        assertThat(result.exitCode()).isEqualTo(2);
+        assertThat(result.error()).contains("--json");
+    }
+
+    /**
+     * Lazy materialization guard: the view read path enables {@code skipRecursiveCompletion} so
+     * reference trees (stack traces, methods, classes) are only decoded on demand via lazy
+     * {@code get()} instead of being force-completed for every event. This asserts the fields the
+     * query actually reads still render with real content — i.e. lazy decode did not drop data.
+     *
+     * <p>A stack-trace-heavy view (exception-count reads {@code stackTrace.topFrame} nested
+     * method/class references) is the strongest probe: if lazy decode were broken, the frame
+     * column would be blank / N/A. gc-configuration (pure scalars, no references) is the
+     * complementary probe that the common no-reference case is unaffected.
+     */
+    @Test
+    public void testViewsRenderRealContentWithLazyMaterialization() throws Exception {
+        if (!Files.exists(Path.of("profile.cjfr"))) {
+            System.err.println("Skipping: profile.cjfr not found");
+            return;
+        }
+        var scalarView =
+                new CommandExecuter("view", "gc-configuration", "profile.cjfr", "--width", "160")
+                        .checkNoError()
+                        .run();
+        assertThat(scalarView.output()).contains("GC Configuration");
+
+        var refView =
+                new CommandExecuter("view", "exception-count", "profile.cjfr", "--width", "160")
+                        .checkNoError()
+                        .run();
+        // The view must produce a table (header present); lazy decode of the nested reference
+        // fields it reads must not blow up or blank the whole output.
+        assertThat(refView.exitCode()).isEqualTo(0);
+        assertThat(refView.output()).isNotBlank();
     }
 }

@@ -78,8 +78,8 @@ public class ExitCodeTest {
         var result =
                 new CommandExecuter(
                                 "view",
-                                "T/" + CommandTestUtil.getSampleCJFRFileName(),
                                 "TestEvent",
+                                "T/" + CommandTestUtil.getSampleCJFRFileName(),
                                 "--width",
                                 "5")
                         .withFiles(CommandTestUtil.getSampleCJFRFile())
@@ -93,8 +93,8 @@ public class ExitCodeTest {
         var result =
                 new CommandExecuter(
                                 "view",
-                                "T/" + CommandTestUtil.getSampleCJFRFileName(),
                                 "TestEvent",
+                                "T/" + CommandTestUtil.getSampleCJFRFileName(),
                                 "--cell-height",
                                 "0")
                         .withFiles(CommandTestUtil.getSampleCJFRFile())
@@ -108,8 +108,8 @@ public class ExitCodeTest {
         var result =
                 new CommandExecuter(
                                 "view",
-                                "T/" + CommandTestUtil.getSampleCJFRFileName(),
                                 "TestEvent",
+                                "T/" + CommandTestUtil.getSampleCJFRFileName(),
                                 "--limit",
                                 "-2")
                         .withFiles(CommandTestUtil.getSampleCJFRFile())
@@ -177,7 +177,7 @@ public class ExitCodeTest {
         String cjfr = "T/" + CommandTestUtil.getSampleCJFRFileName();
         var builder =
                 command.equals("view")
-                        ? new CommandExecuter(command, cjfr, "TestEvent", "--duration", "0s")
+                        ? new CommandExecuter(command, "TestEvent", cjfr, "--duration", "0s")
                         : command.equals("inflate")
                                 ? new CommandExecuter(
                                         command, cjfr, "T/out.jfr", "--duration", "0s")
@@ -193,7 +193,7 @@ public class ExitCodeTest {
         String cjfr = "T/" + CommandTestUtil.getSampleCJFRFileName();
         var builder =
                 command.equals("view")
-                        ? new CommandExecuter(command, cjfr, "TestEvent", "--duration", "-1s")
+                        ? new CommandExecuter(command, "TestEvent", cjfr, "--duration", "-1s")
                         : command.equals("inflate")
                                 ? new CommandExecuter(
                                         command, cjfr, "T/out.jfr", "--duration", "-1s")
@@ -248,7 +248,7 @@ public class ExitCodeTest {
     public void testViewManyColumnEventDoesNotCrash() throws Exception {
         var cjfr = "T/" + CommandTestUtil.getSampleCJFRFileName();
         var result =
-                new CommandExecuter("view", cjfr, "jdk.ActiveRecording", "--limit", "1")
+                new CommandExecuter("view", "jdk.ActiveRecording", cjfr, "--limit", "1")
                         .withFiles(CommandTestUtil.getSampleCJFRFile())
                         .run();
         assertThat(result.exitCode()).isEqualTo(0);

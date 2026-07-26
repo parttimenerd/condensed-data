@@ -644,10 +644,62 @@ public class WritingJFRReader {
         }
     }
 
+    /**
+     * Re-attach the event type's own {@code @Label} and {@code @Description} from the condensed type
+     * description (a {@code ["label","description"]} JSON array written by {@link
+     * BasicJFRWriter#getEventDescription}). jfr's {@code eventType.label} accessor and the metadata's
+     * type label rely on these; without them the inflated type renders "N/A".
+     */
+    private void addEventTypeAnnotations(TypeStructureBuilder builder, String description) {
+        if (description == null || description.isEmpty()) {
+            return;
+        }
+        BasicJFRWriter.ParsedEventDescription parsed;
+        try {
+            parsed = BasicJFRWriter.parseEventDescription(description);
+        } catch (RuntimeException e) {
+            return; // not the ["label","description",...] shape (e.g. struct types) — skip
+        }
+        if (parsed.label() != null && !parsed.label().isEmpty()) {
+            builder.addAnnotation(getOrCreateAnnotationType("jdk.jfr.Label", true), parsed.label());
+        }
+        if (parsed.description() != null && !parsed.description().isEmpty()) {
+            builder.addAnnotation(
+                    getOrCreateAnnotationType("jdk.jfr.Description", true), parsed.description());
+        }
+        // Re-attach remaining type-level annotations (@Experimental, @Category, @Name, ...). @Label
+        // and @Description are already emitted above from the dedicated fields, so skip duplicates.
+        for (var ann : parsed.annotations()) {
+            String annName = ann.type();
+            if ("jdk.jfr.Label".equals(annName) || "jdk.jfr.Description".equals(annName)) {
+                continue;
+            }
+            var values = ann.values();
+            if (values.isEmpty()) {
+                builder.addAnnotation(getOrCreateAnnotationType(annName, false));
+            } else if (values.size() == 1 && !(values.get(0) instanceof List)) {
+                // Single scalar value (the writer's addAnnotation(Type,String) only supports one).
+                builder.addAnnotation(
+                        getOrCreateAnnotationType(annName, true), values.get(0).toString());
+            }
+            // Multi-value / array-valued annotations (e.g. @Category's String[]) are not
+            // reconstructable via the single-value writer API, so are intentionally dropped; they
+            // do not affect jfr view output.
+        }
+    }
+
     private Type createType(CondensedType<?, ?> type, boolean isEvent) {
         Consumer<TypeStructureBuilder> builderConsumer =
                 builder -> {
                     if (type instanceof StructType<?, ?> structType) {
+                        // Re-attach the event type's own @Label/@Description. Condense stores them as
+                        // a ["label","description"] JSON array in the type description (see
+                        // BasicJFRWriter.getEventDescription); without re-adding them the inflated
+                        // type has no type-level @Label, so jfr's eventType.label accessor renders
+                        // "N/A" (breaks views like events-by-count / events-by-name).
+                        if (isEvent) {
+                            addEventTypeAnnotations(builder, structType.getDescription());
+                        }
                         if (STACK_FRAME_TYPE.equals(structType.getName())) {
                             // Workaround for JMC Bug 1 (see JMC_FIX.md): emit all 4 fields in
                             // canonical order so StackFrame2Reader doesn't desync.

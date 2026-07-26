@@ -73,7 +73,9 @@ public class BasicJFRRoundTripTest {
             var readEvent = basicJFRReader.readNextEvent();
             assertNotNull(readEvent);
             assertEquals("TestEvent", readEvent.getType().getName());
-            assertEquals("[\"Label\",\"Description\"]", readEvent.getType().getDescription());
+            assertEquals(
+                    "[\"Label\",\"Description\",[[\"jdk.jfr.Name\",[\"TestEvent\"]],[\"jdk.jfr.Label\",[\"Label\"]],[\"jdk.jfr.Description\",[\"Description\"]]]]",
+                    readEvent.getType().getDescription());
             assertEquals(ttps, basicJFRReader.getConfiguration().timeStampTicksPerSecond());
             assertEquals(
                     recordedEvent.get().getStartTime().getEpochSecond(),

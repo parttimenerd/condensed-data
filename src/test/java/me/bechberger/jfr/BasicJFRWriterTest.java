@@ -55,7 +55,9 @@ public class BasicJFRWriterTest {
             var teType = types.getTypeOrNull("TestEvent");
             assertNotNull(teType, "TestEvent type not found");
             assertEquals("TestEvent", teType.getName());
-            assertEquals("[\"Label\",\"Description\"]", teType.getDescription());
+            assertEquals(
+                    "[\"Label\",\"Description\",[[\"jdk.jfr.Name\",[\"TestEvent\"]],[\"jdk.jfr.Label\",[\"Label\"]],[\"jdk.jfr.Description\",[\"Description\"]]]]",
+                    teType.getDescription());
             assertInstanceOf(StructType.class, teType, "TestEvent is not a struct type");
             // check that the type for TestEvent has a field named "stackTrace"
             var stackTraceField = ((StructType<?, ?>) teType).getField("stackTrace");

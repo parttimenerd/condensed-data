@@ -447,8 +447,8 @@ public class CondenseCommandTest {
                             var viewResult =
                                     new CommandExecuter(
                                                     "view",
-                                                    map.get("out.cjfr").toString(),
                                                     "TestEvent",
+                                                    map.get("out.cjfr").toString(),
                                                     "--limit",
                                                     "1")
                                             .checkNoError()

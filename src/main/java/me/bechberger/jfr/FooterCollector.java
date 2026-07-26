@@ -10,6 +10,7 @@ import me.bechberger.condensed.CJFRFooter.AllocStats;
 import me.bechberger.condensed.CJFRFooter.CpuStats;
 import me.bechberger.condensed.CJFRFooter.GcStats;
 import me.bechberger.condensed.CJFRFooter.GcStats.GcBucket;
+import me.bechberger.jfr.cli.query.ViewPrecompute;
 
 /**
  * Side-channel accumulator for {@link CJFRFooter} statistics. {@link #collect(RecordedEvent)} is
@@ -53,6 +54,11 @@ public final class FooterCollector {
     private final Map<Long, long[]> allocBuckets =
             new HashMap<>(); // value = long[2]{allocBytes, promoBytes}
 
+    // Precomputed exact-aggregate FORM views (gc-cpu-time, cpu-load, exception-count): each source
+    // event's registered column fields are fed through the same Aggregators reducers the native
+    // renderer uses, so footer-served output is byte-identical by construction.
+    private final ViewPrecompute.Accumulator viewAccumulator = new ViewPrecompute.Accumulator();
+
     public FooterCollector(long bucketSeconds) {
         this.bucketSeconds = bucketSeconds;
     }
@@ -84,6 +90,62 @@ public final class FooterCollector {
                     collectPromotion(event, startMicros);
             default -> {}
         }
+
+        collectPrecomputedView(event, name);
+    }
+
+    /**
+     * Feed a source event's registered view columns into the precompute accumulator. Field values
+     * are read with the same runtime types the native {@code ReadStruct} path sees so the reducer
+     * math matches: {@code @Timespan} → {@link RecordedEvent#getDuration(String)} (Duration),
+     * {@code @Timestamp} startTime → {@link RecordedEvent#getInstant(String)} (Instant),
+     * {@code @Percentage float} → {@link RecordedEvent#getFloat(String)} (autoboxed Double), plain
+     * longs → {@link RecordedEvent#getLong(String)}, and {@code COUNT(*)} gets a non-null marker.
+     */
+    private void collectPrecomputedView(RecordedEvent event, String name) {
+        var colsOpt = ViewPrecompute.columnsFor(name);
+        if (colsOpt.isEmpty()) return;
+        String viewName = ViewPrecompute.viewNameFor(name).orElse(null);
+        if (viewName == null) return;
+        List<ViewPrecompute.Column> cols = colsOpt.get();
+        for (int i = 0; i < cols.size(); i++) {
+            String field = cols.get(i).field();
+            if ("*".equals(field)) {
+                viewAccumulator.accept(viewName, i, ViewPrecompute.COUNT_STAR_MARKER);
+                continue;
+            }
+            if (!event.hasField(field)) continue;
+            try {
+                Object value = precomputedFieldValue(event, field);
+                if (value != null) viewAccumulator.accept(viewName, i, value);
+            } catch (IllegalArgumentException ignored) {
+            }
+        }
+    }
+
+    /** Read {@code field} with the runtime type matching the native path (see caller javadoc). */
+    private Object precomputedFieldValue(RecordedEvent event, String field) {
+        var descriptor = event.getEventType().getField(field);
+        String type = descriptor == null ? null : descriptor.getTypeName();
+        // startTime (and any @Timestamp) → Instant; @Timespan → Duration; @Percentage float →
+        // Double; everything else numeric → long. The content-type annotations are surfaced via the
+        // value descriptor's annotations, but for the registered fields the JFR field type name is
+        // enough: startTime/duration fields are "long" ticks that the getters convert for us.
+        if ("startTime".equals(field)) return event.getInstant(field);
+        if ("java.time.Duration".equals(type) || isTimespanField(event, field)) {
+            return event.getDuration(field);
+        }
+        if ("float".equals(type) || "double".equals(type)) {
+            return (double) event.getFloat(field);
+        }
+        return event.getLong(field);
+    }
+
+    /** True if {@code field} carries the {@code jdk.jfr.Timespan} content type. */
+    private boolean isTimespanField(RecordedEvent event, String field) {
+        var descriptor = event.getEventType().getField(field);
+        if (descriptor == null) return false;
+        return descriptor.getAnnotation(jdk.jfr.Timespan.class) != null;
     }
 
     private void collectGc(RecordedEvent e, long startMicros) {
@@ -256,6 +318,7 @@ public final class FooterCollector {
                 buildGcStatsOrNull(),
                 buildCpuStatsOrNull(),
                 buildAllocStatsOrNull(),
+                viewAccumulator.build(),
                 0L);
     }
 

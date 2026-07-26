@@ -27,15 +27,39 @@ public record CJFRFooter(
         @Nullable CpuStats cpuStats,
         @Nullable AllocStats allocStats,
         /**
+         * Exact-aggregate FORM views precomputed at condense time so {@code cjfr view} can render
+         * them with zero event reads: view name → its ordered SELECT-column cells. Empty when no
+         * precomputed view had source events (and in v1 files, which never carried this field).
+         * Adding a new view here is data-only — no format change — and readers ignore unknown keys.
+         */
+        Map<String, List<PrecomputedCell>> precomputedViews,
+        /**
          * CRC32 over the on-disk bytes {@code [0, footerStart)} (start header + compressed main
          * stream). Filled in by {@link CondensedOutputStream#writeFooter} just before
          * serialization; 0 when constructed by the collector before the stream is finalized.
          */
         long mainStreamCrc32) {
 
-    public static final int CURRENT_VERSION = 1;
+    public static final int CURRENT_VERSION = 2;
     public static final int FOOTER_TYPE_ID = 7;
     public static final byte[] MAGIC = {'C', 'J', 'F', 'R'};
+
+    /**
+     * One precomputed SELECT-column value for a FORM view. Carries both the raw aggregate value
+     * (tagged by {@code typeTag}) and the display {@code kindOrdinal} (a {@code ColumnType.Kind}
+     * ordinal), because the serve path renders with no events and so cannot re-derive the content
+     * kind from field metadata (e.g. a {@code jdk.jfr.Percentage} column must still render as a
+     * percentage). {@code typeTag}: 0=LONG, 1=DOUBLE, 2=DURATION_NANOS, 3=INSTANT_EPOCH_NANOS,
+     * 4=NULL. {@code longBits} holds LONG / DURATION nanos / INSTANT epoch-nanos; {@code doubleVal}
+     * holds DOUBLE. Unused slots are 0.
+     */
+    public record PrecomputedCell(int kindOrdinal, int typeTag, long longBits, double doubleVal) {
+        public static final int TAG_LONG = 0;
+        public static final int TAG_DOUBLE = 1;
+        public static final int TAG_DURATION_NANOS = 2;
+        public static final int TAG_INSTANT_EPOCH_NANOS = 3;
+        public static final int TAG_NULL = 4;
+    }
 
     public CJFRFooter withMainStreamCrc32(long crc) {
         return new CJFRFooter(
@@ -47,6 +71,7 @@ public record CJFRFooter(
                 gcStats,
                 cpuStats,
                 allocStats,
+                precomputedViews,
                 crc);
     }
 
@@ -108,6 +133,7 @@ public record CJFRFooter(
         if (gcStats != null) flags |= 1;
         if (cpuStats != null) flags |= 2;
         if (allocStats != null) flags |= 4;
+        if (precomputedViews != null && !precomputedViews.isEmpty()) flags |= 8;
         out.writeByte(flags);
 
         writeUnsignedVarInt(out, totalEvents);
@@ -124,6 +150,23 @@ public record CJFRFooter(
         if (gcStats != null) writeGcStats(out, gcStats);
         if (cpuStats != null) writeCpuStats(out, cpuStats);
         if (allocStats != null) writeAllocStats(out, allocStats);
+        if ((flags & 8) != 0) writePrecomputedViews(out, precomputedViews);
+    }
+
+    private static void writePrecomputedViews(
+            DataOutputStream out, Map<String, List<PrecomputedCell>> views) throws IOException {
+        writeUnsignedVarInt(out, views.size());
+        for (var e : views.entrySet()) {
+            writeString(out, e.getKey());
+            List<PrecomputedCell> cells = e.getValue();
+            writeUnsignedVarInt(out, cells.size());
+            for (PrecomputedCell c : cells) {
+                writeUnsignedVarInt(out, c.kindOrdinal());
+                writeUnsignedVarInt(out, c.typeTag());
+                writeSignedLong8(out, c.longBits());
+                writeSignedLong8(out, Double.doubleToRawLongBits(c.doubleVal()));
+            }
+        }
     }
 
     private static void writeGcStats(DataOutputStream out, GcStats g) throws IOException {
@@ -192,6 +235,7 @@ public record CJFRFooter(
         boolean hasGc = (flags & 1) != 0;
         boolean hasCpu = (flags & 2) != 0;
         boolean hasAlloc = (flags & 4) != 0;
+        boolean hasPrecomputed = (flags & 8) != 0;
 
         long totalEvents = readUnsignedVarint(in);
         long startTimeMicros = readSignedLong8(in);
@@ -207,6 +251,8 @@ public record CJFRFooter(
         GcStats gcStats = hasGc ? readGcStats(in) : null;
         CpuStats cpuStats = hasCpu ? readCpuStats(in) : null;
         AllocStats allocStats = hasAlloc ? readAllocStats(in) : null;
+        Map<String, List<PrecomputedCell>> precomputedViews =
+                hasPrecomputed ? readPrecomputedViews(in) : Map.of();
 
         return new CJFRFooter(
                 version,
@@ -217,7 +263,28 @@ public record CJFRFooter(
                 gcStats,
                 cpuStats,
                 allocStats,
+                precomputedViews,
                 mainStreamCrc32);
+    }
+
+    private static Map<String, List<PrecomputedCell>> readPrecomputedViews(DataInputStream in)
+            throws IOException {
+        int viewCount = (int) readUnsignedVarint(in);
+        Map<String, List<PrecomputedCell>> views = new LinkedHashMap<>(viewCount * 2);
+        for (int i = 0; i < viewCount; i++) {
+            String name = readString(in);
+            int cellCount = (int) readUnsignedVarint(in);
+            List<PrecomputedCell> cells = new ArrayList<>(cellCount);
+            for (int j = 0; j < cellCount; j++) {
+                int kindOrdinal = (int) readUnsignedVarint(in);
+                int typeTag = (int) readUnsignedVarint(in);
+                long longBits = readSignedLong8(in);
+                double doubleVal = Double.longBitsToDouble(readSignedLong8(in));
+                cells.add(new PrecomputedCell(kindOrdinal, typeTag, longBits, doubleVal));
+            }
+            views.put(name, Collections.unmodifiableList(cells));
+        }
+        return Collections.unmodifiableMap(views);
     }
 
     private static GcStats readGcStats(DataInputStream in) throws IOException {

@@ -823,11 +823,44 @@ public class BasicJFRWriter {
         var arr = new ArrayList<>();
         arr.add(type.getLabel());
         arr.add(type.getDescription());
+        // Third element: the event type's own annotation elements (e.g. @Experimental, @Category),
+        // encoded like field annotations as [[typeName, [values]], ...]. Older readers stop at
+        // index 1 and ignore this; newer readers re-attach these annotations at inflate.
+        List<Object> annotations =
+                type.getAnnotationElements().stream()
+                        .map(
+                                a -> {
+                                    List<Object> annotation = new ArrayList<>();
+                                    annotation.add(a.getTypeName());
+                                    annotation.add(normalizeAnnotationValues(a.getValues()));
+                                    return (Object) annotation;
+                                })
+                        .collect(java.util.stream.Collectors.toCollection(ArrayList::new));
+        arr.add(annotations);
         return PrettyPrinter.compactPrint(arr);
     }
 
-    public record ParsedEventDescription(String label, String description) {}
+    /**
+     * Normalize annotation values into JSON-serializable form. Most values are scalars, but some
+     * (e.g. {@code @Category}) carry a {@code String[]}; the JSON printer can't serialize a raw Java
+     * array, so unwrap it into a {@link List}.
+     */
+    private static List<Object> normalizeAnnotationValues(List<Object> values) {
+        List<Object> out = new ArrayList<>(values.size());
+        for (Object v : values) {
+            if (v instanceof Object[] arr) {
+                out.add(new ArrayList<>(java.util.Arrays.asList(arr)));
+            } else {
+                out.add(v);
+            }
+        }
+        return out;
+    }
 
+    public record ParsedEventDescription(
+            String label, String description, List<ParsedAnnotationElement> annotations) {}
+
+    @SuppressWarnings("unchecked")
     public static ParsedEventDescription parseEventDescription(String description) {
         List<Object> arr;
         try {
@@ -835,7 +868,19 @@ public class BasicJFRWriter {
         } catch (IOException e) {
             throw new IllegalStateException("Invalid description: " + description, e);
         }
-        return new ParsedEventDescription((String) arr.get(0), (String) arr.get(1));
+        List<ParsedAnnotationElement> annotations = List.of();
+        if (arr.size() > 2 && arr.get(2) instanceof List<?> anns) {
+            annotations =
+                    anns.stream()
+                            .map(
+                                    o -> {
+                                        var a = (List<Object>) o;
+                                        return new ParsedAnnotationElement(
+                                                (String) a.get(0), (List<Object>) a.get(1));
+                                    })
+                            .toList();
+        }
+        return new ParsedEventDescription((String) arr.get(0), (String) arr.get(1), annotations);
     }
 
     @SuppressWarnings({"rawtypes", "unchecked"})

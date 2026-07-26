@@ -127,11 +127,10 @@ public class JFRMultiFileTest {
         var args = paths.stream().map(Path::toString).toList();
         assertAll(
                 () -> checkSummaryResult(captureStdout("summary", args)),
-                () -> checkViewResult(captureStdout("view", combine(args, "TestEvent"))),
+                () -> checkViewResult(captureStdout("view", combine("TestEvent", args))),
                 () -> checkInflateResult(args));
     }
 
-    @SuppressWarnings("unused") // kept for potential future use
     private List<String> combine(String val, List<String> args) {
         var combined = new ArrayList<String>();
         combined.add(val);
@@ -139,18 +138,12 @@ public class JFRMultiFileTest {
         return combined;
     }
 
+    @SuppressWarnings("unused") // kept for potential future use
     private List<String> combine(String val, String val2, List<String> args) {
         var combined = new ArrayList<String>();
         combined.add(val);
         combined.add(val2);
         combined.addAll(args);
-        return combined;
-    }
-
-    /** Files first, event name last — matches ViewCommand's positional convention. */
-    private List<String> combine(List<String> files, String eventName) {
-        var combined = new ArrayList<>(files);
-        combined.add(eventName);
         return combined;
     }
 

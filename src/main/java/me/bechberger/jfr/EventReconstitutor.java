@@ -7,6 +7,7 @@ import me.bechberger.condensed.CondensedInputStream;
 import me.bechberger.condensed.ReadStruct;
 import me.bechberger.condensed.types.StructType;
 import me.bechberger.jfr.EventCombiner.Combiner;
+import org.jetbrains.annotations.Nullable;
 
 /**
  * Reconstitute combined JFR events
@@ -58,6 +59,16 @@ public class EventReconstitutor<E> {
     /** Is the passed event a combined backing event? */
     public boolean isCombinedEvent(ReadStruct event) {
         return isCombinedEvent(event.getType().getName());
+    }
+
+    /**
+     * The reconstituted (output) event type name for a combined event, or {@code null} if the event
+     * is not a combined event. Lets a caller decide — before the expensive {@link #reconstitute}
+     * expand — whether the events this combined struct would produce are needed at all.
+     */
+    public @Nullable String outputEventTypeName(ReadStruct event) {
+        var reconstitutor = reconstitutorPerCombinedType.get(event.getType().getName());
+        return reconstitutor == null ? null : reconstitutor.getEventTypeName();
     }
 
     private List<E> reconstitute(

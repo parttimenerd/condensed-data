@@ -100,6 +100,65 @@ public class CombiningJFRReader implements JFRReader {
     }
 
     /**
+     * As the generic {@link #fromPaths(List, EventFilter, boolean, Statistic)}, but restricts
+     * on-the-fly {@code .jfr} condensation to the given event types (see the {@link
+     * EventFilterInstance}-typed overload for the rationale). A {@code null} set condenses all.
+     */
+    public static <C> CombiningJFRReader fromPaths(
+            List<Path> paths,
+            @Nullable EventFilter<C> filter,
+            boolean reconstitute,
+            Statistic statistics,
+            @Nullable Set<String> onlyEventTypes) {
+        return fromPaths(paths, filter, reconstitute, false, statistics, onlyEventTypes);
+    }
+
+    /**
+     * As the generic {@link #fromPaths(List, EventFilter, boolean, Statistic, Set)}, but also lets
+     * the caller request lazy materialization ({@code skipRecursiveCompletion}) — the read-back does
+     * not eagerly decode the whole reference tree (stack traces, methods, classes) per event, so a
+     * query that reads only a few fields never builds the objects it discards. See {@link
+     * BasicJFRReader.Options}.
+     */
+    public static <C> CombiningJFRReader fromPaths(
+            List<Path> paths,
+            @Nullable EventFilter<C> filter,
+            boolean reconstitute,
+            boolean skipRecursiveCompletion,
+            Statistic statistics,
+            @Nullable Set<String> onlyEventTypes) {
+        if (filter == null) {
+            return fromPaths(
+                    paths,
+                    (EventFilterInstance) null,
+                    reconstitute,
+                    skipRecursiveCompletion,
+                    statistics,
+                    onlyEventTypes);
+        }
+        C context = filter.createContext();
+        if (filter.isInformationGathering()) {
+            var reader =
+                    fromPaths(
+                            paths,
+                            filter.createAnalyzeFilter(context),
+                            reconstitute,
+                            false,
+                            statistics,
+                            onlyEventTypes);
+            while (reader.readNextEvent() != null)
+                ;
+        }
+        return fromPaths(
+                paths,
+                filter.createTestFilter(context),
+                reconstitute,
+                skipRecursiveCompletion,
+                statistics,
+                onlyEventTypes);
+    }
+
+    /**
      * Creates a reader for the {@code .cjfr} files in the given paths. This works with nested
      * folders and zip files.
      */
@@ -117,6 +176,24 @@ public class CombiningJFRReader implements JFRReader {
             boolean reconstitute,
             boolean skipRecursiveCompletion,
             Statistic statistics) {
+        return fromPaths(paths, filter, reconstitute, skipRecursiveCompletion, statistics, null);
+    }
+
+    /**
+     * As {@link #fromPaths(List, EventFilterInstance, boolean, boolean, Statistic)}, but when a
+     * {@code .jfr} input is condensed on the fly, only events whose fully-qualified type is in
+     * {@code onlyEventTypes} are condensed (a {@code null} set condenses everything). Callers that
+     * already discard all other types after the read (e.g. named-view rendering, which knows its
+     * required event types up front) pass the required set here so the ~millions of irrelevant
+     * events in a large recording are never condensed — a large speedup with no output change.
+     */
+    public static CombiningJFRReader fromPaths(
+            List<Path> paths,
+            EventFilterInstance filter,
+            boolean reconstitute,
+            boolean skipRecursiveCompletion,
+            Statistic statistics,
+            @Nullable Set<String> onlyEventTypes) {
         return new CombiningJFRReader(
                 orderedUniqueReaders(
                         paths.stream()
@@ -126,7 +203,8 @@ public class CombiningJFRReader implements JFRReader {
                                                         p,
                                                         reconstitute,
                                                         skipRecursiveCompletion,
-                                                        statistics)
+                                                        statistics,
+                                                        onlyEventTypes)
                                                         .stream())
                                 .toList()),
                 filter);
@@ -169,7 +247,8 @@ public class CombiningJFRReader implements JFRReader {
             Path path,
             boolean reconstitute,
             boolean skipRecursiveCompletion,
-            Statistic statistics) {
+            Statistic statistics,
+            @Nullable Set<String> onlyEventTypes) {
         if (Files.isDirectory(path)) {
             var files = path.toFile().listFiles();
             if (files == null) {
@@ -183,7 +262,8 @@ public class CombiningJFRReader implements JFRReader {
                                             f.toPath(),
                                             reconstitute,
                                             skipRecursiveCompletion,
-                                            statistics))
+                                            statistics,
+                                            onlyEventTypes))
                     .flatMap(List::stream)
                     .toList();
         }
@@ -194,18 +274,25 @@ public class CombiningJFRReader implements JFRReader {
                                 Files.newInputStream(path),
                                 reconstitute,
                                 skipRecursiveCompletion,
-                                statistics));
+                                statistics,
+                                onlyEventTypes));
             } catch (IOException e) {
                 throw new RuntimeException(e);
             }
         }
         if (Files.isRegularFile(path) && path.toString().endsWith(".jfr")) {
             return List.of(
-                    readerForJFRFile(path, reconstitute, skipRecursiveCompletion, statistics));
+                    readerForJFRFile(
+                            path,
+                            reconstitute,
+                            skipRecursiveCompletion,
+                            statistics,
+                            onlyEventTypes));
         }
         // check if file is zip or tar.gz file
         if (isZip(path)) {
-            return readersForZip(path, reconstitute, skipRecursiveCompletion, statistics);
+            return readersForZip(
+                    path, reconstitute, skipRecursiveCompletion, statistics, onlyEventTypes);
         }
         return List.of();
     }
@@ -214,13 +301,15 @@ public class CombiningJFRReader implements JFRReader {
             InputStream is,
             boolean reconstitute,
             boolean skipRecursiveCompletion,
-            Statistic statistics) {
+            Statistic statistics,
+            @Nullable Set<String> onlyEventTypes) {
         var reader =
                 new BasicJFRReader(
                         new CondensedInputStream(new java.io.BufferedInputStream(is, 65536)),
                         BasicJFRReader.Options.DEFAULT
                                 .withReconstitute(reconstitute)
-                                .withSkipRecursiveCompletion(skipRecursiveCompletion));
+                                .withSkipRecursiveCompletion(skipRecursiveCompletion)
+                                .withReconstituteOnlyEventTypes(onlyEventTypes));
         reader.setStatistics(statistics);
         var alreadyReadEvents = new ArrayList<ReadStruct>();
         var event = reader.readNextEvent();
@@ -256,7 +345,8 @@ public class CombiningJFRReader implements JFRReader {
             Path jfrPath,
             boolean reconstitute,
             boolean skipRecursiveCompletion,
-            Statistic statistics) {
+            Statistic statistics,
+            @Nullable Set<String> onlyEventTypes) {
         try {
             var baos = new java.io.ByteArrayOutputStream();
             try (var out =
@@ -272,7 +362,16 @@ public class CombiningJFRReader implements JFRReader {
                 try (var recording = new jdk.jfr.consumer.RecordingFile(jfrPath)) {
                     writer.registerEventTypes(recording.readEventTypes());
                     while (recording.hasMoreEvents()) {
-                        writer.processEvent(recording.readEvent());
+                        var event = recording.readEvent();
+                        // When the caller only needs specific event types (named views know their
+                        // required types up front), skip condensing everything else. Each event
+                        // carries its own resolved struct values, so dropping an unwanted type
+                        // cannot corrupt a wanted one — this is a pure ingestion filter.
+                        if (onlyEventTypes != null
+                                && !onlyEventTypes.contains(event.getEventType().getName())) {
+                            continue;
+                        }
+                        writer.processEvent(event);
                     }
                 }
                 writer.close();
@@ -281,7 +380,8 @@ public class CombiningJFRReader implements JFRReader {
                     new java.io.ByteArrayInputStream(baos.toByteArray()),
                     reconstitute,
                     skipRecursiveCompletion,
-                    statistics);
+                    statistics,
+                    onlyEventTypes);
         } catch (IOException e) {
             throw new RuntimeException("Failed to condense JFR file: " + jfrPath, e);
         }
@@ -291,7 +391,8 @@ public class CombiningJFRReader implements JFRReader {
             Path path,
             boolean reconstitute,
             boolean skipRecursiveCompletion,
-            Statistic statistics) {
+            Statistic statistics,
+            @Nullable Set<String> onlyEventTypes) {
         // unpack all .cjfr/.jfr files to a temp folder
         // reading directly from the zip file is not possible because individual files are read
         // independently and may need random access
@@ -308,7 +409,12 @@ public class CombiningJFRReader implements JFRReader {
         return cjfrFiles.stream()
                 .flatMap(
                         p ->
-                                readersForPath(p, reconstitute, skipRecursiveCompletion, statistics)
+                                readersForPath(
+                                                p,
+                                                reconstitute,
+                                                skipRecursiveCompletion,
+                                                statistics,
+                                                onlyEventTypes)
                                         .stream())
                 .toList();
     }

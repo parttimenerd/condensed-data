@@ -459,6 +459,19 @@ final class MetadataImpl {
     }
 
     private void writeType(LEB128Writer writer, TypeImpl type) {
+        // cjfr guard (Bug: "N is not a valid Java type" from jfr view/metadata on inflated files):
+        // the JDK reader runs the type name through Checks.isClassName and throws an opaque
+        // InternalError at read time if it fails. Fail fast here with the actual type id + name so
+        // the corrupt type is identifiable, instead of emitting a silently-broken .jfr.
+        String typeName = type.getTypeName();
+        if (typeName == null || typeName.isEmpty() || !isValidTypeName(typeName)) {
+            throw new IllegalStateException(
+                    "Refusing to write invalid JFR type name (id="
+                            + type.getId()
+                            + "): "
+                            + (typeName == null ? "null" : '"' + typeName + '"')
+                            + ". This would produce a .jfr that crashes jfr view/metadata.");
+        }
         int attributes = 2;
         if (type.getSupertype() != null) {
             attributes++;
@@ -481,6 +494,35 @@ final class MetadataImpl {
         writer.writeInt(type.getFields().size() + type.getAnnotations().size());
         writeTypeFields(writer, type);
         writeTypeAnnotations(writer, type);
+    }
+
+    /**
+     * Mirror of {@code jdk.internal.module.Checks.isClassName}: a dot-separated sequence of Java
+     * identifiers (each part a valid identifier start followed by identifier parts). Rejects empty
+     * parts, leading digits ("110"), and reserved literals the JDK rejects at metadata read time.
+     */
+    private static boolean isValidTypeName(String name) {
+        int start = 0;
+        int len = name.length();
+        while (true) {
+            int dot = name.indexOf('.', start);
+            int end = dot < 0 ? len : dot;
+            if (end == start) {
+                return false; // empty part (leading/trailing/double dot)
+            }
+            if (!Character.isJavaIdentifierStart(name.charAt(start))) {
+                return false;
+            }
+            for (int i = start + 1; i < end; i++) {
+                if (!Character.isJavaIdentifierPart(name.charAt(i))) {
+                    return false;
+                }
+            }
+            if (dot < 0) {
+                return true;
+            }
+            start = dot + 1;
+        }
     }
 
     private void writeTypeFields(LEB128Writer writer, TypeImpl type) {

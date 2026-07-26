@@ -27,6 +27,9 @@ public class BasicJFRReader implements JFRReader {
      */
     private final boolean ignoreCloseErrors;
 
+    /** See {@link Options#reconstituteOnlyEventTypes}. */
+    private final @Nullable Set<String> reconstituteOnlyEventTypes;
+
     private final Queue<ReadStruct> eventsToEmit = new ArrayDeque<>();
     private final Map<String, Integer> combinedEventCount = new HashMap<>();
     private boolean closed = false;
@@ -36,26 +39,57 @@ public class BasicJFRReader implements JFRReader {
         final boolean reconstitute;
         final boolean ignoreCloseErrors;
         final boolean skipRecursiveCompletion;
+        /**
+         * If non-null, combined events are only reconstituted when their output event type is in this
+         * set; combined events producing an unneeded type are dropped BEFORE the expensive expand.
+         * Null = reconstitute everything (default).
+         */
+        final @Nullable Set<String> reconstituteOnlyEventTypes;
 
-        public static Options DEFAULT = new Options(true, true, false);
+        public static Options DEFAULT = new Options(true, true, false, null);
 
         private Options(
-                boolean reconstitute, boolean ignoreCloseErrors, boolean skipRecursiveCompletion) {
+                boolean reconstitute,
+                boolean ignoreCloseErrors,
+                boolean skipRecursiveCompletion,
+                @Nullable Set<String> reconstituteOnlyEventTypes) {
             this.reconstitute = reconstitute;
             this.ignoreCloseErrors = ignoreCloseErrors;
             this.skipRecursiveCompletion = skipRecursiveCompletion;
+            this.reconstituteOnlyEventTypes = reconstituteOnlyEventTypes;
         }
 
         public Options withReconstitute(boolean reconstitute) {
-            return new Options(reconstitute, this.ignoreCloseErrors, this.skipRecursiveCompletion);
+            return new Options(
+                    reconstitute,
+                    this.ignoreCloseErrors,
+                    this.skipRecursiveCompletion,
+                    this.reconstituteOnlyEventTypes);
         }
 
         public Options withIgnoreCloseErrors(boolean ignoreCloseErrors) {
-            return new Options(this.reconstitute, ignoreCloseErrors, this.skipRecursiveCompletion);
+            return new Options(
+                    this.reconstitute,
+                    ignoreCloseErrors,
+                    this.skipRecursiveCompletion,
+                    this.reconstituteOnlyEventTypes);
         }
 
         public Options withSkipRecursiveCompletion(boolean skipRecursiveCompletion) {
-            return new Options(this.reconstitute, this.ignoreCloseErrors, skipRecursiveCompletion);
+            return new Options(
+                    this.reconstitute,
+                    this.ignoreCloseErrors,
+                    skipRecursiveCompletion,
+                    this.reconstituteOnlyEventTypes);
+        }
+
+        public Options withReconstituteOnlyEventTypes(
+                @Nullable Set<String> reconstituteOnlyEventTypes) {
+            return new Options(
+                    this.reconstitute,
+                    this.ignoreCloseErrors,
+                    this.skipRecursiveCompletion,
+                    reconstituteOnlyEventTypes);
         }
     }
 
@@ -67,6 +101,7 @@ public class BasicJFRReader implements JFRReader {
         this.in = in;
         this.reconstitutor = options.reconstitute ? new JFREventReadStructReconstitutor(in) : null;
         this.ignoreCloseErrors = options.ignoreCloseErrors;
+        this.reconstituteOnlyEventTypes = options.reconstituteOnlyEventTypes;
         in.setSkipRecursiveCompletion(options.skipRecursiveCompletion);
     }
 
@@ -156,6 +191,14 @@ public class BasicJFRReader implements JFRReader {
             }
             var event = (ReadStruct) msg.value();
             if (reconstitutor != null && reconstitutor.isCombinedEvent(event)) {
+                // Skip the expensive expand when the events this combined struct would produce are a
+                // type the caller doesn't need (e.g. a named view whose FROM excludes this type).
+                if (reconstituteOnlyEventTypes != null) {
+                    String outputType = reconstitutor.outputEventTypeName(event);
+                    if (outputType != null && !reconstituteOnlyEventTypes.contains(outputType)) {
+                        return readNextEvent();
+                    }
+                }
                 combinedEventCount.put(
                         event.getType().getName(),
                         combinedEventCount.getOrDefault(event.getType().getName(), 0) + 1);

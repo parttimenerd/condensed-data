@@ -162,8 +162,8 @@ public class BugReproducerTest {
         var result =
                 new CommandExecuter(
                                 "view",
-                                "T/" + CommandTestUtil.getSampleCJFRFileName(),
                                 "TestEvent",
+                                "T/" + CommandTestUtil.getSampleCJFRFileName(),
                                 "--truncate",
                                 "begining")
                         .withFiles(CommandTestUtil.getSampleCJFRFile())

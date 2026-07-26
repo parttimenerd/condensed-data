@@ -39,8 +39,8 @@ public class ReconstitutedDurationTest {
                             var viewResult =
                                     new CommandExecuter(
                                                     "view",
-                                                    "T/test.cjfr",
                                                     "jdk.GCPhasePauseLevel1",
+                                                    "T/test.cjfr",
                                                     "--json",
                                                     "--limit",
                                                     "5")
