@@ -4,6 +4,40 @@ Bugs found while using `cjfr` as a normal user.
 
 **Resolved bugs removed from this file:** 218, 220, 221, 222, 223, 224, 225, 226, 227, 228, 229, 230, 231, 232, 233, 234, 235, 236, 237, 238, 239, 240, 241, 242, 245, 246, 247, 248.
 
+## Optimization: ZStatisticsCounter/Sampler `value` stored as a signed residual (lossless size win)
+
+**Status:** Implemented. Pure size optimization — no behaviour change; still exactly lossless.
+
+**Observation:** the `value` field of `jdk.ZStatisticsCounter` / `jdk.ZStatisticsSampler` is
+(near-)cumulative *within a statistic id*: for counters `value_n ≈ value_{n-1} + increment_n`
+(samplers have no `increment`, so `value_n ≈ value_{n-1}`). Storing the raw magnitude wastes a
+multi-byte varint on every event even though the delta is almost always zero — on the ZGC benchmark
+recordings ~99.7% of the per-id deltas are 0.
+
+**Change:** `ZStatisticsCombiner.createValueDefinition` now stores `value` as a **signed** residual
+`value - prevValue - increment` (default `VarIntType`, one byte when 0), and
+`ZStatisticsReconstitutor` rebuilds `value = prevValue + increment + residual` by replaying entries
+in serialized order. The writer holds per-id running state in a `Map` captured by the residual
+getter. On the read side the per-id state is scoped to the **inflate session** (a fresh map per
+`createReadStructReconstitutor` call) — crucially NOT an instance field, because reconstitutors live
+in a JVM-lifetime static registry and an instance field would leak the last cumulative value of one
+inflate into the next (observed as every decoded value being offset by a constant). Correctness
+relies on the combiner's write getters running in the *same per-id sequence* the reconstitutor
+replays — verified by per-(id,value) multiset equality (order-independent, since event reordering is
+an accepted non-bug).
+
+**Measured (lossless preset):** the `value` field drops 43385 → 15470 bytes (−28 KB, ≈ −2.6% of the
+whole `.cjfr`) on a large ZGC recording, and the saving **survives max compression** (the compressor
+cannot recover the cumulative structure the residual encoding removes).
+
+**Backward-compat:** no CJFR version bump — the combined-type schema is self-describing in the
+stream; old `.cjfr` files still read via the reconstitutor's numeric branches. `profile.cjfr`
+fixture regenerated (schema bytes change even with 0 ZStatistics events, per the combiner-schema
+versioning note). Regression guard: `ZStatisticsValueResidualTest` — a lossless round-trip on
+`benchmark/renaissance-dotty_gc_ZGC.jfr` asserting the per-id value multiset is preserved for both
+event types, plus a second test that runs the round-trip twice in one JVM to guard against the
+reconstitutor-state leak.
+
 ## Bug 219: `double` JFR fields silently truncated to 32-bit `float` precision during condensation
 
 **Status:** By design.

@@ -1734,6 +1734,17 @@ public class JFREventCombiner extends EventCombiner {
         @SuppressWarnings({"rawtypes", "unchecked"})
         private static MapValue<RecordedEvent, ?, ?> createValueDefinition(
                 BasicJFRWriter basicJFRWriter, Configuration configuration) {
+            // The `value` field of ZStatisticsCounter/Sampler is (near-)cumulative: within one
+            // statistic id, each event's value is almost always the previous value plus the
+            // event's `increment` (samplers have no increment, so just the previous value). We
+            // therefore store `value` as a signed residual = value - prevValue - increment
+            // instead of the raw magnitude; ~99.7% of residuals are 0 (one varint byte). This is
+            // exact/lossless — the reconstitutor rebuilds value = prevValue + increment + residual
+            // by replaying the entries in the same serialized order. The per-id running value is
+            // held in this map, captured by the residual getter; getters run at serialization
+            // time in the same per-id sequence the reconstitutor replays, so the round-trip is
+            // self-consistent regardless of gcId grouping.
+            Map<String, Long> prevValueById = new HashMap<>();
             var statisticEntry =
                     new MapPartValue<RecordedEvent, RecordedEvent>(
                             "statisticEntry",
@@ -1772,23 +1783,58 @@ public class JFREventCombiner extends EventCombiner {
                                                                                             eventThreadField,
                                                                                             true));
                                                                 }
-                                                                var incrementField =
+                                                                boolean hasIncrement =
                                                                         eventType.getField(
-                                                                                "increment");
-                                                                if (incrementField != null) {
+                                                                                        "increment")
+                                                                                != null;
+                                                                if (hasIncrement) {
                                                                     fields.add(
                                                                             basicJFRWriter
                                                                                     .eventFieldToField(
-                                                                                            incrementField,
+                                                                                            eventType
+                                                                                                    .getField(
+                                                                                                            "increment"),
                                                                                             true));
                                                                 }
                                                                 fields.add(
-                                                                        basicJFRWriter
-                                                                                .eventFieldToField(
-                                                                                        eventType
-                                                                                                .getField(
-                                                                                                        "value"),
-                                                                                        true));
+                                                                        new Field<
+                                                                                RecordedEvent,
+                                                                                Long,
+                                                                                Long>(
+                                                                                "value",
+                                                                                "",
+                                                                                out
+                                                                                        .writeAndStoreType(
+                                                                                                VarIntType
+                                                                                                        ::new),
+                                                                                event -> {
+                                                                                    String statId =
+                                                                                            event
+                                                                                                    .getString(
+                                                                                                            "id");
+                                                                                    long value =
+                                                                                            event
+                                                                                                    .getLong(
+                                                                                                            "value");
+                                                                                    long increment =
+                                                                                            hasIncrement
+                                                                                                    ? event
+                                                                                                            .getLong(
+                                                                                                                    "increment")
+                                                                                                    : 0L;
+                                                                                    long prev =
+                                                                                            prevValueById
+                                                                                                    .getOrDefault(
+                                                                                                            statId,
+                                                                                                            0L);
+                                                                                    prevValueById
+                                                                                            .put(
+                                                                                                    statId,
+                                                                                                    value);
+                                                                                    return value
+                                                                                            - prev
+                                                                                            - increment;
+                                                                                }));
                                                                 return new StructType<
                                                                         RecordedEvent, ReadStruct>(
                                                                         id,
@@ -1823,15 +1869,51 @@ public class JFREventCombiner extends EventCombiner {
 
     static class ZStatisticsReconstitutor extends AbstractReconstitutor<ZStatisticsCombiner> {
 
+        // Running value per statistic id, mirroring the writer's residual encoding (see
+        // ZStatisticsCombiner.createValueDefinition). `value` is stored as a signed residual
+        // = value - prevValue - increment; we rebuild value = prevValue + increment + residual,
+        // replaying entries in the same serialized order the writer produced them.
+        //
+        // This state must persist across reconstitute() calls *within one recording* (the writer's
+        // per-combiner running value spans gcId-grouped combined events) but must be FRESH for each
+        // recording. Reconstitutor instances are shared for the whole JVM (static `recons` map), so
+        // the state can NOT live on the instance — that leaks the last value of one inflate into the
+        // next. Instead we allocate a fresh map per reconstitution session
+        // (createReadStructReconstitutor is called once per CondensedInputStream) and thread it
+        // through reconstitute().
         public ZStatisticsReconstitutor(String eventTypeName) {
             super(eventTypeName);
         }
 
         @Override
-        public <E> List<E> reconstitute(
+        public Reconstitutor<ZStatisticsCombiner, ReadStruct> createReadStructReconstitutor(
+                TypeCollection typeCollection) {
+            Map<Object, Long> prevValueById = new HashMap<>();
+            String typeName = getEventTypeName();
+            return new Reconstitutor<>() {
+                @Override
+                public String getEventTypeName() {
+                    return typeName;
+                }
+
+                @Override
+                public List<ReadStruct> reconstitute(
+                        StructType<?, ?> resultEventType, ReadStruct combinedReadEvent) {
+                    return reconstituteWithState(
+                            resultEventType,
+                            combinedReadEvent,
+                            new ReadStructEventBuilder(
+                                    combinedReadEvent, typeName, typeCollection),
+                            prevValueById);
+                }
+            };
+        }
+
+        private <E> List<E> reconstituteWithState(
                 StructType<?, ?> resultEventType,
                 ReadStruct combinedReadEvent,
-                EventBuilder<E, ?> builder) {
+                EventBuilder<E, ?> builder,
+                Map<Object, Long> prevValueById) {
             return combinedReadEvent.asMapEntryList("id").stream()
                     .flatMap(
                             idEntry -> {
@@ -1854,11 +1936,23 @@ public class JFREventCombiner extends EventCombiner {
                                                                         ? data.get("eventThread")
                                                                         : null);
                                                     }
+                                                    long increment = 0L;
                                                     if (resultEventType.hasField("increment")) {
-                                                        builder.put(
-                                                                "increment", data.get("increment"));
+                                                        Object inc = data.get("increment");
+                                                        increment =
+                                                                inc == null
+                                                                        ? 0L
+                                                                        : ((Number) inc)
+                                                                                .longValue();
+                                                        builder.put("increment", inc);
                                                     }
-                                                    builder.put("value", data.get("value"));
+                                                    long residual =
+                                                            ((Number) data.get("value"))
+                                                                    .longValue();
+                                                    long prev = prevValueById.getOrDefault(id, 0L);
+                                                    long value = prev + increment + residual;
+                                                    prevValueById.put(id, value);
+                                                    builder.put("value", value);
                                                     builder.addStandardFieldsIfNeeded();
                                                     return builder.build();
                                                 });
