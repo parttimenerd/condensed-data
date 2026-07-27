@@ -177,7 +177,7 @@ public class InflateCommandTest {
                         "T/byte_count.jfr",
                         "T/byte_count.cjfr",
                         "--condenser-config",
-                        "reasonable-default")
+                        "default")
                 .withFiles(CommandTestUtil.getByteCountJFRFile())
                 .checkNoError()
                 .checkNoOutput()

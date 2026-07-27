@@ -236,7 +236,7 @@ traces, `beginning` is usually more useful.
 
 ## `--no-reconstitution`
 
-The `reduced-default` condenser config combines some event types into buckets
+The `reduced` condenser config combines some event types into buckets
 (e.g., many `ObjectAllocationSample` events become a single aggregated entry).
 By default, `summary` and `view` expand these back into approximate individual
 events. Pass `--no-reconstitution` to skip expansion and read the raw combined
@@ -247,7 +247,7 @@ individual events.
 cjfr summary --no-reconstitution recording.cjfr
 ```
 
-This has no effect on files produced with `default` or `reasonable-default`.
+This has no effect on files produced with `lossless` or `default`.
 
 ---
 

@@ -142,11 +142,11 @@ cjfr summary --short recording.cjfr
 cjfr inflate --start="2024-05-24 14:25:00" --duration=30m recording.cjfr window.jfr
 
 # Step 3 (optional): re-condense back to .cjfr for long-term storage
-cjfr condense --condenser-config=reasonable-default window.jfr window.cjfr
+cjfr condense --condenser-config=default window.jfr window.cjfr
 ```
 
 !!! warning "Re-condensing an inflated recording loses additional precision"
-    If the original `.cjfr` was recorded with `reasonable-default` (millisecond
+    If the original `.cjfr` was recorded with `default` (millisecond
     timestamps, 32-frame stacks), inflating it produces a `.jfr` that already
     reflects those reductions. Re-condensing that `.jfr` applies the same reductions
     again: no extra data is lost (there is nothing left to lose), but you do not
@@ -165,9 +165,9 @@ a single `.cjfr` alongside the folder:
 cjfr condense recordings/
 # produces recordings.cjfr
 
-cjfr condense --condenser-config=reasonable-default recordings/
+cjfr condense --condenser-config=default recordings/
 
-# Smallest files for cold storage (reduced-default + MAX_COMPRESSION):
+# Smallest files for cold storage (reduced + MAX_COMPRESSION):
 cjfr condense --condenser-config=archival-max recordings/
 ```
 

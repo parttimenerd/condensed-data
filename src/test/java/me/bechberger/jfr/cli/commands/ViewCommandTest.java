@@ -738,7 +738,7 @@ public class ViewCommandTest {
 
     @Test
     public void testReasonableDefaultShowsPercentagesInTableView() throws Exception {
-        // Bug 218: with reasonable-default, percentage fields were rendered as raw floats and
+        // Bug 218: with default, percentage fields were rendered as raw floats and
         // emitted a warning for unknown "percentage" type.
         Path profileJfr = Path.of("profile.jfr");
         if (!Files.exists(profileJfr)) {
@@ -756,7 +756,7 @@ public class ViewCommandTest {
                                 output.toString(),
                                 "-f",
                                 "-c",
-                                "reasonable-default"
+                                "default"
                             });
             assertThat(condense.exitCode()).isEqualTo(0);
 

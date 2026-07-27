@@ -46,9 +46,9 @@ cjfr condense recording.jfr recording.cjfr
 cjfr condense recordings/
 # produces recordings.cjfr
 
-# With explicit config (default is lossless; reasonable-default trades a bit of
+# With explicit config (default is lossless; 'default' preset trades a bit of
 # precision for 2-4× smaller files on top of LZ4)
-cjfr condense --condenser-config=reasonable-default recording.jfr recording.cjfr
+cjfr condense --condenser-config=default recording.jfr recording.cjfr
 ```
 
 See [Configuration Reference](configurations.md) for the available presets.
@@ -157,8 +157,8 @@ Run `cjfr agent <pid> status` to confirm the recording started.
 
 **Output files are larger than expected**
 
-The agent uses `reasonable-default` condensing with `LZ4FRAMED` compression by
-default. If that is still too large, switch to `reduced-default` for more aggressive
+The agent uses `default` condensing with `LZ4FRAMED` compression by
+default. If that is still too large, switch to `reduced` for more aggressive
 event reduction (~1–11% of the raw JFR), or add `--compression=GZIP` for a better
 byte-level ratio at the cost of slower writes. Both changes are independent.
 See [Configuration Reference](configurations.md).

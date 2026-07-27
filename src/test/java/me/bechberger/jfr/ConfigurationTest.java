@@ -58,7 +58,7 @@ public class ConfigurationTest {
     public void testWithFieldValueRoundtrip() {
         var config = Configuration.DEFAULT.withMaxStackTraceDepth(42);
         assertEquals(42, config.maxStackTraceDepth());
-        assertEquals("default", config.name());
+        assertEquals("lossless", config.name());
     }
 
     @Test
@@ -107,16 +107,15 @@ public class ConfigurationTest {
 
     @Test
     public void testPredefinedConfigurations() {
-        assertEquals(4, Configuration.configurations.size());
-        assertNotNull(Configuration.configurations.get("default"));
-        assertNotNull(Configuration.configurations.get("reasonable-default"));
-        assertNotNull(Configuration.configurations.get("reduced-default"));
+        assertEquals(3, Configuration.configurations.size());
         assertNotNull(Configuration.configurations.get("lossless"));
+        assertNotNull(Configuration.configurations.get("default"));
+        assertNotNull(Configuration.configurations.get("reduced"));
     }
 
     @Test
     public void testLosslessMatchesDefault() {
-        // "lossless" is an alias for the default (no data reduction), differing only in name.
+        // "lossless" is an alias for the lossless base config, differing only in name.
         assertEquals(Configuration.DEFAULT.withName("lossless"), Configuration.LOSSLESS);
         assertEquals(Configuration.LOSSLESS, Configuration.configurations.get("lossless"));
     }

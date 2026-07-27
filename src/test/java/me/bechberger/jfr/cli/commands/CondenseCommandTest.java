@@ -67,8 +67,8 @@ public class CondenseCommandTest {
                 () ->
                         assertThat(result.output())
                                 .contains("--condenser-config")
-                                .contains("reasonable-default")
-                                .contains("reduced-default"),
+                                .contains("default")
+                                .contains("reduced"),
                 () -> assertThat(result.output()).contains("<args>"));
     }
 
@@ -167,14 +167,13 @@ public class CondenseCommandTest {
                         "T/" + CommandTestUtil.getSampleJFRFileName(),
                         "T/test.cjfr",
                         "--condenser-config",
-                        "reduced-default")
+                        "reduced")
                 .withFiles(CommandTestUtil.getSampleJFRFile())
                 .check(
                         (result, files) -> {
                             result.assertNoErrorOrOutput();
                             var testFile = files.get("test.cjfr");
-                            assertThat(readConfiguration(testFile).name())
-                                    .isEqualTo("reduced-default");
+                            assertThat(readConfiguration(testFile).name()).isEqualTo("reduced");
                             assertThat(readStartMessage(testFile).compression())
                                     .isEqualTo(Compression.DEFAULT);
                         })
@@ -212,9 +211,8 @@ public class CondenseCommandTest {
                         (result, files) -> {
                             result.assertNoErrorOrOutput();
                             var testFile = files.get("test.cjfr");
-                            // archival-max expands to reduced-default data reductions ...
-                            assertThat(readConfiguration(testFile).name())
-                                    .isEqualTo("reduced-default");
+                            // archival-max expands to reduced data reductions ...
+                            assertThat(readConfiguration(testFile).name()).isEqualTo("reduced");
                             // ... plus the strongest compression level, carried in the header.
                             assertThat(readStartMessage(testFile).compressionLevel())
                                     .isEqualTo(Compression.CompressionLevel.MAX_COMPRESSION);
@@ -257,7 +255,7 @@ public class CondenseCommandTest {
                             assertThat(readStartMessage(testFile).compression())
                                     .isEqualTo(Compression.NONE);
                             assertThat(readConfiguration(testFile))
-                                    .isEqualTo(Configuration.DEFAULT);
+                                    .isEqualTo(Configuration.REASONABLE_DEFAULT);
                             nonCompressedSize.set(Files.size(testFile));
                         })
                 .run();
@@ -522,7 +520,7 @@ public class CondenseCommandTest {
                         "T/" + CommandTestUtil.getSampleJFRFileName(2),
                         "T/combined.cjfr",
                         "-c",
-                        "reduced-default",
+                        "reduced",
                         "--no-compression")
                 .withFiles(
                         CommandTestUtil.getSampleJFRFile(),
@@ -542,8 +540,7 @@ public class CondenseCommandTest {
                             Map<String, Object> json =
                                     Util.asMap(JSONParser.parse(summaryResult.output()));
                             Map<String, Object> events = Util.asMap(json.get("events"));
-                            assertThat(json.get("generator configuration"))
-                                    .isEqualTo("reduced-default");
+                            assertThat(json.get("generator configuration")).isEqualTo("reduced");
                             assertThat(json.get("compression")).isEqualTo(Compression.NONE.name());
                             assertThat(((Number) events.get("TestEvent")).intValue())
                                     .isEqualTo(expectedTestEventCount);

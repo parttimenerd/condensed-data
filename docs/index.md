@@ -33,10 +33,10 @@ leaves you with stale data and no way to query it without unpacking.
 2. **Query without inflation.** `cjfr summary` reads a compact footer in milliseconds.
    Inflating a 200 MB JFR to query one field takes seconds. On a fleet of 100 nodes
    that difference compounds.
-3. **Lossy reduction where precision isn't needed.** `reasonable-default` trades
+3. **Lossy reduction where precision isn't needed.** The `default` preset trades
    sub-millisecond timestamp precision for a 2–4× size reduction on top of LZ4
    compression; precision that matters for nanosecond benchmarking but not for
-   GC pause analysis. `reduced-default` goes further: aggregate allocation metrics,
+   GC pause analysis. `reduced` goes further: aggregate allocation metrics,
    16-frame stacks, combined exception events; suitable for fleet-wide long-term storage.
 
 `cjfr` captures all standard JFR events: GC pauses, heap summaries, CPU samples,
@@ -47,9 +47,9 @@ are captured in the first place. Works with G1GC, ZGC, Shenandoah, and Serial/Pa
 | Approach | Typical size (gc_details-heavy) | Notes |
 |---|---|---|
 | Raw JFR | 100% (~250 MB/hour) | Full fidelity |
-| `cjfr default` + LZ4FRAMED | 8–42% | Lossless |
-| `cjfr reasonable-default` + LZ4FRAMED | 4–17% | Millisecond timestamps, 32-frame stacks |
-| `cjfr reduced-default` + LZ4FRAMED | 1–11% | Aggregate metrics, combined allocation events |
+| `cjfr lossless` + LZ4FRAMED | 8–42% | Lossless |
+| `cjfr default` + LZ4FRAMED | 4–17% | Millisecond timestamps, 32-frame stacks |
+| `cjfr reduced` + LZ4FRAMED | 1–11% | Aggregate metrics, combined allocation events |
 
 *Measured on renaissance gc_details benchmarks. Sparse gc-only profiles produce smaller files.*
 

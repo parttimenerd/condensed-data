@@ -582,6 +582,14 @@ public class ViewCommand implements Callable<Integer> {
          */
         private static Integer delegateToJfrView(ViewCommand cmd, String viewName, List<Path> files)
                 throws Exception {
+            if (Runtime.version().feature() < 21) {
+                System.err.println(
+                        "Error: 'cjfr view' for named views requires JDK 21 or later"
+                                + " (running on JDK "
+                                + Runtime.version().feature()
+                                + "). Please re-run with a JDK 21+ installation.");
+                return 2;
+            }
             Path jfrBin = jfrBinary();
             if (jfrBin == null) {
                 System.err.println(

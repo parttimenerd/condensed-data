@@ -283,7 +283,7 @@ public class BugReproducerTest {
                         "BUG: The configuration option help contains an unexpanded "
                                 + "'${COMPLETION-CANDIDATES}' placeholder from picocli. "
                                 + "It should list valid values like 'default, "
-                                + "reasonable-default, reduced-default'.")
-                .containsAnyOf("default, reasonable-default", "reduced-default");
+                                + "lossless, reduced'.")
+                .containsAnyOf("default, lossless", "reduced");
     }
 }

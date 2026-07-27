@@ -42,13 +42,13 @@ public class CombiningJFRReaderTest {
     /**
      * Bug 247: On-the-fly re-condensation of JFR files via CombiningJFRReader.readerForJFRFile()
      * used Configuration.DEFAULT which has ignoreUnnecessaryEvents=true (dedup). When a JFR file
-     * has been through lossy compression (e.g. reasonable-default with BFloat16), two events with
-     * different original values can collapse to the same BFloat16 representation. Re-condensation
-     * then incorrectly drops one as a "duplicate".
+     * has been through lossy compression (e.g. default with BFloat16), two events with different
+     * original values can collapse to the same BFloat16 representation. Re-condensation then
+     * incorrectly drops one as a "duplicate".
      *
-     * <p>Reproduction: condense a JFR file with reasonable-default → inflate → view/summary the
-     * inflated JFR. The view/summary re-condenses with DEFAULT config and the dedup drops events
-     * whose field values were made identical by BFloat16.
+     * <p>Reproduction: condense a JFR file with default → inflate → view/summary the inflated JFR.
+     * The view/summary re-condenses with DEFAULT config and the dedup drops events whose field
+     * values were made identical by BFloat16.
      *
      * <p>This test reads a sample JFR file via CombiningJFRReader (which re-condenses on the fly)
      * and verifies all events from the original JFR file are preserved.
@@ -84,14 +84,13 @@ public class CombiningJFRReaderTest {
     }
 
     /**
-     * Bug 253: Reading a lossy-inflated JFR file (e.g. produced by the reduced-default config)
-     * re-runs the EventCombiner, whose CombinerSpec expects named struct fields that the
-     * reconstituted events may no longer have (e.g. {@code jdk.ThreadPark.address} is dropped on
-     * inflate). {@code CombinerSpec.buildNamedStruct} passed the resulting null {@code
-     * ValueDescriptor} to {@code eventFieldToField}, throwing a NullPointerException at {@code
-     * BasicJFRWriter.getDescription}.
+     * Bug 253: Reading a lossy-inflated JFR file (e.g. produced by the reduced config) re-runs the
+     * EventCombiner, whose CombinerSpec expects named struct fields that the reconstituted events
+     * may no longer have (e.g. {@code jdk.ThreadPark.address} is dropped on inflate). {@code
+     * CombinerSpec.buildNamedStruct} passed the resulting null {@code ValueDescriptor} to {@code
+     * eventFieldToField}, throwing a NullPointerException at {@code BasicJFRWriter.getDescription}.
      *
-     * <p>Reproduction: condense with reduced-default → inflate → read the inflated JFR via
+     * <p>Reproduction: condense with reduced → inflate → read the inflated JFR via
      * CombiningJFRReader (the summary/view path). This must not throw.
      */
     @Test
@@ -106,7 +105,7 @@ public class CombiningJFRReaderTest {
                         "condense",
                         "--force",
                         "--condenser-config",
-                        "reduced-default",
+                        "reduced",
                         jfr.toString(),
                         cjfr.toString()
                     });

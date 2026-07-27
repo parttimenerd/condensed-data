@@ -36,7 +36,7 @@ public class AgentHelpTest {
         assertEquals(0, res.exitCode(), () -> "stderr: " + res.err());
         // Reworded description: no internal jargon, and it lists the valid presets.
         assertThat(res.out()).doesNotContain("generatorConfiguration");
-        assertThat(res.out()).contains("reasonable-default");
+        assertThat(res.out()).contains("default");
     }
 
     @Test

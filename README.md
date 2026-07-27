@@ -63,8 +63,7 @@ Options:
       condenser-config=<configuration>
                                       The condenser data-reduction configuration
                                       to use, possible values: default,
-                                      lossless, reasonable-default,
-                                      reduced-default (default default)
+                                      lossless, reduced (default default)
       config=<jfrConfig>              The JFR configuration to use: a predefined
                                       name (e.g. 'default', 'profile',
                                       'gc_details'), a name with .jfc suffix, or
@@ -197,7 +196,7 @@ java -jar target/condensed-data.jar benchmark
 ```shell
 **Benchmark run on 2026-04-27 16:56:11**
 
-JFR file                                    | runtime (s) | original     | compressed  | per-hour      | %      | per-hour      | default | size        | %      | per-hour     | reasonable-default | size         | %      | per-hour     | reduced-default | size        | %      | per-hour    
+JFR file                                    | runtime (s) | original     | compressed  | per-hour      | %      | per-hour      | lossless | size        | %      | per-hour     | default | size         | %      | per-hour     | reduced | size        | %      | per-hour    
 ------------------------------------------- | ----------- | ------------ | ----------- | ------------- | ------ | ------------- | ------- | ----------- | ------ | ------------ | ------------------ | ------------ | ------ | ------------ | --------------- | ----------- | ------ | ------------
         renaissance-dotty_gc_details_G1.jfr |       70,26 |  12.752287MB |  2.959194MB |  653.363342MB | 23,21% |  151.614288MB |  2,68 s |  1.019384MB |  7,99% |  52.228149MB |             2,04 s |    639.008KB |  4,89% |  31.972227MB |          0,77 s |   163.620KB |  1,25% |   8.186597MB
           renaissance-all_gc_details_G1.jfr |     1827,15 | 241.533397MB | 55.063511MB |  475.890076MB | 22,80% |  108.490906MB | 47,64 s | 20.522795MB |  8,50% |  40.435791MB |            38,20 s | 10.9037285MB |  4,51% |  21.483473MB |          4,83 s |  2.177089MB |  0,90% |   4.289489MB

@@ -45,7 +45,7 @@ public record Configuration(
 
     public static final Configuration DEFAULT =
             new Configuration(
-                    "default",
+                    "lossless",
                     /* nano seconds */ 1_000_000_000, /* nano seconds
                                                        */
                     1_000_000_000,
@@ -68,12 +68,12 @@ public record Configuration(
                     true, // combineThreadParkLossless: lossless struct-array grouping by
                     // parkedClass
                     false, // dropGCWorkerThreadFromGCPhaseParallel: kept by default (and in
-                    // reasonable-default); only reduced-default drops it
+                    // default); only reduced drops it
                     10L);
 
     /** with conservative lossy compression */
     public static final Configuration REASONABLE_DEFAULT =
-            DEFAULT.withName("reasonable-default")
+            DEFAULT.withName("default")
                     .withMemoryAsBFloat16(true)
                     .withTimeStampTicksPerSecond(1_000)
                     .withDurationTicksPerSecond(1_000_000)
@@ -86,7 +86,7 @@ public record Configuration(
 
     public static final Configuration REDUCED_DEFAULT =
             REASONABLE_DEFAULT
-                    .withName("reduced-default")
+                    .withName("reduced")
                     .withCombineObjectAllocationSampleEvents(true)
                     .withSumObjectSizes(true)
                     .withIgnoreUnnecessaryEvents(true)
@@ -161,10 +161,9 @@ public record Configuration(
 
     public static final Map<String, Configuration> configurations =
             Map.of(
-                    "default", DEFAULT,
                     "lossless", LOSSLESS,
-                    "reasonable-default", REASONABLE_DEFAULT,
-                    "reduced-default", REDUCED_DEFAULT);
+                    "default", REASONABLE_DEFAULT,
+                    "reduced", REDUCED_DEFAULT);
 
     public Configuration withTimeStampTicksPerSecond(long ttps) {
         return withFieldValue("timeStampTicksPerSecond", ttps);
@@ -310,7 +309,7 @@ public record Configuration(
      * docs/configurations.md} in sync with the code.
      */
     public static String toFlagTable() {
-        var presets = List.of(DEFAULT, LOSSLESS, REASONABLE_DEFAULT, REDUCED_DEFAULT);
+        var presets = List.of(LOSSLESS, REASONABLE_DEFAULT, REDUCED_DEFAULT);
         var booleanComponents =
                 java.util.Arrays.stream(Configuration.class.getRecordComponents())
                         .filter(c -> c.getType() == boolean.class)

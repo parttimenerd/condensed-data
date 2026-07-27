@@ -181,7 +181,8 @@ public class CustomJFREventBreakingTest {
     @InflaterRelated
     @Test
     public void testPreciseDoublePreservedInRoundTrip() throws Exception {
-        var events = roundTrip(CommandTestUtil.getPreciseDoubleJFRFile(), "precise_double");
+        var events =
+                roundTrip(CommandTestUtil.getPreciseDoubleJFRFile(), "precise_double", "lossless");
 
         var preciseEvents =
                 events.stream()
@@ -206,7 +207,7 @@ public class CustomJFREventBreakingTest {
                 roundTrip(
                         CommandTestUtil.getPreciseDoubleJFRFile(),
                         "precise_double_reasonable",
-                        "reasonable-default");
+                        "default");
 
         var preciseEvents =
                 events.stream()
@@ -220,7 +221,7 @@ public class CustomJFREventBreakingTest {
         double expected = (double) (float) 1.23456789012345d;
         for (var e : preciseEvents) {
             assertThat(e.getDouble("preciseValue"))
-                    .as("reasonable-default should reduce double precision to float32")
+                    .as("default should reduce double precision to float32")
                     .isEqualTo(expected);
         }
     }
@@ -232,7 +233,7 @@ public class CustomJFREventBreakingTest {
                 roundTrip(
                         CommandTestUtil.getPreciseDoubleJFRFile(),
                         "precise_double_reduced",
-                        "reduced-default");
+                        "reduced");
 
         var preciseEvents =
                 events.stream()
@@ -246,7 +247,7 @@ public class CustomJFREventBreakingTest {
         double float32Expected = (double) (float) 1.23456789012345d;
         for (var e : preciseEvents) {
             assertThat(e.getDouble("preciseValue"))
-                    .as("reduced-default should reduce double precision to float16")
+                    .as("reduced should reduce double precision to float16")
                     .isNotEqualTo(1.23456789012345d)
                     .isNotEqualTo(float32Expected);
         }

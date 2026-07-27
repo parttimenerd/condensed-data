@@ -181,9 +181,9 @@ public interface EventFilter<C> {
                 names = "--no-reconstitution",
                 description =
                         "Disable event reconstitution: read combined/bucketed events as-is instead"
-                            + " of expanding them back to approximate individual events. Only"
-                            + " affects recordings made with reduced-default or reasonable-default"
-                            + " condenser configs.")
+                                + " of expanding them back to approximate individual events. Only"
+                                + " affects recordings made with the default or reduced"
+                                + " condenser configs.")
         boolean noReconstitution;
 
         @Option(

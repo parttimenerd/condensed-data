@@ -631,11 +631,10 @@ public class WritingJFRReaderTest {
      * which is {@code true} for both {@code default} AND {@code lossless} — so the "keep
      * everything" preset silently dropped it (inflated events had no {@code start} field at all).
      * The field is a raw address, so its removal now correctly gates on {@code
-     * removeUnnecessaryAddresses} (only the lossy reasonable-/reduced-default presets), matching
-     * every other address-field reduction. This test condenses+inflates a G1-detail benchmark under
-     * the default preset and asserts the {@code (index, start)} multiset of the surviving events
-     * (the writer intentionally drops {@code from == to} "unnecessary" events) is preserved
-     * bit-for-bit.
+     * removeUnnecessaryAddresses} (only the lossy reasonable-/reduced presets), matching every
+     * other address-field reduction. This test condenses+inflates a G1-detail benchmark under the
+     * default preset and asserts the {@code (index, start)} multiset of the surviving events (the
+     * writer intentionally drops {@code from == to} "unnecessary" events) is preserved bit-for-bit.
      */
     @Test
     @InflaterRelated
@@ -652,7 +651,7 @@ public class WritingJFRReaderTest {
             System.err.println("Skipping: " + g1Jfr + " has no G1HeapRegionTypeChange events");
             return;
         }
-        new CommandExecuter("condense", "T/g1.jfr", "T/test.cjfr")
+        new CommandExecuter("condense", "T/g1.jfr", "T/test.cjfr", "--condenser-config", "lossless")
                 .withFiles(java.util.Map.of(g1Jfr, "g1.jfr"))
                 .checkNoError()
                 .check(

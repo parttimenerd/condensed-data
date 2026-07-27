@@ -64,8 +64,8 @@ public class CondenseCommand implements Callable<Integer> {
             names = {"-c", "--condenser-config"},
             description =
                     "The configuration to use, possible values: default, lossless,"
-                        + " reasonable-default, reduced-default, archival-max. 'archival-max' is a"
-                        + " shortcut for reduced-default data reductions plus MAX_COMPRESSION.",
+                            + " reduced, archival-max. 'archival-max' is a"
+                            + " shortcut for reduced data reductions plus MAX_COMPRESSION.",
             defaultValue = "default")
     private String configName;
 
@@ -76,7 +76,7 @@ public class CondenseCommand implements Callable<Integer> {
                             + " trade CPU for smaller files.")
     private Compression.CompressionLevel compressionLevel = null;
 
-    /** The special CLI-only config name that expands to reduced-default + MAX_COMPRESSION. */
+    /** The special CLI-only config name that expands to reduced + MAX_COMPRESSION. */
     private static final String ARCHIVAL_MAX = "archival-max";
 
     /** Resolves {@link #configName} to a {@link Configuration}, handling the archival-max alias. */

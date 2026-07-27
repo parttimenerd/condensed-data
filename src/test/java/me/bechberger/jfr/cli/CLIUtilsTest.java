@@ -211,7 +211,7 @@ public class CLIUtilsTest {
 
     @Test
     public void testConfigurationConverterReturnsKnownConfiguration() {
-        assertThat(new CLIUtils.ConfigurationConverter().convert("reasonable-default"))
+        assertThat(new CLIUtils.ConfigurationConverter().convert("default"))
                 .isEqualTo(Configuration.REASONABLE_DEFAULT);
     }
 

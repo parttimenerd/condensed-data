@@ -314,7 +314,8 @@ public class BasicJFRWriter {
     }
 
     private Type getDoubleStorageType() {
-        if (Configuration.REDUCED_DEFAULT.name().equals(configuration.name())) {
+        if (configuration.removeTypeInformationFromStackFrames()) {
+            // reduced config: full float16 to squeeze maximum space
             return Type.FLOAT16;
         }
         if (configuration.memoryAsBFloat16()) {

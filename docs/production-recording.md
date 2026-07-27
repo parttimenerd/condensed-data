@@ -173,7 +173,7 @@ java -javaagent:cjfr.jar='start,/var/rec/app_$index.cjfr,--rotating,--max-durati
 Smallest possible files for a fleet of busy services:
 
 ```shell
-java -javaagent:cjfr.jar='start,/var/rec/app_$index.cjfr,--rotating,--max-files=10,--max-size=50m,--condenser-config=reduced-default' \
+java -javaagent:cjfr.jar='start,/var/rec/app_$index.cjfr,--rotating,--max-files=10,--max-size=50m,--condenser-config=reduced' \
      -jar myapp.jar
 ```
 
@@ -189,7 +189,7 @@ agent footprint. The `.cjfr` files are still readable by any full-size JAR offli
     cjfr condense --condenser-config archival-max app.cjfr archive.cjfr
     ```
 
-    `archival-max` = `reduced-default` reductions + `MAX_COMPRESSION`. You can also
+    `archival-max` = `reduced` reductions + `MAX_COMPRESSION`. You can also
     set the level directly with `--compression-level=MAX_COMPRESSION`.
 
 ---
@@ -220,8 +220,8 @@ Actual sizes depend heavily on workload type; sparse gc-only profiles produce mu
 | Condenser config | `.cjfr` output MB/hour (gc_details-heavy) | `.cjfr` output MB/hour (gc-only sparse) |
 |---|---|---|
 | `default` | ~300 MB/hour | ~25 MB/hour |
-| `reasonable-default` (agent default) | ~130 MB/hour | ~10 MB/hour |
-| `reduced-default` | ~70 MB/hour | ~6 MB/hour |
+| `default` (agent default) | ~130 MB/hour | ~10 MB/hour |
+| `reduced` | ~70 MB/hour | ~6 MB/hour |
 
 *Based on a 7m52s renaissance benchmark where the equivalent raw JFR was ~242 MB (~1.8 GB/hour).
 For gc-only sparse profiles (renaissance-all_gc_G1.jfr, 29 MB input), output is roughly 10% of the gc_details rate.
@@ -240,10 +240,10 @@ JFR captured; it cannot add events that JFR didn't record.
 | `--condenser-config` | How aggressively events are reduced/combined |
 | `--config` (or `-c`) | Which JFR event set to capture (`default`, `profile`, or a custom .jfc path) |
 
-To use JFR's `profile` config (more events, higher overhead) with cjfr's `reasonable-default` reduction:
+To use JFR's `profile` config (more events, higher overhead) with cjfr's `default` reduction:
 
 ```shell
-java -javaagent:cjfr.jar='start,/var/rec/app.cjfr,--config=profile,--condenser-config=reasonable-default' \
+java -javaagent:cjfr.jar='start,/var/rec/app.cjfr,--config=profile,--condenser-config=default' \
      -jar myapp.jar
 ```
 

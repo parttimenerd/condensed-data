@@ -15,7 +15,6 @@ public class ConfigurationDocTest {
 
     private static final List<Configuration> PRESETS =
             List.of(
-                    Configuration.DEFAULT,
                     Configuration.LOSSLESS,
                     Configuration.REASONABLE_DEFAULT,
                     Configuration.REDUCED_DEFAULT);

@@ -604,17 +604,17 @@ public class JFREventCombinerTest {
 
     /**
      * Guard against GCPhaseParallel worker durations being silently zeroed under configs with
-     * reduced timestamp precision (e.g. reasonable-default: timeStampTicksPerSecond=1_000 = 1ms).
+     * reduced timestamp precision (e.g. default: timeStampTicksPerSecond=1_000 = 1ms).
      *
      * <p>The duration field inside the GCWorker nested struct must use durationTicksPerSecond (1µs
-     * for reasonable-default) not timeStampTicksPerSecond (1ms). When topLevel=true was passed to
+     * for default) not timeStampTicksPerSecond (1ms). When topLevel=true was passed to
      * eventFieldToField for the nested duration field, the 1ms precision caused every sub-ms worker
      * duration (typically 1–100µs) to be stored as zero. The view then displayed "0s" for all
      * GCPhaseParallel events.
      */
     @Test
     public void testGCPhaseParallelDurationsPreservedWithReducedTimestampPrecision() {
-        // reasonable-default: timeStampTicksPerSecond=1_000 (1ms), durationTicksPerSecond=1_000_000
+        // default: timeStampTicksPerSecond=1_000 (1ms), durationTicksPerSecond=1_000_000
         // (1µs). Before the fix, the nested duration field used timestamp precision (1ms), zeroing
         // all sub-ms worker durations.
         var config =
@@ -650,10 +650,10 @@ public class JFREventCombinerTest {
         assertTrue(
                 nonZeroDurations > 0,
                 "At least one reconstituted jdk.GCPhaseParallel event must have a non-zero duration"
-                    + " under reasonable-default config (durationTicksPerSecond=1_000_000 gives 1µs"
-                    + " precision, enough for typical 1–100µs worker phases). All-zero durations"
-                    + " reproduce the bug where topLevel=true caused the nested duration field to"
-                    + " use 1ms timestamp precision instead.");
+                    + " under default config (durationTicksPerSecond=1_000_000 gives 1µs precision,"
+                    + " enough for typical 1–100µs worker phases). All-zero durations reproduce the"
+                    + " bug where topLevel=true caused the nested duration field to use 1ms"
+                    + " timestamp precision instead.");
     }
 
     /**
@@ -712,10 +712,10 @@ public class JFREventCombinerTest {
     }
 
     /**
-     * The per-worker eventThread for GCPhaseParallel is kept in the default and reasonable-default
-     * presets (a colleague relies on it) and only dropped in reduced-default. We detect the field's
-     * presence/absence via the write-statistics tree: zero Thread bytes under the combined
-     * GCPhaseParallel node means the thread field was omitted.
+     * The per-worker eventThread for GCPhaseParallel is kept in the default and default presets (a
+     * colleague relies on it) and only dropped in reduced. We detect the field's presence/absence
+     * via the write-statistics tree: zero Thread bytes under the combined GCPhaseParallel node
+     * means the thread field was omitted.
      */
     @Test
     public void testGCPhaseParallelWorkerThreadDroppedOnlyInReducedDefault() {
@@ -749,15 +749,15 @@ public class JFREventCombinerTest {
                     config.name() + ": per-worker eventThread must be kept");
         }
 
-        // reduced-default still drops it to save space.
+        // reduced still drops it to save space.
         EventWriteTree[] rootHolder = new EventWriteTree[1];
         runJFRWithCombinerCapturingStats(combiners, Configuration.REDUCED_DEFAULT, gc, rootHolder);
         EventWriteTree combined = findNode(rootHolder[0], "jdk.combined.GCPhaseParallel");
-        assertNotNull(combined, "reduced-default: combined node present");
+        assertNotNull(combined, "reduced: combined node present");
         assertEquals(
                 0,
                 sumBytesForCause(combined, "java.lang.Thread"),
-                "reduced-default: per-worker eventThread must be dropped");
+                "reduced: per-worker eventThread must be dropped");
     }
 
     /** Depth-first search for the first node whose cause name equals {@code causeName}. */

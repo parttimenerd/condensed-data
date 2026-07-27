@@ -1011,7 +1011,7 @@ public class SummaryCommandTest {
                         "condense",
                         "--force",
                         "-c",
-                        "reduced-default",
+                        "reduced",
                         jfr.toString(),
                         reducedCjfr.toString()
                     });
@@ -1021,7 +1021,7 @@ public class SummaryCommandTest {
             assertThat(result.exitCode()).isEqualTo(0);
             // Should show both configurations
             assertThat(result.output()).contains("default");
-            assertThat(result.output()).contains("reduced-default");
+            assertThat(result.output()).contains("reduced");
         } finally {
             java.nio.file.Files.deleteIfExists(defaultCjfr);
             java.nio.file.Files.deleteIfExists(reducedCjfr);
