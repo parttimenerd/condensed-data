@@ -72,8 +72,11 @@ class ValueFormatterTest {
     }
 
     @Test
-    void formatFrequencyGroupsWithHzSuffix() {
-        assertEquals("2,600 Hz", ValueFormatter.format(2600L, null, ColumnType.Kind.FREQUENCY));
+    void formatFrequencyHasNoDigitGrouping() {
+        // jfr renders Frequency columns without a thousands separator (verified against the
+        // cpu-tsc view: "Fast Time Frequency: 1000000000 Hz", not "1,000,000,000 Hz"), unlike
+        // plain integer counts which are grouped.
+        assertEquals("2600 Hz", ValueFormatter.format(2600L, null, ColumnType.Kind.FREQUENCY));
     }
 
     @Test

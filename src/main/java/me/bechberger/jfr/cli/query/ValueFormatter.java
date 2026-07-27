@@ -53,7 +53,7 @@ final class ValueFormatter {
             return formatPercentage(n.doubleValue());
         }
         if (kind == ColumnType.Kind.FREQUENCY && value instanceof Number n) {
-            return groupInteger(n.longValue()) + " Hz";
+            return n.longValue() + " Hz";
         }
         if (kind == ColumnType.Kind.BITRATE && value instanceof Number n) {
             return formatBitrate(n.longValue());

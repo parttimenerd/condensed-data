@@ -173,36 +173,56 @@ final class QueryEvaluator {
         // Per-alias filtered events, then group each alias's rows by the GROUP BY key.
         // group key -> (alias -> list of rows for that alias in that group)
         Map<Object, Map<String, List<ReadStruct>>> groups = new LinkedHashMap<>();
+        // Per-alias last-batch timestamps: LAST_BATCH(A.field) uses A's own latest
+        // emission time — the global max would be wrong when aliases' events have
+        // different nanosecond-granularity timestamps (e.g. active-settings).
+        Map<String, Instant> aliasBatchTs = new LinkedHashMap<>();
+        // Global last-batch: used for group-level filtering (drop groups with no event
+        // in the overall final batch — this preserves the oracle's one-result behaviour
+        // for active-settings where only the last-emitted id passes).
         List<ReadStruct> allFiltered = new ArrayList<>();
+        boolean lastBatch = hasLastBatch();
         for (FromItem f : query.from()) {
             String alias = f.alias();
             List<ReadStruct> evs = eventsByType.getOrDefault(f.type(), List.of());
+            List<ReadStruct> aliasFiltered = new ArrayList<>();
             for (ReadStruct e : evs) {
                 if (!matchesWhere(e, alias)) {
                     continue;
                 }
+                aliasFiltered.add(e);
                 allFiltered.add(e);
                 Object key = groupKey(e, alias);
                 groups.computeIfAbsent(key, k -> new LinkedHashMap<>())
                         .computeIfAbsent(alias, a -> new ArrayList<>())
                         .add(e);
             }
+            if (lastBatch) {
+                aliasBatchTs.put(alias, lastBatchTimestamp(aliasFiltered));
+            }
         }
-        // active-settings uses LAST_BATCH(E.value): restrict its aggregate to the final emission
-        // batch across all aliases, and drop groups with no member in that batch.
-        boolean lastBatch = hasLastBatch();
-        Instant lastBatchTs = lastBatch ? lastBatchTimestamp(allFiltered) : null;
+        // Determine the global last-batch cutoff from the first (primary) alias only,
+        // so that group filtering matches the oracle: only groups whose primary-alias
+        // events are at the global maximum timestamp survive.
+        String primaryAlias = query.from().isEmpty() ? null : query.from().get(0).alias();
+        Instant globalBatchTs =
+                (lastBatch && primaryAlias != null)
+                        ? aliasBatchTs.get(primaryAlias)
+                        : (lastBatch ? lastBatchTimestamp(allFiltered) : null);
         List<Row> out = new ArrayList<>(groups.size());
         for (Map<String, List<ReadStruct>> aliasRows : groups.values()) {
-            if (lastBatch
-                    && aliasRows.values().stream()
-                            .flatMap(List::stream)
-                            .noneMatch(e -> inLastBatch(e, lastBatchTs))) {
-                continue;
+            if (lastBatch) {
+                List<ReadStruct> primaryRows =
+                        primaryAlias != null
+                                ? aliasRows.getOrDefault(primaryAlias, List.of())
+                                : aliasRows.values().stream().flatMap(List::stream).toList();
+                if (primaryRows.stream().noneMatch(e -> inLastBatch(e, globalBatchTs))) {
+                    continue;
+                }
             }
             List<Object> cells = new ArrayList<>(query.select().size());
             for (SelectItem item : query.select()) {
-                cells.add(evalJoinCell(item.expr(), aliasRows, lastBatchTs));
+                cells.add(evalJoinCell(item.expr(), aliasRows, aliasBatchTs));
             }
             out.add(new Row(cells));
         }
@@ -210,7 +230,7 @@ final class QueryEvaluator {
     }
 
     private Object evalJoinCell(
-            Expr expr, Map<String, List<ReadStruct>> aliasRows, Instant lastBatchTs) {
+            Expr expr, Map<String, List<ReadStruct>> aliasRows, Map<String, Instant> aliasBatchTs) {
         if (expr instanceof Aggregate agg) {
             // Aggregate over the alias(es) referenced by its argument, across the group's rows.
             boolean lastBatch = Aggregators.isLastBatch(agg.function());
@@ -218,8 +238,9 @@ final class QueryEvaluator {
             List<String> parts = trailingParts(agg.arg());
             Reducer r = Aggregators.reducer(agg.function()).get();
             for (String a : aliases) {
+                Instant batchTs = lastBatch ? aliasBatchTs.get(a) : null;
                 for (ReadStruct e : aliasRows.getOrDefault(a, List.of())) {
-                    if (lastBatch && !inLastBatch(e, lastBatchTs)) {
+                    if (lastBatch && !inLastBatch(e, batchTs)) {
                         continue;
                     }
                     r.accept(parts.isEmpty() ? e : FieldResolver.resolve(e, parts));
