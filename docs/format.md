@@ -2,6 +2,10 @@
 title: File Format
 ---
 
+!!! warning "May be out of date"
+    This page was written against an earlier version of the format and may not
+    reflect the current on-disk layout. It is kept for historical reference only.
+
 # The `.cjfr` file format
 
 This page documents the on-disk layout of a condensed-JFR (`.cjfr`) file: the

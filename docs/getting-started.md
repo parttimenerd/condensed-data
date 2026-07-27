@@ -34,6 +34,27 @@ cd condensed-data && mvn package -DskipTests
 
 ---
 
+## Condensing Existing JFR Files
+
+If you already have `.jfr` recordings, convert them to `.cjfr`:
+
+```shell
+# Single file
+cjfr condense recording.jfr recording.cjfr
+
+# A whole folder
+cjfr condense recordings/
+# produces recordings.cjfr
+
+# With explicit config (default is lossless; reasonable-default trades a bit of
+# precision for 2-4× smaller files on top of LZ4)
+cjfr condense --condenser-config=reasonable-default recording.jfr recording.cjfr
+```
+
+See [Configuration Reference](configurations.md) for the available presets.
+
+---
+
 ## Continuous Rotating Recording (the main use case)
 
 Start a rotating GC recording with the agent; this is the one command most
@@ -82,6 +103,20 @@ cjfr summary --gc-percentile=90 recording.cjfr
 
 # Summarise across multiple rotation files at once
 cjfr summary app_0.cjfr app_1.cjfr app_2.cjfr
+```
+
+View named views or individual event types as a table — a drop-in for `jfr view`:
+
+```shell
+# Named views from the running JDK's view.ini
+cjfr view gc-pauses recording.cjfr
+cjfr view hot-methods recording.cjfr
+
+# Single event type (all GC events)
+cjfr view jdk.GarbageCollection recording.cjfr
+
+# As JSON for scripting
+cjfr view --json jdk.GarbageCollection recording.cjfr | jq '.[] | {cause, pause: .longestPause}'
 ```
 
 Inflate to `.jfr` for JDK Mission Control or other JFR viewers:

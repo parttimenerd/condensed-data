@@ -88,6 +88,8 @@ cjfr summary --gc-percentile=95 app_0.cjfr app_1.cjfr   # worst pause context
 
 ## Documentation
 
+**Quick navigation:** New here? → [Getting Started](getting-started.md). Recording in production? → [Production Recording](production-recording.md). Have `.jfr` files to analyse? → [Analyzing Recordings](analysis.md) or [Common Workflows](workflows.md).
+
 <div class="grid cards" markdown>
 
 -   :material-rocket-launch: **[Getting Started](getting-started.md)**
@@ -109,10 +111,6 @@ cjfr summary --gc-percentile=95 app_0.cjfr app_1.cjfr   # worst pause context
 -   :material-tune: **[Configuration Reference](configurations.md)**
 
     Condenser configs and compression algorithms.
-
--   :material-file-code: **[File Format](format.md)**
-
-    On-disk `.cjfr` layout, encoding, footer, and integrity checks.
 
 -   :material-package-variant: **[JAR Release Selection](jar-releases.md)**
 

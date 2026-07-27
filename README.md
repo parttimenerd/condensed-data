@@ -132,41 +132,15 @@ JDK before 21 (which has no `view.ini`) — transparently falls back to delegati
 queries the compact `.cjfr` directly, event-heavy views run ~2–3× faster than opening the original
 `.jfr` (measured on a 253 MB `gc_details` recording). See [Analyzing Recordings](docs/analysis.md).
 
-Third-party Bug Hunting
------------------------
-
-You can use condensed-data as a differential bug-finding tool against third-party JFR corpora.
-
-Run the automated harness:
-```shell
-python3 bin/third_party_bug_hunt.py /path/to/third-party-jfrs
-```
-
-This runs `condense -> summary -> inflate -> summary` across multiple configurations and
-compression algorithms, and reports event-count/event-type mismatches in
-`tmp/third_party_bug_hunt/report.json`.
-
-See [THIRD_PARTY_BUG_HUNT.md](THIRD_PARTY_BUG_HUNT.md) for extensive workflows.
-
-
 Requirements
 ------------
 JDK 17+
 
 File Format
 -----------
-The file format is described in [FORMAT.md](doc/FORMAT.md) and
-is designed to be
-
-- simple
-- self-describing (the type information is stored in the file)
-- compressed (supports the following compression algorithms natively: NONE, GZIP, LZ4FRAMED; default: LZ4FRAMED)
-- space efficient (e.g. by using varints and caches)
-- streamable
-- allows to reduce event data even further by using reducers and reconstitutors
-
-In many cases, we can reduce accuracy without losing the gist of the data.
-This drastically reduces the size of the data.
+`.cjfr` is a self-describing, compressed binary format built on JFR event types.
+It uses varints, struct caches, and LZ4 framing by default. Read the source or
+open an issue if you need format details — the spec doc is not kept up to date.
 
 Development
 -----------

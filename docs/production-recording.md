@@ -232,7 +232,8 @@ Actual results depend on GC frequency, thread count, and allocation rate.*
 ## Tuning JFR Event Coverage
 
 The condenser config controls event *reduction*. The JFR configuration controls
-which events are *captured*. Two distinct flags:
+which events are *captured*. These are independent: the condenser reduces whatever
+JFR captured; it cannot add events that JFR didn't record.
 
 | Flag | Controls |
 |---|---|
