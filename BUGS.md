@@ -1543,3 +1543,57 @@ multiset identical. Lossless `.cjfr` size 239201 → 243503 bytes (+4302, +1.8%)
 under gzip (298678); the accepted cost of the truly-lossless choice. Regression guards added to
 `JFREventCombinerTest` (`testGCPhasePauseLevelCombiner`, `testPromoteObjectInNewTLABCombiner`) assert
 the eventThread multiset survives round-trip. Full suite green.
+
+## Non-bug (investigated): lossless PLAB combiner collapses per-event `startTime` to one per gcId
+
+**Status:** Not a bug — accepted combiner tradeoff. Documented so it is not re-chased.
+
+**Observed:** a field-level `jfr print` diff of a lossless round-trip of `profile.jfr` shows
+`startTime` differing on ~4535 `jdk.PromoteObjectInNewPLAB` / `jdk.PromoteObjectOutsidePLAB` events
+(off by up to ~1 ms at display resolution). All other differing lines in the diff are pure event
+**reordering** (identical multisets) after the Bug 300 eventThread grouping.
+
+**Investigation:** `PromoteObjectCombiner` collapses all promotion events of a gcId into one grouped
+structure keyed by `objectClass → tenuredAndAge → [plabSize →] eventThread → objectSize`. The
+`AbstractCombiner` base stores a **single** `startTime` per group (the group's first-event
+timestamp, `JFREventCombiner.java:455`), which every reconstituted event inherits. The original
+events, however, have **near-unique nanosecond** startTimes: 6769 `InNewPLAB` events → **6593
+distinct** nanosecond timestamps. Grouping by startTime to preserve it losslessly yields ~1.03
+events per (gcId, startTime) bucket — the combiner would collapse essentially nothing, reverting
+these types toward raw-JFR size (the combiner exists precisely to collapse 50k+ promotion
+events/gcId).
+
+**Conclusion:** preserving per-event PLAB `startTime` is fundamentally incompatible with the PLAB
+combiner's purpose. Unlike `eventThread` (Bug 300, a small-cardinality grouping key that collapses
+well), `startTime` is high-cardinality and would defeat the combiner entirely. The one-startTime-
+per-gcId collapse is the accepted lossy tradeoff of enabling PLAB combining, not a defect. (If a
+user needs exact PLAB timestamps, the fix would be a dedicated opt-in flag, not the default lossless
+behaviour.)
+
+## Non-bug (investigated): remaining lossless round-trip diffs are event reordering + synthetic pool-id renumbering
+
+**Status:** Not a bug — semantically faithful. Documented so it is not re-chased.
+
+**Observed:** after Bug 300, a full `jfr print` line-diff of a lossless round-trip of `profile.jfr`
+shows 41323 differing line-pairs. Decomposing them (sort each side, `comm`) reveals **36127 lines
+are pure event reordering** (identical multisets on both sides — the PLAB combiner now emits events
+grouped by eventThread, a different order than the source). The genuine value differences reduce to:
+
+- **`startTime` (4535)** — the PLAB combiner's one-startTime-per-gcId collapse (separate non-bug
+  entry above).
+- **`classLoader` / `parentClassLoader` (483 / 5)** on `jdk.ClassLoaderStatistics`,
+  `jdk.ModuleExport`, `jdk.ModuleRequire`: the class-loader **name multiset is identical**; only the
+  synthetic `(id = N)` inside the rendered class-loader struct differs (e.g. `AppClassLoader id=3` →
+  `id=2`). JFR constant-pool ids are internal/non-semantic; cjfr assigns its own numbering during
+  dedup. Same entity, different pool id.
+- **`id` (173)** on `jdk.ActiveSetting`: cjfr stores `ActiveSetting.id` as the target event type's
+  *name* and remaps to a class id at inflate (Bug 289). The numeric id is renumbered (orig up to
+  1819, infl up to ~214), but the **(setting name, value) multiset is byte-identical** across all
+  337 events — every setting round-trips with the same semantic content; only the internal class-id
+  numbering changes.
+
+**Conclusion:** no semantic data is lost. The residual diffs are (a) intended combiner reordering,
+(b) the accepted PLAB startTime collapse, and (c) internal pool/class-id renumbering that JFR itself
+treats as opaque. Verified by multiset equality of the semantic fields (name/value/class-name),
+ignoring the opaque numeric ids. Consistent with the "measure fidelity by semantic content, not
+by-id byte order" principle.
