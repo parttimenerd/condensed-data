@@ -37,7 +37,7 @@ Commands:
   inflate   Inflate a condensed JFR file into JFR format
   agent     Use the included Java agent on a specific JVM process
   summary   Print a summary of the condensed JFR file
-  view      View a named view or a single event type from a .cjfr or .jfr file as a table. Mirrors the JDK `jfr view` argument order: the view/event name comes first, followed by the input file(s). Example: `cjfr view gc-configuration recording.cjfr`. The set of named views is read from the running JVM's own view.ini (jdk/jfr/internal/query in the jrt: runtime image), so it always matches the JDK you run cjfr on; no view definitions are bundled. Most of the JDK's ~90 named views (gc, hot-methods, allocation-by-site, ...) are rendered natively without an external `jfr` process; views this tool cannot yet evaluate (or when running on a pre-21 JDK without view.ini) fall back to the JDK `jfr view` automatically.
+  view      View a named view or event type from a .cjfr or .jfr file as a table.
 ```
 But you can also use its built-in Java agent to directly record condensed JFR files:
 ```shell

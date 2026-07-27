@@ -28,18 +28,17 @@ import me.bechberger.jfr.cli.query.ViewPrecompute;
 
 @Command(
         name = "view",
-        description =
-                "View a named view or a single event type from a .cjfr or .jfr file as a table."
-                        + " Mirrors the JDK `jfr view` argument order: the view/event name comes"
-                        + " first, followed by the input file(s). Example:"
-                        + " `cjfr view gc-configuration recording.cjfr`. The set of named views is"
-                        + " read from the running JVM's own view.ini (jdk/jfr/internal/query in the"
-                        + " jrt: runtime image), so it always matches the JDK you run cjfr on; no"
-                        + " view definitions are bundled. Most of the JDK's ~90 named views (gc,"
-                        + " hot-methods, allocation-by-site, ...) are rendered natively without an"
-                        + " external `jfr` process; views this tool cannot yet evaluate (or when"
-                        + " running on a pre-21 JDK without view.ini) fall back to the JDK `jfr"
-                        + " view` automatically.",
+        description = {
+            "View a named view or event type from a .cjfr or .jfr file as a table.",
+            "",
+            "Drop-in replacement for `jfr view`: the view/event name comes first, then the"
+                    + " file(s). Example: `cjfr view gc-pauses recording.cjfr`.",
+            "",
+            "Named views (gc-pauses, hot-methods, allocation-by-site, …) are read from the"
+                    + " running JVM's own view.ini, so the available set always matches the JDK"
+                    + " you run cjfr on. Views that cannot be evaluated natively fall back to"
+                    + " `jfr view` automatically."
+        },
         mixinStandardHelpOptions = true)
 // --events is inherited from EventFilterOptionMixin but is useless here: view only ever displays
 // the single positional VIEW_OR_EVENT, so an extra type filter can't change the output.
