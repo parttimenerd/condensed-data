@@ -169,7 +169,7 @@ final class FieldResolver {
      * {@code ["label", "description"]}; we pull the first element. Falls back to the type name if
      * the description is absent or not in that shape.
      */
-    private static String typeLabel(String description, String fallbackName) {
+    static String typeLabel(String description, String fallbackName) {
         if (description == null || description.isEmpty()) {
             return fallbackName;
         }

@@ -48,6 +48,16 @@ final class QueryEvaluator {
     private final boolean join;
 
     /**
+     * Event-type name → human {@code @Label}, sourced from the recording's full type table (not the
+     * event stream). Needed only to render {@code ActiveSetting.id}/{@code RecordingSetting.id},
+     * which cjfr stores as the <em>target</em> event type's name (e.g. {@code jdk.FileForce}) while
+     * {@code jfr view} renders that type's label (e.g. {@code File Force}). The target type may have
+     * zero events of its own, so its label isn't reachable from {@code eventsByType}. Empty when the
+     * caller has no type table (footer/precompute paths), in which case the raw name is shown.
+     */
+    private final Map<String, String> typeLabels;
+
+    /**
      * Per-column numeric totals over the full result set <em>before</em> LIMIT is applied. {@code
      * jfr view}'s {@code normalized} FORMAT renders each cell as its share of the column total, and
      * that total is taken over every group — not just the rows that survive LIMIT. Populated by
@@ -56,7 +66,12 @@ final class QueryEvaluator {
     private double[] preLimitColumnTotals;
 
     QueryEvaluator(ViewQuery query) {
+        this(query, Map.of());
+    }
+
+    QueryEvaluator(ViewQuery query, Map<String, String> typeLabels) {
         this.query = query;
+        this.typeLabels = typeLabels == null ? Map.of() : typeLabels;
         if (query.from().size() == 1 && "*".equals(query.from().get(0).type())) {
             throw new UnsupportedViewException("FROM * is not natively evaluable");
         }
@@ -263,18 +278,42 @@ final class QueryEvaluator {
             if (parts.size() >= 2 && aliasRows.containsKey(parts.get(0))) {
                 List<ReadStruct> rs = aliasRows.get(parts.get(0));
                 if (rs == null || rs.isEmpty()) return null;
-                return FieldResolver.resolve(rs.get(0), parts.subList(1, parts.size()));
+                List<String> field = parts.subList(1, parts.size());
+                Object v = FieldResolver.resolve(rs.get(0), field);
+                return relabelSettingId(rs.get(0), field, v);
             }
             // Bare field: read from any alias's first row (e.g. the GROUP BY key like gcId).
             for (List<ReadStruct> rs : aliasRows.values()) {
                 if (!rs.isEmpty()) {
                     Object v = FieldResolver.resolve(rs.get(0), parts);
-                    if (v != null) return v;
+                    if (v != null) return relabelSettingId(rs.get(0), parts, v);
                 }
             }
             return null;
         }
         return null;
+    }
+
+    /**
+     * Map an {@code ActiveSetting.id}/{@code RecordingSetting.id} value to the target event type's
+     * human label. cjfr stores that {@code id} as the target type's <em>name</em> (e.g. {@code
+     * jdk.FileForce}); {@code jfr view} renders it as the type's {@code @Label} (e.g. {@code File
+     * Force}). Applies only when the source event is an {@code ActiveSetting}/{@code RecordingSetting}
+     * and the field being read is {@code id}; every other field passes through untouched. Falls back
+     * to the raw value when no label is known for the name.
+     */
+    private Object relabelSettingId(ReadStruct source, List<String> field, Object value) {
+        if (!(value instanceof String name) || typeLabels.isEmpty()) {
+            return value;
+        }
+        if (field.size() != 1 || !"id".equals(field.get(0))) {
+            return value;
+        }
+        String srcType = source.getType().getName();
+        if (!"jdk.ActiveSetting".equals(srcType) && !"jdk.RecordingSetting".equals(srcType)) {
+            return value;
+        }
+        return typeLabels.getOrDefault(name, name);
     }
 
     // ── expression evaluation (flat) ─────────────────────────────────────────

@@ -34,6 +34,15 @@ public record CJFRFooter(
          */
         Map<String, List<PrecomputedCell>> precomputedViews,
         /**
+         * Event-type name → human {@code @Label} for every event type present in the recording,
+         * including types that emitted zero events (e.g. {@code jdk.FileForce}). Needed by the
+         * {@code active-settings} view, whose {@code id} column is stored as a target event-type
+         * name and rendered as that type's label; the label of a zero-event type is otherwise lost
+         * at condense time because no struct type is written for it. Empty in files that predate
+         * this field (flag bit unset); readers ignore it when absent.
+         */
+        Map<String, String> eventTypeLabels,
+        /**
          * CRC32 over the on-disk bytes {@code [0, footerStart)} (start header + compressed main
          * stream). Filled in by {@link CondensedOutputStream#writeFooter} just before
          * serialization; 0 when constructed by the collector before the stream is finalized.
@@ -72,7 +81,24 @@ public record CJFRFooter(
                 cpuStats,
                 allocStats,
                 precomputedViews,
+                eventTypeLabels,
                 crc);
+    }
+
+    /** Return a copy carrying {@code labels} as the event-type name → {@code @Label} map. */
+    public CJFRFooter withEventTypeLabels(Map<String, String> labels) {
+        return new CJFRFooter(
+                version,
+                totalEvents,
+                startTimeMicros,
+                durationMicros,
+                eventCounts,
+                gcStats,
+                cpuStats,
+                allocStats,
+                precomputedViews,
+                labels,
+                mainStreamCrc32);
     }
 
     public record GcStats(
@@ -134,6 +160,7 @@ public record CJFRFooter(
         if (cpuStats != null) flags |= 2;
         if (allocStats != null) flags |= 4;
         if (precomputedViews != null && !precomputedViews.isEmpty()) flags |= 8;
+        if (eventTypeLabels != null && !eventTypeLabels.isEmpty()) flags |= 16;
         out.writeByte(flags);
 
         writeUnsignedVarInt(out, totalEvents);
@@ -151,6 +178,16 @@ public record CJFRFooter(
         if (cpuStats != null) writeCpuStats(out, cpuStats);
         if (allocStats != null) writeAllocStats(out, allocStats);
         if ((flags & 8) != 0) writePrecomputedViews(out, precomputedViews);
+        if ((flags & 16) != 0) writeEventTypeLabels(out, eventTypeLabels);
+    }
+
+    private static void writeEventTypeLabels(DataOutputStream out, Map<String, String> labels)
+            throws IOException {
+        writeUnsignedVarInt(out, labels.size());
+        for (var e : labels.entrySet()) {
+            writeString(out, e.getKey());
+            writeString(out, e.getValue());
+        }
     }
 
     private static void writePrecomputedViews(
@@ -236,6 +273,7 @@ public record CJFRFooter(
         boolean hasCpu = (flags & 2) != 0;
         boolean hasAlloc = (flags & 4) != 0;
         boolean hasPrecomputed = (flags & 8) != 0;
+        boolean hasEventTypeLabels = (flags & 16) != 0;
 
         long totalEvents = readUnsignedVarint(in);
         long startTimeMicros = readSignedLong8(in);
@@ -253,6 +291,8 @@ public record CJFRFooter(
         AllocStats allocStats = hasAlloc ? readAllocStats(in) : null;
         Map<String, List<PrecomputedCell>> precomputedViews =
                 hasPrecomputed ? readPrecomputedViews(in) : Map.of();
+        Map<String, String> eventTypeLabels =
+                hasEventTypeLabels ? readEventTypeLabels(in) : Map.of();
 
         return new CJFRFooter(
                 version,
@@ -264,7 +304,18 @@ public record CJFRFooter(
                 cpuStats,
                 allocStats,
                 precomputedViews,
+                eventTypeLabels,
                 mainStreamCrc32);
+    }
+
+    private static Map<String, String> readEventTypeLabels(DataInputStream in) throws IOException {
+        int count = (int) readUnsignedVarint(in);
+        Map<String, String> labels = new LinkedHashMap<>(count * 2);
+        for (int i = 0; i < count; i++) {
+            String name = readString(in);
+            labels.put(name, readString(in));
+        }
+        return Collections.unmodifiableMap(labels);
     }
 
     private static Map<String, List<PrecomputedCell>> readPrecomputedViews(DataInputStream in)

@@ -29,7 +29,8 @@ public class IntegrityTest {
             out.writeString("event-" + i);
         }
         var footer =
-                new CJFRFooter(1, 100L, 0L, 0L, Map.of("x", 1L), null, null, null, Map.of(), 0L);
+                new CJFRFooter(
+                        1, 100L, 0L, 0L, Map.of("x", 1L), null, null, null, Map.of(), Map.of(), 0L);
         out.writeFooter(footer);
         Path f = dir.resolve("data-" + compression.name() + ".cjfr");
         Files.write(f, baos.toByteArray());

@@ -317,6 +317,7 @@ public class SummaryCommandTest {
                             null,
                             null,
                             java.util.Map.of(),
+                            java.util.Map.of(),
                             0L);
             out.writeFooter(footer);
         }

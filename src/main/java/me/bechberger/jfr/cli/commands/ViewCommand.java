@@ -339,9 +339,9 @@ public class ViewCommand implements Callable<Integer> {
             return NativeView.render(viewName, Map.of(), nativeOptions());
         }
 
-        List<ReadStruct> events = readRequiredEvents(required);
-        Map<String, List<ReadStruct>> byType = NativeView.indexByType(events);
-        return NativeView.render(viewName, byType, nativeOptions());
+        ReadEvents read = readRequiredEvents(required);
+        Map<String, List<ReadStruct>> byType = NativeView.indexByType(read.events());
+        return NativeView.render(viewName, byType, nativeOptions(), read.typeLabels());
     }
 
     /** Native render options mirroring the {@code jfr view} switches this command accepts. */
@@ -405,9 +405,13 @@ public class ViewCommand implements Callable<Integer> {
 
     /**
      * Read the inputs once, retaining only events whose fully-qualified type is in {@code
-     * required}.
+     * required}, and capture the recording's full type table as a name → {@code @Label} map. The
+     * label map covers every event type present in the recording — including types with zero events
+     * (e.g. {@code jdk.FileForce}) — which is why it is taken from the stream's type collection
+     * rather than the read events; the {@code active-settings} view needs a target type's label
+     * even when that type emitted no event.
      */
-    private List<ReadStruct> readRequiredEvents(List<String> required) throws Exception {
+    private ReadEvents readRequiredEvents(List<String> required) throws Exception {
         Set<String> want = new HashSet<>(required);
         var jfrReader =
                 CombiningJFRReader.fromPaths(
@@ -430,8 +434,41 @@ public class ViewCommand implements Callable<Integer> {
                 events.add(struct);
             }
         }
-        return events;
+        return new ReadEvents(events, typeLabels(jfrReader));
     }
+
+    /**
+     * Build a type-name → {@code @Label} map for the native view layer. The authoritative source
+     * is each input's {@code .cjfr} footer, whose {@code eventTypeLabels} covers every event type
+     * in the recording — including zero-event types like {@code jdk.FileForce}, whose struct type
+     * is never written to the stream. The stream's own type collection is a fallback for inputs
+     * without that footer field (older files, or a raw {@code .jfr} condensed on the fly, whose
+     * in-memory footer is not persisted): each condensed struct type stores its description as a
+     * compact JSON array {@code ["Label","Description",…]}, from which {@link
+     * me.bechberger.jfr.cli.query.NativeView#typeLabelOf} extracts the label.
+     */
+    private Map<String, String> typeLabels(CombiningJFRReader jfrReader) {
+        Map<String, String> labels = new java.util.HashMap<>();
+        var types = jfrReader.getInputStream().getTypeCollection().getTypes();
+        for (var t : types) {
+            String name = t.getName();
+            if (name == null || labels.containsKey(name)) {
+                continue;
+            }
+            labels.put(name, NativeView.typeLabelOf(t.getDescription(), name));
+        }
+        // Footer labels win: they include zero-event types and carry the real @Label verbatim.
+        for (Path input : inputs()) {
+            Optional<CJFRFooter> footerOpt = CJFRFooterReader.tryRead(input);
+            if (footerOpt.isPresent()) {
+                labels.putAll(footerOpt.get().eventTypeLabels());
+            }
+        }
+        return labels;
+    }
+
+    /** Events retained for a native view plus the recording's type-name → {@code @Label} map. */
+    private record ReadEvents(List<ReadStruct> events, Map<String, String> typeLabels) {}
 
     /** Print the "no event of type X" diagnostic with a did-you-mean list. */
     private Integer reportNoEventType(String eventName, Set<String> seenTypes) {

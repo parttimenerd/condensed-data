@@ -179,6 +179,14 @@ public class BasicJFRWriter {
      */
     private final Map<Long, String> eventTypeIdToName = new HashMap<>();
 
+    /**
+     * Maps event type name → human {@code @Label}, populated from the same sources as {@link
+     * #eventTypeIdToName}. Persisted in the footer so {@code cjfr view active-settings} can render
+     * the {@code id} column (a target event-type name) as that type's label — even for types with
+     * zero events (e.g. {@code jdk.FileForce}), whose struct type is never written to the stream.
+     */
+    private final Map<String, String> eventTypeLabels = new HashMap<>();
+
     Universe universe = new Universe();
     private boolean wroteConfiguration = false;
     private CondensedType<Universe, Universe> universeType;
@@ -222,6 +230,7 @@ public class BasicJFRWriter {
                 for (jdk.jfr.EventType t :
                         jdk.jfr.FlightRecorder.getFlightRecorder().getEventTypes()) {
                     eventTypeIdToName.putIfAbsent(t.getId(), t.getName());
+                    recordEventTypeLabel(t);
                 }
             }
         } catch (Throwable ignored) {
@@ -921,6 +930,18 @@ public class BasicJFRWriter {
     public void registerEventTypes(List<? extends jdk.jfr.EventType> types) {
         for (jdk.jfr.EventType t : types) {
             eventTypeIdToName.put(t.getId(), t.getName());
+            recordEventTypeLabel(t);
+        }
+    }
+
+    /**
+     * Record an event type's {@code @Label} in {@link #eventTypeLabels}, keyed by type name. Skips
+     * a null/blank label (leaving the entry absent so the view falls back to the raw name).
+     */
+    private void recordEventTypeLabel(jdk.jfr.EventType t) {
+        String label = t.getLabel();
+        if (label != null && !label.isEmpty()) {
+            eventTypeLabels.putIfAbsent(t.getName(), label);
         }
     }
 
@@ -947,6 +968,7 @@ public class BasicJFRWriter {
             EventType eventType) {
         // Register this event type's ID→name mapping for ActiveSetting remapping
         eventTypeIdToName.put(eventType.getId(), eventType.getName());
+        recordEventTypeLabel(eventType);
         return out.writeAndStoreType(
                 id -> {
                     var removedFields =
@@ -1324,9 +1346,11 @@ public class BasicJFRWriter {
         writeConfigurationAndUniverseIfNeeded(defaultStartTimeNanos); // ensure universe is written
         eventCombiner.close();
         var footer =
-                footerCollector.build(
-                        universe.getStartTimeNanos() / 1000,
-                        universe.getDuration().toNanos() / 1000);
+                footerCollector
+                        .build(
+                                universe.getStartTimeNanos() / 1000,
+                                universe.getDuration().toNanos() / 1000)
+                        .withEventTypeLabels(Map.copyOf(eventTypeLabels));
         out.writeFooter(footer); // closes the compression wrapper, then writes the footer
     }
 

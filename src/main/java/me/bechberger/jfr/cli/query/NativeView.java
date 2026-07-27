@@ -97,6 +97,20 @@ public final class NativeView {
      */
     public static Optional<List<String>> render(
             String viewName, Map<String, List<ReadStruct>> eventsByType, Options options) {
+        return render(viewName, eventsByType, options, Map.of());
+    }
+
+    /**
+     * Render a view natively, supplying a type-name → {@code @Label} map from the recording's full
+     * type table. The map is needed only by the {@code active-settings} view, whose {@code id}
+     * column is stored as a target event-type name and must be shown as that type's label; pass
+     * {@link Map#of()} when unavailable (raw names are shown as a fallback).
+     */
+    public static Optional<List<String>> render(
+            String viewName,
+            Map<String, List<ReadStruct>> eventsByType,
+            Options options,
+            Map<String, String> typeLabels) {
         ViewDef def = views().get(viewName.toLowerCase(java.util.Locale.ROOT));
         if (def == null) return Optional.empty();
         ViewQuery query;
@@ -107,7 +121,7 @@ public final class NativeView {
         }
         query = expandStar(query, eventsByType);
         try {
-            var evaluator = new QueryEvaluator(query);
+            var evaluator = new QueryEvaluator(query, typeLabels);
             var rows = evaluator.evaluate(eventsByType);
             String title = def.label() != null ? def.label() : viewName;
             // jfr prints a single "No events found" line (not an empty table) when nothing matched.
@@ -226,6 +240,16 @@ public final class NativeView {
             }
         }
         return out;
+    }
+
+    /**
+     * Extract the human {@code @Label} from a condensed struct type's description (a compact JSON
+     * array {@code ["Label","Description",…]}), falling back to {@code fallbackName} when the
+     * description carries no label. Public so the {@code view} command can build the type-name →
+     * label map it threads into {@link #render(String, Map, Options, Map)}.
+     */
+    public static String typeLabelOf(String description, String fallbackName) {
+        return FieldResolver.typeLabel(description, fallbackName);
     }
 
     /**

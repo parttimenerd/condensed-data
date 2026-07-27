@@ -1424,8 +1424,8 @@ survival on the **primary (first FROM) alias's** global-max timestamp so only th
 survives (matching the oracle's one-result behaviour). `evalJoinCell` now takes a
 `Map<String,Instant>` of per-alias batch timestamps instead of a single `Instant`.
 
-**Note:** the Event Type column still shows the raw type name (`jdk.FileForce`) rather than the
-oracle's human label (`File Force`) — that is the separate, still-open Bug 1 (name→label lookup).
+**Note:** the Event Type column showing the raw type name (`jdk.FileForce`) rather than the
+oracle's human label (`File Force`) was the separate Bug 299, now also fixed.
 
 ## Bug 298: `cjfr view compiler-configuration` renders a blank row label (`: N/A`) for a field absent from the recording
 
@@ -1466,3 +1466,35 @@ timestamps and renders exactly **1 row**, byte-identical to the oracle.
 The row-count difference on a default-preset `.cjfr` is the intended timestamp-quantization
 lossiness of that preset, not a defect. (Consistent with the "measure renderer fidelity on `.jfr`,
 not `.cjfr`" principle — condense lossiness ≠ renderer bug.)
+
+## Bug 299: `cjfr view active-settings` shows the raw event-type name (`jdk.FileForce`) instead of the `@Label` (`File Force`)
+
+**Status:** Fixed.
+
+**Observed:** the `active-settings` Event Type column rendered the fully-qualified type name
+(`jdk.FileForce`, `jdk.BooleanFlag`, …) where the `jfr` oracle shows the human `@Label`
+(`File Force`, `Boolean Flag`, …).
+
+**Root cause:** cjfr stores `jdk.ActiveSetting.id` as the *target* event type's **name** string (so
+inflate can reverse-map it to a class id — see Bug 289), and `active-settings` selects that `id` as
+its first column. `jfr view` instead renders the target type's `@Label`. That label lives in the
+type's metadata, which was **dropped during condense** for types with zero events: cjfr only writes
+a struct type (carrying the `["Label",…]` description) for event types that actually emit events,
+and `jdk.FileForce` has none. Threading the recording's type table to the view layer could not
+recover a label that was never persisted.
+
+**Fix (two parts):**
+1. **Persist labels at condense.** `BasicJFRWriter` now records every event type's `@Label` (name →
+   label) from the same sources that populate `eventTypeIdToName` — including zero-event types from
+   `FlightRecorder.getEventTypes()` / `registerEventTypes`. The map is written to the `.cjfr` footer
+   under a new flag bit (bit 16) in the existing v2 layout: additive, backward-compatible (older
+   files have the bit unset → empty map), no version bump. Inflate is untouched — `id` still stores
+   the name string.
+2. **Relabel at view.** `ViewCommand` builds a name → `@Label` map (footer labels authoritative,
+   stream type-collection descriptions as fallback) and threads it through `NativeView.render` into
+   `QueryEvaluator`, which maps an `ActiveSetting`/`RecordingSetting` `id` value to the target type's
+   label (falling back to the raw name when unknown).
+
+**Verified:** `cjfr view active-settings` on a lossless `.cjfr` now renders `File Force` (single row,
+all columns) byte-identical to the `jfr` oracle; inflate round-trip still maps `ActiveSetting.id`
+correctly (337 events); footer round-trip and the CJFRFooter/Integrity/Summary/View tests pass.
