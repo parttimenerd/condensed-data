@@ -882,9 +882,10 @@ public class JFREventCombiner extends EventCombiner {
     }
 
     /**
-     * Throws away the thread id. Groups by object class and tenured-age and, for
-     * jdk.PromoteObjectInNewPLAB, by plabSize as well, so plabSize is preserved losslessly
-     * (jdk.PromoteObjectOutsidePLAB has no plabSize field).
+     * Groups by object class and tenured-age and, for jdk.PromoteObjectInNewPLAB, by plabSize as
+     * well, so plabSize is preserved losslessly (jdk.PromoteObjectOutsidePLAB has no plabSize
+     * field). The per-event eventThread is preserved losslessly as an inner grouping key (each GC
+     * worker thread gets its own bucket of object sizes).
      */
     static class PromoteObjectCombiner extends GCIdBasedCombiner {
 
@@ -904,9 +905,10 @@ public class JFREventCombiner extends EventCombiner {
         private static MapValue<RecordedEvent, ?, ?> createValueDefinition(
                 BasicJFRWriter basicJFRWriter, Configuration configuration, boolean hasPlabSize) {
 
-            // class of object -> (tenured ? 64 : 0) + tenuring age -> [plabSize ->] (array of
-            // sizes or summed size). The optional plabSize level (only for
-            // jdk.PromoteObjectInNewPLAB) keeps plabSize lossless while still grouping.
+            // class of object -> (tenured ? 64 : 0) + tenuring age -> [plabSize ->] eventThread ->
+            // (array of sizes or summed size). The optional plabSize level (only for
+            // jdk.PromoteObjectInNewPLAB) keeps plabSize lossless while still grouping; the
+            // eventThread level keeps the promoting GC worker thread lossless.
 
             BiFunction<CondensedOutputStream, EventType, CondensedType<Object, Object>>
                     objectSizeCreator =
@@ -931,13 +933,33 @@ public class JFREventCombiner extends EventCombiner {
                                                             objectSizeCreator,
                                                             e -> e.getLong("objectSize")));
 
+            // Wrap the object sizes in an eventThread-keyed map so each promoting GC worker thread
+            // gets its own bucket and roundtrips exactly. Keyed by reference (a small fixed set of
+            // GC worker threads repeats across every gcId).
+            MapEntry<RecordedEvent, Object> objectsByThread =
+                    (MapEntry<RecordedEvent, Object>)
+                            (MapEntry)
+                                    new MapValue<>(
+                                                    new MapPartValue<RecordedEvent, Object>(
+                                                            "eventThread",
+                                                            (out, eventType) ->
+                                                                    (CondensedType<Object, Object>)
+                                                                            basicJFRWriter
+                                                                                    .getTypeCached(
+                                                                                            eventType
+                                                                                                    .getField(
+                                                                                                            "eventThread")),
+                                                            RecordedEvent::getThread),
+                                                    objectsMapValue)
+                                            .withKeyByReference();
+
             // Wrap in a plabSize-keyed map so each distinct plabSize gets its own bucket and
             // roundtrips exactly (PromoteObjectInNewPLAB only; OutsidePLAB has no such field).
             MapEntry<RecordedEvent, ?> afterAge =
                     hasPlabSize
                             ? (MapEntry)
                                     new MapValue<>(
-                                            new MapPartValue<>(
+                                            new MapPartValue<RecordedEvent, Object>(
                                                     "plabSize",
                                                     (out, eventType) ->
                                                             (CondensedType<Object, Object>)
@@ -945,8 +967,8 @@ public class JFREventCombiner extends EventCombiner {
                                                                             eventType.getField(
                                                                                     "plabSize")),
                                                     e -> e.getLong("plabSize")),
-                                            objectsMapValue)
-                            : objectsMapValue;
+                                            objectsByThread)
+                            : objectsByThread;
 
             MapPartValue<RecordedEvent, Long> tenuredAndAgeKey =
                     new MapPartValue<>(
@@ -1005,7 +1027,7 @@ public class JFREventCombiner extends EventCombiner {
                                                             builder.put("tenured", tenured);
                                                             builder.put("tenuringAge", tenuringAge);
                                                             if (!hasPlabSize) {
-                                                                return emitObjectSizes(
+                                                                return emitByThreadOrSizes(
                                                                         builder, tae.getValue());
                                                             }
                                                             return ((ReadList<?>) tae.getValue())
@@ -1016,7 +1038,7 @@ public class JFREventCombiner extends EventCombiner {
                                                                                                 "plabSize",
                                                                                                 pe
                                                                                                         .getKey());
-                                                                                        return emitObjectSizes(
+                                                                                        return emitByThreadOrSizes(
                                                                                                 builder,
                                                                                                 pe
                                                                                                         .getValue());
@@ -1024,6 +1046,29 @@ public class JFREventCombiner extends EventCombiner {
                                                         });
                             })
                     .toList();
+        }
+
+        /**
+         * New format wraps object sizes in an eventThread-keyed map (thread -> sizes). Old format
+         * (pre-eventThread fix) stores the sizes directly. Detect a map-pair list and, if present,
+         * emit per thread; otherwise fall back to {@link #emitObjectSizes}.
+         */
+        @SuppressWarnings("unchecked")
+        private static <E> Stream<E> emitByThreadOrSizes(EventBuilder<E, ?> builder, Object value) {
+            if (value instanceof ReadList<?> list
+                    && !list.isEmpty()
+                    && list.get(0) instanceof Map<?, ?> pair
+                    && pair.containsKey("key")
+                    && pair.containsKey("value")) {
+                return ((ReadList<?>) value)
+                        .asMapEntryList().stream()
+                                .flatMap(
+                                        te -> {
+                                            builder.put("eventThread", te.getKey());
+                                            return emitObjectSizes(builder, te.getValue());
+                                        });
+            }
+            return emitObjectSizes(builder, value);
         }
 
         /** Emits one event per objectSize (single summed value or an array of sizes). */
@@ -1097,7 +1142,7 @@ public class JFREventCombiner extends EventCombiner {
         }
     }
 
-    /** Combines per GC id, throws away the thread id */
+    /** Combines per GC id, preserving the per-phase eventThread losslessly. */
     static class GCPhasePauseLevelCombiner extends GCIdBasedCombiner {
 
         public GCPhasePauseLevelCombiner(
@@ -1144,6 +1189,13 @@ public class JFREventCombiner extends EventCombiner {
                                                                                                         e
                                                                                                                 .getDuration())
                                                                                                 .toNanos()));
+                                                                fields.add(
+                                                                        basicJFRWriter
+                                                                                .eventFieldToField(
+                                                                                        eventType
+                                                                                                .getField(
+                                                                                                        "eventThread"),
+                                                                                        true));
                                                                 return new StructType<
                                                                         RecordedEvent, ReadStruct>(
                                                                         id, "GCPhaseEntry", fields);
@@ -1206,7 +1258,7 @@ public class JFREventCombiner extends EventCombiner {
                                                     entry -> {
                                                         if (entry
                                                                 instanceof ReadStruct phaseEntry) {
-                                                            return builder.put("name", e.getKey())
+                                                            builder.put("name", e.getKey())
                                                                     .put(
                                                                             "startTime",
                                                                             phaseEntry.get(
@@ -1214,8 +1266,13 @@ public class JFREventCombiner extends EventCombiner {
                                                                     .put(
                                                                             "duration",
                                                                             phaseEntry.get(
-                                                                                    "duration"))
-                                                                    .build();
+                                                                                    "duration"));
+                                                            Object thread =
+                                                                    phaseEntry.get("eventThread");
+                                                            if (thread != null) {
+                                                                builder.put("eventThread", thread);
+                                                            }
+                                                            return builder.build();
                                                         }
                                                         return builder.put("name", e.getKey())
                                                                 .put("duration", entry)

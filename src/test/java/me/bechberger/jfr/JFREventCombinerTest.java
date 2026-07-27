@@ -418,6 +418,24 @@ public class JFREventCombinerTest {
                     "plabSize value multiset must be preserved losslessly through"
                             + " combine/reconstitute");
         }
+        // Bug 300: the per-event eventThread (the promoting GC worker) must survive.
+        Map<Long, Long> origThreads = eventThreadIdMultiset(res.recordedEvents);
+        Map<Long, Long> reconThreads = reconEventThreadIdMultiset(res.readEvents);
+        assertFalse(origThreads.isEmpty(), "sanity: recorded PLAB events carry an eventThread");
+        if (sumObjectSizes) {
+            // Summing collapses per (class, age, plabSize, thread) bucket, so only the SET of
+            // distinct threads is preserved, not per-thread counts.
+            assertEquals(
+                    origThreads.keySet(),
+                    reconThreads.keySet(),
+                    "the set of distinct promoting GC worker threads must survive summing combine");
+        } else {
+            assertEquals(
+                    origThreads,
+                    reconThreads,
+                    "PLAB eventThread multiset must be preserved losslessly through"
+                            + " combine/reconstitute");
+        }
     }
 
     /**
@@ -507,6 +525,39 @@ public class JFREventCombinerTest {
                             + ", got "
                             + recon);
         }
+        // Bug 300: the per-event eventThread must survive combine/reconstitute in lossless.
+        Map<Long, Long> origThreads = eventThreadIdMultiset(res.recordedEvents);
+        Map<Long, Long> reconThreads = reconEventThreadIdMultiset(res.readEvents);
+        assertFalse(origThreads.isEmpty(), "sanity: recorded events carry an eventThread");
+        assertEquals(
+                origThreads,
+                reconThreads,
+                "GCPhasePauseLevel1 eventThread multiset must be preserved losslessly");
+    }
+
+    /** osThreadId -> count over recorded events' eventThread. */
+    private static Map<Long, Long> eventThreadIdMultiset(List<RecordedEvent> events) {
+        Map<Long, Long> m = new HashMap<>();
+        for (var event : events) {
+            var thread = event.getThread("eventThread");
+            if (thread != null) {
+                m.merge(thread.getOSThreadId(), 1L, Long::sum);
+            }
+        }
+        return m;
+    }
+
+    /** osThreadId -> count over reconstituted events' eventThread. */
+    private static Map<Long, Long> reconEventThreadIdMultiset(List<TypedValue> events) {
+        Map<Long, Long> m = new HashMap<>();
+        for (var event : events) {
+            var thread = (TypedValue) TypedValueUtil.getNonScalar(event, "eventThread");
+            if (thread != null) {
+                long osId = TypedValueUtil.getLong(thread, "osThreadId");
+                m.merge(osId, 1L, Long::sum);
+            }
+        }
+        return m;
     }
 
     /**

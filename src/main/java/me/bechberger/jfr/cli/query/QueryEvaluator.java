@@ -51,9 +51,10 @@ final class QueryEvaluator {
      * Event-type name → human {@code @Label}, sourced from the recording's full type table (not the
      * event stream). Needed only to render {@code ActiveSetting.id}/{@code RecordingSetting.id},
      * which cjfr stores as the <em>target</em> event type's name (e.g. {@code jdk.FileForce}) while
-     * {@code jfr view} renders that type's label (e.g. {@code File Force}). The target type may have
-     * zero events of its own, so its label isn't reachable from {@code eventsByType}. Empty when the
-     * caller has no type table (footer/precompute paths), in which case the raw name is shown.
+     * {@code jfr view} renders that type's label (e.g. {@code File Force}). The target type may
+     * have zero events of its own, so its label isn't reachable from {@code eventsByType}. Empty
+     * when the caller has no type table (footer/precompute paths), in which case the raw name is
+     * shown.
      */
     private final Map<String, String> typeLabels;
 
@@ -298,9 +299,9 @@ final class QueryEvaluator {
      * Map an {@code ActiveSetting.id}/{@code RecordingSetting.id} value to the target event type's
      * human label. cjfr stores that {@code id} as the target type's <em>name</em> (e.g. {@code
      * jdk.FileForce}); {@code jfr view} renders it as the type's {@code @Label} (e.g. {@code File
-     * Force}). Applies only when the source event is an {@code ActiveSetting}/{@code RecordingSetting}
-     * and the field being read is {@code id}; every other field passes through untouched. Falls back
-     * to the raw value when no label is known for the name.
+     * Force}). Applies only when the source event is an {@code ActiveSetting}/{@code
+     * RecordingSetting} and the field being read is {@code id}; every other field passes through
+     * untouched. Falls back to the raw value when no label is known for the name.
      */
     private Object relabelSettingId(ReadStruct source, List<String> field, Object value) {
         if (!(value instanceof String name) || typeLabels.isEmpty()) {

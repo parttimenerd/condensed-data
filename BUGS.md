@@ -1498,3 +1498,48 @@ recover a label that was never persisted.
 **Verified:** `cjfr view active-settings` on a lossless `.cjfr` now renders `File Force` (single row,
 all columns) byte-identical to the `jfr` oracle; inflate round-trip still maps `ActiveSetting.id`
 correctly (337 events); footer round-trip and the CJFRFooter/Integrity/Summary/View tests pass.
+
+## Bug 300: lossless preset silently drops `eventThread` from GC combiner events
+
+**Status:** Fixed.
+
+**Observed:** a field-level `jfr print` diff of a **lossless** round-trip of `profile.jfr`
+(`condense --condenser-config=lossless` → `inflate` → `jfr print`) shows `eventThread` **absent**
+in the inflated output for 5 combiner-collapsed event types (~7300 events): `jdk.PromoteObjectInNewPLAB`
+(6769), `jdk.PromoteObjectOutsidePLAB` (417), `jdk.GCPhasePauseLevel1` (84), `jdk.GCPhasePauseLevel2`
+(32), `jdk.GCPhasePause` (21). Per-type event counts are identical — a pure field loss, not a count
+bug. Total `eventThread` lines: orig 19111, inflated only 11788. The lossless contract is violated.
+
+**Root cause:** two `JFREventCombiner` combiners registered under lossless flags explicitly discard
+the thread id. `PromoteObjectCombiner` (javadoc "Throws away the thread id.") groups by
+`objectClass → tenuredAndAge → [plabSize →] objectSize` — eventThread is neither key nor stored, so
+`addStandardFieldsIfNeeded()` sets it to null at reconstitution. `GCPhasePauseLevelCombiner` (javadoc
+"throws away the thread id.") groups by `name → [{startTime,duration}]` — eventThread not stored.
+`GCPhaseParallelCombiner` already does this right: it stores `eventThread` as a struct field and its
+reconstitutor null-guards it back — the reference pattern.
+
+**Thread cardinality (profile.jfr):** GCPhasePause* → always a single `VM Thread` (cheap to store
+per phase entry). PLAB promotion → spread across 10+ GC worker threads → must become a grouping
+dimension (trades against the combiner's compression ratio). User decision: fix both, truly lossless
+— accept the PLAB size hit.
+
+**Fix (mirror the `GCPhaseParallel` pattern in both combiners):**
+1. `GCPhasePauseLevelCombiner` — add an `eventThread` field to the per-phase `GCPhaseEntry` struct
+   via `eventFieldToField(eventType.getField("eventThread"), true)`; the reconstitutor's ReadStruct
+   branch null-guards `phaseEntry.get("eventThread")` back into the builder. Legacy branches
+   (single Long / List<Long>) left untouched for backward-compat.
+2. `PromoteObjectCombiner` — insert an `eventThread`-keyed `MapValue` (`.withKeyByReference()`, thread
+   is a reference type) just above the objectSize leaf, so distinct GC worker threads bucket
+   separately (`objectClass → tenuredAndAge → [plabSize →] eventThread → sizes`). The reconstitutor
+   detects the new map level (elements are key/value pairs) and iterates it, `put`ting eventThread
+   before descending into the object sizes; old-format files fall through to the legacy path.
+
+No version bump — combined-type schemas are self-describing in the stream, so old `.cjfr` files still
+read via the legacy branches.
+
+**Verified:** after the fix the per-type `eventThread` mismatch count is **0** (all 5 types show
+orig==inflated); total `eventThread` lines 11788 → 19111 (matches orig). PLAB eventThread value
+multiset identical. Lossless `.cjfr` size 239201 → 243503 bytes (+4302, +1.8%) — bounded, still well
+under gzip (298678); the accepted cost of the truly-lossless choice. Regression guards added to
+`JFREventCombinerTest` (`testGCPhasePauseLevelCombiner`, `testPromoteObjectInNewTLABCombiner`) assert
+the eventThread multiset survives round-trip. Full suite green.

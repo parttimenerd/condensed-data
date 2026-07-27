@@ -438,10 +438,10 @@ public class ViewCommand implements Callable<Integer> {
     }
 
     /**
-     * Build a type-name → {@code @Label} map for the native view layer. The authoritative source
-     * is each input's {@code .cjfr} footer, whose {@code eventTypeLabels} covers every event type
-     * in the recording — including zero-event types like {@code jdk.FileForce}, whose struct type
-     * is never written to the stream. The stream's own type collection is a fallback for inputs
+     * Build a type-name → {@code @Label} map for the native view layer. The authoritative source is
+     * each input's {@code .cjfr} footer, whose {@code eventTypeLabels} covers every event type in
+     * the recording — including zero-event types like {@code jdk.FileForce}, whose struct type is
+     * never written to the stream. The stream's own type collection is a fallback for inputs
      * without that footer field (older files, or a raw {@code .jfr} condensed on the fly, whose
      * in-memory footer is not persisted): each condensed struct type stores its description as a
      * compact JSON array {@code ["Label","Description",…]}, from which {@link
