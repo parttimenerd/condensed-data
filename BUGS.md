@@ -1597,3 +1597,34 @@ grouped by eventThread, a different order than the source). The genuine value di
 treats as opaque. Verified by multiset equality of the semantic fields (name/value/class-name),
 ignoring the opaque numeric ids. Consistent with the "measure fidelity by semantic content, not
 by-id byte order" principle.
+
+## Non-bug (investigated): lossless dedups per-chunk static-info / flag events to one copy
+
+**Status:** Not a bug — intended dedup of statically-valued events, distinct from the Bug 266
+periodic-time-series carve-out. Documented so it is not re-chased.
+
+**Observed:** on a multi-chunk recording (`renaissance-all_gc_G1.jfr`, 3 chunks), a lossless
+round-trip drops ~2/3 of the events for every static-info / flag type — e.g. `jdk.JVMInformation`
+3→1, `jdk.CPUInformation` 3→1, `jdk.GCHeapConfiguration` 3→1, `jdk.BooleanFlag` 1971→657,
+`jdk.LongFlag` 486→162, `jdk.IntFlag` 156→52. The `jfr` oracle shows 3 copies (one per chunk, at
+distinct startTimes 16:06/16:16/16:27); cjfr keeps 1.
+
+**Investigation:** `JFREventDeduplication` registers `SINGLETON_EVENTS` (JVMInformation,
+CPUInformation, OSInformation, VirtualizationInformation, the four GC/heap configs, CodeCache/Compiler
+configs, CPUTimeStampCounter) and `FLAG_EVENTS` (Int/Boolean/Long/… Flag) for **all** presets
+including lossless (`JFREventDeduplication.java:45-50`). The `putSingleton` matcher compares every
+field **except startTime/endTime** (line 229), so per-chunk re-emissions with identical payloads
+collapse to one. These events are JFR bookkeeping — the JVM re-emits the same immutable
+configuration/flag snapshot at every chunk boundary; the payload never changes, so only the
+chunk-boundary timestamp is lost, carrying no per-timestamp information.
+
+**Contrast with Bug 266:** periodic *time-series* events (NetworkUtilization, GCHeapMemoryPoolUsage,
+ThreadCPULoad, …) DO represent distinct observations over time, so they are only deduped for
+non-lossless presets (`registerPeriodicTimeSeries()` gated behind `!isLosslessPreset`). Static-info /
+flag events are categorically different: they are constants, not samples.
+
+**Conclusion:** keeping one copy of an immutable per-chunk constant is the intended lossless
+behaviour (its payload is fully preserved); the dropped copies differ only in a chunk-boundary
+timestamp with no semantic content. The strict "every distinct timestamp survives" contract applies
+to time-series observations, not to re-emitted constants. (User decision 2026-07-27: keep dedup,
+document.)
