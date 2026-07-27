@@ -86,8 +86,7 @@ final class ViewRenderer {
      * field path when no metadata label resolves. A SELECT {@code AS} alias is <em>not</em> a
      * display label — it only names the column for ORDER BY references — so it is not used here.
      */
-    private static List<String> resolveLabels(
-            ViewQuery query, Map<String, List<ReadStruct>> eventsByType) {
+    static List<String> resolveLabels(ViewQuery query, Map<String, List<ReadStruct>> eventsByType) {
         if (!query.columnLabels().isEmpty()) {
             return query.columnLabels();
         }
@@ -127,6 +126,13 @@ final class ViewRenderer {
                 out.add(aggregatePrefix(item.expr()) + metaLabel);
             } else if (item.expr() instanceof ViewQuery.FieldPath fp) {
                 out.add(fp.joined());
+            } else if (item.expr() instanceof ViewQuery.Aggregate agg
+                    && agg.arg() instanceof ViewQuery.FieldPath fp) {
+                // No metadata label resolved for the aggregate's field — typically the field is
+                // absent from this recording's event type (e.g. LAST(dynamicCompilerThreadCount)
+                // on a JDK that lacks it). Fall back to the raw field path so the row stays
+                // identifiable instead of rendering a blank label (": N/A").
+                out.add(aggregatePrefix(item.expr()) + fp.joined());
             } else {
                 out.add("");
             }

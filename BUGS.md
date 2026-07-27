@@ -1387,6 +1387,61 @@ matches jfr's grouping *structure*; only the separator character differs from a 
 which is the documented Locale.ROOT known-diff the tests already normalize.
 
 **Verified:** `ValueFormatterTest` pins the grouped output (`1,000`, `3,242`, `1,234,567`,
-`-4,200`), the `FREQUENCY` path (`2,600 Hz`), and a whole-valued double (`12,345`). The
-memory/bitrate base-unit paths are unaffected (their ÷1024 scaling caps the base value at 1023, so
-grouping never applies).
+`-4,200`) and a whole-valued double (`12,345`). The memory/bitrate base-unit paths are unaffected
+(their ÷1024 scaling caps the base value at 1023, so grouping never applies).
+
+## Bug 296: `cjfr view cpu-tsc` groups the Hz frequency with a thousands separator
+
+**Status:** Fixed. (Corrects the FREQUENCY handling that Bug 295 had routed through grouping.)
+
+**Observed:** `cpu-tsc` rendered `Fast Time Frequency: 1,000,000,000 Hz`, but the JDK `jfr view`
+oracle renders it with **no** separator: `Fast Time Frequency: 1000000000 Hz`. Unlike plain integer
+counts (Bug 295), `jdk.jfr.Frequency` columns are not digit-grouped by jfr.
+
+**Root cause:** Bug 295's fix over-generalized by routing the `FREQUENCY` `ColumnType.Kind` through
+`groupInteger`. Frequency is a distinct content kind that jfr renders ungrouped.
+
+**Fix:** `ValueFormatter` FREQUENCY branch now emits `n.longValue() + " Hz"` (no grouping); plain
+counts still group. `ValueFormatterTest.formatFrequencyHasNoDigitGrouping` pins `2600 Hz`.
+
+## Bug 297: `cjfr view active-settings` drops all settings columns but the primary — self-join LAST_BATCH cutoff was global
+
+**Status:** Fixed.
+
+**Observed:** `active-settings` showed only the `enabled` value per setting id (e.g.
+`jdk.FileForce true`), with threshold / stackTrace / period / cutoff / throttle columns blank,
+where jfr shows the full row.
+
+**Root cause:** `active-settings` is a correlated self-join over six `jdk.ActiveSetting` aliases
+(E/T/S/P/C/U), each filtered by a different `name`, correlated by `GROUP BY id`, with
+`LAST_BATCH(...)` restricting each to the final periodic emission. `QueryEvaluator.evaluateJoin`
+computed a **single global** last-batch timestamp across all six aliases. Because the aliases'
+events carry nanosecond-granularity timestamps that differ slightly, only the primary alias's rows
+fell inside the global cutoff; the other five aliases' values were filtered out and rendered blank.
+
+**Fix:** compute a **per-alias** last-batch timestamp for the aggregate values, and gate group
+survival on the **primary (first FROM) alias's** global-max timestamp so only the final-emitted id
+survives (matching the oracle's one-result behaviour). `evalJoinCell` now takes a
+`Map<String,Instant>` of per-alias batch timestamps instead of a single `Instant`.
+
+**Note:** the Event Type column still shows the raw type name (`jdk.FileForce`) rather than the
+oracle's human label (`File Force`) — that is the separate, still-open Bug 1 (name→label lookup).
+
+## Bug 298: `cjfr view compiler-configuration` renders a blank row label (`: N/A`) for a field absent from the recording
+
+**Status:** Fixed.
+
+**Observed:** `compiler-configuration` printed a row `: N/A` — an empty label — for
+`LAST(dynamicCompilerThreadCount)` when that field is absent from the recording's
+`jdk.CompilerConfiguration` event type (it does not exist on all JDKs). The blank label makes the
+row unidentifiable. (Reproduces on both `.jfr` and `.cjfr`, so it is a renderer bug, not condense
+lossiness. On JDK 25 the `jfr` oracle instead aborts the whole view with a "Can't find field"
+error, so there is no directly comparable oracle row.)
+
+**Root cause:** `ViewRenderer.resolveLabels` resolved each column's label from the field's metadata
+`@Label`. When the field is absent, `ColumnType.labelFor` returns null; the expr is an `Aggregate`
+(not a bare `FieldPath`), so it fell through to the final `else` → empty string.
+
+**Fix:** when metadata resolution fails and the expr is an `Aggregate` wrapping a `FieldPath`, fall
+back to the raw field path (`dynamicCompilerThreadCount`) — the same fallback already used for a
+bare FieldPath — so the row stays identifiable. `ViewRendererTest` pins the fallback.
