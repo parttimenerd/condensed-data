@@ -24,21 +24,29 @@ import sys
 import os
 from pathlib import Path
 
-def run_command(cmd, ignore_stderr=False):
-    """Run a command and return its output"""
+def run_command(cmd, use_stderr=False):
+    """Run a command and return its output.
+
+    The agent (-javaagent) prints its help to stderr and produces no stdout,
+    so those commands need stderr captured instead of stdout. Running the agent
+    with no main class also makes the JVM print its own usage banner to stderr
+    afterwards; strip that trailing banner.
+    """
     try:
-        if ignore_stderr:
-            result = subprocess.run(cmd, shell=True, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, text=True)
-        else:
-            result = subprocess.run(cmd, shell=True, capture_output=True, text=True)
-        return result.stdout.rstrip()
+        result = subprocess.run(cmd, shell=True, capture_output=True, text=True)
+        out = (result.stderr if use_stderr else result.stdout).rstrip()
+        if use_stderr:
+            banner = out.find("Usage: java [java options...]")
+            if banner != -1:
+                out = out[:banner].rstrip()
+        return out
     except Exception as e:
         return f"Error running command: {e}"
 
-def should_append_h_and_ignore_stderr(cmd):
-    """Check if command should have 'h' appended and stderr ignored"""
-    # Pattern for javaagent commands with quoted arguments
-    pattern = r'java -javaagent:target/condensed-data\.jar=("[a-zA-Z-]+"|"[a-zA-Z- ]+")'
+def is_agent_help_command(cmd):
+    """True for -javaagent help invocations, which print to stderr."""
+    # Matches both quoted (="help") and unquoted (=help / =start,help) agent args
+    pattern = r'java -javaagent:target/condensed-data\.jar='
     return bool(re.search(pattern, cmd))
 
 def process_command(cmd):
@@ -49,15 +57,10 @@ def process_command(cmd):
     if cmd.startswith(">"):
         cmd = cmd[1:].strip()
 
-    ignore_stderr = False
+    # Agent (-javaagent) help prints to stderr; capture that instead of stdout.
+    use_stderr = is_agent_help_command(cmd)
 
-    # Check if we need to append "h" and ignore stderr
-    if should_append_h_and_ignore_stderr(cmd):
-        # Append " h" to the command
-        cmd += " h"
-        ignore_stderr = True
-
-    return cmd, ignore_stderr
+    return cmd, use_stderr
 
 def update_readme():
     """Update the README.md file with fresh command outputs"""
@@ -90,10 +93,10 @@ def update_readme():
             return match.group(0)
 
         # Process the command
-        cmd, ignore_stderr = process_command(command_line)
+        cmd, use_stderr = process_command(command_line)
 
         print(f"Running: {cmd}")
-        output = run_command(cmd, ignore_stderr)
+        output = run_command(cmd, use_stderr)
 
         # Build new block content
         new_lines = [command_line]

@@ -30,14 +30,14 @@ The tool can be used via its CLI:
 > java -jar target/condensed-data.jar -h
 Usage: cjfr [-hV] [COMMAND]
 CLI for the JFR condenser project
-  -h, --help      Show this help message and exit.
-  -V, --version   Print version information and exit.
+  -h, --help       Show this help message and exit.
+  -V, --version    Print version information and exit.
 Commands:
-  condense             Condense a JFR file
-  inflate              Inflate a condensed JFR file into JFR format
-  agent                Use the included Java agent on a specific JVM process
-  summary              Print a summary of the condensed JFR file
-  view                 View a specific event of a condensed JFR file as a table
+  condense  Condense one or more JFR files (or a folder/ZIP) into .cjfr format
+  inflate   Inflate a condensed JFR file into JFR format
+  agent     Use the included Java agent on a specific JVM process
+  summary   Print a summary of the condensed JFR file
+  view      View a named view or a single event type from a .cjfr or .jfr file as a table. Mirrors the JDK `jfr view` argument order: the view/event name comes first, followed by the input file(s). Example: `cjfr view gc-configuration recording.cjfr`. The set of named views is read from the running JVM's own view.ini (jdk/jfr/internal/query in the jrt: runtime image), so it always matches the JDK you run cjfr on; no view definitions are bundled. Most of the JDK's ~90 named views (gc, hot-methods, allocation-by-site, ...) are rendered natively without an external `jfr` process; views this tool cannot yet evaluate (or when running on a pre-21 JDK without view.ini) fall back to the JDK `jfr view` automatically.
 ```
 But you can also use its built-in Java agent to directly record condensed JFR files:
 ```shell
@@ -64,8 +64,7 @@ Options:
                                       The condenser data-reduction configuration
                                       to use, possible values: default,
                                       lossless, reasonable-default,
-                                      reduced-default (default
-                                      reasonable-default)
+                                      reduced-default (default default)
       config=<jfrConfig>              The JFR configuration to use: a predefined
                                       name (e.g. 'default', 'profile',
                                       'gc_details'), a name with .jfc suffix, or
@@ -89,8 +88,8 @@ Options:
       rotating                        Write rotating files. Replaces $date and
                                       $index in the path; if neither placeholder
                                       is present, '_$index' is inserted before
-                                      '.cjfr'. Requires max-files >= 1 and at
-                                      least one of max-size or max-duration.
+                                      '.cjfr'. Requires --max-files >= 1 and at
+                                      least one of --max-size or --max-duration.
                                       (default false)
   V, version                          Print version information and exit.
       verbose                         Be verbose (default false)
