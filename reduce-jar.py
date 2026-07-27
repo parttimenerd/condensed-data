@@ -392,6 +392,7 @@ def cmd_reduce(args: argparse.Namespace) -> None:
             use_proguard,
             CONDENSED_DATA_PROGUARD_OPTIONS if use_proguard else [],
             args.femtojar_verbose,
+            source_jar=args.input,
         )
         if not ok:
             print(f"Error: femtojar compression failed", file=sys.stderr)
@@ -558,6 +559,10 @@ def cmd_matrix(args: argparse.Namespace) -> None:
 CONDENSED_DATA_PROGUARD_OPTIONS = [
     "-dontwarn",
     "-keep class **.cli.** { *; }",
+    # Preserve Launcher-Agent-Class and Agent-Class entry points (only referenced
+    # from META-INF/MANIFEST.MF, not from code, so ProGuard cannot see them).
+    "-keep class me.bechberger.jfr.cli.agent.ModuleOpenerAgent { *; }",
+    "-keep class me.bechberger.jfr.cli.agent.Agent { *; }",
     # Preserve the Record attribute so Class.getRecordComponents() works at runtime.
     # Configuration uses it to copy itself with one field changed (withFieldValue).
     "-keepattributes Record,RuntimeVisibleAnnotations,RuntimeInvisibleAnnotations,Signature,InnerClasses,EnclosingMethod",
@@ -781,6 +786,45 @@ def _swap_femtocli(input_jar: str, output_jar: str, minimal_jar: str) -> None:
                 zf_out.writestr(name, data)
 
 
+# Classes that must remain as real (unbundled) zip entries in femtojar output so
+# the JVM instrumentation loader can find them before the femtojar blob loader
+# starts up (Launcher-Agent-Class is loaded before main() runs).
+_FEMTOJAR_UNBUNDLED_CLASSES = [
+    "me/bechberger/jfr/cli/agent/ModuleOpenerAgent.class",
+]
+
+
+def _inject_unbundled_classes(source_jar: str, output_jar: str) -> None:
+    """Inject classes from *source_jar* as real zip entries in *output_jar*.
+
+    Femtojar bundles all .class files into a single compressed blob that is
+    inaccessible until main() runs.  Launcher-Agent-Class entries in
+    MANIFEST.MF are loaded by the JVM instrumentation system *before* main(),
+    so they must exist as normal zip entries.  This function extracts each
+    class listed in _FEMTOJAR_UNBUNDLED_CLASSES from the pre-femtojar JAR and
+    adds it to the femtojar output without disturbing anything else.
+    """
+    classes_to_inject: dict[str, bytes] = {}
+    with zipfile.ZipFile(source_jar, "r") as zf_src:
+        for cls_path in _FEMTOJAR_UNBUNDLED_CLASSES:
+            if cls_path in zf_src.namelist():
+                classes_to_inject[cls_path] = zf_src.read(cls_path)
+
+    if not classes_to_inject:
+        return
+
+    # Rewrite output_jar in-place: copy all existing entries then append new ones.
+    tmp = output_jar + ".tmp"
+    with zipfile.ZipFile(output_jar, "r") as zf_in, zipfile.ZipFile(tmp, "w", zipfile.ZIP_DEFLATED) as zf_out:
+        existing = set(zf_in.namelist())
+        for info in zf_in.infolist():
+            zf_out.writestr(info, zf_in.read(info.filename))
+        for cls_path, data in classes_to_inject.items():
+            if cls_path not in existing:
+                zf_out.writestr(cls_path, data)
+    os.replace(tmp, output_jar)
+
+
 def _run_femtojar(
     cli_jar: str,
     input_jar: str,
@@ -789,8 +833,14 @@ def _run_femtojar(
     proguard: bool,
     proguard_options: List[str],
     verbose: bool,
+    source_jar: Optional[str] = None,
 ) -> bool:
-    """Run femtojar CLI. Returns True on success."""
+    """Run femtojar CLI. Returns True on success.
+
+    *source_jar* is the pre-femtojar JAR from which Launcher-Agent-Class
+    entries are extracted and re-injected as real zip entries.  Defaults to
+    *input_jar*; pass explicitly when input_jar == output_jar (in-place mode).
+    """
     cmd = ["java", "-jar", cli_jar, input_jar, output_jar, "--compression", compression]
     if proguard:
         cmd.append("--proguard")
@@ -809,6 +859,7 @@ def _run_femtojar(
         if not verbose and result.stderr:
             print(result.stderr, file=sys.stderr)
         return False
+    _inject_unbundled_classes(source_jar or input_jar, output_jar)
     return True
 
 
