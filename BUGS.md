@@ -1445,3 +1445,24 @@ error, so there is no directly comparable oracle row.)
 **Fix:** when metadata resolution fails and the expr is an `Aggregate` wrapping a `FieldPath`, fall
 back to the raw field path (`dynamicCompilerThreadCount`) — the same fallback already used for a
 bare FieldPath — so the row stays identifiable. `ViewRendererTest` pins the fallback.
+
+## Non-bug (investigated): `cjfr view active-settings` shows many rows on a *default*-preset `.cjfr` (1 on `.jfr`)
+
+**Status:** Not a bug — expected default-preset lossiness. Documented so it is not re-chased.
+
+**Observed:** `cjfr view active-settings` renders 1 row (matching the `jfr` oracle) when run on a
+`.jfr` file, but ~80 rows when run on a `.cjfr` produced with the **default** preset.
+
+**Investigation:** The `active-settings` self-join uses `LAST_BATCH`, which keeps only the events
+sharing the single global-maximum `startTime`. In the source `.jfr`, all 171 `jdk.ActiveSetting`
+`enabled` events have *distinct nanosecond* startTimes, so LAST_BATCH selects exactly one (id 1519
+→ "File Force") → 1 row. The default preset condenses with `timeStampTicksPerSecond: 1000`
+(millisecond quantization), collapsing those 171 nanosecond timestamps into 2 millisecond buckets;
+the max bucket then holds 80 `enabled` events → 80 rows. Verified: re-condensing the same recording
+with the **lossless** preset (which preserves nanosecond startTimes) restores 171 distinct
+timestamps and renders exactly **1 row**, byte-identical to the oracle.
+
+**Conclusion:** The renderer and query evaluator are correct on both `.jfr` and lossless `.cjfr`.
+The row-count difference on a default-preset `.cjfr` is the intended timestamp-quantization
+lossiness of that preset, not a defect. (Consistent with the "measure renderer fidelity on `.jfr`,
+not `.cjfr`" principle — condense lossiness ≠ renderer bug.)
