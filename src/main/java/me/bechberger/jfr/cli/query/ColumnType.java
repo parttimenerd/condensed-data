@@ -37,6 +37,11 @@ final class ColumnType {
         PERCENTAGE,
         /** {@code jdk.jfr.Frequency} — a count rendered with a trailing " Hz". */
         FREQUENCY,
+        /**
+         * {@code jdk.jfr.DataAmount(BITS)} + {@code jdk.jfr.Frequency} — a bit rate rendered with
+         * binary scaling and a "bps" suffix (e.g. 42.9 kbps), as in the network-utilization view.
+         */
+        BITRATE,
         /** {@code jdk.jfr.MemoryAddress} — an unsigned long rendered as {@code 0x}-prefixed hex. */
         ADDRESS
     }
@@ -172,6 +177,14 @@ final class ColumnType {
      */
     private static Kind classify(String description) {
         if (description == null) return Kind.PLAIN;
+        // A field carrying both DataAmount and Frequency is a bit/byte *rate*
+        // (network-utilization's
+        // readRate/writeRate = "bits per second"); jfr renders it with binary scaling and a "bps"
+        // suffix, so it must be caught before the plain DataAmount→MEMORY probe below.
+        if (description.contains("jdk.jfr.DataAmount")
+                && description.contains("jdk.jfr.Frequency")) {
+            return Kind.BITRATE;
+        }
         if (description.contains("jdk.jfr.DataAmount")) return Kind.MEMORY;
         if (description.contains("jdk.jfr.Percentage")) return Kind.PERCENTAGE;
         if (description.contains("jdk.jfr.Frequency")) return Kind.FREQUENCY;

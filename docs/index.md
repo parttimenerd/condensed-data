@@ -10,6 +10,9 @@ rotating ring-buffer: keep the last N files, each capped by size or time, so you
 always have recent history without runaway disk growth.
 
 Recordings can be queried offline with `cjfr summary`,
+rendered as tables with `cjfr view` — a drop-in replacement for the JDK `jfr view`
+command that supports **all** of its named views (it reads the running JVM's own
+`view.ini`, so the available views always match the JDK you run `cjfr` on) —
 inflated to standard `.jfr` for [JDK Mission Control](https://adoptium.net/jmc),
 [Firefox Profiler](https://parttimenerd.github.io/firefox-profiler/),
 [jfr-query](https://parttimenerd.github.io/jfr-query/), or other JFR-capable tools,

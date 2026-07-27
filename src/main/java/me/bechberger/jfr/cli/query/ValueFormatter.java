@@ -14,8 +14,10 @@ import me.bechberger.jfr.cli.query.ViewQuery.FormatHint;
  * {@code jfr view}. Formatting is chosen from the value's runtime type plus any {@code FORMAT}
  * hints, and — for correctness on empty/sentinel values — the {@code missing:} hint.
  *
- * <p>Numbers use {@link Locale#ROOT} (dot decimal, no grouping); this intentionally diverges from
- * {@code jfr view}'s locale-sensitive grouping, and tests normalize for it.
+ * <p>Numbers use {@link Locale#ROOT}: dot decimal and comma grouping (e.g. {@code 3,242}). This
+ * mirrors {@code jfr view}'s locale-sensitive digit grouping structurally; only the separator
+ * character differs from a non-ROOT oracle locale (e.g. German {@code 3.242}), which tests
+ * normalize for.
  *
  * <p>Timespans and memory sizes use a 3-significant-figure rule with a space before the unit, which
  * mirrors {@code jfr view}'s {@code Timespan}/{@code DataAmount} renderers structurally.
@@ -51,7 +53,10 @@ final class ValueFormatter {
             return formatPercentage(n.doubleValue());
         }
         if (kind == ColumnType.Kind.FREQUENCY && value instanceof Number n) {
-            return Long.toString(n.longValue()) + " Hz";
+            return groupInteger(n.longValue()) + " Hz";
+        }
+        if (kind == ColumnType.Kind.BITRATE && value instanceof Number n) {
+            return formatBitrate(n.longValue());
         }
         if (kind == ColumnType.Kind.ADDRESS && value instanceof Number n) {
             // jfr renders jdk.jfr.MemoryAddress as "0x" + uppercase hex, zero-padded to at least 8
@@ -82,7 +87,7 @@ final class ValueFormatter {
             return formatDouble(fv.doubleValue());
         }
         if (value instanceof Number n) {
-            return Long.toString(n.longValue());
+            return groupInteger(n.longValue());
         }
         if (value instanceof Boolean b) {
             return b ? "true" : "false";
@@ -107,9 +112,19 @@ final class ValueFormatter {
 
     // ── numeric ────────────────────────────────────────────────────────────
 
+    /**
+     * Render a whole number with {@code jfr view}'s digit grouping. jfr groups plain integer counts
+     * with the locale thousands separator (e.g. {@code 3242 → 3.242} in German); we use {@link
+     * Locale#ROOT} so the separator is a comma ({@code 3,242}), matching jfr's structure with the
+     * separator character being the only (documented) locale difference.
+     */
+    private static String groupInteger(long v) {
+        return String.format(Locale.ROOT, "%,d", v);
+    }
+
     private static String formatDouble(double v) {
         if (v == Math.rint(v) && !Double.isInfinite(v)) {
-            return Long.toString((long) v);
+            return groupInteger((long) v);
         }
         return threeSigFigs(v);
     }
@@ -173,7 +188,24 @@ final class ValueFormatter {
         return neg ? "-" + s : s;
     }
 
-    // ── percentage (jdk.jfr.Percentage: a 0..1 fraction shown as N.NN%) ───────
+    // ── bit rate (DataAmount(BITS)+Frequency: binary scaling, "bps" suffix) ────
+
+    static String formatBitrate(long bits) {
+        boolean neg = bits < 0;
+        long abs = Math.abs(bits);
+        String[] units = {"bps", "kbps", "Mbps", "Gbps", "Tbps", "Pbps"};
+        double value = abs;
+        int u = 0;
+        while (value >= 1024 && u < units.length - 1) {
+            value /= 1024;
+            u++;
+        }
+        // Like memory: raw bits as an integer count, larger units with exactly one decimal.
+        String num =
+                u == 0 ? Long.toString((long) value) : String.format(Locale.ROOT, "%.1f", value);
+        String s = num + " " + units[u];
+        return neg ? "-" + s : s;
+    }
 
     static String formatPercentage(double fraction) {
         // jfr renders percentages with exactly two decimals and no space before the '%'.

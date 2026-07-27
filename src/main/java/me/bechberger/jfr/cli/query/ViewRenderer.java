@@ -124,7 +124,7 @@ final class ViewRenderer {
             }
             String metaLabel = ColumnType.labelFor(item.expr(), query, eventsByType);
             if (metaLabel != null) {
-                out.add(metaLabel);
+                out.add(aggregatePrefix(item.expr()) + metaLabel);
             } else if (item.expr() instanceof ViewQuery.FieldPath fp) {
                 out.add(fp.joined());
             } else {
@@ -134,7 +134,31 @@ final class ViewRenderer {
         return out;
     }
 
-    /** The per-column FORMAT hint (positional), or null if none for that column. */
+    /**
+     * The label prefix {@code jfr view} prepends to a statistical aggregate's derived field label
+     * when the query has no explicit COLUMN clause: {@code AVG(readRate)} → "Avg. Read Rate",
+     * {@code MAX} → "Max. ", {@code MIN} → "Min. ". Other aggregates
+     * (LAST/FIRST/SUM/LAST_BATCH/percentiles) surface the bare field label with no prefix (verified
+     * against network-utilization, which is the only bundled view relying on derived aggregate
+     * labels; COLUMN-clause views like contention-by-class supply their own "Avg."/"P90" headers).
+     * Returns "" for non-prefixed cases.
+     */
+    private static String aggregatePrefix(ViewQuery.Expr expr) {
+        if (expr instanceof ViewQuery.Aggregate agg) {
+            switch (agg.function().toUpperCase(java.util.Locale.ROOT)) {
+                case "AVG":
+                    return "Avg. ";
+                case "MAX":
+                    return "Max. ";
+                case "MIN":
+                    return "Min. ";
+                default:
+                    return "";
+            }
+        }
+        return "";
+    }
+
     private FormatHint hintFor(int col) {
         // FORMAT hints are positional per column slot; a bare "none" occupies a slot with no
         // effect.

@@ -9,6 +9,25 @@ Per-bug detail lives in [BUGS.md](BUGS.md); this file summarizes user-visible ch
 
 ## [Unreleased]
 
+### Fixed
+- `cjfr view network-utilization` now renders the read/write rate columns as a bit rate
+  (`42.9 kbps`, `1.4 Mbps`) instead of byte sizes, and prefixes derived aggregate headers with
+  `Avg.`/`Max.`/`Min.` to match `jfr view` (Bugs 291, 292).
+- `cjfr view memory-leaks-by-class` / `memory-leaks-by-site` now report the correct
+  most-recently-allocated sample per group (LAST_BATCH keeps the last event in a batch, not the
+  first) (Bug 293).
+- `cjfr view memory-leaks-by-site` now attributes each leak to its first application (non-JDK)
+  stack frame instead of collapsing every allocation into a single `N/A` row (the synthetic
+  `stackTrace.topApplicationFrame` accessor is now resolved) (Bug 294).
+- `cjfr view` now groups plain integers ≥ 1000 with a thousands separator (`3,242`) to match
+  `jfr view`'s digit grouping (Bug 295).
+
+### Changed
+- `cjfr view --help` and the docs now describe the JDK-matching argument order
+  (`cjfr view <view-or-event> <file...>`), native named-view rendering, and that the set of named
+  views is read from the running JVM's own `view.ini` (jrt: runtime image) with fallback to the
+  JDK `jfr view`.
+
 ## [0.1.1] - 2026-07-26
 
 ### Added

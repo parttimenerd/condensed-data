@@ -193,16 +193,24 @@ cjfr summary recording.cjfr
 cjfr summary --flamegraph storage.html recording.cjfr
 open storage.html   # or xdg-open on Linux
 
-# Show the first 20 full GC events
-cjfr view --limit=20 recording.cjfr jdk.GarbageCollection
+# Show the first 20 full GC events (view/event name first, then the file)
+cjfr view --limit=20 jdk.GarbageCollection recording.cjfr
 
 # Same, as JSON (pipe to jq for scripting)
-cjfr view --json --limit=20 recording.cjfr jdk.GarbageCollection \
+cjfr view --json --limit=20 jdk.GarbageCollection recording.cjfr \
   | jq '.[] | {time: .startTime, cause: .cause, pause: .longestPause}'
 
 # Look at heap size over time (all GC heap summaries)
-cjfr view recording.cjfr jdk.GCHeapSummary
+cjfr view jdk.GCHeapSummary recording.cjfr
+
+# Render a JDK named view (e.g. GC pauses, hot methods) directly on a .cjfr
+cjfr view gc-pauses recording.cjfr
+cjfr view hot-methods recording.cjfr
 ```
+
+All of the JDK's named views work: `cjfr` reads the running JVM's own `view.ini`
+(from the `jrt:` runtime image), so the available views match the JDK you run it on.
+See [Analyzing Recordings](analysis.md#named-views) for details.
 
 ---
 

@@ -81,9 +81,11 @@ final class Aggregators {
             case "FIRST" -> () -> new FirstLastReducer(true);
             case "LAST" -> () -> new FirstLastReducer(false);
             // LAST_BATCH: the events reaching the reducer are already restricted by
-            // QueryEvaluator to the final periodic-emission batch, so FIRST-like over that
-            // already-filtered subset yields the batch's representative value.
-            case "LAST_BATCH" -> () -> new FirstLastReducer(true);
+            // QueryEvaluator to the final periodic-emission batch and iterated in chronological
+            // (stable startTime) order. jfr's representative within that batch is the LAST event
+            // seen — e.g. memory-leaks-by-* reports the most-recently-allocated sample per group,
+            // not the first — so this is LAST-like over the already-filtered subset.
+            case "LAST_BATCH" -> () -> new FirstLastReducer(false);
             case "MEDIAN" -> () -> new PercentileReducer(50);
             case "P90" -> () -> new PercentileReducer(90);
             case "P95" -> () -> new PercentileReducer(95);

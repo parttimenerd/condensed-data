@@ -31,7 +31,15 @@ import me.bechberger.jfr.cli.query.ViewPrecompute;
         description =
                 "View a named view or a single event type from a .cjfr or .jfr file as a table."
                         + " Mirrors the JDK `jfr view` argument order: the view/event name comes"
-                        + " first, followed by the input file(s).",
+                        + " first, followed by the input file(s). Example:"
+                        + " `cjfr view gc-configuration recording.cjfr`. The set of named views is"
+                        + " read from the running JVM's own view.ini (jdk/jfr/internal/query in the"
+                        + " jrt: runtime image), so it always matches the JDK you run cjfr on; no"
+                        + " view definitions are bundled. Most of the JDK's ~90 named views (gc,"
+                        + " hot-methods, allocation-by-site, ...) are rendered natively without an"
+                        + " external `jfr` process; views this tool cannot yet evaluate (or when"
+                        + " running on a pre-21 JDK without view.ini) fall back to the JDK `jfr"
+                        + " view` automatically.",
         mixinStandardHelpOptions = true)
 // --events is inherited from EventFilterOptionMixin but is useless here: view only ever displays
 // the single positional VIEW_OR_EVENT, so an extra type filter can't change the output.
@@ -46,14 +54,19 @@ public class ViewCommand implements Callable<Integer> {
             arity = "2..*",
             description =
                     "The view or event name (first argument), followed by one or more input .cjfr"
-                            + " or .jfr files. Named views (e.g. gc-configuration, hot-methods) are"
-                            + " rendered by delegating to the JDK `jfr view`; a dotted event type"
-                            + " (e.g. jdk.GCHeapSummary) is rendered natively.")
+                            + " or .jfr files. A dotted event type (e.g. jdk.GCHeapSummary) is"
+                            + " rendered natively as a per-event table. A dot-free name (e.g."
+                            + " gc-configuration, hot-methods) is treated as a JDK named view:"
+                            + " rendered natively when possible, otherwise via the JDK `jfr view`."
+                            + " A dot-free name that is actually an event type present in the file"
+                            + " is rendered as that event type instead.")
     private List<String> args = new ArrayList<>();
 
     // -1 means "not set by the user". The native renderer resolves it to DEFAULT_WIDTH; the
     // delegation path omits --width so `jfr view` uses its own per-view default.
-    @Option(names = "--width", description = "Width of the table")
+    @Option(
+            names = "--width",
+            description = "Total table width in characters (10-1000). Default: 160.")
     private int width = -1;
 
     private static final int DEFAULT_WIDTH = 160;
@@ -71,7 +84,9 @@ public class ViewCommand implements Callable<Integer> {
     private String truncate = "end";
 
     // -1 means "not set by the user"; delegation omits --cell-height so jfr uses its own default.
-    @Option(names = "--cell-height", description = "Height of the table cells")
+    @Option(
+            names = "--cell-height",
+            description = "Maximum number of text lines per table cell (>= 1). Default: 1.")
     private int cellHeight = -1;
 
     private static final int DEFAULT_CELL_HEIGHT = 1;
@@ -82,19 +97,27 @@ public class ViewCommand implements Callable<Integer> {
 
     @Option(
             names = "--verbose",
-            description = "For named views, display the query that makes up the view (jfr view).",
+            description =
+                    "For named views, also print the underlying query that defines the view"
+                            + " (delegates to the JDK `jfr view`).",
             defaultValue = "false")
     private boolean verbose;
 
     @Option(
             names = "--limit",
             description =
-                    "Limit the number of events of the given type to print, or -1 for no limit")
+                    "For an event-type table, print at most this many events (-1 = no limit,"
+                            + " the default). Ignored for named views.")
     private int limit = -1;
 
     @Mixin private EventFilterOptionMixin eventFilterOptionMixin;
 
-    @Option(names = "--json", description = "Output events as JSON", defaultValue = "false")
+    @Option(
+            names = "--json",
+            description =
+                    "Output events as JSON instead of a table. Only supported for event types"
+                            + " (e.g. jdk.GCHeapSummary), not for named views.",
+            defaultValue = "false")
     private boolean json;
 
     /**

@@ -109,6 +109,30 @@ java -jar target/condensed-data.jar agent <PID> status
 java -jar target/condensed-data.jar agent <PID> stop
 ```
 
+### All `jfr` tool views, directly on `.cjfr`
+
+`cjfr view` is a drop-in replacement for the JDK `jfr view` command and supports **all of its
+named views** (gc-pauses, hot-methods, allocation-by-site, exception-by-type, jvm-information, …).
+It does this by reading the running JVM's own `view.ini` from the `jrt:` runtime image
+(`jdk/jfr/internal/query/view.ini`) and evaluating the view's query natively — so the set of views
+always matches the JDK you run `cjfr` on, with no view definitions bundled or hard-coded.
+
+```shell
+# Named view, rendered natively straight from a .cjfr (no inflation)
+cjfr view gc-pauses recording.cjfr
+cjfr view hot-methods recording.cjfr
+cjfr view allocation-by-site recording.cjfr
+
+# Also works on a raw .jfr, and for a single event type
+cjfr view jdk.GarbageCollection recording.jfr
+```
+
+Any view that can't be evaluated natively — a `view.ini` older than the parser understands, or a
+JDK before 21 (which has no `view.ini`) — transparently falls back to delegating to
+`$JAVA_HOME/bin/jfr view`, so `cjfr view` never renders less than `jfr view` would. Because it
+queries the compact `.cjfr` directly, event-heavy views run ~2–3× faster than opening the original
+`.jfr` (measured on a 253 MB `gc_details` recording). See [Analyzing Recordings](docs/analysis.md).
+
 Third-party Bug Hunting
 -----------------------
 

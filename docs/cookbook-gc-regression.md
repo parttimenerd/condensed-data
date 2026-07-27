@@ -71,24 +71,24 @@ fields you care about.
     records use `duration` instead. For those collectors, replace the `jq` projection:
     ```shell
     # ZGC / Shenandoah
-    cjfr view --json after_0.cjfr jdk.GarbageCollection \
+    cjfr view --json jdk.GarbageCollection after_0.cjfr \
       | jq '.[] | {gcId, cause, duration}'
     ```
 
 ```shell
 # Before: show GC events with cause, pause, and heap usage
-cjfr view --json before_0.cjfr jdk.GarbageCollection \
+cjfr view --json jdk.GarbageCollection before_0.cjfr \
   | jq '.[] | {gcId, cause, longestPause, sumOfPauses}'
 
 # After: same
-cjfr view --json after_0.cjfr jdk.GarbageCollection \
+cjfr view --json jdk.GarbageCollection after_0.cjfr \
   | jq '.[] | {gcId, cause, longestPause, sumOfPauses}'
 ```
 
 ```shell
 # Heap trajectory before vs. after
-cjfr view before_0.cjfr jdk.GCHeapSummary
-cjfr view after_0.cjfr jdk.GCHeapSummary
+cjfr view jdk.GCHeapSummary before_0.cjfr
+cjfr view jdk.GCHeapSummary after_0.cjfr
 ```
 
 ---
@@ -99,7 +99,7 @@ cjfr view after_0.cjfr jdk.GCHeapSummary
 before and after, look at allocation events:
 
 ```shell
-cjfr view after_0.cjfr jdk.ObjectAllocationSample | head -30
+cjfr view jdk.ObjectAllocationSample after_0.cjfr | head -30
 ```
 
 Or inflate only the allocation events to compare in JMC's Memory tab:

@@ -62,6 +62,28 @@ final class FieldResolver {
                 }
                 return null;
             }
+            // Synthetic StackTrace.topApplicationFrame: jfr's accessor for the topmost frame that
+            // is
+            // application (non-JDK/system) code. Used by memory-leaks-by-site to attribute a leaked
+            // allocation to the first frame the user actually wrote, skipping the JDK plumbing
+            // above
+            // it (ClassLoader.defineClass, HashMap.put, Arrays.copyOf, …). Unlike topNotInitFrame,
+            // this returns null (rendered "N/A") when *every* frame is JDK/system code — matching
+            // jfr, which groups all-JDK traces under a single N/A row.
+            if ("topApplicationFrame".equals(part)
+                    && !s.hasField("topApplicationFrame")
+                    && s.hasField("frames")) {
+                Object frames = s.get("frames");
+                if (frames instanceof List<?> list && !list.isEmpty()) {
+                    Object frame = firstApplicationFrame(list);
+                    if (frame == null) {
+                        return null;
+                    }
+                    current = frame;
+                    continue;
+                }
+                return null;
+            }
             if (!s.hasField(part)) {
                 return null;
             }
@@ -86,6 +108,40 @@ final class FieldResolver {
             }
         }
         return frames.get(0);
+    }
+
+    /**
+     * The first frame whose method's declaring class is application (non-JDK/system) code, or
+     * {@code null} if every frame is JDK/system code. A frame is a struct with a {@code method}
+     * struct that has a {@code type} (the declaring {@code RecordedClass}) with a {@code name}.
+     * "System" is approximated by the well-known runtime package prefixes ({@code java.}, {@code
+     * javax.}, {@code jdk.}, {@code sun.}, {@code com.sun.}); everything else — including
+     * third-party libraries like {@code org.openjdk.jmc.*} or {@code org.tukaani.*} — counts as
+     * application code, matching how jfr attributes a leak to the first frame outside the runtime.
+     */
+    private static Object firstApplicationFrame(List<?> frames) {
+        for (Object f : frames) {
+            if (!(f instanceof ReadStruct frame)) continue;
+            ReadStruct method = frame.hasField("method") ? frame.getStruct("method") : null;
+            ReadStruct type =
+                    method != null && method.hasField("type") ? method.getStruct("type") : null;
+            String className =
+                    type != null && type.hasField("name") ? asString(type.get("name")) : null;
+            if (className != null && !isSystemClass(className)) {
+                return frame;
+            }
+        }
+        return null;
+    }
+
+    /** Whether a fully-qualified class name belongs to a JDK/runtime package. */
+    static boolean isSystemClass(String className) {
+        String fqcn = className.replace('/', '.');
+        return fqcn.startsWith("java.")
+                || fqcn.startsWith("javax.")
+                || fqcn.startsWith("jdk.")
+                || fqcn.startsWith("sun.")
+                || fqcn.startsWith("com.sun.");
     }
 
     private static String asString(Object v) {

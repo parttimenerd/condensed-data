@@ -1262,3 +1262,131 @@ crosses a DST boundary records the offset in effect for that file.
 **Verified:** a fresh `-javaagent` recording in `TZ=Europe/Berlin` now inflates so `jfr print`
 renders `11:53:46` local (matching a native JFR oracle), where before the fix it rendered
 `09:53:46` UTC. All 107 agent/recording tests (`*Recording*,*Agent*,*Rotating*`) green.
+
+## Bug 291: `cjfr view network-utilization` renders read/write rates as byte sizes instead of a bit rate
+
+**Status:** Fixed.
+
+**Observed:** `cjfr view network-utilization` printed the `readRate`/`writeRate` columns as
+memory sizes (`5.4 kB`, `1.4 MB`) where the JDK `jfr view` oracle renders them as a *bit rate*
+(`42.9 kbps`, `1.4 Mbps`, `814.7 kbps`). Same magnitude, wrong unit family.
+
+**Root cause:** `ColumnType.classify(...)` probed the field description for `jdk.jfr.DataAmount`
+and mapped it to `Kind.MEMORY`. But the network-utilization rate fields carry **both**
+`@DataAmount(BITS)` **and** `@Frequency` — that combination is "bits per second", not a byte
+count. The plain `DataAmount → MEMORY` probe fired first and won, so the value was scaled and
+suffixed as bytes (`bytes`/`kB`/`MB`) rather than bits-per-second.
+
+**Fix:** added a `Kind.BITRATE` and a precedence rule in `classify`: a description containing
+*both* `jdk.jfr.DataAmount` and `jdk.jfr.Frequency` classifies as `BITRATE` **before** the plain
+`DataAmount → MEMORY` probe. `ValueFormatter.formatBitrate(long)` mirrors `formatMemory` (binary
+÷1024 scaling, integer at base, one decimal above) with the `bps`/`kbps`/`Mbps`/… unit ladder.
+
+**Verified:** data rows now match the oracle (`42.9 kbps`, `1.4 Mbps`, `814.7 kbps`) modulo the
+documented Locale.ROOT decimal-separator known-diff. New unit test `ValueFormatterTest` (16
+cases) pins `formatBitrate`, the BITRATE dispatch through `format(...)`, and MEMORY-vs-BITRATE
+divergence at equal magnitude.
+
+## Bug 292: `cjfr view` omits the `Avg.`/`Max.`/`Min.` prefix on derived aggregate column labels
+
+**Status:** Fixed.
+
+**Observed:** For views whose `view.ini` has no explicit `COLUMN` clause, `cjfr view` derived the
+column header from the leaf field's metadata label but dropped the statistical-aggregate prefix.
+network-utilization's header read `Read Rate` / `Write Rate` where the oracle reads
+`Avg. Read Rate` / `Max. Read Rate` etc.
+
+**Root cause:** `ColumnType.labelFor` recurses through an `Aggregate` to its argument and returns
+the *bare* leaf label by design (it is also used where no prefix is wanted). The renderer used
+that bare label directly, so `AVG`/`MAX`/`MIN` never contributed their prefix.
+
+**Fix:** `ViewRenderer.resolveLabels` now prepends `aggregatePrefix(expr)` to the derived
+metadata label — `AVG → "Avg. "`, `MAX → "Max. "`, `MIN → "Min. "`, everything else (COUNT, SUM,
+LAST/FIRST/LAST_BATCH, percentiles) → no prefix, matching `jfr view`'s header derivation.
+
+**Verified:** network-utilization header now matches the oracle exactly.
+
+## Bug 293: `cjfr view memory-leaks-by-*` reports the wrong sample per group — first-in-batch instead of last
+
+**Status:** Fixed.
+
+**Observed:** On a ZGC recording (`renaissance-dotty_gc_ZGC.jfr`), `cjfr view
+memory-leaks-by-class` and `memory-leaks-by-site` reported different Alloc. Time / Object Age /
+Heap Usage values than the JDK `jfr view` oracle for the same group. e.g. for
+`java.util.concurrent.ConcurrentHashMap$Node[]` cjfr showed `17:24:30 / 1 m 13 s / 2.0 MB`
+where the oracle showed `17:24:37 / 1 m 6 s / 122.0 MB`.
+
+**Root cause:** these views are `SELECT LAST_BATCH(...) ... GROUP BY ... ORDER BY allocationTime`.
+All 25 `OldObjectSample` events share one `startTime` (a single end-of-recording batch), so the
+LAST_BATCH batch filter keeps every event and each group collapses to one output row. The
+`LAST_BATCH` reducer was `FirstLastReducer(true)` (FIRST) — it returned the *first* event visited
+in the group. But `jfr view`'s representative within a batch is the *last* event in chronological
+(stable-`startTime` → file) order: `ConcurrentHashMap$Node[]` has samples at 17:24:30 (2.0 MB)
+and 17:24:37 (122.0 MB), and the oracle keeps the 17:24:37 one. The earlier "FIRST-like over the
+already-batch-filtered subset" reasoning was wrong; it only passed on the G1 fixtures because
+their per-`object.type` groups happened to be single-membered after constant-pool Class-identity
+collapse.
+
+**Fix:** `Aggregators.reducer` case `"LAST_BATCH"` now uses `FirstLastReducer(false)` (LAST).
+`orderedForAggregate` already stable-sorts the group by `startTime`, so equal-`startTime` ties
+retain file order and LAST = last-in-file = jfr's representative.
+
+**Verified:** both `memory-leaks-by-class` and `memory-leaks-by-site` now match the oracle
+(modulo the documented Locale.ROOT decimal known-diff). `object-statistics` stays IDENTICAL (its
+LAST_BATCH columns are genuinely multi-batch, ordered by `totalSize DESC`), and `active-settings`
+output is byte-identical before/after (its LAST_BATCH columns are single-per-group). Full
+`ViewCommandTest` (38) + `ValueFormatterTest` (16) green.
+
+## Bug 294: `cjfr view memory-leaks-by-site` collapses every allocation into one `N/A` row — `stackTrace.topApplicationFrame` unresolved
+
+**Status:** Fixed.
+
+**Observed:** On any recording with `jdk.OldObjectSample` events (e.g. `profile.jfr`, 26 samples),
+`cjfr view memory-leaks-by-site` rendered a single group with `Application Method` = `N/A`,
+whereas the JDK `jfr view` oracle rendered one row per allocation site with real method names
+(`me.bechberger.jfr.cli.JFRCLI.createCommandLine()`, `org.tukaani.xz.ArrayCache.getByteArray(int,
+boolean)`, `org.openjdk.jmc.flightrecorder.writer.LEB128ByteArrayWriter.writeBytes(long, byte[])`,
+…). `memory-leaks-by-class` was unaffected.
+
+**Root cause:** the view query is `SELECT LAST_BATCH(stackTrace.topApplicationFrame), … GROUP BY
+stackTrace.topApplicationFrame`. `topApplicationFrame` is a synthetic StackTrace accessor (like
+`topFrame`/`topNotInitFrame`) — it is not a stored field. `ColumnType` knew its type/label, but
+`FieldResolver.resolve` had no branch for it, so it resolved to `null` for every event. The
+GROUP BY therefore bucketed all 26 samples under one null key, rendered `N/A`.
+
+**Fix:** added a `topApplicationFrame` branch to `FieldResolver.resolve` plus a
+`firstApplicationFrame(frames)` helper: return the first frame whose declaring class
+(`method.type.name`) is *not* a JDK/runtime class, else `null` (so all-JDK traces stay a single
+`N/A` group, matching jfr — unlike `topNotInitFrame`, which falls back to `frames[0]`). "System"
+is approximated by well-known runtime package prefixes (`java.`, `javax.`, `jdk.`, `sun.`,
+`com.sun.`), normalizing JVM-internal `/` separators first; everything else — including
+third-party libs like `org.openjdk.jmc.*` / `org.tukaani.*` — counts as application code. Derived
+independently from observed oracle output, not from the GPLv2 `jdk.jfr.internal.query` source.
+
+**Verified:** `cjfr view memory-leaks-by-site` on `profile.cjfr` is now byte-identical to the
+oracle modulo the documented Locale.ROOT decimal known-diff, including the one legitimately-`N/A`
+row (a trace that is entirely `java.*`/`jdk.internal.loader.*` class-loading plumbing) and the
+third-party frames. `memory-leaks-by-class` stays identical (no regression). New
+`FieldResolverTest` (14 cases) covers the system-vs-application classification, slash
+normalization, and prefix look-alikes (`javaxyz`, `com.sundry`). Full suite green.
+
+## Bug 295: `cjfr view` renders plain integers without digit grouping (`3242` vs jfr's `3,242`)
+
+**Status:** Fixed.
+
+**Observed:** In tabular views, `cjfr view` printed plain integer counts ungrouped (`3242`,
+`10310`) where the JDK `jfr view` oracle groups them with the locale thousands separator
+(`3.242` / `10.310` in a German oracle, `3,242` / `10,310` under Locale.ROOT).
+
+**Root cause:** `ValueFormatter` rendered whole numbers with a bare `Long.toString(...)`, applying
+no grouping at all — a structural mismatch with jfr, not merely a locale-separator difference.
+
+**Fix:** route every whole-number path (plain `Number`, whole-valued `Double`, and the `FREQUENCY`
+Hz suffix) through a `groupInteger` helper using `String.format(Locale.ROOT, "%,d", v)`. This
+matches jfr's grouping *structure*; only the separator character differs from a non-ROOT oracle,
+which is the documented Locale.ROOT known-diff the tests already normalize.
+
+**Verified:** `ValueFormatterTest` pins the grouped output (`1,000`, `3,242`, `1,234,567`,
+`-4,200`), the `FREQUENCY` path (`2,600 Hz`), and a whole-valued double (`12,345`). The
+memory/bitrate base-unit paths are unaffected (their ÷1024 scaling caps the base value at 1023, so
+grouping never applies).

@@ -13,7 +13,7 @@ commands accept the same filtering flags, so you can zero in on the
 | Command | Purpose |
 |---|---|
 | `cjfr summary` | Aggregate stats: event counts, GC summary, allocation rate |
-| `cjfr view <FILE> <EVENT>` | Tabular view of one event type |
+| `cjfr view <VIEW_OR_EVENT> <FILE...>` | Tabular view of a named view or one event type |
 | `cjfr inflate` | Convert to JFR for [JDK Mission Control](https://adoptium.net/jmc), [Firefox Profiler](https://parttimenerd.github.io/firefox-profiler/), [jfr-query](https://parttimenerd.github.io/jfr-query/), async-profiler, etc. |
 
 All three accept the **same filter flags** described below.
@@ -40,7 +40,7 @@ cjfr summary --start="2024-05-24 12:07:00" --duration=2m recording.cjfr
 
 # View heap summaries in that window
 cjfr view --start="2024-05-24 12:07:00" --end="2024-05-24 12:09:00" \
-  recording.cjfr jdk.GCHeapSummary
+  jdk.GCHeapSummary recording.cjfr
 
 # Inflate just that window for Mission Control
 cjfr inflate --start="2024-05-24 12:07:00" --duration=2m \
@@ -151,7 +151,7 @@ cjfr summary rec_0.cjfr rec_1.cjfr rec_2.cjfr
 cjfr summary rec_*.cjfr
 ```
 
-For `cjfr inflate` and `cjfr view`, all input files come first as positional arguments, with the output file (`.jfr`) last for inflate, and the event name last for view:
+For `cjfr inflate`, all input files come first as positional arguments, with the output file (`.jfr`) last. For `cjfr view`, the view or event name comes **first** (mirroring the JDK `jfr view`), followed by one or more input files:
 
 ```shell
 # Inflate multiple files into a single JFR
@@ -160,6 +160,9 @@ cjfr inflate rec_0.cjfr rec_1.cjfr rec_2.cjfr merged.jfr
 # Combine multi-file with time range: extract 5-minute window across the set
 cjfr inflate --start="2024-05-24 03:00:00" --duration=5m \
   rec_0.cjfr rec_1.cjfr window.jfr
+
+# View one event type across several files (name first, then the files)
+cjfr view jdk.GarbageCollection rec_0.cjfr rec_1.cjfr rec_2.cjfr
 ```
 
 ---
@@ -184,21 +187,46 @@ CPU time; useful for understanding which event types dominate file size.
 
 ```shell
 # Show all jdk.GarbageCollection events
-cjfr view recording.cjfr jdk.GarbageCollection
+cjfr view jdk.GarbageCollection recording.cjfr
 
 # Limit to first 20
-cjfr view --limit=20 recording.cjfr jdk.GarbageCollection
+cjfr view --limit=20 jdk.GarbageCollection recording.cjfr
 
 # Narrow terminal: truncate long values at the start of cells (keeps the end)
-cjfr view --width=120 --truncate=beginning recording.cjfr jdk.GarbageCollection
+cjfr view --width=120 --truncate=beginning jdk.GarbageCollection recording.cjfr
 
 # JSON output (suitable for piping to jq)
-cjfr view --json recording.cjfr jdk.GarbageCollection | jq '.[] | .gcId'
+cjfr view --json jdk.GarbageCollection recording.cjfr | jq '.[] | .gcId'
 
 # Combine with time range
 cjfr view --start="2024-05-24 12:07:00" --duration=30s --limit=50 \
-  recording.cjfr jdk.GCHeapSummary
+  jdk.GCHeapSummary recording.cjfr
+
+# Render a JDK named view directly (natively when possible, else via `jfr view`)
+cjfr view gc-pauses recording.cjfr
 ```
+
+### Named views
+
+`cjfr view` is a drop-in replacement for the JDK `jfr view` command and supports
+**all** of its named views (`gc-pauses`, `hot-methods`, `allocation-by-site`,
+`exception-by-type`, `jvm-information`, …). The list of views is not bundled or
+hard-coded: `cjfr` reads the running JVM's own `view.ini` from the `jrt:` runtime
+image (`jdk/jfr/internal/query/view.ini`) and evaluates each view's query natively,
+so the set of available views always matches the JDK you run `cjfr` on.
+
+```shell
+cjfr view hot-methods recording.cjfr
+cjfr view allocation-by-site recording.cjfr
+cjfr view --width=120 gc-configuration recording.cjfr
+```
+
+Any view that can't be evaluated natively — or running on a pre-21 JDK where the
+`view.ini` isn't available — falls back automatically to delegating to
+`$JAVA_HOME/bin/jfr view`, so every view the installed JDK offers keeps working.
+Rendering a named view straight from a `.cjfr` is also faster than opening the
+original `.jfr` (measured ~2–3× on a 253 MB `gc_details` recording), since only
+the event types the view needs are read.
 
 `--truncate` accepts `beginning` (or `begin`) to keep the end of long cell values,
 or `end` (default) to keep the beginning. For fully-qualified class names in stack
