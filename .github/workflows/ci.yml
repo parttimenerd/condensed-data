@@ -12,13 +12,7 @@ jobs:
     steps:
     - uses: actions/checkout@v5
 
-    - name: Set up JDK 17 (required by JMC toolchain)
-      uses: actions/setup-java@v5
-      with:
-        java-version: 17
-        distribution: 'sapmachine'
-
-    - name: Set up JDK 21 (primary)
+    - name: Set up JDK 21
       uses: actions/setup-java@v5
       with:
         java-version: 21

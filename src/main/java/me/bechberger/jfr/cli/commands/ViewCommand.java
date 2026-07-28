@@ -231,7 +231,9 @@ public class ViewCommand implements Callable<Integer> {
             // curated named views (gc-configuration, hot-methods, ...) work on condensed files too.
             // This requires inflating any .cjfr inputs to a temporary .jfr first, which is
             // JMC-dependent, so it runs in the reflectively-loaded $Impl.
-            if (!isDottedEventType(viewName)) {
+            // Named views are always kebab-case (contain '-'); a dot-free name without '-' is a
+            // plain event type that simply wasn't found — fall through to reportNoEventType.
+            if (!isDottedEventType(viewName) && viewName.contains("-")) {
                 if (json) {
                     System.err.println(
                             "Error: --json is only supported for event types (e.g."
