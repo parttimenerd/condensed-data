@@ -388,9 +388,13 @@ public class BasicJFRWriter {
             var removedFields = ReducedJFRTypes.getRemovedFields(name, configuration, false);
             fields = fields.stream().filter(f -> !removedFields.contains(f.name())).toList();
         }
-        var description =
-                field.getLabel()
-                        + (field.getDescription() == null ? "" : ": " + field.getDescription());
+        // field.getLabel() is the *field's* label in the parent type (e.g. "Array Information" for
+        // the 'array' field referencing jdk.types.OldObjectArray), not the referenced type's own
+        // @Label. The public JFR API gives no access to the referenced type's own annotations from
+        // a ValueDescriptor field reference, so we store null/empty for all three slots. The JSON
+        // array shape is kept for symmetry with getEventDescription, but inflate will skip label
+        // and description attachment when both are null/empty.
+        var description = getTypeDescription(null, null, List.of());
         return new StructType<>(id, name, description, fields, members -> members);
     }
 
@@ -857,14 +861,25 @@ public class BasicJFRWriter {
     }
 
     String getEventDescription(EventType type) {
+        return getTypeDescription(
+                type.getLabel(), type.getDescription(), type.getAnnotationElements());
+    }
+
+    /**
+     * Encode a type's own {@code @Label}, {@code @Description}, and remaining type-level annotation
+     * elements (e.g. {@code @Experimental}, {@code @Category}) as a parseable JSON array {@code
+     * [label, description, [[typeName, [values]], ...]]}. Used for both event types and referenced
+     * struct types so inflate can re-attach the type-level {@code @Label} for either (see {@link
+     * WritingJFRReader#addEventTypeAnnotations}). Older readers stop at index 1 and ignore the
+     * annotations element.
+     */
+    String getTypeDescription(
+            String label, String description, List<AnnotationElement> annotationElements) {
         var arr = new ArrayList<>();
-        arr.add(type.getLabel());
-        arr.add(type.getDescription());
-        // Third element: the event type's own annotation elements (e.g. @Experimental, @Category),
-        // encoded like field annotations as [[typeName, [values]], ...]. Older readers stop at
-        // index 1 and ignore this; newer readers re-attach these annotations at inflate.
+        arr.add(label);
+        arr.add(description);
         List<Object> annotations =
-                type.getAnnotationElements().stream()
+                annotationElements.stream()
                         .map(
                                 a -> {
                                     List<Object> annotation = new ArrayList<>();

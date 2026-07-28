@@ -692,15 +692,14 @@ public class WritingJFRReader {
         Consumer<TypeStructureBuilder> builderConsumer =
                 builder -> {
                     if (type instanceof StructType<?, ?> structType) {
-                        // Re-attach the event type's own @Label/@Description. Condense stores them
-                        // as
-                        // a ["label","description"] JSON array in the type description (see
-                        // BasicJFRWriter.getEventDescription); without re-adding them the inflated
-                        // type has no type-level @Label, so jfr's eventType.label accessor renders
-                        // "N/A" (breaks views like events-by-count / events-by-name).
-                        if (isEvent) {
-                            addEventTypeAnnotations(builder, structType.getDescription());
-                        }
+                        // Re-attach the type's own @Label/@Description from the condensed
+                        // type description (a ["label","description",[annotations]] JSON array
+                        // written by BasicJFRWriter.getTypeDescription). For event types this
+                        // stores the correct type-level label; for struct/referenced types the
+                        // label slot is null (the JFR public API gives no access to a referenced
+                        // type's own annotations from a ValueDescriptor field reference), so
+                        // addEventTypeAnnotations skips the addAnnotation call harmlessly.
+                        addEventTypeAnnotations(builder, structType.getDescription());
                         if (STACK_FRAME_TYPE.equals(structType.getName())) {
                             // Workaround for JMC Bug 1 (see JMC_FIX.md): emit all 4 fields in
                             // canonical order so StackFrame2Reader doesn't desync.

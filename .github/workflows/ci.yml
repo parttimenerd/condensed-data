@@ -135,13 +135,19 @@ jobs:
           --with-minimal \
           --minimal-output-dir target/platform-jars-minimal/
 
-    # action-gh-release updates an existing release's assets but does NOT re-point an
-    # already-existing tag at target_commitish, so the `latest` tag would drift behind
-    # the newest main commit. Force-move the tag ourselves first so tag == release commit.
-    - name: Move latest tag to current commit
+    # Delete and recreate the rolling release each time so GitHub shows the current
+    # "released X ago" timestamp rather than the original creation date.
+    - name: Delete existing latest release and tag
+      env:
+        GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       run: |
-        git tag -f latest ${{ github.sha }}
-        git push -f origin latest
+        gh release delete latest --yes --repo ${{ github.repository }} 2>/dev/null || true
+        git push -f origin :refs/tags/latest 2>/dev/null || true
+
+    - name: Create latest tag at current commit
+      run: |
+        git tag latest ${{ github.sha }}
+        git push origin latest
 
     - name: Publish rolling latest release
       uses: softprops/action-gh-release@v2

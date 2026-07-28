@@ -1662,3 +1662,43 @@ behaviour (its payload is fully preserved); the dropped copies differ only in a 
 timestamp with no semantic content. The strict "every distinct timestamp survives" contract applies
 to time-series observations, not to re-emitted constants. (User decision 2026-07-27: keep dedup,
 document.)
+
+## Non-bug (investigated): lossless round-trip loses type-level `@Label` on 13 referenced struct types — not fixable via public JFR API
+
+**Status:** Investigated, documented as known limitation. Not fixable without internal JDK API.
+
+**Observed (Bug 301):** a `jfr metadata` comparison of a lossless condense→inflate round-trip
+shows 13 referenced struct types missing their type-level `@Label` annotation in the inflated
+output: `java.lang.Class` ("Java Class"), `java.lang.Thread` ("Thread"), `jdk.types.ClassLoader`
+("Java Class Loader"), `jdk.types.Method` ("Java Method"), `jdk.types.Module` ("Module"),
+`jdk.types.OldObject` ("Old Object"), `jdk.types.OldObjectArray` ("Old Object Array"),
+`jdk.types.OldObjectField` ("Old Object Field"), `jdk.types.OldObjectGcRoot` ("GC Root"),
+`jdk.types.Package` ("Package"), `jdk.types.Reference` ("Reference"),
+`jdk.types.StackTrace` ("Stacktrace"), `jdk.types.ThreadGroup` ("Thread Group").
+
+**Impact scope:** `jfr metadata` output and JMC's type-browser display. Does NOT affect
+`jfr print`/`jfr view` output bodies (those use field-level labels, which are preserved).
+
+**Root cause (confirmed):** `BasicJFRWriter.createStructType(ValueDescriptor field, id)` is
+called with a `ValueDescriptor` representing a **field reference** in a parent type, not the
+type itself. `field.getLabel()` returns the **field's** label (e.g. "Array Information" for the
+`array` field of `jdk.types.OldObject`), not the referenced type's own `@Label` ("Old Object
+Array"). The JDK public JFR API (`jdk.jfr.ValueDescriptor`) gives no access to the referenced
+type's own annotations from a field reference; those annotations live in the internal
+`jdk.jfr.internal.Type` object, accessible only via `--add-opens jdk.jfr/jdk.jfr.internal`.
+
+**Attempted fix (reverted):** storing `field.getLabel()` as the struct-type description introduced
+a regression — wrong labels appeared (e.g. `@Label("Event Thread")` on `java.lang.Thread`).
+
+**Options not taken:**
+- Hardcoded `Map<String, String>` for 13 known types — JDK-version-coupled, brittle.
+- Reflection via `--add-opens jdk.jfr/jdk.jfr.internal` — prohibited by project policy.
+
+**Code impact:** `BasicJFRWriter.getEventDescription` was refactored into a shared
+`getTypeDescription(label, desc, anns)` helper (no semantic change for event types). Struct
+types now store `getTypeDescription(null, null, List.of())` — JSON-array shape but null label,
+so inflate skips the `addAnnotation` call (same net result as before). `WritingJFRReader`
+`addEventTypeAnnotations` is now called for both event types and struct types, but with a
+null-label JSON-array the struct path is a no-op. These changes are forward-compatible if a
+future JDK revision exposes the type-level label via the public API.
+
