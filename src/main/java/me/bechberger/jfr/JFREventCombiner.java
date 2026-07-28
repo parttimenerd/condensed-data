@@ -1877,7 +1877,8 @@ public class JFREventCombiner extends EventCombiner {
         // This state must persist across reconstitute() calls *within one recording* (the writer's
         // per-combiner running value spans gcId-grouped combined events) but must be FRESH for each
         // recording. Reconstitutor instances are shared for the whole JVM (static `recons` map), so
-        // the state can NOT live on the instance — that leaks the last value of one inflate into the
+        // the state can NOT live on the instance — that leaks the last value of one inflate into
+        // the
         // next. Instead we allocate a fresh map per reconstitution session
         // (createReadStructReconstitutor is called once per CondensedInputStream) and thread it
         // through reconstitute().
@@ -1902,8 +1903,7 @@ public class JFREventCombiner extends EventCombiner {
                     return reconstituteWithState(
                             resultEventType,
                             combinedReadEvent,
-                            new ReadStructEventBuilder(
-                                    combinedReadEvent, typeName, typeCollection),
+                            new ReadStructEventBuilder(combinedReadEvent, typeName, typeCollection),
                             prevValueById);
                 }
             };

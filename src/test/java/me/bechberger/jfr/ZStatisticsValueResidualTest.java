@@ -62,11 +62,12 @@ public class ZStatisticsValueResidualTest {
     }
 
     /**
-     * Guards against a reconstitutor-state leak: the {@code ZStatisticsReconstitutor} instances live
-     * in a JVM-lifetime static registry, but the residual decode carries a per-id running value that
-     * must be FRESH for each recording. If that state were kept on the shared instance, the second
-     * inflate in one JVM would decode every value offset by the first recording's last cumulative
-     * value. Running the exact same round-trip twice in-process must therefore both be lossless.
+     * Guards against a reconstitutor-state leak: the {@code ZStatisticsReconstitutor} instances
+     * live in a JVM-lifetime static registry, but the residual decode carries a per-id running
+     * value that must be FRESH for each recording. If that state were kept on the shared instance,
+     * the second inflate in one JVM would decode every value offset by the first recording's last
+     * cumulative value. Running the exact same round-trip twice in-process must therefore both be
+     * lossless.
      */
     @Test
     public void testResidualStateDoesNotLeakBetweenInflates() throws Exception {
