@@ -59,6 +59,7 @@ jobs:
 
     - name: Update JAR size numbers in docs
       if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+      continue-on-error: true
       run: |
         python3 update-jar-sizes.py
         if ! git diff --quiet docs/jar-releases.md; then
