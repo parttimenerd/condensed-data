@@ -12,7 +12,13 @@ jobs:
     steps:
     - uses: actions/checkout@v5
 
-    - name: Set up JDK 21
+    - name: Set up JDK 17 (required by JMC toolchain)
+      uses: actions/setup-java@v5
+      with:
+        java-version: 17
+        distribution: 'sapmachine'
+
+    - name: Set up JDK 21 (primary)
       uses: actions/setup-java@v5
       with:
         java-version: 21
@@ -28,7 +34,7 @@ jobs:
     - name: Install JMC core (SNAPSHOT)
       run: |
         git clone --depth=1 https://github.com/openjdk/jmc.git /tmp/jmc
-        cd /tmp/jmc/core && mvn install -DskipTests -q
+        cd /tmp/jmc/core && mvn install -DskipTests -Dmaven.javadoc.skip=true -q
 
     - name: Run tests
       run: mvn clean test
