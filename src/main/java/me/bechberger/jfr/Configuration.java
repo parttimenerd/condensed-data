@@ -21,6 +21,10 @@ import java.util.Map;
  *     jdk.ExecutionSample)
  * @param combineIOEvents combine and bucket IO events (e.g. jdk.FileRead, jdk.SocketRead)
  * @param profilingBucketSeconds bucket size in seconds for profiling sample combiners (default 10)
+ * @param collapseInternalFramesPrefixes newline-delimited class-name prefixes to collapse in
+ *     profiling stack traces (reduced/archival-max only); empty = disabled
+ * @param collapseAppFramesPrefixes newline-delimited class-name prefixes to force-keep even if they
+ *     match collapseInternalFramesPrefixes; empty = none
  */
 public record Configuration(
         String name,
@@ -47,8 +51,17 @@ public record Configuration(
         long cpuBucketSeconds,
         boolean combineProfilingSamples,
         boolean combineIOEvents,
-        long profilingBucketSeconds)
+        long profilingBucketSeconds,
+        String collapseInternalFramesPrefixes,
+        String collapseAppFramesPrefixes)
         implements Comparable<Configuration> {
+
+    /**
+     * Default set of class-name prefixes that are considered "internal" and eligible for collapsing
+     * in profiling stack traces when runs of ≥ 3 consecutive frames match.
+     */
+    public static final String DEFAULT_COLLAPSE_PREFIXES =
+            "java.\njavax.\njdk.\nsun.\ncom.sun.\norg.springframework.\nscala.\nkotlin.";
 
     public static final Configuration DEFAULT =
             new Configuration(
@@ -79,7 +92,9 @@ public record Configuration(
                     10L,
                     false,
                     false,
-                    10L);
+                    10L,
+                    "",
+                    "");
 
     /** with conservative lossy compression */
     public static final Configuration REASONABLE_DEFAULT =
@@ -106,7 +121,8 @@ public record Configuration(
                     .withCombineBlockingEvents(true)
                     .withDropGCWorkerThreadFromGCPhaseParallel(true)
                     .withCombineProfilingSamples(true)
-                    .withCombineIOEvents(true);
+                    .withCombineIOEvents(true)
+                    .withCollapseInternalFramesPrefixes(DEFAULT_COLLAPSE_PREFIXES);
 
     /**
      * Explicit alias for {@link #DEFAULT}: no data reduction at all. Handy as a clearly-named "keep
@@ -153,7 +169,9 @@ public record Configuration(
                 10L,
                 false,
                 false,
-                10L);
+                10L,
+                "",
+                "");
     }
 
     public Configuration {
@@ -176,13 +194,18 @@ public record Configuration(
         else if (profilingBucketSeconds < 0)
             throw new IllegalArgumentException(
                     "profilingBucketSeconds must be > 0, got " + profilingBucketSeconds);
+        if (collapseInternalFramesPrefixes == null) collapseInternalFramesPrefixes = "";
+        if (collapseAppFramesPrefixes == null) collapseAppFramesPrefixes = "";
     }
+
+    public static final Configuration ARCHIVAL_MAX = REDUCED_DEFAULT.withName("archival-max");
 
     public static final Map<String, Configuration> configurations =
             Map.of(
                     "lossless", LOSSLESS,
                     "default", REASONABLE_DEFAULT,
-                    "reduced", REDUCED_DEFAULT);
+                    "reduced", REDUCED_DEFAULT,
+                    "archival-max", ARCHIVAL_MAX);
 
     public Configuration withTimeStampTicksPerSecond(long ttps) {
         return withFieldValue("timeStampTicksPerSecond", ttps);
@@ -292,6 +315,14 @@ public record Configuration(
         return withFieldValue("profilingBucketSeconds", profilingBucketSeconds);
     }
 
+    public Configuration withCollapseInternalFramesPrefixes(String prefixes) {
+        return withFieldValue("collapseInternalFramesPrefixes", prefixes == null ? "" : prefixes);
+    }
+
+    public Configuration withCollapseAppFramesPrefixes(String prefixes) {
+        return withFieldValue("collapseAppFramesPrefixes", prefixes == null ? "" : prefixes);
+    }
+
     public Configuration withFieldValue(String fieldName, Object value) {
         // Record components retain their names even when MethodParameters is stripped
         // (e.g. by ProGuard with -g:none / parameters=false), so we resolve names via
@@ -342,7 +373,7 @@ public record Configuration(
      * docs/configurations.md} in sync with the code.
      */
     public static String toFlagTable() {
-        var presets = List.of(LOSSLESS, REASONABLE_DEFAULT, REDUCED_DEFAULT);
+        var presets = List.of(LOSSLESS, REASONABLE_DEFAULT, REDUCED_DEFAULT, ARCHIVAL_MAX);
         var booleanComponents =
                 java.util.Arrays.stream(Configuration.class.getRecordComponents())
                         .filter(c -> c.getType() == boolean.class)

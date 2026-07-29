@@ -50,7 +50,6 @@ public enum CombinedEventType {
     JAVA_MONITOR_ENTER("jdk.combined.JavaMonitorEnter", "jdk.JavaMonitorEnter"),
     JAVA_MONITOR_WAIT("jdk.combined.JavaMonitorWait", "jdk.JavaMonitorWait"),
     EXECUTION_SAMPLE("jdk.combined.ExecutionSample", "jdk.ExecutionSample"),
-    NATIVE_METHOD_SAMPLE("jdk.combined.NativeMethodSample", "jdk.NativeMethodSample"),
     SOCKET_READ("jdk.combined.SocketRead", "jdk.SocketRead"),
     SOCKET_WRITE("jdk.combined.SocketWrite", "jdk.SocketWrite"),
     FILE_READ("jdk.combined.FileRead", "jdk.FileRead"),

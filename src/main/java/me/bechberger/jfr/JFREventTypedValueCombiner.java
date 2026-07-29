@@ -5,6 +5,7 @@ import java.util.List;
 import java.util.stream.Collectors;
 import me.bechberger.condensed.ReadStruct;
 import me.bechberger.condensed.types.StructType;
+import me.bechberger.jfr.EventCombiner.Combiner;
 import me.bechberger.jfr.EventReconstitutor.Reconstitutor;
 import org.openjdk.jmc.flightrecorder.writer.api.TypedValue;
 
@@ -34,20 +35,26 @@ public class JFREventTypedValueCombiner {
                     new ReadStruct(checkType(condensedType), new HashMap<>(getMap()));
             return jfrWriter.fromReadStruct(reconstructed);
         }
+
+        @Override
+        public JFREventCombiner.EventBuilder<TypedValue, ?> newBuilderWithTypeName(
+                String newTypeName) {
+            return new TypedValueEventBuilder(getCombinedReadEvent(), newTypeName, jfrWriter);
+        }
     }
 
     /**
      * Creates a TypedValue reconstitutor from an AbstractReconstitutor by wrapping its generic
      * reconstitute method with a TypedValueEventBuilder.
      */
-    public static <C extends JFREventCombiner.AbstractCombiner<?, ?>>
+    public static <C extends Combiner<?, ?>>
             Reconstitutor<C, TypedValue> createTypedValueReconstitutor(
                     JFREventCombiner.AbstractReconstitutor<C> reconstitutor,
                     WritingJFRReader jfrWriter) {
         return new Reconstitutor<>() {
             @Override
-            public String getEventTypeName() {
-                return reconstitutor.getEventTypeName();
+            public List<String> getEventTypeNames() {
+                return reconstitutor.getEventTypeNames();
             }
 
             @Override
@@ -57,7 +64,9 @@ public class JFREventTypedValueCombiner {
                         resultEventType,
                         combinedReadEvent,
                         new TypedValueEventBuilder(
-                                combinedReadEvent, reconstitutor.getEventTypeName(), jfrWriter));
+                                combinedReadEvent,
+                                reconstitutor.getEventTypeNames().get(0),
+                                jfrWriter));
             }
         };
     }

@@ -158,15 +158,15 @@ public class Benchmark {
             if (!tconf.onlyPerHour) {
                 header.add(
                         new TableColumnDescription<>(
-                                "runtime (s)", "%.2f", r -> r.jfrFile.runtime()));
+                                "runtime (s)", "%.1f", r -> r.jfrFile.runtime()));
                 header.add(
                         TableColumnDescription.ofMemory(
-                                "original", r -> r.jfrFile().size(), 3, tconf.humanReadableMemory));
+                                "original", r -> r.jfrFile().size(), 1, tconf.humanReadableMemory));
                 header.add(
                         TableColumnDescription.ofMemory(
                                 "compressed",
                                 r -> r.jfrFile().compressedSize(),
-                                3,
+                                1,
                                 tconf.humanReadableMemory));
             }
             // add per-hour column
@@ -185,7 +185,7 @@ public class Benchmark {
                 header.add(
                         new TableColumnDescription<>(
                                 "%",
-                                "%.2f%%",
+                                "%.1f%%",
                                 r -> {
                                     var originalSize = r.jfrFile().size();
                                     var compressedSize = r.jfrFile().compressedSize;
@@ -211,13 +211,13 @@ public class Benchmark {
                                     header.add(
                                             new TableColumnDescription<>(
                                                     config.name(),
-                                                    "%.2f s",
+                                                    "%.1f s",
                                                     r -> r.forConfiguration(config).runtime()));
                                     header.add(
                                             TableColumnDescription.ofMemory(
                                                     "size",
                                                     r -> r.forConfiguration(config).size(),
-                                                    3,
+                                                    1,
                                                     tconf.humanReadableMemory));
                                     header.add(
                                             new TableColumnDescription<>(

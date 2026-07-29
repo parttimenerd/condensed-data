@@ -742,6 +742,13 @@ public class BasicJFRWriter {
         return reducedStackTraceType;
     }
 
+    @SuppressWarnings("unchecked")
+    CondensedType<JFRReduction.ReducedStackTrace, ?> getReducedStackTraceTypePublic(
+            ValueDescriptor stackTraceField) {
+        return (CondensedType<JFRReduction.ReducedStackTrace, ?>)
+                getReducedStackTraceType(stackTraceField);
+    }
+
     private FloatType getMemoryFloatType(String kind) {
         return memoryFloatTypes.computeIfAbsent(
                 kind,

@@ -107,10 +107,11 @@ public class ConfigurationTest {
 
     @Test
     public void testPredefinedConfigurations() {
-        assertEquals(3, Configuration.configurations.size());
+        assertEquals(4, Configuration.configurations.size());
         assertNotNull(Configuration.configurations.get("lossless"));
         assertNotNull(Configuration.configurations.get("default"));
         assertNotNull(Configuration.configurations.get("reduced"));
+        assertNotNull(Configuration.configurations.get("archival-max"));
     }
 
     @Test

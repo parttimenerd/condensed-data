@@ -188,6 +188,88 @@ public enum JFRReduction {
                 }
             });
 
+    /**
+     * Pre-compiled frame collapser. Parses the prefix list once; entries starting with '!' are
+     * app-inclusion overrides (force-keep), all others are internal prefixes (collapse runs of ≥3).
+     * Thread-safe after construction; intended to be held as a field and reused.
+     */
+    public static final class FrameCollapser {
+
+        private final String[] internalPrefixes;
+        private final String[] appPrefixes;
+
+        /** Returns a no-op collapser (never collapses anything). */
+        public static final FrameCollapser NOOP = new FrameCollapser(new String[0], new String[0]);
+
+        private FrameCollapser(String[] internalPrefixes, String[] appPrefixes) {
+            this.internalPrefixes = internalPrefixes;
+            this.appPrefixes = appPrefixes;
+        }
+
+        /**
+         * Parses a combined prefix string where entries starting with '!' are app-inclusion
+         * overrides and others are internal prefixes. 'default' expands to {@link
+         * Configuration#DEFAULT_COLLAPSE_PREFIXES}. Returns {@link #NOOP} when the resulting
+         * internal list is empty.
+         */
+        public static FrameCollapser parse(String raw) {
+            if (raw == null || raw.isBlank()) return NOOP;
+            var internals = new java.util.ArrayList<String>();
+            var apps = new java.util.ArrayList<String>();
+            raw.lines()
+                    .map(String::trim)
+                    .filter(s -> !s.isEmpty())
+                    .forEach(
+                            s -> {
+                                if (s.equals("default")) {
+                                    Configuration.DEFAULT_COLLAPSE_PREFIXES
+                                            .lines()
+                                            .forEach(internals::add);
+                                } else if (s.startsWith("!")) {
+                                    apps.add(s.substring(1));
+                                } else {
+                                    internals.add(s);
+                                }
+                            });
+            if (internals.isEmpty()) return NOOP;
+            return new FrameCollapser(
+                    internals.toArray(String[]::new), apps.toArray(String[]::new));
+        }
+
+        /** Constructs from pre-split internal and app prefix lists (no '!' convention). */
+        public static FrameCollapser of(String internalRaw, String appRaw) {
+            var internals = splitLines(internalRaw);
+            if (internals.length == 0) return NOOP;
+            return new FrameCollapser(internals, splitLines(appRaw));
+        }
+
+        private static String[] splitLines(String raw) {
+            if (raw == null || raw.isBlank()) return new String[0];
+            return raw.lines().map(String::trim).filter(s -> !s.isEmpty()).toArray(String[]::new);
+        }
+
+        public boolean isNoop() {
+            return internalPrefixes.length == 0;
+        }
+
+        /** Returns true if the frame's class is internal (eligible for collapsing). */
+        public boolean isInternal(jdk.jfr.consumer.RecordedFrame frame) {
+            var method = frame.getMethod();
+            if (method == null) return false;
+            var type = method.getType();
+            if (type == null) return false;
+            String className = type.getName();
+            if (className == null) return false;
+            for (String app : appPrefixes) {
+                if (className.startsWith(app)) return false;
+            }
+            for (String internal : internalPrefixes) {
+                if (className.startsWith(internal)) return true;
+            }
+            return false;
+        }
+    }
+
     static class ReducedStackTrace {
 
         // Fast field accessors — resolve index once, then direct array read
@@ -276,6 +358,52 @@ public enum JFRReduction {
             }
             return new ReducedStackTrace(
                     stackTrace, stackTrace.getFrames().subList(0, limit), true);
+        }
+
+        /**
+         * Creates a ReducedStackTrace with depth-limiting and internal-frame collapsing. Runs of ≥
+         * 3 consecutive frames that the collapser considers internal are collapsed to [first, last]
+         * of that run.
+         */
+        static ReducedStackTrace create(
+                RecordedStackTrace stackTrace, int limit, FrameCollapser collapser) {
+            if (collapser.isNoop()) {
+                return create(stackTrace, limit);
+            }
+            var allFrames = stackTrace.getFrames();
+            List<jdk.jfr.consumer.RecordedFrame> limited =
+                    (limit == -1 || allFrames.size() <= limit)
+                            ? allFrames
+                            : allFrames.subList(0, limit);
+            boolean wasLimited = limited.size() < allFrames.size();
+
+            var result = new java.util.ArrayList<jdk.jfr.consumer.RecordedFrame>(limited.size());
+            int i = 0;
+            boolean anyCollapsed = false;
+            while (i < limited.size()) {
+                int runEnd = i;
+                while (runEnd < limited.size() && collapser.isInternal(limited.get(runEnd))) {
+                    runEnd++;
+                }
+                int runLen = runEnd - i;
+                if (runLen >= 3) {
+                    result.add(limited.get(i));
+                    result.add(limited.get(runEnd - 1));
+                    anyCollapsed = true;
+                } else {
+                    for (int j = i; j < runEnd; j++) result.add(limited.get(j));
+                }
+                if (runEnd == i) {
+                    result.add(limited.get(i));
+                    i++;
+                } else {
+                    i = runEnd;
+                }
+            }
+            if (!anyCollapsed && !wasLimited) {
+                return new ReducedStackTrace(stackTrace);
+            }
+            return new ReducedStackTrace(stackTrace, result, wasLimited || anyCollapsed);
         }
 
         List<RecordedFrame> getFrames() {

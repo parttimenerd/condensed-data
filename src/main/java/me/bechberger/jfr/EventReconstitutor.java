@@ -25,13 +25,17 @@ public class EventReconstitutor<E> {
      */
     public interface Reconstitutor<C extends Combiner<?, ?>, E> {
 
-        /** Get the name of the result event type */
-        String getEventTypeName();
+        /**
+         * Get the names of all result event types this reconstitutor can emit. Most reconstitutors
+         * emit a single type; some (e.g. ExecutionSample) emit two.
+         */
+        List<String> getEventTypeNames();
 
         /**
          * Reconstitute the combined state into a list of events
          *
-         * @param resultEventType result event type, for which instances should be created
+         * @param resultEventType result event type for the primary output type (may be null when
+         *     the reconstitutor resolves type names internally)
          */
         List<E> reconstitute(StructType<?, ?> resultEventType, ReadStruct combinedReadEvent);
     }
@@ -62,13 +66,12 @@ public class EventReconstitutor<E> {
     }
 
     /**
-     * The reconstituted (output) event type name for a combined event, or {@code null} if the event
-     * is not a combined event. Lets a caller decide — before the expensive {@link #reconstitute}
-     * expand — whether the events this combined struct would produce are needed at all.
+     * The reconstituted (output) event type names for a combined event, or {@code null} if the
+     * event is not a combined event.
      */
-    public @Nullable String outputEventTypeName(ReadStruct event) {
+    public @Nullable List<String> outputEventTypeNames(ReadStruct event) {
         var reconstitutor = reconstitutorPerCombinedType.get(event.getType().getName());
-        return reconstitutor == null ? null : reconstitutor.getEventTypeName();
+        return reconstitutor == null ? null : reconstitutor.getEventTypeNames();
     }
 
     private List<E> reconstitute(
@@ -79,8 +82,10 @@ public class EventReconstitutor<E> {
                     "Event type " + typeName + " is not a combined event");
         }
         var reconstitutor = reconstitutorPerCombinedType.get(typeName);
-        return reconstitutor.reconstitute(
-                typeProvider.apply(reconstitutor.getEventTypeName()), combinedReadEvent);
+        // Pass the primary (first) type as resultEventType; reconstitutors that emit multiple
+        // types resolve type names internally and may receive null here.
+        var primaryTypeName = reconstitutor.getEventTypeNames().get(0);
+        return reconstitutor.reconstitute(typeProvider.apply(primaryTypeName), combinedReadEvent);
     }
 
     /** Reconstitute the combined event */
@@ -90,7 +95,9 @@ public class EventReconstitutor<E> {
                 n -> {
                     var typeOrNull = in.getTypeCollection().getTypeOrNull(n);
                     if (typeOrNull == null) {
-                        throw new IllegalArgumentException("Type " + n + " not found");
+                        // The reconstitutor may emit multiple event type names and doesn't use
+                        // resultEventType — return null so callers that ignore it still work.
+                        return null;
                     }
                     if (!(typeOrNull instanceof StructType)) {
                         throw new IllegalArgumentException("Type " + n + " is not a struct type");

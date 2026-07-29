@@ -64,8 +64,8 @@ public class CondenseCommand implements Callable<Integer> {
             names = {"-c", "--condenser-config"},
             description =
                     "The configuration to use, possible values: default, lossless,"
-                            + " reduced, archival-max. 'archival-max' is a"
-                            + " shortcut for reduced data reductions plus MAX_COMPRESSION.",
+                            + " reduced, archival-max. 'archival-max' uses reduced data"
+                            + " reductions plus MAX_COMPRESSION.",
             defaultValue = "default")
     private String configName;
 
@@ -76,23 +76,21 @@ public class CondenseCommand implements Callable<Integer> {
                             + " trade CPU for smaller files.")
     private Compression.CompressionLevel compressionLevel = null;
 
-    /** The special CLI-only config name that expands to reduced + MAX_COMPRESSION. */
-    private static final String ARCHIVAL_MAX = "archival-max";
-
-    /** Resolves {@link #configName} to a {@link Configuration}, handling the archival-max alias. */
+    /** Resolves {@link #configName} to a {@link Configuration}. */
     private Configuration resolveConfiguration() {
-        if (ARCHIVAL_MAX.equals(configName)) {
-            return Configuration.REDUCED_DEFAULT;
-        }
         if (!Configuration.configurations.containsKey(configName)) {
             throw new IllegalArgumentException(
                     "Invalid value for --condenser-config: Unknown configuration: "
                             + configName
                             + ", use one of "
-                            + Configuration.configurations.keySet()
-                            + " or the archival-max shortcut");
+                            + Configuration.configurations.keySet());
         }
-        return Configuration.configurations.get(configName);
+        Configuration base = Configuration.configurations.get(configName);
+        if (reducedSkippedFrames != null && !reducedSkippedFrames.isEmpty()) {
+            String combined = String.join("\n", reducedSkippedFrames);
+            base = base.withCollapseInternalFramesPrefixes(combined);
+        }
+        return base;
     }
 
     /**
@@ -103,7 +101,7 @@ public class CondenseCommand implements Callable<Integer> {
         if (compressionLevel != null) {
             return compressionLevel;
         }
-        if (ARCHIVAL_MAX.equals(configName)) {
+        if ("archival-max".equals(configName)) {
             return Compression.CompressionLevel.MAX_COMPRESSION;
         }
         return Compression.CompressionLevel.HIGH_COMPRESSION;
@@ -114,6 +112,18 @@ public class CondenseCommand implements Callable<Integer> {
             description = "Only condense these event types (repeatable, comma-separated)",
             split = ",")
     private List<String> eventTypes;
+
+    @Option(
+            names = {"--reduced-skipped-frames"},
+            description =
+                    "Class-name prefixes for internal frames to collapse in profiling stack traces"
+                            + " (reduced/archival-max only). Comma- or newline-separated."
+                            + " Use 'default' to include the built-in list"
+                            + " (java., jdk., scala., etc.). Prefix with '!' to force-keep."
+                            + " Example: 'default,!com.myapp.' keeps defaults but never collapses"
+                            + " com.myapp. frames.",
+            split = ",")
+    private List<String> reducedSkippedFrames;
 
     /**
      * Returns the raw string args that are input files (all except the optional trailing .cjfr).

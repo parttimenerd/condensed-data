@@ -11,10 +11,8 @@ public class JFRReductionTest {
 
     @Test
     public void testStateFieldStrippedFromExecutionSampleWhenRemoveTypeInfoEnabled() {
-        var configWithStrip =
-                Configuration.DEFAULT.withRemoveTypeInformationFromStackFrames(true);
-        var configWithout =
-                Configuration.DEFAULT.withRemoveTypeInformationFromStackFrames(false);
+        var configWithStrip = Configuration.DEFAULT.withRemoveTypeInformationFromStackFrames(true);
+        var configWithout = Configuration.DEFAULT.withRemoveTypeInformationFromStackFrames(false);
 
         var strippedFields =
                 ReducedJFRTypes.getRemovedFields("jdk.ExecutionSample", configWithStrip, false);
@@ -27,12 +25,13 @@ public class JFRReductionTest {
 
     @Test
     public void testStateFieldStrippedFromNativeMethodSampleWhenRemoveTypeInfoEnabled() {
-        var configWithStrip =
-                Configuration.DEFAULT.withRemoveTypeInformationFromStackFrames(true);
+        var configWithStrip = Configuration.DEFAULT.withRemoveTypeInformationFromStackFrames(true);
 
         var strippedFields =
                 ReducedJFRTypes.getRemovedFields("jdk.NativeMethodSample", configWithStrip, false);
-        assertTrue(strippedFields.contains("state"), "state should be stripped from NativeMethodSample");
+        assertTrue(
+                strippedFields.contains("state"),
+                "state should be stripped from NativeMethodSample");
     }
 
     @Test

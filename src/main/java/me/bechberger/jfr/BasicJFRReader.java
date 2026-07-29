@@ -196,8 +196,10 @@ public class BasicJFRReader implements JFRReader {
                 // a
                 // type the caller doesn't need (e.g. a named view whose FROM excludes this type).
                 if (reconstituteOnlyEventTypes != null) {
-                    String outputType = reconstitutor.outputEventTypeName(event);
-                    if (outputType != null && !reconstituteOnlyEventTypes.contains(outputType)) {
+                    List<String> outputTypes = reconstitutor.outputEventTypeNames(event);
+                    if (outputTypes != null
+                            && outputTypes.stream()
+                                    .noneMatch(reconstituteOnlyEventTypes::contains)) {
                         return readNextEvent();
                     }
                 }
