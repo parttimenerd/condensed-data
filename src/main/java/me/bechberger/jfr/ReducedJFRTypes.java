@@ -163,7 +163,23 @@ public class ReducedJFRTypes {
                     // the meaningful info
                     Map.entry(
                             "jdk.types.OldObject",
-                            entry("jdk.types.OldObject", addressField("address"))));
+                            entry("jdk.types.OldObject", addressField("address"))),
+                    // ExecutionSample/NativeMethodSample: state is always STATE_RUNNABLE
+                    // (JFR only samples RUNNABLE threads by design)
+                    Map.entry(
+                            "jdk.ExecutionSample",
+                            entry(
+                                    "jdk.ExecutionSample",
+                                    new RemovedPrimitiveField(
+                                            "state",
+                                            Configuration::removeTypeInformationFromStackFrames))),
+                    Map.entry(
+                            "jdk.NativeMethodSample",
+                            entry(
+                                    "jdk.NativeMethodSample",
+                                    new RemovedPrimitiveField(
+                                            "state",
+                                            Configuration::removeTypeInformationFromStackFrames))));
 
     public static Set<String> getRemovedFields(
             String typeName, Configuration configuration, boolean ignoreJFRHandledFields) {

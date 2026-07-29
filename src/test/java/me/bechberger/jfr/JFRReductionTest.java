@@ -1,11 +1,39 @@
 package me.bechberger.jfr;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.time.Instant;
 import org.junit.jupiter.api.Test;
 
 public class JFRReductionTest {
+
+    @Test
+    public void testStateFieldStrippedFromExecutionSampleWhenRemoveTypeInfoEnabled() {
+        var configWithStrip =
+                Configuration.DEFAULT.withRemoveTypeInformationFromStackFrames(true);
+        var configWithout =
+                Configuration.DEFAULT.withRemoveTypeInformationFromStackFrames(false);
+
+        var strippedFields =
+                ReducedJFRTypes.getRemovedFields("jdk.ExecutionSample", configWithStrip, false);
+        assertTrue(strippedFields.contains("state"), "state should be stripped");
+
+        var keptFields =
+                ReducedJFRTypes.getRemovedFields("jdk.ExecutionSample", configWithout, false);
+        assertFalse(keptFields.contains("state"), "state should not be stripped when flag off");
+    }
+
+    @Test
+    public void testStateFieldStrippedFromNativeMethodSampleWhenRemoveTypeInfoEnabled() {
+        var configWithStrip =
+                Configuration.DEFAULT.withRemoveTypeInformationFromStackFrames(true);
+
+        var strippedFields =
+                ReducedJFRTypes.getRemovedFields("jdk.NativeMethodSample", configWithStrip, false);
+        assertTrue(strippedFields.contains("state"), "state should be stripped from NativeMethodSample");
+    }
 
     @Test
     public void testTimestampReductionDefaultConfigPreservesSub256nsDelta() {

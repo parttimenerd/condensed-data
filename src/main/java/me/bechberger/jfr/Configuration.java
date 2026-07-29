@@ -17,6 +17,10 @@ import java.util.Map;
  * @param combinePLABPromotionEvents combine and reduce jdk.PromoteObjectInNewPLAB and
  *     jdk.PromoteObjectOutsidePLAB events
  * @param combineObjectAllocationSampleEvents combine and reduce jdk.ObjectSample events
+ * @param combineProfilingSamples combine and bucket profiling sample events (e.g.
+ *     jdk.ExecutionSample)
+ * @param combineIOEvents combine and bucket IO events (e.g. jdk.FileRead, jdk.SocketRead)
+ * @param profilingBucketSeconds bucket size in seconds for profiling sample combiners (default 10)
  */
 public record Configuration(
         String name,
@@ -40,7 +44,10 @@ public record Configuration(
         boolean combineBlockingEvents,
         boolean combineThreadParkLossless,
         boolean dropGCWorkerThreadFromGCPhaseParallel,
-        long cpuBucketSeconds)
+        long cpuBucketSeconds,
+        boolean combineProfilingSamples,
+        boolean combineIOEvents,
+        long profilingBucketSeconds)
         implements Comparable<Configuration> {
 
     public static final Configuration DEFAULT =
@@ -69,6 +76,9 @@ public record Configuration(
                     // parkedClass
                     false, // dropGCWorkerThreadFromGCPhaseParallel: kept by default (and in
                     // default); only reduced drops it
+                    10L,
+                    false,
+                    false,
                     10L);
 
     /** with conservative lossy compression */
@@ -94,7 +104,9 @@ public record Configuration(
                     .withMaxStackTraceDepth(16)
                     .withCombineExceptionEvents(true)
                     .withCombineBlockingEvents(true)
-                    .withDropGCWorkerThreadFromGCPhaseParallel(true);
+                    .withDropGCWorkerThreadFromGCPhaseParallel(true)
+                    .withCombineProfilingSamples(true)
+                    .withCombineIOEvents(true);
 
     /**
      * Explicit alias for {@link #DEFAULT}: no data reduction at all. Handy as a clearly-named "keep
@@ -138,6 +150,9 @@ public record Configuration(
                 false,
                 false,
                 false,
+                10L,
+                false,
+                false,
                 10L);
     }
 
@@ -157,6 +172,10 @@ public record Configuration(
         } else if (cpuBucketSeconds < 0) {
             throw new IllegalArgumentException("cpuBucketSeconds must be positive");
         }
+        if (profilingBucketSeconds == 0) profilingBucketSeconds = 10L;
+        else if (profilingBucketSeconds < 0)
+            throw new IllegalArgumentException(
+                    "profilingBucketSeconds must be > 0, got " + profilingBucketSeconds);
     }
 
     public static final Map<String, Configuration> configurations =
@@ -261,6 +280,18 @@ public record Configuration(
         return withFieldValue("dropGCWorkerThreadFromGCPhaseParallel", drop);
     }
 
+    public Configuration withCombineProfilingSamples(boolean combineProfilingSamples) {
+        return withFieldValue("combineProfilingSamples", combineProfilingSamples);
+    }
+
+    public Configuration withCombineIOEvents(boolean combineIOEvents) {
+        return withFieldValue("combineIOEvents", combineIOEvents);
+    }
+
+    public Configuration withProfilingBucketSeconds(long profilingBucketSeconds) {
+        return withFieldValue("profilingBucketSeconds", profilingBucketSeconds);
+    }
+
     public Configuration withFieldValue(String fieldName, Object value) {
         // Record components retain their names even when MethodParameters is stripped
         // (e.g. by ProGuard with -g:none / parameters=false), so we resolve names via
@@ -295,7 +326,9 @@ public record Configuration(
                 || combineExceptionEvents
                 || combineG1HeapRegionTypeChangeEvents
                 || combineBlockingEvents
-                || combineThreadParkLossless;
+                || combineThreadParkLossless
+                || combineProfilingSamples
+                || combineIOEvents;
     }
 
     @Override
