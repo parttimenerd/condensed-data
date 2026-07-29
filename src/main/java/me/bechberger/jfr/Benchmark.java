@@ -55,7 +55,14 @@ public class Benchmark {
                 return new TableColumnDescription<>(label, "%d", getter);
             }
             return new TableColumnDescription<>(
-                    label, "%s", (T row) -> MemoryUtil.formatMemory(getter.apply(row), decimals));
+                    label,
+                    "%s",
+                    (T row) ->
+                            MemoryUtil.formatMemory(
+                                    getter.apply(row),
+                                    decimals,
+                                    decimals,
+                                    MemoryUtil.MemoryUnit.BYTES));
         }
 
         public String getStringForRow(T row) {
@@ -222,7 +229,7 @@ public class Benchmark {
                                     header.add(
                                             new TableColumnDescription<>(
                                                     "%",
-                                                    "%.2f%%",
+                                                    "%.1f%%",
                                                     r -> {
                                                         var originalSize = r.jfrFile().size();
                                                         var compressedSize =
