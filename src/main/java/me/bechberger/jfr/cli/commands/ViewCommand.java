@@ -5,6 +5,7 @@ import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.HashSet;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -475,11 +476,13 @@ public class ViewCommand implements Callable<Integer> {
     /** Print the "no event of type X" diagnostic with a did-you-mean list. */
     private Integer reportNoEventType(String eventName, Set<String> seenTypes) {
         System.err.println("No event of type " + eventName + " found.");
-        if (seenTypes.isEmpty()) {
+        var candidates = new LinkedHashSet<String>(NativeView.viewNames());
+        candidates.addAll(seenTypes);
+        if (candidates.isEmpty()) {
             System.err.println("No events found at all.");
         } else {
-            System.err.println("Did you mean one of these events:");
-            seenTypes.stream()
+            System.err.println("Did you mean one of these:");
+            candidates.stream()
                     .sorted(
                             (a, b) -> {
                                 int distA = CLIUtils.editDistance(a, eventName);

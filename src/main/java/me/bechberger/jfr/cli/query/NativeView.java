@@ -5,6 +5,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 import me.bechberger.condensed.ReadStruct;
 import me.bechberger.jfr.cli.query.QueryEvaluator.UnsupportedViewException;
 import me.bechberger.jfr.cli.query.ViewIniReader.ViewDef;
@@ -58,6 +59,11 @@ public final class NativeView {
     /** True if {@code viewName} names a known view in the on-system view.ini. */
     public static boolean isKnownView(String viewName) {
         return views().containsKey(viewName.toLowerCase(java.util.Locale.ROOT));
+    }
+
+    /** All known view names from the on-system view.ini. */
+    public static Set<String> viewNames() {
+        return views().keySet();
     }
 
     /** The parsed query for a view, or empty if unknown/unparseable. Package-visible for tests. */
