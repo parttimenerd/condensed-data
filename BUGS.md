@@ -1885,4 +1885,14 @@ analysis tool ever uses them.
 
 The oracle groups threads by pool-object identity (unique pool pointer per thread struct), which is effectively `(javaName, javaThreadId, osThreadId)`. Our canonicalKey used only `javaName`.
 
-**Fix:** `QueryEvaluator.canonicalKey` now includes `javaThreadId` in the thread group key: `javaName + " " + javaThreadId`. This matches oracle semantics (distinct javaThreadId → distinct group row) while keeping the display label as just `javaName` (controlled separately by `ValueFormatter.format`). Non-thread structs are unchanged (method/class/stackframe grouping still collapses by display string, which is correct).
+**Fix:** `QueryEvaluator.canonicalKey` now passes thread structs (`javaName`/`osName` fields present) through as raw `ReadStruct` objects rather than converting to a display string. `ReadStruct.equals` compares all struct fields including `javaThreadId` and `osThreadId`, so two threads with the same name but different thread ids produce different group keys — matching oracle semantics. Non-thread structs still use `ValueFormatter.format(s, null)` (method/class/stackframe grouping collapses by display string, which is correct: two frames at the same method but different bytecodeIndex should share a group).
+
+## Bug 316: `canonicalKey` thread-join string had a NUL byte (spotless reformat corruption)
+
+**Status:** Fixed (incorporated into Bug 314 fix revision above).
+
+**Observed:** The Bug 314 fix used `return (name != null ? name.toString() : "") + " " + tid;` to build the thread group key. After spotless reformatting, the space character in `" "` was silently replaced with a NUL byte (`\x00`), causing the string join to produce `"threadName\x00tid"`. This was invisible in the editor but caused group-key collisions whenever two threads happened to hash to the same collision under the NUL-padded key (unlikely in practice, but the corruption was present in the source).
+
+**Root cause:** spotless/google-java-format occasionally replaces characters in string literals under certain Unicode conditions. The NUL byte `\x00` was undetectable without a hex dump.
+
+**Fix:** Replaced the NUL-byte string join with `return s;` (pass raw `ReadStruct`). `ReadStruct.equals` uses value equality over all fields, which correctly handles all thread distinguishers without relying on string concatenation.

@@ -478,23 +478,27 @@ final class QueryEvaluator {
     }
 
     /**
-     * Canonicalize a group-key value. {@code jfr view} groups struct-valued keys (a stack frame,
-     * method, thread, class) by their <em>displayed</em> identity rather than raw struct equality —
-     * e.g. all samples whose top frame is the same method collapse into one group even when their
-     * bytecode index or line number differs. Mapping a struct key to its formatted string
-     * reproduces that: two structs that render identically share a group. Non-struct keys pass
-     * through unchanged.
+     * Canonicalize a group-key value. {@code jfr view} groups struct-valued keys (a stack
+     * frame, method, thread, class) by their <em>displayed</em> identity rather than raw
+     * struct equality — e.g. all samples whose top frame is the same method collapse into
+     * one group even when their bytecode index or line number differs. Mapping a struct key
+     * to its formatted string reproduces that: two structs that render identically share a
+     * group.
+     *
+     * <p>Thread structs are the exception: two threads with the same display name ({@code
+     * javaName}) but different {@code javaThreadId}s must remain separate groups (recycled
+     * thread names). Thread structs pass through as raw {@link ReadStruct}; {@link
+     * ReadStruct#equals} compares all fields including {@code javaThreadId}.
      */
     private static Object canonicalKey(Object value) {
         if (value instanceof ReadStruct s) {
-            // Thread structs: group by (javaName, javaThreadId) so that recycled thread
-            // names (same name, different thread id) produce separate groups — matching
-            // the oracle which groups by pool identity, not by display name.
+            // Thread structs: pass through raw so ReadStruct.equals compares (javaName,
+            // javaThreadId), keeping recycled thread names as separate groups.
             if (s.hasField("javaName") || s.hasField("osName")) {
-                Object name = s.hasField("javaName") ? s.get("javaName") : s.get("osName");
-                Object tid = s.hasField("javaThreadId") ? s.get("javaThreadId") : null;
-                if (tid != null) return (name != null ? name.toString() : "") + " " + tid;
+                return s;
             }
+            // All other structs (frames, methods, classes, …): group by display-format string
+            // so that frames at the same method but different bci/lineNumber share a group.
             return ValueFormatter.format(s, null);
         }
         return value;
