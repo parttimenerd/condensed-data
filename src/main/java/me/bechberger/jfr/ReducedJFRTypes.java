@@ -198,7 +198,30 @@ public class ReducedJFRTypes {
                             "jdk.NativeMethodSample",
                             entry(
                                     "jdk.NativeMethodSample",
-                                    new RemovedPrimitiveField("state", c -> true))));
+                                    new RemovedPrimitiveField("state", c -> true))),
+                    // Deoptimization/CompilerInlining: direct bci+lineNumber fields on the event
+                    // itself (distinct from StackFrame fields) — drop with same flag
+                    Map.entry(
+                            "jdk.Deoptimization",
+                            entry(
+                                    "jdk.Deoptimization",
+                                    new RemovedPrimitiveField(
+                                            "lineNumber",
+                                            Configuration::removeBCIAndLineNumberFromStackFrames),
+                                    new RemovedPrimitiveField(
+                                            "bci",
+                                            Configuration::removeBCIAndLineNumberFromStackFrames))),
+                    Map.entry(
+                            "jdk.CompilerInlining",
+                            entry(
+                                    "jdk.CompilerInlining",
+                                    new RemovedPrimitiveField(
+                                            "lineNumber",
+                                            Configuration::removeBCIAndLineNumberFromStackFrames),
+                                    new RemovedPrimitiveField(
+                                            "bci",
+                                            Configuration
+                                                    ::removeBCIAndLineNumberFromStackFrames))));
 
     public static Set<String> getRemovedFields(
             String typeName, Configuration configuration, boolean ignoreJFRHandledFields) {
