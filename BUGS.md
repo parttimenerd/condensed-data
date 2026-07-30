@@ -1799,3 +1799,13 @@ analysis tool ever uses them.
 1. `DurationColumn.format()` now calls `ValueFormatter.formatTimespan(val)` which always formats sub-second values in milliseconds with a space before the unit and correctly maps `Long.MIN_VALUE` → "N/A" and `Long.MAX_VALUE` → "Indefinite".
 2. `MemoryColumn.format()` now calls `ValueFormatter.formatMemory(value)` for BYTES columns, which formats as "N.N kB", "N.N MB", "0 bytes" (space before unit, matching oracle format). BITS columns still use `MemoryUtil.formatMemory` since there's no matching path in ValueFormatter.
 3. Made `ValueFormatter` class and key methods (`formatTimespan`, `formatMemory`) `public` so `JFRView` can access them from the sibling package.
+
+## Bug 307: `cjfr view <EventType>` collapsed struct fields into one "field=value" cell instead of expanding to separate columns
+
+**Status:** Fixed.
+
+**Observed:** `cjfr view jdk.GCHeapSummary profile.jfr` showed the `heapSpace` (VirtualSpace) struct as a single `Heap Space` column containing `"Start Address=0x500000000, Committed End Address=0x531000000, ..."`. The JDK oracle (`jfr view`) expands the struct into 5 separate columns with headers `"Heap Space : ..."` (one per sub-field: start address, committed end, committed size, reserved end, reserved size).
+
+**Root cause:** `JFRViewConfig(StructType<?, ?> type)` mapped each top-level field to exactly one column via `fieldToColumn`. Generic struct fields produced a `StructColumn` which, in single-row mode, joined all sub-fields as `"field=value"` pairs. The oracle instead flattens each struct field into N columns at the top level.
+
+**Fix:** Added `topLevelFieldColumns(Field<?, ?, ?> field)` which detects when `fieldToColumn` would return a `StructColumn` and instead expands the struct into one flat `NestedColumn` per sub-field, with compound header `"Parent : Child"`. Added `NestedColumn` wrapper record that delegates formatting through `event.getStruct(parentProp)` to the inner column. Dedicated formatters (Thread, StackTrace, Class, etc.) are unaffected because they return non-`StructColumn` instances from `fieldToColumn`.

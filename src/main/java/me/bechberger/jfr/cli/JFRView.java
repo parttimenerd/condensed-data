@@ -646,6 +646,37 @@ public class JFRView {
         }
     }
 
+    /**
+     * Wraps a Column so it reads from a nested struct field instead of the event root. Used to
+     * expand a struct field into flat top-level columns (e.g. "Heap Space : Committed Size").
+     */
+    record NestedColumn(String header, String parentProperty, Column inner) implements Column {
+
+        @Override
+        public int width() {
+            return inner.width();
+        }
+
+        @Override
+        public int maxWidth() {
+            return inner.maxWidth();
+        }
+
+        @Override
+        public Alignment alignment() {
+            return inner.alignment();
+        }
+
+        @Override
+        public List<String> format(ReadStruct event, int rows) {
+            var nested = event.getStruct(parentProperty);
+            if (nested == null) {
+                return List.of("-");
+            }
+            return inner.format(nested, rows);
+        }
+    }
+
     /** Generic formatter for structs */
     record StructColumn(String header, String property, List<Column> parts) implements Column {
 
@@ -739,6 +770,28 @@ public class JFRView {
 
     static Column fieldToColumn(Field<?, ?, ?> field) {
         return fieldToColumn(field, 2);
+    }
+
+    /**
+     * Expands a top-level event field into columns. Generic struct fields are flattened into one
+     * column per sub-field with header "Parent : Child" (matching jfr oracle output). Fields with
+     * dedicated formatters (Thread, StackTrace, Class, etc.) return a singleton list.
+     */
+    static List<Column> topLevelFieldColumns(Field<?, ?, ?> field) {
+        Column col = fieldToColumn(field);
+        if (col instanceof StructColumn && field.type() instanceof StructType<?, ?> structType) {
+            String parentHeader = fieldDisplayName(field);
+            String parentProp = field.name();
+            return structType.getFields().stream()
+                    .map(
+                            subField -> {
+                                Column inner = fieldToColumn(subField, 1);
+                                String compoundHeader = parentHeader + " : " + inner.header();
+                                return (Column) new NestedColumn(compoundHeader, parentProp, inner);
+                            })
+                    .collect(java.util.stream.Collectors.toList());
+        }
+        return List.of(col);
     }
 
     /** Check if the field description JSON contains a specific annotation type */
@@ -871,7 +924,9 @@ public class JFRView {
         public JFRViewConfig(StructType<?, ?> type) {
             this(
                     typeDisplayName(type),
-                    type.getFields().stream().map(JFRView::fieldToColumn).toList());
+                    type.getFields().stream()
+                            .flatMap(f -> topLevelFieldColumns(f).stream())
+                            .toList());
         }
 
         /** Derive the display name: the @Label from the type description, or the raw type name. */
