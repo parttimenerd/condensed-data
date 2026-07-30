@@ -91,7 +91,7 @@ public class Agent implements Runnable {
         if (agentArgs == null || agentArgs.isBlank()) {
             return new PreprocResult(new String[0], false);
         }
-        String[] tokens = parseAgentArgs(agentArgs);
+        String[] tokens = FemtoCli.toArgv(agentArgs);
         boolean logToFile = false;
         var filtered = new java.util.ArrayList<String>(tokens.length);
         for (String token : tokens) {
@@ -102,56 +102,6 @@ public class Agent implements Runnable {
             }
         }
         return new PreprocResult(filtered.toArray(String[]::new), logToFile);
-    }
-
-    /**
-     * Split a comma-separated agent args string into an argv array. Mirrors {@code
-     * AgentArgs.toArgv} from femtocli (which is package-private and therefore not directly
-     * callable).
-     */
-    private static String[] parseAgentArgs(String agentArgs) {
-        var out = new java.util.ArrayList<String>();
-        var cur = new StringBuilder();
-        var protectedChars = new java.util.ArrayList<Boolean>();
-        boolean escaping = false, inQuotes = false;
-        for (int i = 0; i < agentArgs.length(); i++) {
-            char c = agentArgs.charAt(i);
-            if (escaping) {
-                if (c == '\\' || c == ',' || c == '=') {
-                    cur.append(c);
-                    protectedChars.add(true);
-                } else {
-                    throw new IllegalArgumentException("Invalid escape: \\" + c);
-                }
-                escaping = false;
-                continue;
-            }
-            if (c == '\\') { escaping = true; continue; }
-            if (c == '\'') { inQuotes = !inQuotes; continue; }
-            if (!inQuotes && c == ',') {
-                addToken(out, cur, protectedChars);
-                cur.setLength(0);
-                protectedChars.clear();
-                continue;
-            }
-            cur.append(c);
-            protectedChars.add(inQuotes);
-        }
-        if (escaping) throw new IllegalArgumentException("Dangling escape in agent args");
-        if (inQuotes) throw new IllegalArgumentException("Unterminated quote in agent args");
-        addToken(out, cur, protectedChars);
-        return out.toArray(String[]::new);
-    }
-
-    private static void addToken(
-            java.util.List<String> out, StringBuilder cur, java.util.List<Boolean> prot) {
-        String raw = cur.toString();
-        int s = 0, e = raw.length();
-        while (s < e && Character.isWhitespace(raw.charAt(s)) && !prot.get(s)) s++;
-        while (e > s && Character.isWhitespace(raw.charAt(e - 1)) && !prot.get(e - 1)) e--;
-        String token = raw.substring(s, e);
-        if (token.isEmpty()) throw new IllegalArgumentException("Empty token in agent args");
-        out.add(token);
     }
 
     public static String getAgentArgs() {
