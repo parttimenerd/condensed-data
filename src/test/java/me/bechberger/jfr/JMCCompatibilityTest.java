@@ -310,8 +310,8 @@ public class JMCCompatibilityTest {
 
     /**
      * Verifies that array-valued type-level annotations (e.g. @Category) survive the
-     * condense→inflate round-trip. Without the fix these were silently dropped, causing JMC's
-     * Event Type Tree to be empty for inflated recordings.
+     * condense→inflate round-trip. Without the fix these were silently dropped, causing JMC's Event
+     * Type Tree to be empty for inflated recordings.
      */
     @Test
     void categoryAnnotationsSurviveRoundTrip() throws Exception {
@@ -344,7 +344,10 @@ public class JMCCompatibilityTest {
             try (RecordingFile orig = new RecordingFile(src)) {
                 var origCategory =
                         orig.readEventTypes().stream()
-                                .filter(t -> t.getCategoryNames() != null && !t.getCategoryNames().isEmpty())
+                                .filter(
+                                        t ->
+                                                t.getCategoryNames() != null
+                                                        && !t.getCategoryNames().isEmpty())
                                 .map(jdk.jfr.EventType::getName)
                                 .collect(java.util.stream.Collectors.toSet());
                 for (var t : types) {
@@ -409,18 +412,27 @@ public class JMCCompatibilityTest {
             WritingJFRReader.toJFRFile(new BasicJFRReader(in), inflated);
         }
 
+        // Collect event types that have at least one event in the original recording.
+        // Zero-event types are not written as struct types into the condensed stream, so
+        // their annotations cannot be round-tripped through inflate — they are skipped here.
+        var typesWithEvents = new java.util.HashSet<String>();
+        try (RecordingFile scanRf = new RecordingFile(src)) {
+            while (scanRf.hasMoreEvents()) {
+                typesWithEvents.add(scanRf.readEvent().getEventType().getName());
+            }
+        }
+
         try (RecordingFile orig = new RecordingFile(src);
                 RecordingFile inflatedRf = new RecordingFile(inflated)) {
             var origByName =
                     orig.readEventTypes().stream()
                             .collect(
                                     java.util.stream.Collectors.toMap(
-                                            jdk.jfr.EventType::getName,
-                                            t -> t,
-                                            (a, b) -> a));
+                                            jdk.jfr.EventType::getName, t -> t, (a, b) -> a));
             var missingLabel = new ArrayList<String>();
             var missingCategory2 = new ArrayList<String>();
             for (var t : inflatedRf.readEventTypes()) {
+                if (!typesWithEvents.contains(t.getName())) continue;
                 var o = origByName.get(t.getName());
                 if (o == null) continue;
                 if (o.getLabel() != null

@@ -1730,3 +1730,35 @@ original garbage values. No data is lost and no additional loss is introduced.
 as they carry zero information. Not implemented yet — waiting to confirm whether any JFR
 analysis tool ever uses them.
 
+
+## Bug 302: `@Category` array annotation silently dropped during inflate, causing JMC Event Type Tree to be empty
+
+**Status:** Fixed.
+
+**Observed:** After a condense→inflate round-trip, JMC's Event Type Tree was empty ("Einen Event Type Tree gibt es im inflate auch nicht mehr"). The `jdk....` event types appeared with 0 events in JMC but had no category groupings. Additionally, `cjfr view active-settings profile.jfr` showed raw type names (`jdk.FileForce`) instead of `@Label` values (`File Force`).
+
+**Root cause (confirmed):** Two related issues:
+
+1. **Array-valued annotations dropped**: `@Category({"Flight Recorder", "Java Application"})` stores its value as a `String[]`. The annotation-writing loop in `WritingJFRReader` only handled single scalar-value annotations; multi-value list entries were silently skipped. JMC uses `@Category` exclusively to populate the Event Type Tree — without it, the tree is empty.
+
+2. **Zero-event type labels missing from `.jfr` view path**: For types with no events (e.g. `jdk.FileForce`), no struct type is written to the condensed stream, so they don't appear in the stream type collection. The footer's `eventTypeLabels` map covers all types (populated in `BasicJFRWriter.close()` from `registerEventTypes`), but `ViewCommand.typeLabels()` only consulted the footer for on-disk `.cjfr` files via `CJFRFooterReader.tryRead(Path)`. When viewing a raw `.jfr` (on-the-fly condensation), the footer lived in an in-memory byte array that wasn't exposed.
+
+**Fixes applied:**
+
+1. `WritingJFRReader`: detect list-valued annotation entries (`values.size() == 1 && values.get(0) instanceof List`) and write them via `addAnnotation(Type, Consumer<TypedValueBuilder>)` with `putField("value", String[])`. Added `getOrCreateArrayAnnotationType` helper with a distinct cache key (`name + " array"`) so scalar and array registrations of the same annotation type don't collide.
+
+2. `CJFRFooterReader.tryRead(byte[])`: new overload that reads footer from in-memory bytes using array-index arithmetic (mirrors the `RandomAccessFile` path for disk files).
+
+3. `CombiningJFRReader`: on-the-fly `.jfr` condensed bytes are now stored in `ReaderAndReadEvents.condensedBytes`; `inMemoryFooters()` exposes the parsed footers. `ViewCommand.typeLabels()` now calls `jfrReader.inMemoryFooters()` to get the full `eventTypeLabels` map for `.jfr` inputs.
+
+**Regression tests added:** `JMCCompatibilityTest.categoryAnnotationsSurviveRoundTrip` (existing), `JMCCompatibilityTest.eventTypeAnnotationsSurviveRoundTrip` (new — also verifies `@Label` and footer coverage for all types including zero-event types).
+
+## Bug 303: `cjfr view recording` (and `modules`, `safepoints`, `tlabs`) silently fell through to "No event type found"
+
+**Status:** Fixed.
+
+**Observed:** `cjfr view recording profile.jfr` printed "No event of type recording found. Did you mean one of these: recording ..." — the view was in the suggestions list but the command failed to render it.
+
+**Root cause:** The delegation check in `ViewCommand.run()` used `viewName.contains("-")` as a heuristic for "this is a named JDK view, not an event type name". Most JDK named views are kebab-case (`gc-pauses`, `hot-methods`, …), so the heuristic worked. But four JDK views have no hyphen: `recording`, `modules`, `safepoints`, `tlabs`. These all use `FROM *` (not natively evaluable), so `tryNativeView` returned empty — and then the delegation guard `viewName.contains("-")` was false, so the code fell through to `reportNoEventType` instead of delegating to `jfr view`.
+
+**Fix:** Changed the delegation guard from `viewName.contains("-")` to `NativeView.isKnownView(viewName) || viewName.contains("-")`. The primary check uses the view.ini registry (accurate for all JDK 21+ views); the `-` heuristic remains as a fallback for pre-21 JDKs where the registry is empty but dash-named views are still meaningful.
