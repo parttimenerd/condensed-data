@@ -544,7 +544,8 @@ public class ViewCommand implements Callable<Integer> {
         } else {
             var view =
                     new JFRView(
-                            new JFRViewConfig(matchingEvents.get(0).getType()),
+                            new JFRViewConfig(
+                                    matchingEvents.get(0).getType(), matches.typeLabels()),
                             new PrintConfig(
                                     effectiveWidth(),
                                     effectiveCellHeight(),

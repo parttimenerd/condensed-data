@@ -10,6 +10,7 @@ import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import me.bechberger.condensed.ReadStruct;
 import me.bechberger.condensed.types.CondensedType;
@@ -677,6 +678,34 @@ public class JFRView {
         }
     }
 
+    /**
+     * Renders jdk.ActiveSetting/jdk.RecordingSetting {@code id} field: cjfr stores the target
+     * event type's name (e.g. "jdk.ThreadStart"); oracle shows the @Label (e.g. "Java Thread
+     * Start"). Falls back to raw value when label is unknown.
+     */
+    record EventIdColumn(String header, String property, Map<String, String> typeLabels)
+            implements Column {
+
+        @Override
+        public int width() {
+            return -1;
+        }
+
+        @Override
+        public List<String> format(ReadStruct event, int rows) {
+            var val = event.get(property);
+            if (val == null) return List.of("-");
+            String raw = val.toString();
+            String label = typeLabels.getOrDefault(raw, raw);
+            return List.of(label);
+        }
+
+        @Override
+        public Alignment alignment() {
+            return Alignment.LEFT;
+        }
+    }
+
     /** Generic formatter for structs */
     record StructColumn(String header, String property, List<Column> parts) implements Column {
 
@@ -778,6 +807,19 @@ public class JFRView {
      * dedicated formatters (Thread, StackTrace, Class, etc.) return a singleton list.
      */
     static List<Column> topLevelFieldColumns(Field<?, ?, ?> field) {
+        return topLevelFieldColumns(field, null, Map.of());
+    }
+
+    static List<Column> topLevelFieldColumns(
+            Field<?, ?, ?> field, String parentTypeName, Map<String, String> typeLabels) {
+        // ActiveSetting/RecordingSetting.id: stored as event-type name, render as @Label
+        if ("id".equals(field.name())
+                && ("jdk.ActiveSetting".equals(parentTypeName)
+                        || "jdk.RecordingSetting".equals(parentTypeName))
+                && !typeLabels.isEmpty()) {
+            return List.of(
+                    new EventIdColumn(fieldDisplayName(field), field.name(), typeLabels));
+        }
         Column col = fieldToColumn(field);
         if (col instanceof StructColumn && field.type() instanceof StructType<?, ?> structType) {
             String parentHeader = fieldDisplayName(field);
@@ -922,10 +964,14 @@ public class JFRView {
 
     public record JFRViewConfig(String name, List<Column> columns) {
         public JFRViewConfig(StructType<?, ?> type) {
+            this(type, Map.of());
+        }
+
+        public JFRViewConfig(StructType<?, ?> type, Map<String, String> typeLabels) {
             this(
                     typeDisplayName(type),
                     type.getFields().stream()
-                            .flatMap(f -> topLevelFieldColumns(f).stream())
+                            .flatMap(f -> topLevelFieldColumns(f, type.getName(), typeLabels).stream())
                             .toList());
         }
 

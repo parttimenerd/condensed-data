@@ -1819,3 +1819,13 @@ analysis tool ever uses them.
 **Root cause:** `reportNoEventType` in `ViewCommand` always printed to stderr, showed suggestions, and returned 1 regardless of whether the event type was recognized in the recording metadata. `typeLabels` (populated from the CJFR footer / type annotations) already distinguished known types from unknown ones, but this distinction wasn't used to change the exit behavior.
 
 **Fix:** When `typeLabels` contains a non-empty label for the event type (meaning the type IS recognized in the recording metadata), `reportNoEventType` now prints "No events found for '<label>'." to stdout and returns 0 without suggestions — mirroring the oracle. Unknown event types (label absent from metadata) still use the old stderr + exit 1 + suggestions path.
+
+## Bug 309: `cjfr view jdk.ActiveSetting` showed raw event type names in "Event Id" column instead of @Label
+
+**Status:** Fixed.
+
+**Observed:** `cjfr view jdk.ActiveSetting profile.jfr` showed `jdk.ThreadStart` in the "Event Id" column. The JDK oracle (`jfr view`) shows `Java Thread Start` (the `@Label` of `jdk.ThreadStart`).
+
+**Root cause:** cjfr stores `jdk.ActiveSetting.id` (and `jdk.RecordingSetting.id`) as the target event type's name string (e.g. "jdk.ThreadStart") after the JMC compat fix (Bug 289). The `JFRView` rendered it as a plain string. The `typeLabels` map (already computed in `collectMatches` from the CJFR footer) was not passed into `JFRViewConfig`.
+
+**Fix:** Added `EventIdColumn` that looks up the stored event type name in `typeLabels` to resolve it to the `@Label`. Added `JFRViewConfig(StructType, Map<String, String> typeLabels)` constructor and updated `topLevelFieldColumns()` to accept the parent type name and typeLabels. `ViewCommand.renderMatches()` now passes `matches.typeLabels()` to `JFRViewConfig`. The `EventIdColumn` is used only for the `id` field on `jdk.ActiveSetting` and `jdk.RecordingSetting`, falling back to the raw value when no label is found.
