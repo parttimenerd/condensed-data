@@ -1,7 +1,6 @@
 package me.bechberger.jfr;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.time.Instant;
@@ -10,28 +9,40 @@ import org.junit.jupiter.api.Test;
 public class JFRReductionTest {
 
     @Test
-    public void testStateFieldStrippedFromExecutionSampleWhenRemoveTypeInfoEnabled() {
+    public void testStateFieldStrippedFromExecutionSampleUnconditionally() {
+        // state is always STATE_RUNNABLE (JFR only samples runnable threads), so it is
+        // stripped unconditionally regardless of removeTypeInformationFromStackFrames.
         var configWithStrip = Configuration.DEFAULT.withRemoveTypeInformationFromStackFrames(true);
         var configWithout = Configuration.DEFAULT.withRemoveTypeInformationFromStackFrames(false);
 
-        var strippedFields =
+        var strippedWithFlag =
                 ReducedJFRTypes.getRemovedFields("jdk.ExecutionSample", configWithStrip, false);
-        assertTrue(strippedFields.contains("state"), "state should be stripped");
+        assertTrue(strippedWithFlag.contains("state"), "state should be stripped when flag on");
 
-        var keptFields =
+        var strippedWithoutFlag =
                 ReducedJFRTypes.getRemovedFields("jdk.ExecutionSample", configWithout, false);
-        assertFalse(keptFields.contains("state"), "state should not be stripped when flag off");
+        assertTrue(
+                strippedWithoutFlag.contains("state"),
+                "state should be stripped unconditionally (always STATE_RUNNABLE)");
     }
 
     @Test
-    public void testStateFieldStrippedFromNativeMethodSampleWhenRemoveTypeInfoEnabled() {
+    public void testStateFieldStrippedFromNativeMethodSampleUnconditionally() {
+        // state is always STATE_RUNNABLE — stripped unconditionally.
         var configWithStrip = Configuration.DEFAULT.withRemoveTypeInformationFromStackFrames(true);
+        var configWithout = Configuration.DEFAULT.withRemoveTypeInformationFromStackFrames(false);
 
-        var strippedFields =
+        var strippedWithFlag =
                 ReducedJFRTypes.getRemovedFields("jdk.NativeMethodSample", configWithStrip, false);
         assertTrue(
-                strippedFields.contains("state"),
-                "state should be stripped from NativeMethodSample");
+                strippedWithFlag.contains("state"),
+                "state should be stripped from NativeMethodSample when flag on");
+
+        var strippedWithoutFlag =
+                ReducedJFRTypes.getRemovedFields("jdk.NativeMethodSample", configWithout, false);
+        assertTrue(
+                strippedWithoutFlag.contains("state"),
+                "state should be stripped from NativeMethodSample unconditionally");
     }
 
     @Test

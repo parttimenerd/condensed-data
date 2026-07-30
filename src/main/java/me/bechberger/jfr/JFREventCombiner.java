@@ -974,6 +974,10 @@ public class JFREventCombiner extends EventCombiner {
 
             // Wrap in a plabSize-keyed map so each distinct plabSize gets its own bucket and
             // roundtrips exactly (PromoteObjectInNewPLAB only; OutsidePLAB has no such field).
+            // In sumObjectSizes mode we're already lossy, so quantize plabSize to the nearest
+            // lower power-of-2 before using it as a key. This collapses ~5000 unique adaptive
+            // PLAB sizes into ≤11 buckets (1KB–1MB range) while still telling you order of
+            // magnitude — far cheaper to store than 5000 distinct map keys.
             MapEntry<RecordedEvent, ?> afterAge =
                     hasPlabSize
                             ? (MapEntry)
@@ -985,7 +989,13 @@ public class JFREventCombiner extends EventCombiner {
                                                                     basicJFRWriter.getTypeCached(
                                                                             eventType.getField(
                                                                                     "plabSize")),
-                                                    e -> e.getLong("plabSize")),
+                                                    e -> {
+                                                        long raw = e.getLong("plabSize");
+                                                        return configuration.sumObjectSizes()
+                                                                ? Long.highestOneBit(
+                                                                        Math.max(raw, 1L))
+                                                                : raw;
+                                                    }),
                                             objectsByThread)
                             : objectsByThread;
 

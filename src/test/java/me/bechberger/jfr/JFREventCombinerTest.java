@@ -403,12 +403,18 @@ public class JFREventCombinerTest {
                 reconPlabCounts.containsKey(-1L),
                 "reconstituted PromoteObjectInNewPLAB must not carry the -1 plabSize sentinel");
         if (sumObjectSizes) {
-            // Summing mode intentionally collapses to one event per (class, age, plabSize)
-            // bucket, so only the SET of distinct plabSizes is preserved, not the counts.
+            // Summing mode quantizes plabSize to the nearest lower power-of-2 to collapse
+            // ~5000 unique adaptive PLAB sizes into ≤11 buckets for key-map efficiency.
+            // Verify that every reconstituted plabSize is a power-of-2 and that the
+            // set of quantized originals matches the set of reconstituted values.
+            Set<Long> quantizedOrig =
+                    origPlabCounts.keySet().stream()
+                            .map(v -> Long.highestOneBit(Math.max(v, 1L)))
+                            .collect(java.util.stream.Collectors.toSet());
             assertEquals(
-                    origPlabCounts.keySet(),
+                    quantizedOrig,
                     reconPlabCounts.keySet(),
-                    "the set of distinct plabSize values must survive summing combine");
+                    "summing mode: plabSize must survive as power-of-2 quantized values");
         } else {
             // Lossless (array) mode — the DEFAULT/lossless preset — must preserve every event's
             // plabSize exactly.
