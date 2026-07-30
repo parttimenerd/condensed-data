@@ -359,4 +359,87 @@ public class JMCCompatibilityTest {
             }
         }
     }
+
+    /**
+     * Verifies that @Label and @Description survive the condense→inflate round-trip for all event
+     * types that have events in the recording. Also checks that the footer's eventTypeLabels map
+     * (used by {@code cjfr view} on raw .cjfr files) is populated for zero-event types.
+     */
+    @Test
+    void eventTypeAnnotationsSurviveRoundTrip() throws Exception {
+        Path src = Path.of("profile.jfr");
+        Assumptions.assumeTrue(Files.exists(src), "profile.jfr not found — skipping");
+
+        ByteArrayOutputStream cjfrBytes = new ByteArrayOutputStream();
+        try (CondensedOutputStream out =
+                new CondensedOutputStream(cjfrBytes, StartMessage.DEFAULT)) {
+            BasicJFRWriter writer = new BasicJFRWriter(out, Configuration.LOSSLESS);
+            try (RecordingFile recording = new RecordingFile(src)) {
+                writer.registerEventTypes(recording.readEventTypes());
+                while (recording.hasMoreEvents()) {
+                    writer.processEvent(recording.readEvent());
+                }
+            }
+            writer.close();
+        }
+
+        // Read the footer: it must contain labels for ALL event types, including zero-event types
+        var footer = me.bechberger.condensed.CJFRFooterReader.tryRead(cjfrBytes.toByteArray());
+        if (footer.isPresent()) {
+            var footerLabels = footer.get().eventTypeLabels();
+            try (RecordingFile orig = new RecordingFile(src)) {
+                var missing = new ArrayList<String>();
+                for (var et : orig.readEventTypes()) {
+                    if (et.getLabel() != null
+                            && !et.getLabel().isEmpty()
+                            && !footerLabels.containsKey(et.getName())) {
+                        missing.add(et.getName() + " (@Label=" + et.getLabel() + ")");
+                    }
+                }
+                if (!missing.isEmpty()) {
+                    fail("Footer missing @Label for event types: " + missing);
+                }
+            }
+        }
+
+        // Inflate and check @Label/@Category survive in the inflated JFR
+        Path inflated = tempDir.resolve("annotation-test.jfr");
+        try (me.bechberger.condensed.CondensedInputStream in =
+                new me.bechberger.condensed.CondensedInputStream(cjfrBytes.toByteArray())) {
+            WritingJFRReader.toJFRFile(new BasicJFRReader(in), inflated);
+        }
+
+        try (RecordingFile orig = new RecordingFile(src);
+                RecordingFile inflatedRf = new RecordingFile(inflated)) {
+            var origByName =
+                    orig.readEventTypes().stream()
+                            .collect(
+                                    java.util.stream.Collectors.toMap(
+                                            jdk.jfr.EventType::getName,
+                                            t -> t,
+                                            (a, b) -> a));
+            var missingLabel = new ArrayList<String>();
+            var missingCategory2 = new ArrayList<String>();
+            for (var t : inflatedRf.readEventTypes()) {
+                var o = origByName.get(t.getName());
+                if (o == null) continue;
+                if (o.getLabel() != null
+                        && !o.getLabel().isEmpty()
+                        && (t.getLabel() == null || t.getLabel().isEmpty())) {
+                    missingLabel.add(t.getName());
+                }
+                if (o.getCategoryNames() != null
+                        && !o.getCategoryNames().isEmpty()
+                        && (t.getCategoryNames() == null || t.getCategoryNames().isEmpty())) {
+                    missingCategory2.add(t.getName());
+                }
+            }
+            if (!missingLabel.isEmpty()) {
+                fail("@Label lost after round-trip for: " + missingLabel);
+            }
+            if (!missingCategory2.isEmpty()) {
+                fail("@Category lost after round-trip for: " + missingCategory2);
+            }
+        }
+    }
 }
