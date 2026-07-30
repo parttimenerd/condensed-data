@@ -21,6 +21,9 @@ import java.util.Map;
  *     profiling stack traces (reduced/archival-max only); empty = disabled
  * @param collapseAppFramesPrefixes newline-delimited class-name prefixes to force-keep even if they
  *     match collapseInternalFramesPrefixes; empty = none
+ * @param aggregateGCPhaseParallelStats collapse jdk.GCPhaseParallel events per (gcId, phaseName)
+ *     into a single stat entry {count, sumDuration, minDuration, maxDuration}; drops per-worker and
+ *     per-region-scan granularity; reduces GCPhaseParallel size by ~7-11x
  */
 public record Configuration(
         String name,
@@ -46,7 +49,8 @@ public record Configuration(
         boolean dropGCWorkerThreadFromGCPhaseParallel,
         long cpuBucketSeconds,
         String collapseInternalFramesPrefixes,
-        String collapseAppFramesPrefixes)
+        String collapseAppFramesPrefixes,
+        boolean aggregateGCPhaseParallelStats)
         implements Comparable<Configuration> {
 
     /**
@@ -84,7 +88,8 @@ public record Configuration(
                     // default); only reduced drops it
                     10L,
                     "",
-                    "");
+                    "",
+                    false); // aggregateGCPhaseParallelStats: kept full by default
 
     /** with conservative lossy compression */
     public static final Configuration REASONABLE_DEFAULT =
@@ -110,6 +115,7 @@ public record Configuration(
                     .withCombineExceptionEvents(true)
                     .withCombineBlockingEvents(true)
                     .withDropGCWorkerThreadFromGCPhaseParallel(true)
+                    .withAggregateGCPhaseParallelStats(true)
                     .withCollapseInternalFramesPrefixes(DEFAULT_COLLAPSE_PREFIXES);
 
     /**
@@ -156,7 +162,8 @@ public record Configuration(
                 false,
                 10L,
                 "",
-                "");
+                "",
+                false);
     }
 
     public Configuration {
@@ -282,6 +289,10 @@ public record Configuration(
 
     public Configuration withDropGCWorkerThreadFromGCPhaseParallel(boolean drop) {
         return withFieldValue("dropGCWorkerThreadFromGCPhaseParallel", drop);
+    }
+
+    public Configuration withAggregateGCPhaseParallelStats(boolean aggregate) {
+        return withFieldValue("aggregateGCPhaseParallelStats", aggregate);
     }
 
     public Configuration withCollapseInternalFramesPrefixes(String prefixes) {

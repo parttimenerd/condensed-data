@@ -1322,9 +1322,97 @@ public class JFREventCombiner extends EventCombiner {
         private static MapValue<RecordedEvent, ?, ?> createValueDefinition(
                 BasicJFRWriter basicJFRWriter, Configuration configuration) {
 
-            // name -> (startTime + GC Thread + worker identifier + duration)
-            // In reduced mode the per-worker eventThread is dropped: worker durations are
-            // effectively always zero, so the thread reference is low-value noise.
+            if (configuration.aggregateGCPhaseParallelStats()) {
+                // Aggregate mode: name -> {count, sumDuration, minDuration, maxDuration}
+                // long[]{count=0, sum=1, min=2, max=3} as a 4-element struct.
+                // Initial value for a single event: [1, dur, dur, dur]
+                // Combiner: add count, sum; take min/max.
+                var statsPartValue =
+                        new MapPartValue<RecordedEvent, long[]>(
+                                "phaseStats",
+                                (out, eventType) ->
+                                        (CondensedType)
+                                                out.writeAndStoreType(
+                                                        id ->
+                                                                new StructType<long[], ReadStruct>(
+                                                                        id,
+                                                                        "GCPhaseStats",
+                                                                        List.of(
+                                                                                new Field<>(
+                                                                                        "count",
+                                                                                        "",
+                                                                                        out
+                                                                                                .writeAndStoreType(
+                                                                                                        VarIntType
+                                                                                                                ::new),
+                                                                                        a -> a[0]),
+                                                                                new Field<>(
+                                                                                        "sumDuration",
+                                                                                        "",
+                                                                                        (CondensedType<
+                                                                                                        Long,
+                                                                                                        Long>)
+                                                                                                basicJFRWriter
+                                                                                                        .getTypeCached(
+                                                                                                                eventType
+                                                                                                                        .getField(
+                                                                                                                                "duration")),
+                                                                                        a -> a[1]),
+                                                                                new Field<>(
+                                                                                        "minDuration",
+                                                                                        "",
+                                                                                        (CondensedType<
+                                                                                                        Long,
+                                                                                                        Long>)
+                                                                                                basicJFRWriter
+                                                                                                        .getTypeCached(
+                                                                                                                eventType
+                                                                                                                        .getField(
+                                                                                                                                "duration")),
+                                                                                        a -> a[2]),
+                                                                                new Field<>(
+                                                                                        "maxDuration",
+                                                                                        "",
+                                                                                        (CondensedType<
+                                                                                                        Long,
+                                                                                                        Long>)
+                                                                                                basicJFRWriter
+                                                                                                        .getTypeCached(
+                                                                                                                eventType
+                                                                                                                        .getField(
+                                                                                                                                "duration")),
+                                                                                        a ->
+                                                                                                a[
+                                                                                                        3])))),
+                                e -> {
+                                    long dur = e.getDuration().toNanos();
+                                    return new long[] {1L, dur, dur, dur};
+                                });
+                return new MapValue<>(
+                                new MapPartValue<>(
+                                        "name",
+                                        (out, eventType) ->
+                                                (CondensedType<String, String>)
+                                                        basicJFRWriter.getTypeCached(
+                                                                eventType.getField("name")),
+                                        e -> e.getString("name")),
+                                new SingleValue<>(
+                                        statsPartValue,
+                                        (a, b) -> {
+                                            if (a == null) return b;
+                                            a[0] += b[0];
+                                            a[1] += b[1];
+                                            a[2] = Math.min(a[2], b[2]);
+                                            a[3] = Math.max(a[3], b[3]);
+                                            return a;
+                                        },
+                                        () -> null),
+                                map -> new ArrayList<>(map.entrySet()))
+                        .withKeyByReference();
+            }
+
+            // Default mode: name -> array of {startTime, [eventThread,] gcWorkerId, duration}
+            // In reduced mode the per-worker eventThread is dropped.
             boolean dropThread = configuration.dropGCWorkerThreadFromGCPhaseParallel();
             // spotless:off
             var gcWorkerDuration = new MapPartValue<RecordedEvent, RecordedEvent>(
@@ -1371,9 +1459,16 @@ public class JFREventCombiner extends EventCombiner {
                     .flatMap(
                             e -> {
                                 Object value = e.getValue();
-                                // Handle both old format (single ReadStruct) and new format
-                                // (List<ReadStruct>)
-                                if (value instanceof List<?> structs) {
+                                if (value instanceof ReadStruct stats
+                                        && stats.get("sumDuration") != null) {
+                                    // Aggregate stats format: one synthetic event per (gcId, name)
+                                    // with duration = sumDuration, gcWorkerId = 0.
+                                    builder.put("name", e.getKey())
+                                            .put("gcWorkerId", 0)
+                                            .put("duration", stats.get("sumDuration"));
+                                    return Stream.of(builder.build());
+                                } else if (value instanceof List<?> structs) {
+                                    // Array format (lossless/default)
                                     return structs.stream()
                                             .map(
                                                     s -> {
@@ -1396,6 +1491,7 @@ public class JFREventCombiner extends EventCombiner {
                                                         return builder.build();
                                                     });
                                 } else {
+                                    // Old single-struct format (backward compat)
                                     ReadStruct struct = (ReadStruct) value;
                                     builder.put("name", e.getKey())
                                             .put("gcWorkerId", struct.get("gcWorkerId"))
@@ -1408,7 +1504,7 @@ public class JFREventCombiner extends EventCombiner {
                                     if (thread != null) {
                                         builder.put("eventThread", thread);
                                     }
-                                    return java.util.stream.Stream.of(builder.build());
+                                    return Stream.of(builder.build());
                                 }
                             })
                     .toList();
