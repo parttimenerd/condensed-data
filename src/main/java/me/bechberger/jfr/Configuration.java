@@ -131,7 +131,6 @@ public record Configuration(
                     .withDurationTicksPerSecond(1_000_000)
                     .withUseSpecificHashesAndRefs(true)
                     .withIgnoreZeroSizedTenuredAges(true)
-                    .withIgnoreTooShortGCPauses(true)
                     .withRemoveBCIAndLineNumberFromStackFrames(true)
                     .withRemoveUnnecessaryAddresses(true)
                     .withCombineObjectAllocationSampleLossless(true)

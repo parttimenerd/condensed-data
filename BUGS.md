@@ -1896,3 +1896,13 @@ The oracle groups threads by pool-object identity (unique pool pointer per threa
 **Root cause:** spotless/google-java-format occasionally replaces characters in string literals under certain Unicode conditions. The NUL byte `\x00` was undetectable without a hex dump.
 
 **Fix:** Replaced the NUL-byte string join with `return s;` (pass raw `ReadStruct`). `ReadStruct.equals` uses value equality over all fields, which correctly handles all thread distinguishers without relying on string concatenation.
+
+## Bug 317: `gc-pause-phases` view missing 2 rows due to `ignoreTooShortGCPauses` in DEFAULT preset
+
+**Status:** Fixed.
+
+**Observed:** `cjfr view gc-pause-phases profile.jfr` showed 3 rows; oracle (`jfr view`) showed 5 rows. Missing: `Reconsider SoftReferences` (avg 0.000278 ms) and `Notify and keep alive finalizable` (avg 0.000083 ms).
+
+**Root cause:** `Configuration.DEFAULT` included `.withIgnoreTooShortGCPauses(true)`. The `GCPhasePauseLevelCombiner` in `JFREventCombiner` uses this flag to drop phase names where every event's duration is below `isEffectivelyZeroDuration()` threshold (< 1 microsecond at `durationTicksPerSecond=1_000_000`). The two missing phases have sub-microsecond average durations and so were silently dropped from condensation entirely — they were absent from the `.cjfr` file and could not be recovered at inflate time.
+
+**Fix:** Removed `.withIgnoreTooShortGCPauses(true)` from `Configuration.DEFAULT` (`Configuration.java` line 134). Sub-microsecond GC phases are legitimate JVM events and should not be silently dropped; they now appear in the view output (durations quantized to "0 s" at 1 µs precision, which is correct).
