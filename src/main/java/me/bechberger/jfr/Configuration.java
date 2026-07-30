@@ -121,8 +121,7 @@ public record Configuration(
                     .withCombineEventsWithoutDataLoss(true)
                     .withCombinePLABPromotionEvents(true)
                     .withCombineG1HeapRegionTypeChangeEvents(true)
-                    .withCombineThreadParkLossless(true)
-                    .withAggregateGCPhaseParallelStats(true);
+                    .withCombineThreadParkLossless(true);
 
     /** with conservative lossy compression */
     public static final Configuration DEFAULT =
