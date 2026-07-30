@@ -67,7 +67,10 @@ public class Agent implements Runnable {
                 () -> {
                     try {
                         var ps = AgentIO.getAgentInstance().createPrintStream();
-                        int exitCode = FemtoCli.runAgent(new Agent(), ps, ps, preprocResult.args);
+                        int exitCode =
+                                FemtoCli.builder()
+                                        .alertOnMixedStyleInAgent(true)
+                                        .runAgent(new Agent(), ps, ps, preprocResult.argv);
                         AgentIO.getAgentInstance().writeExitCode(exitCode);
                     } catch (Throwable e) {
                         try {
@@ -82,23 +85,23 @@ public class Agent implements Runnable {
                 });
     }
 
-    record PreprocResult(String args, boolean logToFile) {}
+    record PreprocResult(String[] argv, boolean logToFile) {}
 
     static PreprocResult preprocessArgs(String agentArgs) {
-        // this works as long as we don't log anything while no agent command is running
-        if (agentArgs != null && !agentArgs.isBlank()) {
-            boolean logToFile = false;
-            var cleaned = new java.util.ArrayList<String>();
-            for (String token : agentArgs.split(",", -1)) {
-                if (token.trim().equals("--logToFile")) {
-                    logToFile = true;
-                } else {
-                    cleaned.add(token);
-                }
-            }
-            return new PreprocResult(String.join(",", cleaned), logToFile);
+        if (agentArgs == null || agentArgs.isBlank()) {
+            return new PreprocResult(new String[0], false);
         }
-        return new PreprocResult("", false);
+        String[] tokens = FemtoCli.toArgv(agentArgs);
+        boolean logToFile = false;
+        var filtered = new java.util.ArrayList<String>(tokens.length);
+        for (String token : tokens) {
+            if (token.equals("--logToFile")) {
+                logToFile = true;
+            } else {
+                filtered.add(token);
+            }
+        }
+        return new PreprocResult(filtered.toArray(String[]::new), logToFile);
     }
 
     public static String getAgentArgs() {

@@ -9,49 +9,43 @@ public class AgentPreprocessArgsTest {
     @Test
     public void testPreprocessArgsWithNull() {
         var result = Agent.preprocessArgs(null);
-        assertEquals("", result.args());
+        assertArrayEquals(new String[0], result.argv());
         assertFalse(result.logToFile());
     }
 
     @Test
     public void testPreprocessArgsWithBlank() {
         var result = Agent.preprocessArgs("   ");
-        assertEquals("", result.args());
+        assertArrayEquals(new String[0], result.argv());
         assertFalse(result.logToFile());
     }
 
     @Test
     public void testPreprocessArgsWithOnlyLogToFile() {
         var result = Agent.preprocessArgs("--logToFile");
-        assertEquals("", result.args());
+        assertArrayEquals(new String[0], result.argv());
         assertTrue(result.logToFile());
     }
 
     @Test
     public void testPreprocessArgsWithMixedArguments() {
         var result = Agent.preprocessArgs("start,test.cjfr,--logToFile,--verbose");
-        assertEquals("start,test.cjfr,--verbose", result.args());
+        assertArrayEquals(new String[]{"start", "test.cjfr", "--verbose"}, result.argv());
         assertTrue(result.logToFile());
     }
 
     @Test
     public void testPreprocessArgsWithoutLogToFile() {
         var result = Agent.preprocessArgs("start,test.cjfr,--verbose");
-        assertEquals("start,test.cjfr,--verbose", result.args());
+        assertArrayEquals(new String[]{"start", "test.cjfr", "--verbose"}, result.argv());
         assertFalse(result.logToFile());
     }
 
     @Test
-    public void testPreprocessArgsWithWhitespaceAroundLogToFile() {
-        var result = Agent.preprocessArgs("start, --logToFile ,test.cjfr");
-        assertEquals("start,test.cjfr", result.args());
-        assertTrue(result.logToFile());
-    }
-
-    @Test
-    public void testPreprocessArgsPreservesEmptySegments() {
-        var result = Agent.preprocessArgs("start,,--logToFile,");
-        assertEquals("start,,", result.args());
+    public void testPreprocessArgsWithWhitespaceAroundTokens() {
+        // whitespace around tokens is trimmed by the proper parser
+        var result = Agent.preprocessArgs("start , --logToFile , test.cjfr");
+        assertArrayEquals(new String[]{"start", "test.cjfr"}, result.argv());
         assertTrue(result.logToFile());
     }
 }

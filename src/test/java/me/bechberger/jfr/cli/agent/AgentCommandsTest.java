@@ -32,7 +32,7 @@ public class AgentCommandsTest {
 
         private StubRecordingThread(boolean rotating) throws ParseException, java.io.IOException {
             super(
-                    Configuration.DEFAULT,
+                    Configuration.LOSSLESS,
                     false,
                     "default",
                     "",
@@ -82,7 +82,7 @@ public class AgentCommandsTest {
         private ValidatingStubRecordingThread(boolean rotating)
                 throws ParseException, java.io.IOException {
             super(
-                    Configuration.DEFAULT,
+                    Configuration.LOSSLESS,
                     false,
                     "default",
                     "",
@@ -331,7 +331,7 @@ public class AgentCommandsTest {
         settings.maxFiles = 0;
         settings.maxDuration = Duration.ofSeconds(1);
         setField(command, "path", "recording.cjfr");
-        setField(command, "configuration", Configuration.DEFAULT);
+        setField(command, "configuration", Configuration.LOSSLESS);
         setField(command, "miscJfrConfig", "");
         setField(command, "verbose", false);
         setField(command, "jfrConfig", "default");
@@ -349,7 +349,7 @@ public class AgentCommandsTest {
         var settings = createSettings();
         settings.maxFiles = 2;
         setField(command, "path", "recording.cjfr");
-        setField(command, "configuration", Configuration.DEFAULT);
+        setField(command, "configuration", Configuration.LOSSLESS);
         setField(command, "miscJfrConfig", "");
         setField(command, "verbose", false);
         setField(command, "jfrConfig", "default");
@@ -386,5 +386,57 @@ public class AgentCommandsTest {
                         assertEquals(
                                 "tmp/recording_$date.cjfr",
                                 ensureRotatingPathHasPlaceholder("tmp/recording_$date.cjfr")));
+    }
+
+    // --- preprocessArgs tests ---
+
+    @Test
+    public void testPreprocessArgsNullReturnsEmptyArgv() {
+        var result = Agent.preprocessArgs(null);
+        assertArrayEquals(new String[0], result.argv());
+        assertFalse(result.logToFile());
+    }
+
+    @Test
+    public void testPreprocessArgsBlankReturnsEmptyArgv() {
+        var result = Agent.preprocessArgs("   ");
+        assertArrayEquals(new String[0], result.argv());
+        assertFalse(result.logToFile());
+    }
+
+    @Test
+    public void testPreprocessArgsNoLogToFilePassesArgvThrough() {
+        var result = Agent.preprocessArgs("start,recording.cjfr,--verbose");
+        assertArrayEquals(new String[]{"start", "recording.cjfr", "--verbose"}, result.argv());
+        assertFalse(result.logToFile());
+    }
+
+    @Test
+    public void testPreprocessArgsExtractsLogToFile() {
+        var result = Agent.preprocessArgs("start,recording.cjfr,--logToFile");
+        assertArrayEquals(new String[]{"start", "recording.cjfr"}, result.argv());
+        assertTrue(result.logToFile());
+    }
+
+    @Test
+    public void testPreprocessArgsLogToFileAtStart() {
+        var result = Agent.preprocessArgs("--logToFile,start,recording.cjfr");
+        assertArrayEquals(new String[]{"start", "recording.cjfr"}, result.argv());
+        assertTrue(result.logToFile());
+    }
+
+    @Test
+    public void testPreprocessArgsOnlyLogToFile() {
+        var result = Agent.preprocessArgs("--logToFile");
+        assertArrayEquals(new String[0], result.argv());
+        assertTrue(result.logToFile());
+    }
+
+    @Test
+    public void testPreprocessArgsTokenWithCommaInQuotesIsNotSplit() {
+        // A path with a comma inside single quotes should remain a single token
+        var result = Agent.preprocessArgs("start,'path/with,comma.cjfr'");
+        assertArrayEquals(new String[]{"start", "path/with,comma.cjfr"}, result.argv());
+        assertFalse(result.logToFile());
     }
 }
