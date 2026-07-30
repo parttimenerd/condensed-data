@@ -487,6 +487,14 @@ final class QueryEvaluator {
      */
     private static Object canonicalKey(Object value) {
         if (value instanceof ReadStruct s) {
+            // Thread structs: group by (javaName, javaThreadId) so that recycled thread
+            // names (same name, different thread id) produce separate groups — matching
+            // the oracle which groups by pool identity, not by display name.
+            if (s.hasField("javaName") || s.hasField("osName")) {
+                Object name = s.hasField("javaName") ? s.get("javaName") : s.get("osName");
+                Object tid = s.hasField("javaThreadId") ? s.get("javaThreadId") : null;
+                if (tid != null) return (name != null ? name.toString() : "") + " " + tid;
+            }
             return ValueFormatter.format(s, null);
         }
         return value;
