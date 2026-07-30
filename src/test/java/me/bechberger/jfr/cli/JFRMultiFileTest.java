@@ -182,10 +182,10 @@ public class JFRMultiFileTest {
 
                 Start Time Duration   Event Thread    Stack Trace                                        Number   \s
                 ---------- ---------- --------------- -------------------------------------------------- ----------
-                  $TIME_RE         0s main            -                                                           0
-                  $TIME_RE         0s main            -                                                           1
-                  $TIME_RE         0s main            -                                                           2
-                  $TIME_RE         0s main            -                                                           3
+                  $TIME_RE        0 s main            -                                                           0
+                  $TIME_RE        0 s main            -                                                           1
+                  $TIME_RE        0 s main            -                                                           2
+                  $TIME_RE        0 s main            -                                                           3
                 """
                         .replace("$TIME_RE", "[0-9]{1,2}:[0-9]{1,2}:[0-9]{1,2}")
                         .strip();

@@ -882,13 +882,13 @@ public class JFRViewTest {
 
     @Test
     public void testDurationColumnRendersForeverForMaxValueSentinel() {
-        // Long.MAX_VALUE nanos is JFR's "Forever" sentinel (e.g. ActiveRecording.maxAge)
+        // Long.MAX_VALUE nanos is JFR's "Indefinite" sentinel (e.g. ActiveRecording.maxAge)
         var eventType = createType("event", "maxAge");
         var event =
                 new ReadStruct(
                         eventType, Map.of("maxAge", java.time.Duration.ofNanos(Long.MAX_VALUE)));
         var column = new JFRView.DurationColumn("maxAge");
-        assertEquals(List.of("Forever"), column.format(event, 1));
+        assertEquals(List.of("Indefinite"), column.format(event, 1));
     }
 
     @Test
@@ -905,6 +905,6 @@ public class JFRViewTest {
         var eventType = createType("event", "maxAge");
         var event = new ReadStruct(eventType, Map.of("maxAge", Long.MAX_VALUE));
         var column = new JFRView.DurationColumn("maxAge");
-        assertEquals(List.of("Forever"), column.format(event, 1));
+        assertEquals(List.of("Indefinite"), column.format(event, 1));
     }
 }

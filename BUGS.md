@@ -1786,3 +1786,16 @@ analysis tool ever uses them.
 **Root cause:** `ViewCommand.reportNoEventType(String eventName, Set<String> seenTypes)` always used the raw event type name. The `@Label` for every event type is available in the `typeLabels` map (built from the footer's `eventTypeLabels` and in-memory struct type descriptions), but `MatchResult` only carried `seenTypes` — not `typeLabels`. So `reportNoEventType` had no access to the label.
 
 **Fix:** Extended `MatchResult` to include `typeLabels` (computed from the `CombiningJFRReader` at the same time as events are collected in `collectMatches`). Added `lastTypeLabels` field alongside the existing `lastSeenTypes` for the delegation code path. `reportNoEventType` now uses `typeLabels.get(eventName)` — if a non-empty label distinct from the type name is found, it prints "No events found for '<label>'."; otherwise falls back to the old "No event of type X found." form.
+
+## Bug 306: `cjfr view <EventType>` showed wrong duration format and "Forever" instead of "Indefinite"
+
+**Status:** Fixed.
+
+**Observed:** `cjfr view jdk.SafepointBegin profile.jfr` showed `2.667us` for a 2667 ns duration. `cjfr view jdk.ActiveRecording profile.jfr` showed `Forever` for `Long.MAX_VALUE` sentinel durations (`maxAge`, `recordingDuration`). The JDK oracle (`jfr view`) shows `0,00267 ms` and `Indefinite` respectively. Additionally, `cjfr view jdk.ActiveRecording` showed `0B` for zero byte `maxSize` while oracle shows `0 bytes`.
+
+**Root cause:** `JFRView.DurationColumn` used `TimeUtil.formatDuration()` which formats sub-millisecond values in microseconds (`us`, no space before unit) and used `"Forever"` as the Long.MAX_VALUE sentinel label. `JFRView.MemoryColumn` used `MemoryUtil.formatMemory()` which uses no space before unit and `B` suffix for bytes (not the `bytes` unit name used by jfr).
+
+**Fix:** In `JFRView.java`:
+1. `DurationColumn.format()` now calls `ValueFormatter.formatTimespan(val)` which always formats sub-second values in milliseconds with a space before the unit and correctly maps `Long.MIN_VALUE` → "N/A" and `Long.MAX_VALUE` → "Indefinite".
+2. `MemoryColumn.format()` now calls `ValueFormatter.formatMemory(value)` for BYTES columns, which formats as "N.N kB", "N.N MB", "0 bytes" (space before unit, matching oracle format). BITS columns still use `MemoryUtil.formatMemory` since there's no matching path in ValueFormatter.
+3. Made `ValueFormatter` class and key methods (`formatTimespan`, `formatMemory`) `public` so `JFRView` can access them from the sibling package.

@@ -1,7 +1,6 @@
 package me.bechberger.jfr.cli;
 
 import static me.bechberger.util.MemoryUtil.formatMemory;
-import static me.bechberger.util.TimeUtil.formatDuration;
 
 import java.time.Duration;
 import java.time.Instant;
@@ -17,6 +16,7 @@ import me.bechberger.condensed.types.CondensedType;
 import me.bechberger.condensed.types.StructType;
 import me.bechberger.condensed.types.StructType.Field;
 import me.bechberger.jfr.BasicJFRWriter;
+import me.bechberger.jfr.cli.query.ValueFormatter;
 import me.bechberger.util.MemoryUtil;
 
 /** Tabular view for JFR events */
@@ -86,19 +86,7 @@ public class JFRView {
             } else {
                 return List.of(raw.toString());
             }
-            // JFR uses Long.MIN_VALUE / Long.MAX_VALUE as "N/A" / "Forever" sentinels for
-            // @Timespan longs (e.g. GCConfiguration.pauseTarget, ActiveRecording.maxAge).
-            // The condensed varint multiplier quantizes them, so use a threshold rather than
-            // exact comparison (same approach as WritingJFRReader.convertTimespanToUnit).
-            long seconds = val.getSeconds();
-            long threshold = 2L * me.bechberger.util.TimeUtil.MAX_DURATION_SECONDS;
-            if (seconds < -threshold) {
-                return List.of("N/A");
-            }
-            if (seconds > threshold) {
-                return List.of("Forever");
-            }
-            return List.of(formatDuration(val));
+            return List.of(ValueFormatter.formatTimespan(val));
         }
 
         @Override
@@ -198,7 +186,10 @@ public class JFRView {
                 return List.of("-");
             }
             var value = prop instanceof Number ? ((Number) prop).longValue() : (long) prop;
-            return List.of(formatMemory(value, 1, 2, unit));
+            if (unit == MemoryUtil.MemoryUnit.BITS) {
+                return List.of(formatMemory(value, 1, 2, unit));
+            }
+            return List.of(ValueFormatter.formatMemory(value));
         }
 
         @Override
@@ -878,7 +869,9 @@ public class JFRView {
 
     public record JFRViewConfig(String name, List<Column> columns) {
         public JFRViewConfig(StructType<?, ?> type) {
-            this(typeDisplayName(type), type.getFields().stream().map(JFRView::fieldToColumn).toList());
+            this(
+                    typeDisplayName(type),
+                    type.getFields().stream().map(JFRView::fieldToColumn).toList());
         }
 
         /** Derive the display name: the @Label from the type description, or the raw type name. */

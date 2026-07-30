@@ -22,7 +22,7 @@ import me.bechberger.jfr.cli.query.ViewQuery.FormatHint;
  * <p>Timespans and memory sizes use a 3-significant-figure rule with a space before the unit, which
  * mirrors {@code jfr view}'s {@code Timespan}/{@code DataAmount} renderers structurally.
  */
-final class ValueFormatter {
+public final class ValueFormatter {
 
     private ValueFormatter() {}
 
@@ -131,7 +131,7 @@ final class ValueFormatter {
 
     // ── timespan (3 significant figures, space before unit) ───────────────────
 
-    static String formatTimespan(Duration d) {
+    public static String formatTimespan(Duration d) {
         long nanos = d.toNanos();
         // jfr treats the extreme sentinels as "unset": Long.MIN nanos → N/A, Long.MAX → Indefinite.
         // The reader reduces to millisecond precision, so the stored value is within ~1ms of the
@@ -171,7 +171,7 @@ final class ValueFormatter {
 
     // ── memory (fixed 1 decimal above bytes, binary units, space before unit) ─
 
-    static String formatMemory(long bytes) {
+    public static String formatMemory(long bytes) {
         boolean neg = bytes < 0;
         long abs = Math.abs(bytes);
         String[] units = {"bytes", "kB", "MB", "GB", "TB", "PB"};

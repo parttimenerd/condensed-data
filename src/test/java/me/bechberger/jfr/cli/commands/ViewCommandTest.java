@@ -65,9 +65,11 @@ public class ViewCommandTest {
                         .run();
         assertAll(
                 () -> assertThat(result.exitCode()).isEqualTo(1),
-                () -> assertThat(result.error()).containsAnyOf(
-                        "No event of type TestEvent found.",
-                        "No events found for 'Label'."),
+                () ->
+                        assertThat(result.error())
+                                .containsAnyOf(
+                                        "No event of type TestEvent found.",
+                                        "No events found for 'Label'."),
                 () -> assertThat(result.output()).isEmpty());
     }
 
@@ -428,17 +430,26 @@ public class ViewCommandTest {
             String line = lines[i];
             if (line.contains("----------")
                     || line.contains("Start Time")
-                    || line.contains("TestEvent")
+                    || line.contains("Label")
                     || line.isEmpty()) {
                 continue;
             }
-            // The Memory column value should end with B (KB, MB, GB, etc.)
-            // Find all tokens that look like memory values (contain digits and end near B)
-            for (String token : line.trim().split("\\s+")) {
-                if (token.matches("\\d+\\.\\d+[KMGT]?B?") && token.matches(".*\\d$")) {
-                    // A number-only token in a memory column — this is the bug
-                    org.junit.jupiter.api.Assertions.fail(
-                            "Memory value '" + token + "' is missing unit suffix in line: " + line);
+            String[] tokens = line.trim().split("\\s+");
+            for (int j = 0; j < tokens.length; j++) {
+                String token = tokens[j];
+                // A bare decimal number (no unit suffix) is a bug — unless the next token is a
+                // memory unit, which means the format is "144.7 MB" (spaced unit, correct format).
+                if (token.matches("\\d+\\.\\d+") && token.matches(".*\\d$")) {
+                    boolean hasNextUnit =
+                            j + 1 < tokens.length
+                                    && tokens[j + 1].matches("[KMGT]?B|bytes|kB|MB|GB|TB|PB");
+                    if (!hasNextUnit) {
+                        org.junit.jupiter.api.Assertions.fail(
+                                "Memory value '"
+                                        + token
+                                        + "' is missing unit suffix in line: "
+                                        + line);
+                    }
                 }
             }
         }
@@ -554,7 +565,7 @@ public class ViewCommandTest {
                         .run();
         // The Heap Space column should contain formatted memory values (MB or GB)
         // not just raw numbers like "21474836480"
-        assertThat(result.output()).containsPattern("[0-9]+\\.[0-9]+[KMGT]B");
+        assertThat(result.output()).containsPattern("[0-9]+\\.[0-9]+ [KMGT]B");
     }
 
     @Test
