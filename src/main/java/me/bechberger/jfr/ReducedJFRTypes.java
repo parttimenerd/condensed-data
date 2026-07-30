@@ -71,6 +71,29 @@ public class ReducedJFRTypes {
                                     new RemovedPrimitiveField(
                                             "type",
                                             Configuration::removeTypeInformationFromStackFrames))),
+                    // Method: modifiers (access flags) and hidden are not useful for profiling
+                    // analysis and can be dropped together with other type-information reduction.
+                    Map.entry(
+                            "jdk.types.Method",
+                            entry(
+                                    "jdk.types.Method",
+                                    new RemovedPrimitiveField(
+                                            "modifiers",
+                                            Configuration::removeTypeInformationFromStackFrames),
+                                    new RemovedPrimitiveField(
+                                            "hidden",
+                                            Configuration::removeTypeInformationFromStackFrames))),
+                    // Class: same reasoning — modifiers and hidden not needed for profiling
+                    Map.entry(
+                            "java.lang.Class",
+                            entry(
+                                    "java.lang.Class",
+                                    new RemovedPrimitiveField(
+                                            "modifiers",
+                                            Configuration::removeTypeInformationFromStackFrames),
+                                    new RemovedPrimitiveField(
+                                            "hidden",
+                                            Configuration::removeTypeInformationFromStackFrames))),
                     // start = heapBase + index * regionSize (derivable from index): a raw
                     // address, so gate on removeUnnecessaryAddresses (lossy presets only), NOT
                     // ignoreUnnecessaryEvents — otherwise "lossless" would silently drop it.
@@ -165,21 +188,17 @@ public class ReducedJFRTypes {
                             "jdk.types.OldObject",
                             entry("jdk.types.OldObject", addressField("address"))),
                     // ExecutionSample/NativeMethodSample: state is always STATE_RUNNABLE
-                    // (JFR only samples RUNNABLE threads by design)
+                    // (JFR only samples RUNNABLE threads by design) — drop unconditionally
                     Map.entry(
                             "jdk.ExecutionSample",
                             entry(
                                     "jdk.ExecutionSample",
-                                    new RemovedPrimitiveField(
-                                            "state",
-                                            Configuration::removeTypeInformationFromStackFrames))),
+                                    new RemovedPrimitiveField("state", c -> true))),
                     Map.entry(
                             "jdk.NativeMethodSample",
                             entry(
                                     "jdk.NativeMethodSample",
-                                    new RemovedPrimitiveField(
-                                            "state",
-                                            Configuration::removeTypeInformationFromStackFrames))));
+                                    new RemovedPrimitiveField("state", c -> true))));
 
     public static Set<String> getRemovedFields(
             String typeName, Configuration configuration, boolean ignoreJFRHandledFields) {
