@@ -762,7 +762,7 @@ public class BasicJFRWriter {
     private FloatType getPercentageFloatType() {
         if (percentageFloatType == null) {
             percentageFloatType =
-                    out.writeAndStoreType(id -> new FloatType(id, "percentage", "", Type.BFLOAT16));
+                    out.writeAndStoreType(id -> new FloatType(id, "percentage", "", Type.FLOAT16));
         }
         return percentageFloatType;
     }

@@ -1829,3 +1829,13 @@ analysis tool ever uses them.
 **Root cause:** cjfr stores `jdk.ActiveSetting.id` (and `jdk.RecordingSetting.id`) as the target event type's name string (e.g. "jdk.ThreadStart") after the JMC compat fix (Bug 289). The `JFRView` rendered it as a plain string. The `typeLabels` map (already computed in `collectMatches` from the CJFR footer) was not passed into `JFRViewConfig`.
 
 **Fix:** Added `EventIdColumn` that looks up the stored event type name in `typeLabels` to resolve it to the `@Label`. Added `JFRViewConfig(StructType, Map<String, String> typeLabels)` constructor and updated `topLevelFieldColumns()` to accept the parent type name and typeLabels. `ViewCommand.renderMatches()` now passes `matches.typeLabels()` to `JFRViewConfig`. The `EventIdColumn` is used only for the `id` field on `jdk.ActiveSetting` and `jdk.RecordingSetting`, falling back to the raw value when no label is found.
+
+## Bug 310: Percentage fields stored as BFLOAT16 causing ±0.12% rounding errors
+
+**Status:** Fixed.
+
+**Observed:** `cjfr inflate profile.cjfr | jfr print --events jdk.G1AdaptiveIHOP` showed `thresholdPercentage = 47,46%` where the original JFR had `47,37%` — a 0.09% error. With 21 GC pauses all having quantized durations from 1ms timestamp resolution, the `gc-pauses` named view showed `Total Pause Time: 130 ms` (oracle: 139 ms) and `Minimum Pause Time: 1.00 ms` (oracle: 1.18 ms).
+
+**Root cause:** The `default` preset stored `@jdk.jfr.Percentage`-annotated float fields using `Type.BFLOAT16` (16-bit brain floating point, 7 mantissa bits). BFLOAT16 has only ~3 decimal digits of precision and for values in the 0-100% range the error can be up to ±0.12%. The higher-precision `Type.FLOAT16` (IEEE 754 half-precision, 10 mantissa bits) uses the same 16-bit storage size but reduces the error to ±0.025%.
+
+**Fix:** Changed `getPercentageFloatType()` in `BasicJFRWriter` from `Type.BFLOAT16` to `Type.FLOAT16`. The CJFR format stores the type tag in the file, so existing CJFR files with BFLOAT16 percentages still decode correctly; only newly condensed files use FLOAT16.
