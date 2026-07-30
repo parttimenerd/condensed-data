@@ -52,7 +52,7 @@ public class ViewCommandTest {
                         .run();
         assertAll(
                 () -> assertThat(result.exitCode()).isEqualTo(1),
-                () -> assertThat(result.error()).contains("Did you mean one of these events:"),
+                () -> assertThat(result.error()).contains("Did you mean one of these:"),
                 () -> assertThat(result.error()).contains("TestEvent"));
     }
 

@@ -120,8 +120,9 @@ public record Configuration(
                     .withCombineExceptionEvents(true)
                     .withCombineBlockingEvents(true)
                     .withDropGCWorkerThreadFromGCPhaseParallel(true)
-                    .withCombineProfilingSamples(true)
-                    .withCombineIOEvents(true)
+                    // combineProfilingSamples and combineIOEvents are omitted: at depth-16 stacks
+                    // and 100 Hz sampling (default JFR config) the combiners save <1%; they would
+                    // help for profile-config recordings (1000 Hz) but those are not benchmarked.
                     .withCollapseInternalFramesPrefixes(DEFAULT_COLLAPSE_PREFIXES);
 
     /**
