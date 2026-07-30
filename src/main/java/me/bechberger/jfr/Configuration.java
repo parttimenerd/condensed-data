@@ -121,7 +121,8 @@ public record Configuration(
                     .withCombineEventsWithoutDataLoss(true)
                     .withCombinePLABPromotionEvents(true)
                     .withCombineG1HeapRegionTypeChangeEvents(true)
-                    .withCombineThreadParkLossless(true);
+                    .withCombineThreadParkLossless(true)
+                    .withAggregateGCPhaseParallelStats(true);
 
     /** with conservative lossy compression */
     public static final Configuration DEFAULT =
@@ -147,8 +148,6 @@ public record Configuration(
                     .withMaxStackTraceDepth(16)
                     .withCombineExceptionEvents(true)
                     .withCombineBlockingEvents(true)
-                    .withDropGCWorkerThreadFromGCPhaseParallel(true)
-                    .withAggregateGCPhaseParallelStats(true)
                     .withCollapseInternalFramesPrefixes(DEFAULT_COLLAPSE_PREFIXES);
 
     public Configuration {
