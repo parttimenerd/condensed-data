@@ -491,7 +491,10 @@ public class ViewCommand implements Callable<Integer> {
             String eventName, Set<String> seenTypes, Map<String, String> typeLabels) {
         String label = typeLabels.get(eventName);
         if (label != null && !label.isEmpty() && !label.equals(eventName)) {
-            System.err.println("No events found for '" + label + "'.");
+            // Type is recognized (found in metadata/footer) but has no events — mirror oracle:
+            // print to stdout, exit 0, no suggestions.
+            System.out.println("No events found for '" + label + "'.");
+            return 0;
         } else {
             System.err.println("No event of type " + eventName + " found.");
         }

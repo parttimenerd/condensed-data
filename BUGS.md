@@ -1809,3 +1809,13 @@ analysis tool ever uses them.
 **Root cause:** `JFRViewConfig(StructType<?, ?> type)` mapped each top-level field to exactly one column via `fieldToColumn`. Generic struct fields produced a `StructColumn` which, in single-row mode, joined all sub-fields as `"field=value"` pairs. The oracle instead flattens each struct field into N columns at the top level.
 
 **Fix:** Added `topLevelFieldColumns(Field<?, ?, ?> field)` which detects when `fieldToColumn` would return a `StructColumn` and instead expands the struct into one flat `NestedColumn` per sub-field, with compound header `"Parent : Child"`. Added `NestedColumn` wrapper record that delegates formatting through `event.getStruct(parentProp)` to the inner column. Dedicated formatters (Thread, StackTrace, Class, etc.) are unaffected because they return non-`StructColumn` instances from `fieldToColumn`.
+
+## Bug 308: Known-but-empty event types exited with code 1 and showed suggestions instead of exiting 0
+
+**Status:** Fixed.
+
+**Observed:** `cjfr view jdk.ThreadDump profile.jfr` (where `jdk.ThreadDump` has 0 events but IS in the recording metadata) exited with code 1, printed "No events found for 'Thread Dump'." to stderr, and showed "Did you mean" suggestions. The JDK oracle (`jfr view`) prints to stdout and exits 0 with no suggestions.
+
+**Root cause:** `reportNoEventType` in `ViewCommand` always printed to stderr, showed suggestions, and returned 1 regardless of whether the event type was recognized in the recording metadata. `typeLabels` (populated from the CJFR footer / type annotations) already distinguished known types from unknown ones, but this distinction wasn't used to change the exit behavior.
+
+**Fix:** When `typeLabels` contains a non-empty label for the event type (meaning the type IS recognized in the recording metadata), `reportNoEventType` now prints "No events found for '<label>'." to stdout and returns 0 without suggestions — mirroring the oracle. Unknown event types (label absent from metadata) still use the old stderr + exit 1 + suggestions path.

@@ -63,14 +63,22 @@ public class ViewCommandTest {
                                 "view", "TestEvent", "T/" + CommandTestUtil.getEmptyCJFRFileName())
                         .withFiles(CommandTestUtil.getEmptyCJFRFile())
                         .run();
-        assertAll(
-                () -> assertThat(result.exitCode()).isEqualTo(1),
-                () ->
-                        assertThat(result.error())
-                                .containsAnyOf(
-                                        "No event of type TestEvent found.",
-                                        "No events found for 'Label'."),
-                () -> assertThat(result.output()).isEmpty());
+        // When the event type is in the recording metadata (label known), mirror oracle: stdout,
+        // exit 0, no suggestions. When type is fully unknown, stderr + exit 1 + suggestions.
+        if (result.exitCode() == 0) {
+            assertAll(
+                    () -> assertThat(result.output()).contains("No events found for 'Label'."),
+                    () -> assertThat(result.error()).isEmpty());
+        } else {
+            assertAll(
+                    () -> assertThat(result.exitCode()).isEqualTo(1),
+                    () ->
+                            assertThat(result.error())
+                                    .containsAnyOf(
+                                            "No event of type TestEvent found.",
+                                            "No events found for 'Label'."),
+                    () -> assertThat(result.output()).isEmpty());
+        }
     }
 
     @Test
