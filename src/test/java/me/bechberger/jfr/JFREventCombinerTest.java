@@ -148,7 +148,7 @@ public class JFREventCombinerTest {
                                 new CombinerAndReconstitutor(
                                         w ->
                                                 new TestCombineToArrayCombiner(
-                                                        Configuration.DEFAULT, w),
+                                                        Configuration.LOSSLESS, w),
                                         "jdk.combined.TestCombineToArray",
                                         new TestCombineArrayReconstitutor())),
                         () -> {
@@ -289,7 +289,7 @@ public class JFREventCombinerTest {
                                 new CombinerAndReconstitutor(
                                         w ->
                                                 new TestCombineToArrayAndSumEventCombiner(
-                                                        Configuration.DEFAULT, w),
+                                                        Configuration.LOSSLESS, w),
                                         "jdk.combined.TestCombineToArrayAndSum",
                                         new TestCombineArrayAndSumReconstitutor())),
                         () -> {
@@ -321,7 +321,7 @@ public class JFREventCombinerTest {
                                 "jdk.ObjectAllocationSample",
                                 new CombinerAndReconstitutor(
                                         "jdk.combined.ObjectAllocationSample")),
-                        Configuration.DEFAULT.withCombineObjectAllocationSampleEvents(true),
+                        Configuration.LOSSLESS.withCombineObjectAllocationSampleEvents(true),
                         () -> {
                             System.out.println(new byte[1024 * 1024 * 1024].length);
                             System.gc();
@@ -361,7 +361,7 @@ public class JFREventCombinerTest {
                                 "jdk.ObjectAllocationSample",
                                 new CombinerAndReconstitutor(
                                         "jdk.combined.ObjectAllocationSampleLossless")),
-                        Configuration.DEFAULT.withCombineObjectAllocationSampleLossless(true),
+                        Configuration.LOSSLESS.withCombineObjectAllocationSampleLossless(true),
                         () -> {
                             System.out.println(new byte[1024 * 1024 * 1024].length);
                             System.gc();
@@ -396,11 +396,7 @@ public class JFREventCombinerTest {
                         .collect(java.util.stream.Collectors.toSet());
         var reconClasses =
                 res.readEvents.stream()
-                        .filter(
-                                e ->
-                                        e.getType()
-                                                .getTypeName()
-                                                .equals("jdk.ObjectAllocationSample"))
+                        .filter(e -> e.getType().getTypeName().equals("jdk.ObjectAllocationSample"))
                         .map(
                                 e -> {
                                     var objClass =
@@ -425,6 +421,7 @@ public class JFREventCombinerTest {
                     "stackTrace must be a TypedValue in reconstituted event");
         }
     }
+
     @ParameterizedTest
     @ValueSource(booleans = {true, false})
     public void testPromoteObjectInNewTLABCombiner(boolean sumObjectSizes) {
@@ -434,7 +431,7 @@ public class JFREventCombinerTest {
                                 "jdk.PromoteObjectInNewPLAB",
                                 new CombinerAndReconstitutor(
                                         "jdk.combined.PromoteObjectInNewPLAB")),
-                        Configuration.DEFAULT
+                        Configuration.LOSSLESS
                                 .withCombinePLABPromotionEvents(true)
                                 .withSumObjectSizes(sumObjectSizes),
                         () -> {
@@ -528,7 +525,7 @@ public class JFREventCombinerTest {
                         Map.of(
                                 "jdk.TenuringDistribution",
                                 new CombinerAndReconstitutor("jdk.combined.TenuringDistribution")),
-                        Configuration.DEFAULT
+                        Configuration.LOSSLESS
                                 .withCombineEventsWithoutDataLoss(true)
                                 .withIgnoreZeroSizedTenuredAges(ignoreZeroSized),
                         () -> {
@@ -564,7 +561,7 @@ public class JFREventCombinerTest {
                         Map.of(
                                 "jdk.GCPhasePauseLevel1",
                                 new CombinerAndReconstitutor("jdk.combined.GCPhasePauseLevel1")),
-                        Configuration.DEFAULT
+                        Configuration.LOSSLESS
                                 .withTimeStampTicksPerSecond(1_000_000_000)
                                 .withCombineEventsWithoutDataLoss(true)
                                 .withCombinePLABPromotionEvents(false)
@@ -659,7 +656,7 @@ public class JFREventCombinerTest {
                                     type,
                                     new CombinerAndReconstitutor(
                                             "jdk.combined." + type.substring("jdk.".length()))),
-                            Configuration.DEFAULT
+                            Configuration.LOSSLESS
                                     .withCombineEventsWithoutDataLoss(true)
                                     .withCombinePLABPromotionEvents(false)
                                     .withIgnoreTooShortGCPauses(false),
@@ -706,7 +703,7 @@ public class JFREventCombinerTest {
                         Map.of(
                                 "jdk.GCPhaseParallel",
                                 new CombinerAndReconstitutor("jdk.combined.GCPhaseParallel")),
-                        Configuration.DEFAULT
+                        Configuration.LOSSLESS
                                 .withCombineEventsWithoutDataLoss(true)
                                 .withCombinePLABPromotionEvents(false),
                         () -> {
@@ -747,7 +744,7 @@ public class JFREventCombinerTest {
         // (1µs). Before the fix, the nested duration field used timestamp precision (1ms), zeroing
         // all sub-ms worker durations.
         var config =
-                Configuration.REASONABLE_DEFAULT
+                Configuration.DEFAULT
                         .withCombineEventsWithoutDataLoss(true)
                         .withCombinePLABPromotionEvents(false);
         var res =
@@ -804,7 +801,7 @@ public class JFREventCombinerTest {
                         Map.of(
                                 "jdk.GCPhaseParallel",
                                 new CombinerAndReconstitutor("jdk.combined.GCPhaseParallel")),
-                        Configuration.DEFAULT
+                        Configuration.LOSSLESS
                                 .withCombineEventsWithoutDataLoss(true)
                                 .withCombinePLABPromotionEvents(false),
                         () -> {
@@ -863,10 +860,10 @@ public class JFREventCombinerTest {
         // Presets that must KEEP the per-worker thread.
         for (var config :
                 List.of(
-                        Configuration.DEFAULT
+                        Configuration.LOSSLESS
                                 .withCombineEventsWithoutDataLoss(true)
                                 .withCombinePLABPromotionEvents(false),
-                        Configuration.REASONABLE_DEFAULT
+                        Configuration.DEFAULT
                                 .withCombineEventsWithoutDataLoss(true)
                                 .withCombinePLABPromotionEvents(false))) {
             EventWriteTree[] rootHolder = new EventWriteTree[1];
@@ -880,7 +877,7 @@ public class JFREventCombinerTest {
 
         // reduced still drops it to save space.
         EventWriteTree[] rootHolder = new EventWriteTree[1];
-        runJFRWithCombinerCapturingStats(combiners, Configuration.REDUCED_DEFAULT, gc, rootHolder);
+        runJFRWithCombinerCapturingStats(combiners, Configuration.REDUCED, gc, rootHolder);
         EventWriteTree combined = findNode(rootHolder[0], "jdk.combined.GCPhaseParallel");
         assertNotNull(combined, "reduced: combined node present");
         assertEquals(
@@ -1045,7 +1042,7 @@ public class JFREventCombinerTest {
                                 "jdk.ObjectAllocationInNewTLAB",
                                 new CombinerAndReconstitutor(
                                         "jdk.combined.ObjectAllocationInNewTLAB")),
-                        Configuration.DEFAULT.withCombineObjectAllocationSampleEvents(true),
+                        Configuration.LOSSLESS.withCombineObjectAllocationSampleEvents(true),
                         () -> {
                             for (int i = 0; i < 20; i++) {
                                 System.out.println(new byte[16 * 1024].length);
@@ -1085,7 +1082,7 @@ public class JFREventCombinerTest {
                                 "jdk.ObjectAllocationOutsideTLAB",
                                 new CombinerAndReconstitutor(
                                         "jdk.combined.ObjectAllocationOutsideTLAB")),
-                        Configuration.DEFAULT.withCombineObjectAllocationSampleEvents(true),
+                        Configuration.LOSSLESS.withCombineObjectAllocationSampleEvents(true),
                         () -> {
                             for (int i = 0; i < 10; i++) {
                                 System.out.println(new byte[8 * 1024 * 1024].length);
@@ -1115,7 +1112,7 @@ public class JFREventCombinerTest {
 
     EventCombinerTestResult runJFRWithCombiner(
             Map<String, CombinerAndReconstitutor> combiners, Runnable createEvents) {
-        return runJFRWithCombiner(combiners, Configuration.DEFAULT, createEvents);
+        return runJFRWithCombiner(combiners, Configuration.LOSSLESS, createEvents);
     }
 
     EventCombinerTestResult runJFRWithCombiner(

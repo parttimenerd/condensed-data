@@ -39,8 +39,7 @@ public enum CombinedEventType {
     JAVA_ERROR_THROW("jdk.combined.JavaErrorThrow", "jdk.JavaErrorThrow"),
     JAVA_EXCEPTION_THROW_LOSSLESS(
             "jdk.combined.JavaExceptionThrowLossless", "jdk.JavaExceptionThrow"),
-    JAVA_ERROR_THROW_LOSSLESS(
-            "jdk.combined.JavaErrorThrowLossless", "jdk.JavaErrorThrow"),
+    JAVA_ERROR_THROW_LOSSLESS("jdk.combined.JavaErrorThrowLossless", "jdk.JavaErrorThrow"),
     G1_HEAP_REGION_TYPE_CHANGE("jdk.combined.G1HeapRegionTypeChange", "jdk.G1HeapRegionTypeChange"),
     G1_HEAP_REGION_INFORMATION(
             "jdk.combined.G1HeapRegionInformation", "jdk.G1HeapRegionInformation"),

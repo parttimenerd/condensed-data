@@ -2696,8 +2696,7 @@ public class JFREventCombiner extends EventCombiner {
                 put(
                         eventType,
                         CombinerSpec.Specs.javaExceptionThrowLossless(
-                                        "jdk.JavaErrorThrow",
-                                        "jdk.combined.JavaErrorThrowLossless")
+                                        "jdk.JavaErrorThrow", "jdk.combined.JavaErrorThrowLossless")
                                 .createCombiner(configuration, basicJFRWriter, gcIdPerTimestamp));
             }
         }

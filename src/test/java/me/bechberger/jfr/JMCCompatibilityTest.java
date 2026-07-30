@@ -63,10 +63,10 @@ public class JMCCompatibilityTest {
 
     static List<Configuration> configurations() {
         return List.of(
-                Configuration.DEFAULT,
                 Configuration.LOSSLESS,
-                Configuration.REASONABLE_DEFAULT,
-                Configuration.REDUCED_DEFAULT);
+                Configuration.LOSSLESS,
+                Configuration.DEFAULT,
+                Configuration.REDUCED);
     }
 
     /**

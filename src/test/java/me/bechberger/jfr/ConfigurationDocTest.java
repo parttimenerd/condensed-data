@@ -14,10 +14,7 @@ import org.junit.jupiter.api.Test;
 public class ConfigurationDocTest {
 
     private static final List<Configuration> PRESETS =
-            List.of(
-                    Configuration.LOSSLESS,
-                    Configuration.REASONABLE_DEFAULT,
-                    Configuration.REDUCED_DEFAULT);
+            List.of(Configuration.LOSSLESS, Configuration.DEFAULT, Configuration.REDUCED);
 
     /** Every boolean record component becomes exactly one table row. */
     @Test

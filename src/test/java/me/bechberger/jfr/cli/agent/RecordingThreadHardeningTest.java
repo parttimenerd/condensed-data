@@ -531,7 +531,7 @@ public class RecordingThreadHardeningTest {
     // -------------------------------------------------------------------------
 
     static List<Configuration> testConfigurations() {
-        return List.of(Configuration.LOSSLESS, Configuration.DEFAULT);
+        return List.of(Configuration.LOSSLESS, Configuration.LOSSLESS);
     }
 
     /**

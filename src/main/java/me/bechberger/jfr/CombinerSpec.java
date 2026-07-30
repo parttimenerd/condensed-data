@@ -912,8 +912,7 @@ public class CombinerSpec {
                             });
         }
 
-        static CombinerSpec javaExceptionThrowLossless(
-                String eventTypeName, String combinedName) {
+        static CombinerSpec javaExceptionThrowLossless(String eventTypeName, String combinedName) {
             return CombinerSpec.nextGcIdBased(eventTypeName)
                     .combinedName(combinedName)
                     .mapKeyValue(

@@ -407,21 +407,21 @@ public class AgentCommandsTest {
     @Test
     public void testPreprocessArgsNoLogToFilePassesArgvThrough() {
         var result = Agent.preprocessArgs("start,recording.cjfr,--verbose");
-        assertArrayEquals(new String[]{"start", "recording.cjfr", "--verbose"}, result.argv());
+        assertArrayEquals(new String[] {"start", "recording.cjfr", "--verbose"}, result.argv());
         assertFalse(result.logToFile());
     }
 
     @Test
     public void testPreprocessArgsExtractsLogToFile() {
         var result = Agent.preprocessArgs("start,recording.cjfr,--logToFile");
-        assertArrayEquals(new String[]{"start", "recording.cjfr"}, result.argv());
+        assertArrayEquals(new String[] {"start", "recording.cjfr"}, result.argv());
         assertTrue(result.logToFile());
     }
 
     @Test
     public void testPreprocessArgsLogToFileAtStart() {
         var result = Agent.preprocessArgs("--logToFile,start,recording.cjfr");
-        assertArrayEquals(new String[]{"start", "recording.cjfr"}, result.argv());
+        assertArrayEquals(new String[] {"start", "recording.cjfr"}, result.argv());
         assertTrue(result.logToFile());
     }
 
@@ -436,7 +436,7 @@ public class AgentCommandsTest {
     public void testPreprocessArgsTokenWithCommaInQuotesIsNotSplit() {
         // A path with a comma inside single quotes should remain a single token
         var result = Agent.preprocessArgs("start,'path/with,comma.cjfr'");
-        assertArrayEquals(new String[]{"start", "path/with,comma.cjfr"}, result.argv());
+        assertArrayEquals(new String[] {"start", "path/with,comma.cjfr"}, result.argv());
         assertFalse(result.logToFile());
     }
 }

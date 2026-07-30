@@ -138,8 +138,7 @@ public record Configuration(
                     .withMaxStackTraceDepth(32);
 
     public static final Configuration REDUCED =
-            DEFAULT
-                    .withName("reduced")
+            DEFAULT.withName("reduced")
                     .withCombineObjectAllocationSampleEvents(true)
                     .withSumObjectSizes(true)
                     .withIgnoreUnnecessaryEvents(true)

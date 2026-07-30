@@ -30,14 +30,14 @@ public class AgentPreprocessArgsTest {
     @Test
     public void testPreprocessArgsWithMixedArguments() {
         var result = Agent.preprocessArgs("start,test.cjfr,--logToFile,--verbose");
-        assertArrayEquals(new String[]{"start", "test.cjfr", "--verbose"}, result.argv());
+        assertArrayEquals(new String[] {"start", "test.cjfr", "--verbose"}, result.argv());
         assertTrue(result.logToFile());
     }
 
     @Test
     public void testPreprocessArgsWithoutLogToFile() {
         var result = Agent.preprocessArgs("start,test.cjfr,--verbose");
-        assertArrayEquals(new String[]{"start", "test.cjfr", "--verbose"}, result.argv());
+        assertArrayEquals(new String[] {"start", "test.cjfr", "--verbose"}, result.argv());
         assertFalse(result.logToFile());
     }
 
@@ -45,7 +45,7 @@ public class AgentPreprocessArgsTest {
     public void testPreprocessArgsWithWhitespaceAroundTokens() {
         // whitespace around tokens is trimmed by the proper parser
         var result = Agent.preprocessArgs("start , --logToFile , test.cjfr");
-        assertArrayEquals(new String[]{"start", "test.cjfr"}, result.argv());
+        assertArrayEquals(new String[] {"start", "test.cjfr"}, result.argv());
         assertTrue(result.logToFile());
     }
 }

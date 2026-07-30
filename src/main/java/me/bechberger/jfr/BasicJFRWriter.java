@@ -239,7 +239,7 @@ public class BasicJFRWriter {
     }
 
     public BasicJFRWriter(CondensedOutputStream out) {
-        this(out, Configuration.DEFAULT);
+        this(out, Configuration.LOSSLESS);
     }
 
     JFREventCombiner getEventCombiner() {

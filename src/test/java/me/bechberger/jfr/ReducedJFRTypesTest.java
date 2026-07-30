@@ -24,7 +24,7 @@ public class ReducedJFRTypesTest {
     @Test
     public void testGetRemovedFieldsWithIgnoreJFRHandledDoesNotReturnEmptyForAll() {
         // Create a configuration that would cause all StackFrame fields to be removed
-        var config = Configuration.REDUCED_DEFAULT;
+        var config = Configuration.REDUCED;
 
         // When ignoreJFRHandledFields=false, all 3 fields should be returned
         Set<String> removedFalse =

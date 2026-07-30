@@ -1702,3 +1702,31 @@ so inflate skips the `addAnnotation` call (same net result as before). `WritingJ
 null-label JSON-array the struct path is a no-op. These changes are forward-compatible if a
 future JDK revision exposes the type-level label via the public API.
 
+## Bug 301: `numPlabsFilled` and `numDirectAllocated` in `jdk.G1EvacuationYoungStatistics` / `jdk.G1EvacuationOldStatistics` are never properly populated by the JVM
+
+**Status:** Third-party JVM bug. No cjfr action possible.
+
+**Observed:** In `profile.jfr` (21 GC runs), `numPlabsFilled = 4362671119` (0x10409140F) and
+`numDirectAllocated = 5368747312` (0x140009530) are **identical across every GC event** even
+though other fields in the same event (`allocated`, `directAllocated`, `regionsRefilled`) vary
+normally per cycle.
+
+In `benchmark/renaissance-all_gc_details_G1.jfr` (thousands of GC runs), `numPlabsFilled =
+7641904886854956784` (0x6A0D80018C4FB6F0) — a 64-bit value whose magnitude (7.6 × 10¹⁸) is far
+beyond any plausible PLAB fill count and is constant across all GC events. `numDirectAllocated =
+5` (plausible but also constant).
+
+**Root cause:** The JVM's `G1EvacStats::reset()` clears the underlying `_num_plab_filled` and
+`_num_direct_allocated` counters between GC cycles, but the JFR event emission path does not
+read from those counters — or reads them before they are flushed from per-thread `PLABData`
+accumulators. The 64-bit garbage value in the renaissance recording is consistent with
+uninitialized stack or heap memory being read as `ulong`.
+
+**Impact on cjfr:** These fields contain no meaningful information. They would compress well
+(constant per recording) but inflating them is still correct — cjfr faithfully preserves the
+original garbage values. No data is lost and no additional loss is introduced.
+
+**Recommendation:** These fields could be dropped entirely in reduced/archival-max presets
+as they carry zero information. Not implemented yet — waiting to confirm whether any JFR
+analysis tool ever uses them.
+

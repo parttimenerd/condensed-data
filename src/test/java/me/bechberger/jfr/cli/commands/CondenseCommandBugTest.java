@@ -53,7 +53,7 @@ public class CondenseCommandBugTest {
         // Use REDUCED_DEFAULT which enables all combining
         // (combineEventsWithoutDataLoss, combinePLABPromotionEvents,
         //  combineObjectAllocationSampleEvents, sumObjectSizes)
-        Configuration config = Configuration.REDUCED_DEFAULT;
+        Configuration config = Configuration.REDUCED;
 
         // Pattern A: Buggy close (mimics CondenseCommand code)
         byte[] buggyOutput;

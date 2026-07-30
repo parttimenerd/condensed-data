@@ -257,7 +257,7 @@ public class CondenseCommandTest {
                             assertThat(readStartMessage(testFile).compression())
                                     .isEqualTo(Compression.NONE);
                             assertThat(readConfiguration(testFile))
-                                    .isEqualTo(Configuration.DEFAULT);
+                                    .isEqualTo(Configuration.LOSSLESS);
                             nonCompressedSize.set(Files.size(testFile));
                         })
                 .run();
