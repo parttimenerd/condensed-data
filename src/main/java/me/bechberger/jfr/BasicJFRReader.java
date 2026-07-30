@@ -17,7 +17,7 @@ import org.jetbrains.annotations.Nullable;
 public class BasicJFRReader implements JFRReader {
 
     private final CondensedInputStream in;
-    private Configuration configuration = Configuration.DEFAULT;
+    private Configuration configuration = Configuration.LOSSLESS;
     private final Universe universe = new Universe();
     private final @Nullable JFREventReadStructReconstitutor reconstitutor;
 

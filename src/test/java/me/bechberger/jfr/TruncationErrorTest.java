@@ -29,7 +29,7 @@ public class TruncationErrorTest {
             ByteArrayOutputStream outputStream = new ByteArrayOutputStream();
             try (CondensedOutputStream out =
                     new CondensedOutputStream(outputStream, Message.StartMessage.DEFAULT)) {
-                BasicJFRWriter basicJFRWriter = new BasicJFRWriter(out, Configuration.DEFAULT);
+                BasicJFRWriter basicJFRWriter = new BasicJFRWriter(out, Configuration.LOSSLESS);
                 try (RecordingStream rs = new RecordingStream()) {
                     rs.onEvent(
                             "TestEvent",

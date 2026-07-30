@@ -17,7 +17,7 @@ public class ConfigurationTest {
     @Test
     public void testEventCombinersEnabledChecksAllCombinerFlags() {
         var config =
-                Configuration.DEFAULT
+                Configuration.LOSSLESS
                         .withCombinePLABPromotionEvents(false)
                         .withCombineObjectAllocationSampleEvents(true);
 
@@ -32,7 +32,7 @@ public class ConfigurationTest {
     @Test
     public void testEventCombinersEnabledWhenBothTrue() {
         var config =
-                Configuration.DEFAULT
+                Configuration.LOSSLESS
                         .withCombinePLABPromotionEvents(true)
                         .withCombineObjectAllocationSampleEvents(true);
         assertTrue(config.eventCombinersEnabled());
@@ -41,7 +41,7 @@ public class ConfigurationTest {
     @Test
     public void testEventCombinersDisabledWhenAllFalse() {
         var config =
-                Configuration.DEFAULT
+                Configuration.LOSSLESS
                         .withCombinePLABPromotionEvents(false)
                         .withCombineObjectAllocationSampleEvents(false)
                         .withCombineEventsWithoutDataLoss(false)
@@ -56,14 +56,14 @@ public class ConfigurationTest {
 
     @Test
     public void testWithFieldValueRoundtrip() {
-        var config = Configuration.DEFAULT.withMaxStackTraceDepth(42);
+        var config = Configuration.LOSSLESS.withMaxStackTraceDepth(42);
         assertEquals(42, config.maxStackTraceDepth());
         assertEquals("lossless", config.name());
     }
 
     @Test
     public void testWithName() {
-        var config = Configuration.DEFAULT.withName("custom");
+        var config = Configuration.LOSSLESS.withName("custom");
         assertEquals("custom", config.name());
     }
 
@@ -71,35 +71,37 @@ public class ConfigurationTest {
     public void testInvalidTimeStampTicksPerSecond() {
         // withFieldValue uses reflection, wrapping IllegalArgumentException in RuntimeException
         assertThrows(
-                RuntimeException.class, () -> Configuration.DEFAULT.withTimeStampTicksPerSecond(0));
+                RuntimeException.class,
+                () -> Configuration.LOSSLESS.withTimeStampTicksPerSecond(0));
         assertThrows(
                 RuntimeException.class,
-                () -> Configuration.DEFAULT.withTimeStampTicksPerSecond(-1));
+                () -> Configuration.LOSSLESS.withTimeStampTicksPerSecond(-1));
     }
 
     @Test
     public void testInvalidDurationTicksPerSecond() {
         assertThrows(
-                RuntimeException.class, () -> Configuration.DEFAULT.withDurationTicksPerSecond(0));
+                RuntimeException.class, () -> Configuration.LOSSLESS.withDurationTicksPerSecond(0));
     }
 
     @Test
     public void testInvalidMaxStackTraceDepth() {
-        assertThrows(RuntimeException.class, () -> Configuration.DEFAULT.withMaxStackTraceDepth(0));
         assertThrows(
-                RuntimeException.class, () -> Configuration.DEFAULT.withMaxStackTraceDepth(-2));
+                RuntimeException.class, () -> Configuration.LOSSLESS.withMaxStackTraceDepth(0));
+        assertThrows(
+                RuntimeException.class, () -> Configuration.LOSSLESS.withMaxStackTraceDepth(-2));
     }
 
     @Test
     public void testMaxStackTraceDepthUnlimited() {
-        var config = Configuration.DEFAULT.withMaxStackTraceDepth(-1);
+        var config = Configuration.LOSSLESS.withMaxStackTraceDepth(-1);
         assertEquals(-1, config.maxStackTraceDepth());
     }
 
     @Test
     public void testConfigurationComparable() {
-        var a = Configuration.DEFAULT.withName("aaa");
-        var b = Configuration.DEFAULT.withName("zzz");
+        var a = Configuration.LOSSLESS.withName("aaa");
+        var b = Configuration.LOSSLESS.withName("zzz");
         assertTrue(a.compareTo(b) < 0);
         assertTrue(b.compareTo(a) > 0);
         assertEquals(0, a.compareTo(a));
@@ -117,7 +119,7 @@ public class ConfigurationTest {
     @Test
     public void testLosslessMatchesDefault() {
         // "lossless" is an alias for the lossless base config, differing only in name.
-        assertEquals(Configuration.DEFAULT.withName("lossless"), Configuration.LOSSLESS);
+        assertEquals(Configuration.LOSSLESS.withName("lossless"), Configuration.LOSSLESS);
         assertEquals(Configuration.LOSSLESS, Configuration.configurations.get("lossless"));
     }
 }

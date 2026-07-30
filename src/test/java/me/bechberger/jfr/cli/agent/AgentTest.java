@@ -506,7 +506,7 @@ public class AgentTest {
         var thread =
                 new SingleRecordingThread(
                         recordingPath.toString(),
-                        Configuration.DEFAULT,
+                        Configuration.LOSSLESS,
                         false,
                         "default",
                         "",
@@ -557,7 +557,7 @@ public class AgentTest {
         var thread =
                 new SingleRecordingThread(
                         recordingPath.toString(),
-                        Configuration.DEFAULT,
+                        Configuration.LOSSLESS,
                         false,
                         "default",
                         "",

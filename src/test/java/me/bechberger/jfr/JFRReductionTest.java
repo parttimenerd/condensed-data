@@ -12,8 +12,8 @@ public class JFRReductionTest {
     public void testStateFieldStrippedFromExecutionSampleUnconditionally() {
         // state is always STATE_RUNNABLE (JFR only samples runnable threads), so it is
         // stripped unconditionally regardless of removeTypeInformationFromStackFrames.
-        var configWithStrip = Configuration.DEFAULT.withRemoveTypeInformationFromStackFrames(true);
-        var configWithout = Configuration.DEFAULT.withRemoveTypeInformationFromStackFrames(false);
+        var configWithStrip = Configuration.LOSSLESS.withRemoveTypeInformationFromStackFrames(true);
+        var configWithout = Configuration.LOSSLESS.withRemoveTypeInformationFromStackFrames(false);
 
         var strippedWithFlag =
                 ReducedJFRTypes.getRemovedFields("jdk.ExecutionSample", configWithStrip, false);
@@ -29,8 +29,8 @@ public class JFRReductionTest {
     @Test
     public void testStateFieldStrippedFromNativeMethodSampleUnconditionally() {
         // state is always STATE_RUNNABLE — stripped unconditionally.
-        var configWithStrip = Configuration.DEFAULT.withRemoveTypeInformationFromStackFrames(true);
-        var configWithout = Configuration.DEFAULT.withRemoveTypeInformationFromStackFrames(false);
+        var configWithStrip = Configuration.LOSSLESS.withRemoveTypeInformationFromStackFrames(true);
+        var configWithout = Configuration.LOSSLESS.withRemoveTypeInformationFromStackFrames(false);
 
         var strippedWithFlag =
                 ReducedJFRTypes.getRemovedFields("jdk.NativeMethodSample", configWithStrip, false);
@@ -54,7 +54,7 @@ public class JFRReductionTest {
         long reduced =
                 (Long)
                         JFRReduction.TIMESTAMP_REDUCTION.reduce(
-                                Configuration.DEFAULT, universe, instant);
+                                Configuration.LOSSLESS, universe, instant);
 
         assertEquals(100L, reduced);
     }
@@ -67,7 +67,7 @@ public class JFRReductionTest {
         Instant inflated =
                 (Instant)
                         JFRReduction.TIMESTAMP_REDUCTION.inflate(
-                                Configuration.DEFAULT, universe, 100L);
+                                Configuration.LOSSLESS, universe, 100L);
 
         assertEquals(
                 baseNanos + 100L, inflated.getEpochSecond() * 1_000_000_000L + inflated.getNano());
@@ -82,11 +82,11 @@ public class JFRReductionTest {
             long reduced =
                     (Long)
                             JFRReduction.DATA_AMOUNT_BYTES_REDUCTION.reduce(
-                                    Configuration.DEFAULT, universe, value);
+                                    Configuration.LOSSLESS, universe, value);
             long inflated =
                     (Long)
                             JFRReduction.DATA_AMOUNT_BYTES_REDUCTION.inflate(
-                                    Configuration.DEFAULT, universe, reduced);
+                                    Configuration.LOSSLESS, universe, reduced);
             assertEquals(value, inflated, "roundtrip mismatch for value=" + value);
         }
     }

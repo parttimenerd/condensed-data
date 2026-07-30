@@ -57,7 +57,7 @@ public class EventDeduplicationBugTest {
             return; // skip if test file not available
         }
 
-        var dedup = new JFREventDeduplication(Configuration.DEFAULT);
+        var dedup = new JFREventDeduplication(Configuration.LOSSLESS);
 
         int processed = 0;
         try (var recording = new RecordingFile(testJfr)) {

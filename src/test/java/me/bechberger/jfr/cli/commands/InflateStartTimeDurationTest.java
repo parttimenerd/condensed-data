@@ -105,7 +105,7 @@ public class InflateStartTimeDurationTest {
 
         try (CondensedOutputStream out =
                 new CondensedOutputStream(condensed, StartMessage.DEFAULT)) {
-            BasicJFRWriter writer = new BasicJFRWriter(out, Configuration.DEFAULT);
+            BasicJFRWriter writer = new BasicJFRWriter(out, Configuration.LOSSLESS);
             try (RecordingStream rs = new RecordingStream()) {
                 rs.enable("StreamTestEvent");
                 rs.onEvent(
@@ -214,7 +214,7 @@ public class InflateStartTimeDurationTest {
 
         try (CondensedOutputStream out =
                 new CondensedOutputStream(condensed, StartMessage.DEFAULT)) {
-            BasicJFRWriter writer = new BasicJFRWriter(out, Configuration.DEFAULT);
+            BasicJFRWriter writer = new BasicJFRWriter(out, Configuration.LOSSLESS);
             java.util.concurrent.atomic.AtomicInteger count =
                     new java.util.concurrent.atomic.AtomicInteger();
             try (RecordingStream rs = new RecordingStream()) {

@@ -30,6 +30,12 @@ import java.util.Map;
  * @param dropStartTimeFromGCPhaseParallelEntries omit the per-entry startTime field from
  *     GCPhaseParallel combined GCWorker structs (non-aggregate mode only); individual phase start
  *     times are lost but the outer combined event's startTime, duration, and workerId are preserved
+ * @param combineExecutionSampleEvents group jdk.ExecutionSample and jdk.NativeMethodSample by
+ *     stackTrace, storing an array of (startTime, sampledThread) per unique stack — lossless except
+ *     per-event ordering; reduces event count by ~8x on typical recordings
+ * @param combineExceptionEventsLossless group jdk.JavaExceptionThrow and jdk.JavaErrorThrow by
+ *     (thrownClass, stackTrace), storing an array of (startTime, eventThread, message) per unique
+ *     key — lossless except per-event ordering; ~18 unique keys from 96K events in typical recordings
  */
 public record Configuration(
         String name,
@@ -53,6 +59,8 @@ public record Configuration(
         boolean combineG1HeapRegionTypeChangeEvents,
         boolean combineBlockingEvents,
         boolean combineThreadParkLossless,
+        boolean combineExecutionSampleEvents,
+        boolean combineExceptionEventsLossless,
         boolean dropGCWorkerThreadFromGCPhaseParallel,
         long cpuBucketSeconds,
         String collapseInternalFramesPrefixes,
@@ -68,38 +76,28 @@ public record Configuration(
     public static final String DEFAULT_COLLAPSE_PREFIXES =
             "java.\njavax.\njdk.\nsun.\ncom.sun.\norg.springframework.\nscala.\nkotlin.";
 
+    /**
+     * Minimal base — all booleans false, numeric fields at their natural defaults. Use
+     * {@code withXxx()} chains to build any preset from this.
+     */
+    private static Configuration allDefaults(String name) {
+        return new Configuration(
+                name,
+                1_000_000_000L,
+                1_000_000_000L,
+                false, false, -1L, false, false, false, false, false, false, false, false, false,
+                false, false, false, false, false, false, false, false, false, 10L, "", "", false,
+                false);
+    }
+
     public static final Configuration DEFAULT =
-            new Configuration(
-                    "lossless",
-                    /* nano seconds */ 1_000_000_000, /* nano seconds
-                                                       */
-                    1_000_000_000,
-                    false,
-                    true,
-                    -1,
-                    true,
-                    true,
-                    true, // combinePLABPromotionEvents: lossless, groups 50k+ events per GC id
-                    false, // combineObjectAllocationSampleEvents
-                    false, // combineObjectAllocationSampleLossless: enabled in default preset
-                    false, // sumObjectSizes
-                    false,
-                    false,
-                    false,
-                    false,
-                    false,
-                    false,
-                    true, // combineG1HeapRegionTypeChangeEvents: lossless struct-array grouping
-                    false,
-                    true, // combineThreadParkLossless: lossless struct-array grouping by
-                    // parkedClass
-                    false, // dropGCWorkerThreadFromGCPhaseParallel: kept by default (and in
-                    // default); only reduced drops it
-                    10L,
-                    "",
-                    "",
-                    false, // aggregateGCPhaseParallelStats: kept full by default
-                    false); // dropStartTimeFromGCPhaseParallelEntries: kept by default
+            allDefaults("lossless")
+                    .withIgnoreUnnecessaryEvents(true)
+                    .withUseSpecificHashesAndRefs(true)
+                    .withCombineEventsWithoutDataLoss(true)
+                    .withCombinePLABPromotionEvents(true)
+                    .withCombineG1HeapRegionTypeChangeEvents(true)
+                    .withCombineThreadParkLossless(true);
 
     /** with conservative lossy compression */
     public static final Configuration REASONABLE_DEFAULT =
@@ -112,7 +110,6 @@ public record Configuration(
                     .withIgnoreTooShortGCPauses(true)
                     .withRemoveBCIAndLineNumberFromStackFrames(true)
                     .withRemoveUnnecessaryAddresses(true)
-                    .withDropStartTimeFromGCPhaseParallelEntries(true)
                     .withCombineObjectAllocationSampleLossless(true)
                     .withMaxStackTraceDepth(32);
 
@@ -126,9 +123,7 @@ public record Configuration(
                     .withMaxStackTraceDepth(16)
                     .withCombineExceptionEvents(true)
                     .withCombineBlockingEvents(true)
-                    .withDropGCWorkerThreadFromGCPhaseParallel(true)
-                    .withDropStartTimeFromGCPhaseParallelEntries(true)
-                    .withAggregateGCPhaseParallelStats(true)
+                    .withAggregateGCPhaseParallelStats(false)
                     .withCollapseInternalFramesPrefixes(DEFAULT_COLLAPSE_PREFIXES);
 
     /**
@@ -136,50 +131,6 @@ public record Configuration(
      * everything" preset that pairs with a stronger compression level.
      */
     public static final Configuration LOSSLESS = DEFAULT.withName("lossless");
-
-    public Configuration(
-            String name,
-            long timeStampTicksPerSecond,
-            long durationTicksPerSecond,
-            boolean memoryAsBFloat16,
-            boolean ignoreUnnecessaryEvents,
-            long maxStackTraceDepth,
-            boolean useSpecificHashesAndRefs,
-            boolean combineEventsWithoutDataLoss,
-            boolean combinePLABPromotionEvents,
-            boolean combineObjectAllocationSampleEvents,
-            boolean sumObjectSizes,
-            boolean ignoreZeroSizedTenuredAges,
-            boolean ignoreTooShortGCPauses) {
-        this(
-                name,
-                timeStampTicksPerSecond,
-                durationTicksPerSecond,
-                memoryAsBFloat16,
-                ignoreUnnecessaryEvents,
-                maxStackTraceDepth,
-                useSpecificHashesAndRefs,
-                combineEventsWithoutDataLoss,
-                combinePLABPromotionEvents,
-                combineObjectAllocationSampleEvents,
-                false, // combineObjectAllocationSampleLossless
-                sumObjectSizes,
-                ignoreZeroSizedTenuredAges,
-                ignoreTooShortGCPauses,
-                false,
-                false,
-                false,
-                false,
-                false,
-                false,
-                false,
-                false,
-                10L,
-                "",
-                "",
-                false,
-                false);
-    }
 
     public Configuration {
         if (timeStampTicksPerSecond <= 0) {
@@ -304,6 +255,14 @@ public record Configuration(
         return withFieldValue("combineThreadParkLossless", combineThreadParkLossless);
     }
 
+    public Configuration withCombineExecutionSampleEvents(boolean combineExecutionSampleEvents) {
+        return withFieldValue("combineExecutionSampleEvents", combineExecutionSampleEvents);
+    }
+
+    public Configuration withCombineExceptionEventsLossless(boolean combineExceptionEventsLossless) {
+        return withFieldValue("combineExceptionEventsLossless", combineExceptionEventsLossless);
+    }
+
     public Configuration withCpuBucketSeconds(long cpuBucketSeconds) {
         return withFieldValue("cpuBucketSeconds", cpuBucketSeconds);
     }
@@ -361,9 +320,11 @@ public record Configuration(
                 || combineObjectAllocationSampleLossless
                 || combineEventsWithoutDataLoss
                 || combineExceptionEvents
+                || combineExceptionEventsLossless
                 || combineG1HeapRegionTypeChangeEvents
                 || combineBlockingEvents
-                || combineThreadParkLossless;
+                || combineThreadParkLossless
+                || combineExecutionSampleEvents;
     }
 
     @Override

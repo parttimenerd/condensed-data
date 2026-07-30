@@ -332,7 +332,7 @@ public class CombiningJFRReader implements JFRReader {
      * and (c) view/inflate of raw .jfr files shows unmodified event structure.
      */
     private static final Configuration ON_THE_FLY_CONFIG =
-            Configuration.DEFAULT
+            Configuration.LOSSLESS
                     .withName("on-the-fly")
                     .withIgnoreUnnecessaryEvents(false)
                     .withCombineEventsWithoutDataLoss(false)

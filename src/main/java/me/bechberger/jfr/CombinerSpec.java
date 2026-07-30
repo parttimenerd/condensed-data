@@ -912,6 +912,18 @@ public class CombinerSpec {
                             });
         }
 
+        static CombinerSpec javaExceptionThrowLossless(
+                String eventTypeName, String combinedName) {
+            return CombinerSpec.nextGcIdBased(eventTypeName)
+                    .combinedName(combinedName)
+                    .mapKeyValue(
+                            "classAndStack",
+                            "occurrences",
+                            ValueDef.collectNamedStructArray(
+                                    "ExceptionOccurrence", "startTime", "eventThread", "message"))
+                    .keyStructFields("ExceptionKey", "thrownClass", "stackTrace");
+        }
+
         // --- combineG1HeapRegionTypeChangeEvents ---
 
         static CombinerSpec g1HeapRegionTypeChange() {
@@ -1045,6 +1057,30 @@ public class CombinerSpec {
                                     return events;
                                 }
                             });
+        }
+
+        // --- combineExecutionSampleEvents ---
+
+        static CombinerSpec executionSample() {
+            return CombinerSpec.nextGcIdBased("jdk.ExecutionSample")
+                    .combinedName("jdk.combined.ExecutionSample")
+                    .mapKeyValue(
+                            "stackTrace",
+                            "occurrences",
+                            ValueDef.collectNamedStructArray(
+                                    "ExecSampleOccurrence", "startTime", "sampledThread"))
+                    .keyByReference();
+        }
+
+        static CombinerSpec nativeMethodSample() {
+            return CombinerSpec.nextGcIdBased("jdk.NativeMethodSample")
+                    .combinedName("jdk.combined.NativeMethodSample")
+                    .mapKeyValue(
+                            "stackTrace",
+                            "occurrences",
+                            ValueDef.collectNamedStructArray(
+                                    "NativeExecSampleOccurrence", "startTime", "sampledThread"))
+                    .keyByReference();
         }
     }
 }

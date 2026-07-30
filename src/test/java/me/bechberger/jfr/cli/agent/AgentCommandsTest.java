@@ -32,7 +32,7 @@ public class AgentCommandsTest {
 
         private StubRecordingThread(boolean rotating) throws ParseException, java.io.IOException {
             super(
-                    Configuration.REASONABLE_DEFAULT,
+                    Configuration.DEFAULT,
                     false,
                     "default",
                     "",
@@ -82,7 +82,7 @@ public class AgentCommandsTest {
         private ValidatingStubRecordingThread(boolean rotating)
                 throws ParseException, java.io.IOException {
             super(
-                    Configuration.REASONABLE_DEFAULT,
+                    Configuration.DEFAULT,
                     false,
                     "default",
                     "",
@@ -331,7 +331,7 @@ public class AgentCommandsTest {
         settings.maxFiles = 0;
         settings.maxDuration = Duration.ofSeconds(1);
         setField(command, "path", "recording.cjfr");
-        setField(command, "configuration", Configuration.REASONABLE_DEFAULT);
+        setField(command, "configuration", Configuration.DEFAULT);
         setField(command, "miscJfrConfig", "");
         setField(command, "verbose", false);
         setField(command, "jfrConfig", "default");
@@ -349,7 +349,7 @@ public class AgentCommandsTest {
         var settings = createSettings();
         settings.maxFiles = 2;
         setField(command, "path", "recording.cjfr");
-        setField(command, "configuration", Configuration.REASONABLE_DEFAULT);
+        setField(command, "configuration", Configuration.DEFAULT);
         setField(command, "miscJfrConfig", "");
         setField(command, "verbose", false);
         setField(command, "jfrConfig", "default");

@@ -37,6 +37,10 @@ public enum CombinedEventType {
             "jdk.combined.MetaspaceChunkFreeListSummary", "jdk.MetaspaceChunkFreeListSummary"),
     JAVA_EXCEPTION_THROW("jdk.combined.JavaExceptionThrow", "jdk.JavaExceptionThrow"),
     JAVA_ERROR_THROW("jdk.combined.JavaErrorThrow", "jdk.JavaErrorThrow"),
+    JAVA_EXCEPTION_THROW_LOSSLESS(
+            "jdk.combined.JavaExceptionThrowLossless", "jdk.JavaExceptionThrow"),
+    JAVA_ERROR_THROW_LOSSLESS(
+            "jdk.combined.JavaErrorThrowLossless", "jdk.JavaErrorThrow"),
     G1_HEAP_REGION_TYPE_CHANGE("jdk.combined.G1HeapRegionTypeChange", "jdk.G1HeapRegionTypeChange"),
     G1_HEAP_REGION_INFORMATION(
             "jdk.combined.G1HeapRegionInformation", "jdk.G1HeapRegionInformation"),
@@ -50,7 +54,9 @@ public enum CombinedEventType {
     THREAD_PARK_LOSSLESS("jdk.combined.ThreadParkLossless", "jdk.ThreadPark"),
     THREAD_SLEEP("jdk.combined.ThreadSleep", "jdk.ThreadSleep"),
     JAVA_MONITOR_ENTER("jdk.combined.JavaMonitorEnter", "jdk.JavaMonitorEnter"),
-    JAVA_MONITOR_WAIT("jdk.combined.JavaMonitorWait", "jdk.JavaMonitorWait");
+    JAVA_MONITOR_WAIT("jdk.combined.JavaMonitorWait", "jdk.JavaMonitorWait"),
+    EXECUTION_SAMPLE("jdk.combined.ExecutionSample", "jdk.ExecutionSample"),
+    NATIVE_METHOD_SAMPLE("jdk.combined.NativeMethodSample", "jdk.NativeMethodSample");
 
     private final String combinedTypeName;
     private final String originalTypeName;

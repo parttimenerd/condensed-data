@@ -46,7 +46,7 @@ public class SafeDurationAccessTest {
                                     baos,
                                     new StartMessage(
                                             1, "test", "0.1", "default", Compression.NONE))) {
-                        var writer = new BasicJFRWriter(out, Configuration.DEFAULT);
+                        var writer = new BasicJFRWriter(out, Configuration.LOSSLESS);
                         try (var r = new RecordingFile(BLA_JFR)) {
                             while (r.hasMoreEvents()) {
                                 writer.processEvent(r.readEvent());
@@ -104,7 +104,7 @@ public class SafeDurationAccessTest {
         try (var out =
                 new CondensedOutputStream(
                         baos, new StartMessage(1, "test", "0.1", "default", Compression.NONE))) {
-            var writer = new BasicJFRWriter(out, Configuration.DEFAULT);
+            var writer = new BasicJFRWriter(out, Configuration.LOSSLESS);
             try (var r = new RecordingFile(BLA_JFR)) {
                 while (r.hasMoreEvents()) {
                     writer.processEvent(r.readEvent());
@@ -160,7 +160,7 @@ public class SafeDurationAccessTest {
         try (var out =
                 new CondensedOutputStream(
                         baos, new StartMessage(1, "test", "0.1", "default", Compression.NONE))) {
-            var writer = new BasicJFRWriter(out, Configuration.DEFAULT);
+            var writer = new BasicJFRWriter(out, Configuration.LOSSLESS);
             try (var r = new RecordingFile(BLA_JFR)) {
                 while (r.hasMoreEvents()) {
                     writer.processEvent(r.readEvent());

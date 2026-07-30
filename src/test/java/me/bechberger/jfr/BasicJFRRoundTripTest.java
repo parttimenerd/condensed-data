@@ -53,7 +53,7 @@ public class BasicJFRRoundTripTest {
                 new CondensedOutputStream(outputStream, StartMessage.DEFAULT)) {
             BasicJFRWriter basicJFRWriter =
                     new BasicJFRWriter(
-                            out, Configuration.DEFAULT.withTimeStampTicksPerSecond(ttps));
+                            out, Configuration.LOSSLESS.withTimeStampTicksPerSecond(ttps));
             try (RecordingStream rs = new RecordingStream()) {
                 rs.onEvent(
                         "TestEvent",
@@ -158,7 +158,7 @@ public class BasicJFRRoundTripTest {
             BasicJFRWriter basicJFRWriter =
                     new BasicJFRWriter(
                             out,
-                            Configuration.DEFAULT
+                            Configuration.LOSSLESS
                                     .withTimeStampTicksPerSecond(ticksPerSecond)
                                     .withDurationTicksPerSecond(ticksPerSecond)
                                     .withMemoryAsBFloat16(memoryAsFloatB16));
@@ -335,7 +335,7 @@ public class BasicJFRRoundTripTest {
             BasicJFRWriter basicJFRWriter =
                     new BasicJFRWriter(
                             out,
-                            Configuration.DEFAULT
+                            Configuration.LOSSLESS
                                     .withMaxStackTraceDepth(maxDepth)
                                     .withUseSpecificHashesAndRefs(useSpecHashes));
             try (RecordingStream rs = new RecordingStream()) {
@@ -417,7 +417,7 @@ public class BasicJFRRoundTripTest {
             BasicJFRWriter basicJFRWriter =
                     new BasicJFRWriter(
                             out,
-                            Configuration.DEFAULT
+                            Configuration.LOSSLESS
                                     .withCombinePLABPromotionEvents(true)
                                     .withCombineObjectAllocationSampleEvents(true)
                                     .withSumObjectSizes(sumObjectSizes));
@@ -515,7 +515,7 @@ public class BasicJFRRoundTripTest {
             BasicJFRWriter basicJFRWriter =
                     new BasicJFRWriter(
                             out,
-                            Configuration.DEFAULT
+                            Configuration.LOSSLESS
                                     .withCombinePLABPromotionEvents(true)
                                     .withCombineObjectAllocationSampleEvents(true)
                                     .withCombineEventsWithoutDataLoss(true)
@@ -608,7 +608,7 @@ public class BasicJFRRoundTripTest {
         Map<Long, Map<String, List<Duration>>> gcIdToNameToDuration = new HashMap<>();
         ByteArrayOutputStream outputStream = new ByteArrayOutputStream();
         var config =
-                Configuration.DEFAULT
+                Configuration.LOSSLESS
                         .withCombinePLABPromotionEvents(true)
                         .withCombineObjectAllocationSampleEvents(true)
                         .withCombineEventsWithoutDataLoss(true)
@@ -751,7 +751,7 @@ public class BasicJFRRoundTripTest {
         ByteArrayOutputStream outputStream = new ByteArrayOutputStream();
         List<RecordedEvent> recordedEvents = new ArrayList<>();
         var config =
-                Configuration.DEFAULT
+                Configuration.LOSSLESS
                         .withCombinePLABPromotionEvents(true)
                         .withRemoveTypeInformationFromStackFrames(true)
                         .withRemoveBCIAndLineNumberFromStackFrames(true);

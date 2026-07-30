@@ -1644,9 +1644,7 @@ public class JFREventCombiner extends EventCombiner {
                     configuration.sumObjectSizes()
                             ? new SingleValue<RecordedEvent, Object>(
                                     new MapPartValue<>(
-                                            "objectSize",
-                                            weightCreator,
-                                            e -> e.getLong("weight")),
+                                            "objectSize", weightCreator, e -> e.getLong("weight")),
                                     (a, b) -> (long) a + (long) b,
                                     () -> 0L)
                             : (MapEntry<RecordedEvent, Object>)
@@ -1676,9 +1674,7 @@ public class JFREventCombiner extends EventCombiner {
                                                                                                 eventType
                                                                                                         .getField(
                                                                                                                 "stackTrace")),
-                                                                e ->
-                                                                        e.getValue(
-                                                                                "stackTrace")),
+                                                                e -> e.getValue("stackTrace")),
                                                         leafValue)
                                                 .withKeyByReference();
 
@@ -1749,14 +1745,22 @@ public class JFREventCombiner extends EventCombiner {
                                                     .flatMap(
                                                             item -> {
                                                                 @SuppressWarnings("unchecked")
-                                                                var pair = (Map<Object, Object>) item;
+                                                                var pair =
+                                                                        (Map<Object, Object>) item;
                                                                 var stackTrace = pair.get("key");
                                                                 if (stackTrace != null) {
-                                                                    builder.put("objectClass", objectClass, "stackTrace", stackTrace);
+                                                                    builder.put(
+                                                                            "objectClass",
+                                                                            objectClass,
+                                                                            "stackTrace",
+                                                                            stackTrace);
                                                                 } else {
-                                                                    builder.put("objectClass", objectClass);
+                                                                    builder.put(
+                                                                            "objectClass",
+                                                                            objectClass);
                                                                 }
-                                                                return emitWeights(builder, pair.get("value"));
+                                                                return emitWeights(
+                                                                        builder, pair.get("value"));
                                                             });
                                 }
                                 // lossy format: objectClass -> weight or [weights]
@@ -2678,6 +2682,25 @@ public class JFREventCombiner extends EventCombiner {
                                 .createCombiner(configuration, basicJFRWriter, gcIdPerTimestamp));
             }
         }
+        if (configuration.combineExceptionEventsLossless()
+                && !configuration.combineExceptionEvents()) {
+            if (eventType.getName().equals("jdk.JavaExceptionThrow")) {
+                put(
+                        eventType,
+                        CombinerSpec.Specs.javaExceptionThrowLossless(
+                                        "jdk.JavaExceptionThrow",
+                                        "jdk.combined.JavaExceptionThrowLossless")
+                                .createCombiner(configuration, basicJFRWriter, gcIdPerTimestamp));
+            }
+            if (eventType.getName().equals("jdk.JavaErrorThrow")) {
+                put(
+                        eventType,
+                        CombinerSpec.Specs.javaExceptionThrowLossless(
+                                        "jdk.JavaErrorThrow",
+                                        "jdk.combined.JavaErrorThrowLossless")
+                                .createCombiner(configuration, basicJFRWriter, gcIdPerTimestamp));
+            }
+        }
         if (configuration.combineBlockingEvents()) {
             if (eventType.getName().equals("jdk.ThreadPark")) {
                 put(
@@ -2709,6 +2732,20 @@ public class JFREventCombiner extends EventCombiner {
                 put(
                         eventType,
                         CombinerSpec.Specs.threadParkLossless()
+                                .createCombiner(configuration, basicJFRWriter, gcIdPerTimestamp));
+            }
+        }
+        if (configuration.combineExecutionSampleEvents()) {
+            if (eventType.getName().equals("jdk.ExecutionSample")) {
+                put(
+                        eventType,
+                        CombinerSpec.Specs.executionSample()
+                                .createCombiner(configuration, basicJFRWriter, gcIdPerTimestamp));
+            }
+            if (eventType.getName().equals("jdk.NativeMethodSample")) {
+                put(
+                        eventType,
+                        CombinerSpec.Specs.nativeMethodSample()
                                 .createCombiner(configuration, basicJFRWriter, gcIdPerTimestamp));
             }
         }
@@ -2788,6 +2825,16 @@ public class JFREventCombiner extends EventCombiner {
         m.put(
                 CombinedEventType.JAVA_ERROR_THROW,
                 CombinerSpec.Specs.javaExceptionThrow("jdk.JavaErrorThrow").createReconstitutor());
+        m.put(
+                CombinedEventType.JAVA_EXCEPTION_THROW_LOSSLESS,
+                CombinerSpec.Specs.javaExceptionThrowLossless(
+                                "jdk.JavaExceptionThrow", "jdk.combined.JavaExceptionThrowLossless")
+                        .createReconstitutor());
+        m.put(
+                CombinedEventType.JAVA_ERROR_THROW_LOSSLESS,
+                CombinerSpec.Specs.javaExceptionThrowLossless(
+                                "jdk.JavaErrorThrow", "jdk.combined.JavaErrorThrowLossless")
+                        .createReconstitutor());
         m.put(CombinedEventType.THREAD_PARK, CombinerSpec.Specs.threadPark().createReconstitutor());
         m.put(
                 CombinedEventType.THREAD_PARK_LOSSLESS,
@@ -2801,6 +2848,12 @@ public class JFREventCombiner extends EventCombiner {
         m.put(
                 CombinedEventType.JAVA_MONITOR_WAIT,
                 CombinerSpec.Specs.javaMonitorWait().createReconstitutor());
+        m.put(
+                CombinedEventType.EXECUTION_SAMPLE,
+                CombinerSpec.Specs.executionSample().createReconstitutor());
+        m.put(
+                CombinedEventType.NATIVE_METHOD_SAMPLE,
+                CombinerSpec.Specs.nativeMethodSample().createReconstitutor());
         recons = Collections.unmodifiableMap(m);
     }
 

@@ -81,7 +81,7 @@ public class RecordingThreadHardeningTest {
         var thread =
                 new RotatingRecordingThread(
                         tmp.resolve("rec_$index.cjfr").toString(),
-                        Configuration.DEFAULT,
+                        Configuration.LOSSLESS,
                         false,
                         "default",
                         "",
@@ -147,7 +147,7 @@ public class RecordingThreadHardeningTest {
         var thread =
                 new RotatingRecordingThread(
                         tmp.resolve("rec_$index.cjfr").toString(),
-                        Configuration.DEFAULT,
+                        Configuration.LOSSLESS,
                         false,
                         "default",
                         "",
@@ -199,7 +199,7 @@ public class RecordingThreadHardeningTest {
             var thread =
                     new SingleRecordingThread(
                             tmp.resolve("rec.cjfr").toString(),
-                            Configuration.DEFAULT,
+                            Configuration.LOSSLESS,
                             false,
                             "default",
                             "",
@@ -237,7 +237,7 @@ public class RecordingThreadHardeningTest {
         var thread =
                 new RotatingRecordingThread(
                         tmp.resolve("rec_$index.cjfr").toString(),
-                        Configuration.DEFAULT,
+                        Configuration.LOSSLESS,
                         false,
                         "default",
                         "",
@@ -288,7 +288,7 @@ public class RecordingThreadHardeningTest {
         var thread =
                 new SingleRecordingThread(
                         tmp.resolve("rec.cjfr").toString(),
-                        Configuration.DEFAULT,
+                        Configuration.LOSSLESS,
                         false,
                         "default",
                         "",
@@ -318,7 +318,7 @@ public class RecordingThreadHardeningTest {
         var thread =
                 new RotatingRecordingThread(
                         tmp.resolve("rec_$index.cjfr").toString(),
-                        Configuration.DEFAULT,
+                        Configuration.LOSSLESS,
                         false,
                         "default",
                         "",
@@ -379,7 +379,7 @@ public class RecordingThreadHardeningTest {
         var thread =
                 new RotatingRecordingThread(
                         tmp.resolve("rec_$index.cjfr").toString(),
-                        Configuration.DEFAULT,
+                        Configuration.LOSSLESS,
                         false,
                         "default",
                         "",
@@ -422,7 +422,7 @@ public class RecordingThreadHardeningTest {
         var thread =
                 new RotatingRecordingThread(
                         tmp.resolve("rec_$index.cjfr").toString(),
-                        Configuration.DEFAULT,
+                        Configuration.LOSSLESS,
                         false,
                         "default",
                         "",
@@ -464,7 +464,7 @@ public class RecordingThreadHardeningTest {
         var thread =
                 new RotatingRecordingThread(
                         tmp.resolve("rec_$index.cjfr").toString(),
-                        Configuration.DEFAULT,
+                        Configuration.LOSSLESS,
                         false,
                         "default",
                         "",
@@ -531,7 +531,7 @@ public class RecordingThreadHardeningTest {
     // -------------------------------------------------------------------------
 
     static List<Configuration> testConfigurations() {
-        return List.of(Configuration.DEFAULT, Configuration.REASONABLE_DEFAULT);
+        return List.of(Configuration.LOSSLESS, Configuration.DEFAULT);
     }
 
     /**
