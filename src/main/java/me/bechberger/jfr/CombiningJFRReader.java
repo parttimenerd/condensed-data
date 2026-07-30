@@ -23,7 +23,17 @@ import org.jetbrains.annotations.Nullable;
 public class CombiningJFRReader implements JFRReader {
 
     private record ReaderAndReadEvents(
-            BasicJFRReader reader, StartMessage startMessage, List<ReadStruct> alreadyReadEvents) {}
+            BasicJFRReader reader,
+            StartMessage startMessage,
+            List<ReadStruct> alreadyReadEvents,
+            byte @Nullable [] condensedBytes) {
+        ReaderAndReadEvents(
+                BasicJFRReader reader,
+                StartMessage startMessage,
+                List<ReadStruct> alreadyReadEvents) {
+            this(reader, startMessage, alreadyReadEvents, null);
+        }
+    }
 
     private final List<ReaderAndReadEvents> readers;
     private final EventFilterInstance filter;
@@ -376,12 +386,19 @@ public class CombiningJFRReader implements JFRReader {
                 }
                 writer.close();
             }
-            return readerForInputStream(
-                    new java.io.ByteArrayInputStream(baos.toByteArray()),
-                    reconstitute,
-                    skipRecursiveCompletion,
-                    statistics,
-                    onlyEventTypes);
+            byte[] condensedBytes = baos.toByteArray();
+            var result =
+                    readerForInputStream(
+                            new java.io.ByteArrayInputStream(condensedBytes),
+                            reconstitute,
+                            skipRecursiveCompletion,
+                            statistics,
+                            onlyEventTypes);
+            return new ReaderAndReadEvents(
+                    result.reader(),
+                    result.startMessage(),
+                    result.alreadyReadEvents(),
+                    condensedBytes);
         } catch (IOException e) {
             throw new RuntimeException("Failed to condense JFR file: " + jfrPath, e);
         }
@@ -503,6 +520,21 @@ public class CombiningJFRReader implements JFRReader {
                 .map(reader -> reader.reader().getEndTime())
                 .max(Comparator.naturalOrder())
                 .orElseGet(this::getStartTime);
+    }
+
+    /**
+     * Returns footers parsed from in-memory condensed bytes (on-the-fly .jfr condensations). Each
+     * reader that was created from a byte array (not a disk file) contributes one entry. The result
+     * is used by the view command to get the full eventTypeLabels map without re-reading the JFR.
+     */
+    public List<me.bechberger.condensed.CJFRFooter> inMemoryFooters() {
+        List<me.bechberger.condensed.CJFRFooter> result = new ArrayList<>();
+        for (var r : readers) {
+            if (r.condensedBytes() == null) continue;
+            me.bechberger.condensed.CJFRFooterReader.tryRead(r.condensedBytes())
+                    .ifPresent(result::add);
+        }
+        return result;
     }
 
     @Override

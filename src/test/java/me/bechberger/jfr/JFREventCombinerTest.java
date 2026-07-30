@@ -875,15 +875,14 @@ public class JFREventCombinerTest {
                     config.name() + ": per-worker eventThread must be kept");
         }
 
-        // reduced still drops it to save space.
+        // Since commit 45f8422, all presets use the full array combiner (no per-worker thread drop).
         EventWriteTree[] rootHolder = new EventWriteTree[1];
         runJFRWithCombinerCapturingStats(combiners, Configuration.REDUCED, gc, rootHolder);
         EventWriteTree combined = findNode(rootHolder[0], "jdk.combined.GCPhaseParallel");
         assertNotNull(combined, "reduced: combined node present");
-        assertEquals(
-                0,
-                sumBytesForCause(combined, "java.lang.Thread"),
-                "reduced: per-worker eventThread must be dropped");
+        assertTrue(
+                sumBytesForCause(combined, "java.lang.Thread") > 0,
+                "reduced: per-worker eventThread must be kept (all presets now use full array combiner)");
     }
 
     /** Depth-first search for the first node whose cause name equals {@code causeName}. */

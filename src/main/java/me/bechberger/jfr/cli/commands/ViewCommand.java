@@ -460,6 +460,11 @@ public class ViewCommand implements Callable<Integer> {
             }
             labels.put(name, NativeView.typeLabelOf(t.getDescription(), name));
         }
+        // In-memory footers come from on-the-fly .jfr condensations; they carry the full
+        // eventTypeLabels map including zero-event types that never produce a struct type.
+        for (var footer : jfrReader.inMemoryFooters()) {
+            labels.putAll(footer.eventTypeLabels());
+        }
         // Footer labels win: they include zero-event types and carry the real @Label verbatim.
         for (Path input : inputs()) {
             Optional<CJFRFooter> footerOpt = CJFRFooterReader.tryRead(input);

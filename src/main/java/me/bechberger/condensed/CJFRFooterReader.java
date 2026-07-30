@@ -49,6 +49,25 @@ public class CJFRFooterReader {
         }
     }
 
+    /** Try to read the footer from an in-memory {@code .cjfr} byte array. */
+    public static Optional<CJFRFooter> tryRead(byte[] bytes) {
+        int len = bytes.length;
+        if (len < 8) return Optional.empty();
+        try {
+            long b0 = bytes[len - 4] & 0xFF,
+                    b1 = bytes[len - 3] & 0xFF,
+                    b2 = bytes[len - 2] & 0xFF,
+                    b3 = bytes[len - 1] & 0xFF;
+            long footerLen = b0 | (b1 << 8) | (b2 << 16) | (b3 << 24);
+            if (footerLen <= 0 || footerLen > len - 4) return Optional.empty();
+            long footerStart = len - 4 - footerLen;
+            byte[] zlibBytes = java.util.Arrays.copyOfRange(bytes, (int) footerStart, len - 4);
+            return Optional.ofNullable(CJFRFooter.fromCompressedBytes(zlibBytes));
+        } catch (Exception e) {
+            return Optional.empty();
+        }
+    }
+
     /**
      * Byte offset where the footer record begins (i.e. the length of the start header + compressed
      * main stream). {@link Optional#empty()} if the file has no readable footer.

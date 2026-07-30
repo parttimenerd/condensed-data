@@ -158,8 +158,11 @@ public class JFRViewTest {
         assertEquals(1, content.size());
         var line = content.get(0);
         System.err.println(line);
-        assertTrue(line.contains(".bechberger.jfr.cli.JFRViewTest.initJFRStructs "));
-        assertTrue(line.contains(" Hello"));
+        // Method may appear with line number ("initJFRStructs:N") or without ("initJFRStructs "),
+        // depending on whether BCI/line-number removal is active in the writer configuration.
+        assertTrue(line.contains(".bechberger.jfr.cli.JFRViewTest.initJFRStructs"),
+                "Row should contain the stack frame method name");
+        assertTrue(line.contains("Hello"));
         assertTrue(line.contains("main"));
     }
 

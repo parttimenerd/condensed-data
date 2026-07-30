@@ -56,7 +56,7 @@ public class JFREventDeduplicationTest {
             System.err.println("Skipping: " + testJfr + " not found");
             return;
         }
-        var dedup = new JFREventDeduplication(Configuration.LOSSLESS);
+        var dedup = new JFREventDeduplication(Configuration.DEFAULT);
 
         int kept = 0;
         int dropped = 0;
@@ -115,7 +115,7 @@ public class JFREventDeduplicationTest {
 
         // Periodic time-series: deduped under default, fully preserved under lossless.
         var defaultTs =
-                countKeptDropped(testJfr, Configuration.LOSSLESS, "jdk.DirectBufferStatistics");
+                countKeptDropped(testJfr, Configuration.DEFAULT, "jdk.DirectBufferStatistics");
         var losslessTs =
                 countKeptDropped(testJfr, Configuration.LOSSLESS, "jdk.DirectBufferStatistics");
         assertThat(defaultTs[0]).isGreaterThan(0);
@@ -125,7 +125,7 @@ public class JFREventDeduplicationTest {
 
         // Static event (a boolean flag): still deduped under both presets — lossless dedup of
         // constant-valued events loses no per-timestamp information.
-        var defaultFlag = countKeptDropped(testJfr, Configuration.LOSSLESS, "jdk.BooleanFlag");
+        var defaultFlag = countKeptDropped(testJfr, Configuration.DEFAULT, "jdk.BooleanFlag");
         var losslessFlag = countKeptDropped(testJfr, Configuration.LOSSLESS, "jdk.BooleanFlag");
         assertThat(defaultFlag[1]).isGreaterThan(0);
         assertThat(losslessFlag[1]).isEqualTo(defaultFlag[1]);
@@ -133,13 +133,13 @@ public class JFREventDeduplicationTest {
 
         // NativeLibrary (Bug 270): periodic, emitted at start and end of recording —
         // must NOT be deduped under lossless.
-        var defaultNL = countKeptDropped(testJfr, Configuration.LOSSLESS, "jdk.NativeLibrary");
+        var defaultNL = countKeptDropped(testJfr, Configuration.DEFAULT, "jdk.NativeLibrary");
         var losslessNL = countKeptDropped(testJfr, Configuration.LOSSLESS, "jdk.NativeLibrary");
         assertThat(defaultNL[1]).isGreaterThan(0); // default drops duplicates
         assertThat(losslessNL[1]).isEqualTo(0); // lossless drops none
 
         // GCConfiguration (Bug 270): periodic singleton — same fix as NativeLibrary.
-        var defaultGC = countKeptDropped(testJfr, Configuration.LOSSLESS, "jdk.GCConfiguration");
+        var defaultGC = countKeptDropped(testJfr, Configuration.DEFAULT, "jdk.GCConfiguration");
         var losslessGC = countKeptDropped(testJfr, Configuration.LOSSLESS, "jdk.GCConfiguration");
         if (defaultGC[0] + defaultGC[1] > 1) {
             assertThat(defaultGC[1]).isGreaterThan(0); // default deduplicates
