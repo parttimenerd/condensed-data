@@ -127,6 +127,8 @@ public class ViewCommand implements Callable<Integer> {
      */
     private Set<String> lastSeenTypes = Set.of();
 
+    private Map<String, String> lastTypeLabels = Map.of();
+
     /** Returns the view/event name: the first positional arg (jfr view order). */
     private String viewName() {
         return args.get(0);
@@ -260,10 +262,11 @@ public class ViewCommand implements Callable<Integer> {
                 // Give Impl the types we already saw, so it can print a did-you-mean list if jfr
                 // view also can't resolve the name (a typo'd event name, not a real named view).
                 lastSeenTypes = matches.seenTypes();
+                lastTypeLabels = matches.typeLabels();
                 return CLIUtils.callImpl(this, "view");
             }
 
-            return reportNoEventType(viewName, matches.seenTypes());
+            return reportNoEventType(viewName, matches.seenTypes(), matches.typeLabels());
         } catch (IllegalArgumentException e) {
             System.err.println("Error: " + e.getMessage());
             return 2;
@@ -273,7 +276,11 @@ public class ViewCommand implements Callable<Integer> {
     }
 
     /** The events matching a requested type, plus the resolved name and all seen type names. */
-    private record MatchResult(String eventName, List<ReadStruct> events, Set<String> seenTypes) {}
+    private record MatchResult(
+            String eventName,
+            List<ReadStruct> events,
+            Set<String> seenTypes,
+            Map<String, String> typeLabels) {}
 
     /**
      * Read the inputs and collect events whose type equals {@code eventName} (exact match
@@ -309,7 +316,7 @@ public class ViewCommand implements Callable<Integer> {
             matchingEvents = caseInsensitiveMatches;
             eventName = matchingEvents.get(0).getType().getName();
         }
-        return new MatchResult(eventName, matchingEvents, seenTypes);
+        return new MatchResult(eventName, matchingEvents, seenTypes, typeLabels(jfrReader));
     }
 
     /**
@@ -480,8 +487,14 @@ public class ViewCommand implements Callable<Integer> {
     private record ReadEvents(List<ReadStruct> events, Map<String, String> typeLabels) {}
 
     /** Print the "no event of type X" diagnostic with a did-you-mean list. */
-    private Integer reportNoEventType(String eventName, Set<String> seenTypes) {
-        System.err.println("No event of type " + eventName + " found.");
+    private Integer reportNoEventType(
+            String eventName, Set<String> seenTypes, Map<String, String> typeLabels) {
+        String label = typeLabels.get(eventName);
+        if (label != null && !label.isEmpty() && !label.equals(eventName)) {
+            System.err.println("No events found for '" + label + "'.");
+        } else {
+            System.err.println("No event of type " + eventName + " found.");
+        }
         var candidates = new LinkedHashSet<String>(NativeView.viewNames());
         candidates.addAll(seenTypes);
         if (candidates.isEmpty()) {
@@ -676,7 +689,7 @@ public class ViewCommand implements Callable<Integer> {
             // Since our native scan already found no matching event type either, treat it as a
             // mistyped event name and show the friendlier did-you-mean (jfr itself exits 0 here).
             if (err.contains("Could not find a view or an event type named")) {
-                return cmd.reportNoEventType(viewName, cmd.lastSeenTypes);
+                return cmd.reportNoEventType(viewName, cmd.lastSeenTypes, cmd.lastTypeLabels);
             }
 
             System.out.print(out);

@@ -1776,3 +1776,13 @@ analysis tool ever uses them.
 1. `JFRViewConfig.typeDisplayName(StructType)` — new helper that calls `BasicJFRWriter.parseEventDescription(type.getDescription()).label()` and falls back to `type.getName()` when the label is null/empty or parsing fails.
 
 2. `fieldDisplayName(Field)` — new helper that calls `BasicJFRWriter.parseFieldDescription(field.description()).label()` and falls back to `propertyToHeader(field.name())`. All column constructors updated to use `(header, prop)` 2-arg form with `header = fieldDisplayName(field)` and `prop = field.name()`, so the label drives the displayed header while the field name remains the data lookup key.
+
+## Bug 305: "No event of type X found" error message used raw type name instead of @Label
+
+**Status:** Fixed.
+
+**Observed:** `cjfr view jdk.JavaMonitorEnter profile.jfr` printed "No event of type jdk.JavaMonitorEnter found." while the JDK oracle (`jfr view`) prints "No events found for 'Java Monitor Blocked'." (using the @Label). Similarly, `jdk.ClassLoad` showed "No event of type jdk.ClassLoad found." instead of "No events found for 'Class Load'.".
+
+**Root cause:** `ViewCommand.reportNoEventType(String eventName, Set<String> seenTypes)` always used the raw event type name. The `@Label` for every event type is available in the `typeLabels` map (built from the footer's `eventTypeLabels` and in-memory struct type descriptions), but `MatchResult` only carried `seenTypes` — not `typeLabels`. So `reportNoEventType` had no access to the label.
+
+**Fix:** Extended `MatchResult` to include `typeLabels` (computed from the `CombiningJFRReader` at the same time as events are collected in `collectMatches`). Added `lastTypeLabels` field alongside the existing `lastSeenTypes` for the delegation code path. `reportNoEventType` now uses `typeLabels.get(eventName)` — if a non-empty label distinct from the type name is found, it prints "No events found for '<label>'."; otherwise falls back to the old "No event of type X found." form.

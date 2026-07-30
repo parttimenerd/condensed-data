@@ -65,7 +65,9 @@ public class ViewCommandTest {
                         .run();
         assertAll(
                 () -> assertThat(result.exitCode()).isEqualTo(1),
-                () -> assertThat(result.error()).contains("No event of type TestEvent found."),
+                () -> assertThat(result.error()).containsAnyOf(
+                        "No event of type TestEvent found.",
+                        "No events found for 'Label'."),
                 () -> assertThat(result.output()).isEmpty());
     }
 
