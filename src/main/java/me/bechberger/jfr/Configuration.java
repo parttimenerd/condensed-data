@@ -24,6 +24,9 @@ import java.util.Map;
  * @param aggregateGCPhaseParallelStats collapse jdk.GCPhaseParallel events per (gcId, phaseName)
  *     into a single stat entry {count, sumDuration, minDuration, maxDuration}; drops per-worker and
  *     per-region-scan granularity; reduces GCPhaseParallel size by ~7-11x
+ * @param dropStartTimeFromGCPhaseParallelEntries omit the per-entry startTime field from
+ *     GCPhaseParallel combined GCWorker structs (non-aggregate mode only); individual phase start
+ *     times are lost but the outer combined event's startTime, duration, and workerId are preserved
  */
 public record Configuration(
         String name,
@@ -50,7 +53,8 @@ public record Configuration(
         long cpuBucketSeconds,
         String collapseInternalFramesPrefixes,
         String collapseAppFramesPrefixes,
-        boolean aggregateGCPhaseParallelStats)
+        boolean aggregateGCPhaseParallelStats,
+        boolean dropStartTimeFromGCPhaseParallelEntries)
         implements Comparable<Configuration> {
 
     /**
@@ -89,7 +93,8 @@ public record Configuration(
                     10L,
                     "",
                     "",
-                    false); // aggregateGCPhaseParallelStats: kept full by default
+                    false, // aggregateGCPhaseParallelStats: kept full by default
+                    false); // dropStartTimeFromGCPhaseParallelEntries: kept by default
 
     /** with conservative lossy compression */
     public static final Configuration REASONABLE_DEFAULT =
@@ -102,6 +107,7 @@ public record Configuration(
                     .withIgnoreTooShortGCPauses(true)
                     .withRemoveBCIAndLineNumberFromStackFrames(true)
                     .withRemoveUnnecessaryAddresses(true)
+                    .withDropStartTimeFromGCPhaseParallelEntries(true)
                     .withMaxStackTraceDepth(32);
 
     public static final Configuration REDUCED_DEFAULT =
@@ -115,6 +121,7 @@ public record Configuration(
                     .withCombineExceptionEvents(true)
                     .withCombineBlockingEvents(true)
                     .withDropGCWorkerThreadFromGCPhaseParallel(true)
+                    .withDropStartTimeFromGCPhaseParallelEntries(true)
                     .withAggregateGCPhaseParallelStats(true)
                     .withCollapseInternalFramesPrefixes(DEFAULT_COLLAPSE_PREFIXES);
 
@@ -163,6 +170,7 @@ public record Configuration(
                 10L,
                 "",
                 "",
+                false,
                 false);
     }
 
@@ -293,6 +301,10 @@ public record Configuration(
 
     public Configuration withAggregateGCPhaseParallelStats(boolean aggregate) {
         return withFieldValue("aggregateGCPhaseParallelStats", aggregate);
+    }
+
+    public Configuration withDropStartTimeFromGCPhaseParallelEntries(boolean drop) {
+        return withFieldValue("dropStartTimeFromGCPhaseParallelEntries", drop);
     }
 
     public Configuration withCollapseInternalFramesPrefixes(String prefixes) {

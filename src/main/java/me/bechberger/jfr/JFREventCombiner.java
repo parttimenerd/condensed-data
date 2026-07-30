@@ -1411,15 +1411,18 @@ public class JFREventCombiner extends EventCombiner {
                         .withKeyByReference();
             }
 
-            // Default mode: name -> array of {startTime, [eventThread,] gcWorkerId, duration}
-            // In reduced mode the per-worker eventThread is dropped.
+            // Default mode: name -> array of {[startTime,] [eventThread,] gcWorkerId, duration}
+            // In reduced mode the per-worker eventThread and startTime are dropped.
             boolean dropThread = configuration.dropGCWorkerThreadFromGCPhaseParallel();
+            boolean dropStartTime = configuration.dropStartTimeFromGCPhaseParallelEntries();
             // spotless:off
             var gcWorkerDuration = new MapPartValue<RecordedEvent, RecordedEvent>(
                     "gcworkerDuration",
                     (out, eventType) -> (CondensedType) basicJFRWriter.getOutputStream().writeAndStoreType(id -> {
                         List<StructType.Field<RecordedEvent, ?, ?>> fields = new ArrayList<>();
-                        fields.add(basicJFRWriter.eventFieldToField(eventType.getField("startTime"), true));
+                        if (!dropStartTime) {
+                            fields.add(basicJFRWriter.eventFieldToField(eventType.getField("startTime"), true));
+                        }
                         if (!dropThread) {
                             fields.add(basicJFRWriter.eventFieldToField(eventType.getField("eventThread"), true));
                         }
