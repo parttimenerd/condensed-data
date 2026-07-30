@@ -35,7 +35,8 @@ import java.util.Map;
  *     per-event ordering; reduces event count by ~8x on typical recordings
  * @param combineExceptionEventsLossless group jdk.JavaExceptionThrow and jdk.JavaErrorThrow by
  *     (thrownClass, stackTrace), storing an array of (startTime, eventThread, message) per unique
- *     key — lossless except per-event ordering; ~18 unique keys from 96K events in typical recordings
+ *     key — lossless except per-event ordering; ~18 unique keys from 96K events in typical
+ *     recordings
  */
 public record Configuration(
         String name,
@@ -77,20 +78,43 @@ public record Configuration(
             "java.\njavax.\njdk.\nsun.\ncom.sun.\norg.springframework.\nscala.\nkotlin.";
 
     /**
-     * Minimal base — all booleans false, numeric fields at their natural defaults. Use
-     * {@code withXxx()} chains to build any preset from this.
+     * Minimal base — all booleans false, numeric fields at their natural defaults. Use {@code
+     * withXxx()} chains to build any preset from this.
      */
     private static Configuration allDefaults(String name) {
         return new Configuration(
                 name,
                 1_000_000_000L,
                 1_000_000_000L,
-                false, false, -1L, false, false, false, false, false, false, false, false, false,
-                false, false, false, false, false, false, false, false, false, 10L, "", "", false,
+                false,
+                false,
+                -1L,
+                false,
+                false,
+                false,
+                false,
+                false,
+                false,
+                false,
+                false,
+                false,
+                false,
+                false,
+                false,
+                false,
+                false,
+                false,
+                false,
+                false,
+                false,
+                10L,
+                "",
+                "",
+                false,
                 false);
     }
 
-    public static final Configuration DEFAULT =
+    public static final Configuration LOSSLESS =
             allDefaults("lossless")
                     .withIgnoreUnnecessaryEvents(true)
                     .withUseSpecificHashesAndRefs(true)
@@ -100,8 +124,8 @@ public record Configuration(
                     .withCombineThreadParkLossless(true);
 
     /** with conservative lossy compression */
-    public static final Configuration REASONABLE_DEFAULT =
-            DEFAULT.withName("default")
+    public static final Configuration DEFAULT =
+            LOSSLESS.withName("default")
                     .withMemoryAsBFloat16(true)
                     .withTimeStampTicksPerSecond(1_000)
                     .withDurationTicksPerSecond(1_000_000)
@@ -113,8 +137,8 @@ public record Configuration(
                     .withCombineObjectAllocationSampleLossless(true)
                     .withMaxStackTraceDepth(32);
 
-    public static final Configuration REDUCED_DEFAULT =
-            REASONABLE_DEFAULT
+    public static final Configuration REDUCED =
+            DEFAULT
                     .withName("reduced")
                     .withCombineObjectAllocationSampleEvents(true)
                     .withSumObjectSizes(true)
@@ -123,14 +147,9 @@ public record Configuration(
                     .withMaxStackTraceDepth(16)
                     .withCombineExceptionEvents(true)
                     .withCombineBlockingEvents(true)
-                    .withAggregateGCPhaseParallelStats(false)
+                    .withDropGCWorkerThreadFromGCPhaseParallel(true)
+                    .withAggregateGCPhaseParallelStats(true)
                     .withCollapseInternalFramesPrefixes(DEFAULT_COLLAPSE_PREFIXES);
-
-    /**
-     * Explicit alias for {@link #DEFAULT}: no data reduction at all. Handy as a clearly-named "keep
-     * everything" preset that pairs with a stronger compression level.
-     */
-    public static final Configuration LOSSLESS = DEFAULT.withName("lossless");
 
     public Configuration {
         if (timeStampTicksPerSecond <= 0) {
@@ -152,13 +171,13 @@ public record Configuration(
         if (collapseAppFramesPrefixes == null) collapseAppFramesPrefixes = "";
     }
 
-    public static final Configuration ARCHIVAL_MAX = REDUCED_DEFAULT.withName("archival-max");
+    public static final Configuration ARCHIVAL_MAX = REDUCED.withName("archival-max");
 
     public static final Map<String, Configuration> configurations =
             Map.of(
                     "lossless", LOSSLESS,
-                    "default", REASONABLE_DEFAULT,
-                    "reduced", REDUCED_DEFAULT,
+                    "default", DEFAULT,
+                    "reduced", REDUCED,
                     "archival-max", ARCHIVAL_MAX);
 
     public Configuration withTimeStampTicksPerSecond(long ttps) {
@@ -259,7 +278,8 @@ public record Configuration(
         return withFieldValue("combineExecutionSampleEvents", combineExecutionSampleEvents);
     }
 
-    public Configuration withCombineExceptionEventsLossless(boolean combineExceptionEventsLossless) {
+    public Configuration withCombineExceptionEventsLossless(
+            boolean combineExceptionEventsLossless) {
         return withFieldValue("combineExceptionEventsLossless", combineExceptionEventsLossless);
     }
 
@@ -338,7 +358,7 @@ public record Configuration(
      * docs/configurations.md} in sync with the code.
      */
     public static String toFlagTable() {
-        var presets = List.of(LOSSLESS, REASONABLE_DEFAULT, REDUCED_DEFAULT, ARCHIVAL_MAX);
+        var presets = List.of(LOSSLESS, DEFAULT, REDUCED, ARCHIVAL_MAX);
         var booleanComponents =
                 java.util.Arrays.stream(Configuration.class.getRecordComponents())
                         .filter(c -> c.getType() == boolean.class)
