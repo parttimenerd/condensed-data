@@ -1839,3 +1839,13 @@ analysis tool ever uses them.
 **Root cause:** The `default` preset stored `@jdk.jfr.Percentage`-annotated float fields using `Type.BFLOAT16` (16-bit brain floating point, 7 mantissa bits). BFLOAT16 has only ~3 decimal digits of precision and for values in the 0-100% range the error can be up to ±0.12%. The higher-precision `Type.FLOAT16` (IEEE 754 half-precision, 10 mantissa bits) uses the same 16-bit storage size but reduces the error to ±0.025%.
 
 **Fix:** Changed `getPercentageFloatType()` in `BasicJFRWriter` from `Type.BFLOAT16` to `Type.FLOAT16`. The CJFR format stores the type tag in the file, so existing CJFR files with BFLOAT16 percentages still decode correctly; only newly condensed files use FLOAT16.
+
+## Bug 311: Nested struct inside expanded struct rendered as raw `{key=val}` string
+
+**Status:** Fixed.
+
+**Observed:** `cjfr view jdk.ModuleExport profile.cjfr` showed an `Exported Package : Module` column containing `{name=jdk.compiler, lo...}` raw struct text. The JDK oracle (`jfr view`) shows only scalar sub-fields of `exportedPackage` (`Name`, `Exported`) and does not render the nested `module` struct as a separate column.
+
+**Root cause:** `topLevelFieldColumns()` expanded each field of a top-level struct into a `NestedColumn`. For sub-fields that are themselves generic structs (e.g. `Package.module`), `fieldToColumn(subField, 1)` hit `StructColumn.of(prop, header, type, 0)`. With `avDepth=0`, `StructColumn.of()` returns an **anonymous `Column`** (not a `StructColumn` instance), so the `inner instanceof StructColumn` guard failed to skip it. The anonymous column's `format()` calls `.toString()` on the struct object, producing `{name=..., ...}` output.
+
+**Fix:** Changed the guard to check `subField.type() instanceof StructType<?, ?>` directly (instead of `inner instanceof StructColumn`), with explicit carve-outs for dedicated struct formatters (Thread, Class, ClassLoader, Method, StackTrace) that ARE `StructType` instances but have useful single-cell renderers. This correctly skips only generic unhandled nested structs, matching oracle behavior.

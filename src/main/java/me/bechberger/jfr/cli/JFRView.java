@@ -679,9 +679,9 @@ public class JFRView {
     }
 
     /**
-     * Renders jdk.ActiveSetting/jdk.RecordingSetting {@code id} field: cjfr stores the target
-     * event type's name (e.g. "jdk.ThreadStart"); oracle shows the @Label (e.g. "Java Thread
-     * Start"). Falls back to raw value when label is unknown.
+     * Renders jdk.ActiveSetting/jdk.RecordingSetting {@code id} field: cjfr stores the target event
+     * type's name (e.g. "jdk.ThreadStart"); oracle shows the @Label (e.g. "Java Thread Start").
+     * Falls back to raw value when label is unknown.
      */
     record EventIdColumn(String header, String property, Map<String, String> typeLabels)
             implements Column {
@@ -817,8 +817,7 @@ public class JFRView {
                 && ("jdk.ActiveSetting".equals(parentTypeName)
                         || "jdk.RecordingSetting".equals(parentTypeName))
                 && !typeLabels.isEmpty()) {
-            return List.of(
-                    new EventIdColumn(fieldDisplayName(field), field.name(), typeLabels));
+            return List.of(new EventIdColumn(fieldDisplayName(field), field.name(), typeLabels));
         }
         Column col = fieldToColumn(field);
         if (col instanceof StructColumn && field.type() instanceof StructType<?, ?> structType) {
@@ -828,9 +827,23 @@ public class JFRView {
                     .map(
                             subField -> {
                                 Column inner = fieldToColumn(subField, 1);
+                                // Skip sub-fields that are themselves generic structs — the oracle
+                                // does not recurse into nested structs within an already-expanded
+                                // struct (e.g. Package.module is omitted in ModuleExport view).
+                                // Check the field's type directly; StructColumn.of() may return
+                                // an anonymous Column at depth 0 rather than a StructColumn.
+                                if (subField.type() instanceof StructType<?, ?>
+                                        && !(inner instanceof ThreadColumn)
+                                        && !(inner instanceof ClassColumn)
+                                        && !(inner instanceof ClassLoaderColumn)
+                                        && !(inner instanceof MethodColumn)
+                                        && !(inner instanceof StackTraceColumn)) {
+                                    return null;
+                                }
                                 String compoundHeader = parentHeader + " : " + inner.header();
                                 return (Column) new NestedColumn(compoundHeader, parentProp, inner);
                             })
+                    .filter(java.util.Objects::nonNull)
                     .collect(java.util.stream.Collectors.toList());
         }
         return List.of(col);
@@ -971,7 +984,10 @@ public class JFRView {
             this(
                     typeDisplayName(type),
                     type.getFields().stream()
-                            .flatMap(f -> topLevelFieldColumns(f, type.getName(), typeLabels).stream())
+                            .flatMap(
+                                    f ->
+                                            topLevelFieldColumns(f, type.getName(), typeLabels)
+                                                    .stream())
                             .toList());
         }
 
