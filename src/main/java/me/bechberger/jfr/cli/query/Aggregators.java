@@ -285,8 +285,22 @@ final class Aggregators {
             // negative — jfr renders "-1.3 GB". Over timestamps/durations the difference is an
             // elapsed Duration; over a plain numeric field it stays a number, matching jfr's
             // operand-typed result (a count difference renders as "0", not "0 s").
+            if (!temporal) {
+                long diff = (long) (toDouble(lastValue) - toDouble(firstValue));
+                return diff;
+            }
+            // For Instants: use Duration.between to avoid double-precision loss when converting
+            // epoch-nanos (~1.7e21) to double (only ~1e15 exact int range); subtraction of two
+            // large similar doubles would corrupt the sub-second difference by ~100ms+.
+            if (lastValue instanceof Instant lastInst && firstValue instanceof Instant firstInst) {
+                return Duration.between(firstInst, lastInst);
+            }
+            // Duration subtraction (same precision issue avoided by staying in long-nanos domain)
+            if (lastValue instanceof Duration lastD && firstValue instanceof Duration firstD) {
+                return lastD.minus(firstD);
+            }
             long diff = (long) (toDouble(lastValue) - toDouble(firstValue));
-            return temporal ? (Object) Duration.ofNanos(diff) : (Object) diff;
+            return Duration.ofNanos(diff);
         }
     }
 

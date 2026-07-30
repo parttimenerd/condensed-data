@@ -1849,3 +1849,13 @@ analysis tool ever uses them.
 **Root cause:** `topLevelFieldColumns()` expanded each field of a top-level struct into a `NestedColumn`. For sub-fields that are themselves generic structs (e.g. `Package.module`), `fieldToColumn(subField, 1)` hit `StructColumn.of(prop, header, type, 0)`. With `avDepth=0`, `StructColumn.of()` returns an **anonymous `Column`** (not a `StructColumn` instance), so the `inner instanceof StructColumn` guard failed to skip it. The anonymous column's `format()` calls `.toString()` on the struct object, producing `{name=..., ...}` output.
 
 **Fix:** Changed the guard to check `subField.type() instanceof StructType<?, ?>` directly (instead of `inner instanceof StructColumn`), with explicit carve-outs for dedicated struct formatters (Thread, Class, ClassLoader, Method, StackTrace) that ARE `StructType` instances but have useful single-cell renderers. This correctly skips only generic unhandled nested structs, matching oracle behavior.
+
+## Bug 312: `gc-cpu-time` Total Time wrong when GCCPUTime events arrive out of chronological order
+
+**Status:** Fixed.
+
+**Observed:** `cjfr view gc-cpu-time profile.cjfr` showed `Total Time: 2.03 s` but oracle `jfr view gc-cpu-time profile.jfr` showed `Total Time: 2.61 s`.
+
+**Root cause:** The `gc-cpu-time` "Total Time" column is `DIFF("startTime")` — the range of `jdk.GCCPUTime` event startTimes. The oracle's `QueryEvaluator` explicitly sorts events by `startTime` before feeding order-sensitive reducers (DIFF/FIRST/LAST), so `DIFF` is always `MAX(startTime) - MIN(startTime)`. The footer precompute accumulator fed events in JFR arrival order without sorting; in `profile.jfr` the first event (by arrival) had `startTime = 11:12:21.064` (not the chronological minimum of `11:12:20.484`), so `DiffReducer` used the wrong "first" value, producing `2.03 s` instead of `2.61 s`.
+
+**Fix:** Changed `ViewPrecompute.Accumulator` to buffer all events per view as `(startTimeNanos, Object[] colValues)` rows, then sort by `startTime` at `build()` time before feeding reducers — but only for views that have at least one order-sensitive reducer (DIFF/FIRST/LAST). Order-insensitive views (MIN/AVG/MAX/SUM/COUNT) are fed immediately in arrival order (no buffering overhead). Also updated `FooterCollector.collectPrecomputedView` to call the new `acceptRow(viewName, startTime, values)` API.

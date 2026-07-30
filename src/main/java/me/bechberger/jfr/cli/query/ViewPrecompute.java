@@ -3,10 +3,12 @@ package me.bechberger.jfr.cli.query;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 import me.bechberger.condensed.CJFRFooter.PrecomputedCell;
 import me.bechberger.jfr.cli.query.Aggregators.Reducer;
 
@@ -84,29 +86,43 @@ public final class ViewPrecompute {
 
     /**
      * A stateful accumulator that the collector drives during condense. For each incoming event,
-     * the collector looks up {@link #columnsFor} for the event's type and feeds the raw value of
-     * each column's {@code field} (see {@link Column#field}) via {@link #accept}. At the end,
-     * {@link #build} returns the {@code precomputedViews} map for the footer (views with no source
-     * events are omitted).
+     * the collector calls {@link #acceptRow} with the event's startTime and all column values. At
+     * the end, {@link #build} sorts buffered rows by startTime (matching the chronological
+     * iteration that {@link QueryEvaluator} uses) before feeding order-sensitive reducers
+     * (DIFF/FIRST/LAST), ensuring the footer-precomputed result matches the event-based render.
      */
     public static final class Accumulator {
-        private final Map<String, Reducer[]> reducersByView = new LinkedHashMap<>();
+        /**
+         * Per-view buffer of (startTimeNanos, Object[colValues]) — used for order-sensitive views.
+         */
+        private final Map<String, List<long[]>> startTimesByView = new LinkedHashMap<>();
+
+        /** Parallel buffer of column values, one entry per event per view. */
+        private final Map<String, List<Object[]>> rowsByView = new LinkedHashMap<>();
+
+        /** Whether any event was seen for each view. */
         private final Map<String, Boolean> anyByView = new LinkedHashMap<>();
+
+        private static final Set<String> ORDER_SENSITIVE =
+                Set.of("DIFF", "FIRST", "LAST", "LAST_BATCH");
 
         public Accumulator() {
             for (PView v : REGISTRY) {
-                Reducer[] rs = new Reducer[v.columns().size()];
-                for (int i = 0; i < rs.length; i++) {
-                    rs[i] = Aggregators.reducer(v.columns().get(i).reducer()).get();
-                }
-                reducersByView.put(v.viewName(), rs);
+                startTimesByView.put(v.viewName(), new ArrayList<>());
+                rowsByView.put(v.viewName(), new ArrayList<>());
                 anyByView.put(v.viewName(), false);
             }
         }
 
-        /** Feed column {@code colIndex} of {@code viewName} its raw value for one source event. */
-        public void accept(String viewName, int colIndex, Object value) {
-            reducersByView.get(viewName)[colIndex].accept(value);
+        /**
+         * Feed one source event's column values and its startTime to the accumulator. The caller
+         * must supply all column values (null for missing/inapplicable fields) so they remain
+         * aligned with the column list when sorted by startTime at build time.
+         */
+        public void acceptRow(String viewName, Instant startTime, Object[] colValues) {
+            long startNanos = startTime.getEpochSecond() * 1_000_000_000L + startTime.getNano();
+            startTimesByView.get(viewName).add(new long[] {startNanos});
+            rowsByView.get(viewName).add(colValues);
             anyByView.put(viewName, true);
         }
 
@@ -117,7 +133,30 @@ public final class ViewPrecompute {
             Map<String, List<PrecomputedCell>> out = new LinkedHashMap<>();
             for (PView v : REGISTRY) {
                 if (!anyByView.get(v.viewName())) continue;
-                Reducer[] rs = reducersByView.get(v.viewName());
+                List<long[]> starts = startTimesByView.get(v.viewName());
+                List<Object[]> rows = rowsByView.get(v.viewName());
+                // Sort rows by startTime if any column is order-sensitive.
+                boolean needsSort =
+                        v.columns().stream().anyMatch(c -> ORDER_SENSITIVE.contains(c.reducer()));
+                List<Object[]> ordered;
+                if (needsSort) {
+                    Integer[] idx = new Integer[starts.size()];
+                    for (int i = 0; i < idx.length; i++) idx[i] = i;
+                    java.util.Arrays.sort(idx, Comparator.comparingLong(i -> starts.get(i)[0]));
+                    ordered = new ArrayList<>(rows.size());
+                    for (int i : idx) ordered.add(rows.get(i));
+                } else {
+                    ordered = rows;
+                }
+                Reducer[] rs = new Reducer[v.columns().size()];
+                for (int i = 0; i < rs.length; i++) {
+                    rs[i] = Aggregators.reducer(v.columns().get(i).reducer()).get();
+                }
+                for (Object[] row : ordered) {
+                    for (int i = 0; i < row.length; i++) {
+                        if (row[i] != null) rs[i].accept(row[i]);
+                    }
+                }
                 List<PrecomputedCell> cells = new ArrayList<>(rs.length);
                 for (int i = 0; i < rs.length; i++) {
                     cells.add(toCell(rs[i].result(), v.columns().get(i).kind()));

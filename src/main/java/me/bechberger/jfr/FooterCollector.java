@@ -101,6 +101,8 @@ public final class FooterCollector {
      * {@code @Timestamp} startTime → {@link RecordedEvent#getInstant(String)} (Instant),
      * {@code @Percentage float} → {@link RecordedEvent#getFloat(String)} (autoboxed Double), plain
      * longs → {@link RecordedEvent#getLong(String)}, and {@code COUNT(*)} gets a non-null marker.
+     * The whole row (all columns) is passed at once with the event's startTime so the accumulator
+     * can sort by startTime before feeding order-sensitive reducers (DIFF/FIRST/LAST).
      */
     private void collectPrecomputedView(RecordedEvent event, String name) {
         var colsOpt = ViewPrecompute.columnsFor(name);
@@ -108,19 +110,20 @@ public final class FooterCollector {
         String viewName = ViewPrecompute.viewNameFor(name).orElse(null);
         if (viewName == null) return;
         List<ViewPrecompute.Column> cols = colsOpt.get();
+        Object[] values = new Object[cols.size()];
         for (int i = 0; i < cols.size(); i++) {
             String field = cols.get(i).field();
             if ("*".equals(field)) {
-                viewAccumulator.accept(viewName, i, ViewPrecompute.COUNT_STAR_MARKER);
+                values[i] = ViewPrecompute.COUNT_STAR_MARKER;
                 continue;
             }
             if (!event.hasField(field)) continue;
             try {
-                Object value = precomputedFieldValue(event, field);
-                if (value != null) viewAccumulator.accept(viewName, i, value);
+                values[i] = precomputedFieldValue(event, field);
             } catch (IllegalArgumentException ignored) {
             }
         }
+        viewAccumulator.acceptRow(viewName, event.getStartTime(), values);
     }
 
     /** Read {@code field} with the runtime type matching the native path (see caller javadoc). */
