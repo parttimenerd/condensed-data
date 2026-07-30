@@ -11,6 +11,8 @@ import java.util.stream.Stream;
  */
 public enum CombinedEventType {
     OBJECT_ALLOCATION_SAMPLE("jdk.combined.ObjectAllocationSample", "jdk.ObjectAllocationSample"),
+    OBJECT_ALLOCATION_SAMPLE_LOSSLESS(
+            "jdk.combined.ObjectAllocationSampleLossless", "jdk.ObjectAllocationSample"),
     OBJECT_ALLOCATION_IN_NEW_TLAB(
             "jdk.combined.ObjectAllocationInNewTLAB", "jdk.ObjectAllocationInNewTLAB"),
     OBJECT_ALLOCATION_OUTSIDE_TLAB(

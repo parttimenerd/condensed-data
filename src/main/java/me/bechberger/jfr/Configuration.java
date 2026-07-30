@@ -17,6 +17,9 @@ import java.util.Map;
  * @param combinePLABPromotionEvents combine and reduce jdk.PromoteObjectInNewPLAB and
  *     jdk.PromoteObjectOutsidePLAB events
  * @param combineObjectAllocationSampleEvents combine and reduce jdk.ObjectSample events
+ * @param combineObjectAllocationSampleLossless group jdk.ObjectAllocationSample by (objectClass,
+ *     stackTrace), storing an array of weights per unique stack — lossless except per-event
+ *     timestamps (enabled in default preset)
  * @param collapseInternalFramesPrefixes newline-delimited class-name prefixes to collapse in
  *     profiling stack traces (reduced/archival-max only); empty = disabled
  * @param collapseAppFramesPrefixes newline-delimited class-name prefixes to force-keep even if they
@@ -39,6 +42,7 @@ public record Configuration(
         boolean combineEventsWithoutDataLoss,
         boolean combinePLABPromotionEvents,
         boolean combineObjectAllocationSampleEvents,
+        boolean combineObjectAllocationSampleLossless,
         boolean sumObjectSizes,
         boolean ignoreZeroSizedTenuredAges,
         boolean ignoreTooShortGCPauses,
@@ -76,8 +80,9 @@ public record Configuration(
                     true,
                     true,
                     true, // combinePLABPromotionEvents: lossless, groups 50k+ events per GC id
-                    false,
-                    false,
+                    false, // combineObjectAllocationSampleEvents
+                    false, // combineObjectAllocationSampleLossless: enabled in default preset
+                    false, // sumObjectSizes
                     false,
                     false,
                     false,
@@ -108,6 +113,7 @@ public record Configuration(
                     .withRemoveBCIAndLineNumberFromStackFrames(true)
                     .withRemoveUnnecessaryAddresses(true)
                     .withDropStartTimeFromGCPhaseParallelEntries(true)
+                    .withCombineObjectAllocationSampleLossless(true)
                     .withMaxStackTraceDepth(32);
 
     public static final Configuration REDUCED_DEFAULT =
@@ -156,6 +162,7 @@ public record Configuration(
                 combineEventsWithoutDataLoss,
                 combinePLABPromotionEvents,
                 combineObjectAllocationSampleEvents,
+                false, // combineObjectAllocationSampleLossless
                 sumObjectSizes,
                 ignoreZeroSizedTenuredAges,
                 ignoreTooShortGCPauses,
@@ -243,6 +250,12 @@ public record Configuration(
             boolean combineObjectAllocationSampleEvents) {
         return withFieldValue(
                 "combineObjectAllocationSampleEvents", combineObjectAllocationSampleEvents);
+    }
+
+    public Configuration withCombineObjectAllocationSampleLossless(
+            boolean combineObjectAllocationSampleLossless) {
+        return withFieldValue(
+                "combineObjectAllocationSampleLossless", combineObjectAllocationSampleLossless);
     }
 
     public Configuration withSumObjectSizes(boolean sumObjectSizes) {
@@ -345,6 +358,7 @@ public record Configuration(
     public boolean eventCombinersEnabled() {
         return combinePLABPromotionEvents
                 || combineObjectAllocationSampleEvents
+                || combineObjectAllocationSampleLossless
                 || combineEventsWithoutDataLoss
                 || combineExceptionEvents
                 || combineG1HeapRegionTypeChangeEvents

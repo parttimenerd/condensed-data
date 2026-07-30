@@ -1576,9 +1576,11 @@ public class JFREventCombiner extends EventCombiner {
     static class ObjectAllocationSampleCombiner
             extends AbstractCombiner<ObjectAllocationSampleToken, ObjectAllocationSampleState> {
         private final GCIdPerTimestamp gcIdPerTimestamp;
+        private final boolean losslessMode;
 
         public ObjectAllocationSampleCombiner(
                 String typeName,
+                boolean losslessMode,
                 Configuration configuration,
                 BasicJFRWriter basicJFRWriter,
                 GCIdPerTimestamp gcIdPerTimestamp) {
@@ -1586,8 +1588,9 @@ public class JFREventCombiner extends EventCombiner {
                     typeName,
                     configuration,
                     basicJFRWriter,
-                    createValueDefinition(basicJFRWriter, configuration));
+                    createValueDefinition(basicJFRWriter, configuration, losslessMode));
             this.gcIdPerTimestamp = gcIdPerTimestamp;
+            this.losslessMode = losslessMode;
         }
 
         @Override
@@ -1626,23 +1629,23 @@ public class JFREventCombiner extends EventCombiner {
 
         @SuppressWarnings({"rawtypes", "unchecked"})
         private static MapValue<RecordedEvent, ?, ?> createValueDefinition(
-                BasicJFRWriter basicJFRWriter, Configuration configuration) {
-
-            // class -> (array of sizes or summed size)
+                BasicJFRWriter basicJFRWriter, Configuration configuration, boolean losslessMode) {
 
             BiFunction<CondensedOutputStream, EventType, CondensedType<Object, Object>>
-                    objectSizeCreator =
+                    weightCreator =
                             (out, eventType) ->
                                     (CondensedType<Object, Object>)
                                             basicJFRWriter.getTypeCached(
                                                     eventType.getField("weight"));
 
-            MapEntry<RecordedEvent, Object> objectsMapValue =
+            // In lossless mode: objectClass -> stackTrace -> [weights]
+            // In lossy mode:    objectClass -> (sum or [weights])
+            MapEntry<RecordedEvent, Object> leafValue =
                     configuration.sumObjectSizes()
                             ? new SingleValue<RecordedEvent, Object>(
                                     new MapPartValue<>(
                                             "objectSize",
-                                            objectSizeCreator,
+                                            weightCreator,
                                             e -> e.getLong("weight")),
                                     (a, b) -> (long) a + (long) b,
                                     () -> 0L)
@@ -1651,8 +1654,44 @@ public class JFREventCombiner extends EventCombiner {
                                             new ArrayValue<RecordedEvent, Object>(
                                                     new MapPartValue<>(
                                                             "weight",
-                                                            objectSizeCreator,
+                                                            weightCreator,
                                                             e -> e.getLong("weight")));
+
+            if (losslessMode) {
+                // Insert a stackTrace grouping level between objectClass and weights.
+                // Events with the same (objectClass, stackTrace) are grouped — their weights form
+                // an array. Pool references are used as keys so identical stacks are deduplicated.
+                MapEntry<RecordedEvent, Object> stackToWeights =
+                        (MapEntry<RecordedEvent, Object>)
+                                (MapEntry)
+                                        new MapValue<>(
+                                                        new MapPartValue<RecordedEvent, Object>(
+                                                                "stackTrace",
+                                                                (out, eventType) ->
+                                                                        (CondensedType<
+                                                                                        Object,
+                                                                                        Object>)
+                                                                                basicJFRWriter
+                                                                                        .getTypeCached(
+                                                                                                eventType
+                                                                                                        .getField(
+                                                                                                                "stackTrace")),
+                                                                e ->
+                                                                        e.getValue(
+                                                                                "stackTrace")),
+                                                        leafValue)
+                                                .withKeyByReference();
+
+                return new MapValue<RecordedEvent, Object, Object>(
+                        new MapPartValue<>(
+                                "objectClass",
+                                (out, eventType) ->
+                                        (CondensedType<RecordedClass, RecordedClass>)
+                                                basicJFRWriter.getTypeCached(
+                                                        eventType.getField("objectClass")),
+                                e -> e.getClass("objectClass")),
+                        stackToWeights);
+            }
 
             return new MapValue<RecordedEvent, Object, Object>(
                     new MapPartValue<>(
@@ -1662,7 +1701,7 @@ public class JFREventCombiner extends EventCombiner {
                                             basicJFRWriter.getTypeCached(
                                                     eventType.getField("objectClass")),
                             e -> e.getClass("objectClass")),
-                    objectsMapValue);
+                    leafValue);
         }
 
         @Override
@@ -1692,27 +1731,48 @@ public class JFREventCombiner extends EventCombiner {
                 ReadStruct combinedReadEvent,
                 EventBuilder<E, ?> builder) {
             builder.put("endTime").addStandardFieldsIfNeeded();
+            boolean hasStackTraceLevel =
+                    combinedReadEvent
+                            .getType()
+                            .getName()
+                            .equals("jdk.combined.ObjectAllocationSampleLossless");
             return combinedReadEvent.asMapEntryList("objectClass").stream()
                     .flatMap(
                             entry -> {
                                 var objectClass = entry.getKey();
-                                var weight = entry.getValue();
-                                if (weight instanceof ReadList<?> weights) {
-                                    return weights.stream()
-                                            .map(
-                                                    singleWeight ->
-                                                            builder.put(
-                                                                            "objectClass",
-                                                                            objectClass,
-                                                                            "weight",
-                                                                            singleWeight)
-                                                                    .build());
+                                if (hasStackTraceLevel) {
+                                    // lossless format: objectClass -> stackTrace -> [weights]
+                                    // Null stackTrace key = events recorded without a stack;
+                                    // emit them without setting stackTrace on the builder.
+                                    return ((ReadList<?>) entry.getValue())
+                                            .stream()
+                                                    .flatMap(
+                                                            item -> {
+                                                                @SuppressWarnings("unchecked")
+                                                                var pair = (Map<Object, Object>) item;
+                                                                var stackTrace = pair.get("key");
+                                                                if (stackTrace != null) {
+                                                                    builder.put("objectClass", objectClass, "stackTrace", stackTrace);
+                                                                } else {
+                                                                    builder.put("objectClass", objectClass);
+                                                                }
+                                                                return emitWeights(builder, pair.get("value"));
+                                                            });
                                 }
-                                return Stream.of(
-                                        builder.put("objectClass", objectClass, "weight", weight)
-                                                .build());
+                                // lossy format: objectClass -> weight or [weights]
+                                builder.put("objectClass", objectClass);
+                                return emitWeights(builder, entry.getValue());
                             })
                     .toList();
+        }
+
+        @SuppressWarnings("unchecked")
+        private static <E> Stream<E> emitWeights(EventBuilder<E, ?> builder, Object value) {
+            if (value instanceof ReadList<?> weights) {
+                return ((ReadList<Long>) weights)
+                        .stream().map(w -> builder.put("weight", w).build());
+            }
+            return Stream.of(builder.put("weight", value).build());
         }
     }
 
@@ -2445,6 +2505,7 @@ public class JFREventCombiner extends EventCombiner {
                         eventType,
                         new JFREventCombiner.ObjectAllocationSampleCombiner(
                                 "jdk.combined.ObjectAllocationSample",
+                                false,
                                 configuration,
                                 basicJFRWriter,
                                 gcIdPerTimestamp));
@@ -2465,6 +2526,19 @@ public class JFREventCombiner extends EventCombiner {
                         new JFREventCombiner.BasicObjectAllocationCombiner(
                                 "jdk.combined.ObjectAllocationOutsideTLAB",
                                 false,
+                                configuration,
+                                basicJFRWriter,
+                                gcIdPerTimestamp));
+            }
+        }
+        if (configuration.combineObjectAllocationSampleLossless()
+                && !configuration.combineObjectAllocationSampleEvents()) {
+            if (eventType.getName().equals("jdk.ObjectAllocationSample")) {
+                put(
+                        eventType,
+                        new JFREventCombiner.ObjectAllocationSampleCombiner(
+                                "jdk.combined.ObjectAllocationSampleLossless",
+                                true,
                                 configuration,
                                 basicJFRWriter,
                                 gcIdPerTimestamp));
@@ -2648,6 +2722,9 @@ public class JFREventCombiner extends EventCombiner {
         var m = new HashMap<CombinedEventType, AbstractReconstitutor>();
         m.put(
                 CombinedEventType.OBJECT_ALLOCATION_SAMPLE,
+                new ObjectAllocationSampleReconstitutor());
+        m.put(
+                CombinedEventType.OBJECT_ALLOCATION_SAMPLE_LOSSLESS,
                 new ObjectAllocationSampleReconstitutor());
         m.put(
                 CombinedEventType.OBJECT_ALLOCATION_IN_NEW_TLAB,

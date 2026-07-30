@@ -350,9 +350,81 @@ public class JFREventCombinerTest {
     }
 
     /**
-     * Test {@link me.bechberger.jfr.JFREventCombiner.PromoteObjectCombiner} and {@link
-     * PromoteObjectCombiner}
+     * Test lossless ObjectAllocationSample combining: every (objectClass, stackTrace) pair is
+     * preserved, and total weight per class is exact.
      */
+    @Test
+    public void testObjectAllocationSampleLosslessCombiner() {
+        var res =
+                runJFRWithCombiner(
+                        Map.of(
+                                "jdk.ObjectAllocationSample",
+                                new CombinerAndReconstitutor(
+                                        "jdk.combined.ObjectAllocationSampleLossless")),
+                        Configuration.DEFAULT.withCombineObjectAllocationSampleLossless(true),
+                        () -> {
+                            System.out.println(new byte[1024 * 1024 * 1024].length);
+                            System.gc();
+                        });
+        assertTrue(
+                res.combinedEventCount.size() <= res.readEvents.size(),
+                "Less combined then recorded events");
+
+        // Total weight per class must be preserved exactly
+        Map<String, Long> sizePerClass = new HashMap<>();
+        for (var event : res.recordedEvents) {
+            // RecordedClass.getName() uses '.' separators; normalize to '/' to match CJFR format
+            var className = event.getClass("objectClass").getName().replace('.', '/');
+            sizePerClass.merge(className, event.getLong("weight"), Long::sum);
+        }
+        Map<String, Long> reconSizePerClass = new HashMap<>();
+        for (var event : res.readEvents) {
+            if (!event.getType().getTypeName().equals("jdk.ObjectAllocationSample")) {
+                continue;
+            }
+            var objClass = (TypedValue) TypedValueUtil.getNonScalar(event, "objectClass");
+            var className = TypedValueUtil.get(objClass, "name").toString();
+            reconSizePerClass.merge(
+                    className, (long) TypedValueUtil.get(event, "weight"), Long::sum);
+        }
+        assertMapEquals(sizePerClass, reconSizePerClass);
+
+        // The set of unique objectClass names must be preserved
+        var origClasses =
+                res.recordedEvents.stream()
+                        .map(e -> e.getClass("objectClass").getName().replace('.', '/'))
+                        .collect(java.util.stream.Collectors.toSet());
+        var reconClasses =
+                res.readEvents.stream()
+                        .filter(
+                                e ->
+                                        e.getType()
+                                                .getTypeName()
+                                                .equals("jdk.ObjectAllocationSample"))
+                        .map(
+                                e -> {
+                                    var objClass =
+                                            (TypedValue)
+                                                    TypedValueUtil.getNonScalar(e, "objectClass");
+                                    return TypedValueUtil.get(objClass, "name").toString();
+                                })
+                        .collect(java.util.stream.Collectors.toSet());
+        assertEquals(
+                origClasses.stream().sorted().toList(),
+                reconClasses.stream().sorted().toList(),
+                "objectClass set must be preserved");
+
+        // stackTrace field must be present in reconstituted events
+        for (var event : res.readEvents) {
+            if (!event.getType().getTypeName().equals("jdk.ObjectAllocationSample")) {
+                continue;
+            }
+            var stackTrace = TypedValueUtil.getNonScalar(event, "stackTrace");
+            assertTrue(
+                    stackTrace instanceof TypedValue,
+                    "stackTrace must be a TypedValue in reconstituted event");
+        }
+    }
     @ParameterizedTest
     @ValueSource(booleans = {true, false})
     public void testPromoteObjectInNewTLABCombiner(boolean sumObjectSizes) {
