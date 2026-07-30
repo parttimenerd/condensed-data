@@ -35,10 +35,10 @@ public class ViewCommandTest {
                         .checkNoError()
                         .run();
         assertThat(result.output())
-                .contains("TestEvent")
+                .contains("Label")
                 .contains(
                         """
-                        Start Time Duration   Event Thread    Stack Trace                                       Number     Memory     String                                          \s
+                        Start Time Duration   Event Thread    Stack Trace                                       Label      Memory     String                                          \s
                         ---------- ---------- --------------- ------------------------------------------------- ---------- ---------- -------------------------------------------------
                         """);
     }
@@ -126,7 +126,7 @@ public class ViewCommandTest {
                         .withFiles(CommandTestUtil.getSampleCJFRFile())
                         .checkNoError()
                         .run();
-        assertThat(result.output()).contains("AnotherEvent");
+        assertThat(result.output()).contains("Label");
     }
 
     @Test
@@ -142,7 +142,7 @@ public class ViewCommandTest {
                                 CommandTestUtil.getSampleCJFRFile(1))
                         .checkNoError()
                         .run();
-        assertThat(result.output()).contains("TestEvent");
+        assertThat(result.output()).contains("Label");
     }
 
     @Test
@@ -200,7 +200,7 @@ public class ViewCommandTest {
                                 CommandTestUtil.getSampleCJFRFile(1))
                         .checkNoError()
                         .run();
-        assertThat(result.output()).contains("TestEvent");
+        assertThat(result.output()).contains("Label");
     }
 
     @Test
@@ -229,7 +229,7 @@ public class ViewCommandTest {
                         .withFiles(CommandTestUtil.getSampleCJFRFile())
                         .checkNoError()
                         .run();
-        assertThat(result.output()).contains("TestEvent");
+        assertThat(result.output()).contains("Label");
     }
 
     @Test
@@ -250,7 +250,7 @@ public class ViewCommandTest {
                         .checkNoError()
                         .run();
 
-        assertThat(result.output()).contains("TestEvent");
+        assertThat(result.output()).contains("Label");
     }
 
     @Test
@@ -303,8 +303,8 @@ public class ViewCommandTest {
                                             .checkNoError()
                                             .run();
 
-                            assertThat(limitOne.output()).contains("TestEvent");
-                            assertThat(limitTwo.output()).contains("TestEvent");
+                            assertThat(limitOne.output()).contains("Label");
+                            assertThat(limitTwo.output()).contains("Label");
                             assertThat(limitTwo.output().lines().count())
                                     .isGreaterThan(limitOne.output().lines().count());
                         })
@@ -329,7 +329,7 @@ public class ViewCommandTest {
                                                     map.get("large_string.cjfr").toString())
                                             .run();
                             assertThat(viewResult.exitCode()).isEqualTo(0);
-                            assertThat(viewResult.output()).contains("LargeStringEvent");
+                            assertThat(viewResult.output()).contains("Large String Event");
                         })
                 .run();
     }
@@ -352,7 +352,7 @@ public class ViewCommandTest {
                                                     map.get("extreme_numeric.cjfr").toString())
                                             .run();
                             assertThat(viewResult.exitCode()).isEqualTo(0);
-                            assertThat(viewResult.output()).contains("ExtremeNumericEvent");
+                            assertThat(viewResult.output()).contains("Extreme Numeric Event");
                             // Long.MAX_VALUE must be rendered correctly
                             assertThat(viewResult.output())
                                     .contains(String.valueOf(Long.MAX_VALUE));
@@ -378,7 +378,7 @@ public class ViewCommandTest {
                                                     map.get("unicode_string.cjfr").toString())
                                             .run();
                             assertThat(viewResult.exitCode()).isEqualTo(0);
-                            assertThat(viewResult.output()).contains("UnicodeStringEvent");
+                            assertThat(viewResult.output()).contains("Unicode String Event");
                         })
                 .run();
     }
@@ -403,7 +403,7 @@ public class ViewCommandTest {
                                                     "300")
                                             .run();
                             assertThat(viewResult.exitCode()).isEqualTo(0);
-                            assertThat(viewResult.output()).contains("ManyFieldsEvent");
+                            assertThat(viewResult.output()).contains("Many Fields Event");
                         })
                 .run();
     }
@@ -497,7 +497,7 @@ public class ViewCommandTest {
                         .withFiles(CommandTestUtil.getSampleCJFRFile())
                         .checkNoError()
                         .run();
-        assertThat(result.output()).contains("TestEvent");
+        assertThat(result.output()).contains("Label");
     }
 
     @Test
@@ -509,7 +509,7 @@ public class ViewCommandTest {
                         .withFiles(CommandTestUtil.getSampleCJFRFile())
                         .checkNoError()
                         .run();
-        assertThat(result.output()).contains("TestEvent");
+        assertThat(result.output()).contains("Label");
     }
 
     @Test
@@ -521,7 +521,7 @@ public class ViewCommandTest {
                         .withFiles(CommandTestUtil.getSampleCJFRFile())
                         .checkNoError()
                         .run();
-        assertThat(result.output()).contains("TestEvent");
+        assertThat(result.output()).contains("Label");
     }
 
     @Test
@@ -533,7 +533,7 @@ public class ViewCommandTest {
                         .withFiles(CommandTestUtil.getSampleCJFRFile())
                         .checkNoError()
                         .run();
-        assertThat(result.output()).contains("TestEvent");
+        assertThat(result.output()).contains("Label");
     }
 
     /**
@@ -576,7 +576,7 @@ public class ViewCommandTest {
                         .withFiles(CommandTestUtil.getSampleJFRFile())
                         .checkNoError()
                         .run();
-        assertThat(result.output()).contains("TestEvent");
+        assertThat(result.output()).contains("Label");
     }
 
     @Test
@@ -607,7 +607,7 @@ public class ViewCommandTest {
                         .checkNoError()
                         .run();
         // Should have header + exactly 1 data row
-        assertThat(result.output()).contains("TestEvent");
+        assertThat(result.output()).contains("Label");
         // Count non-empty lines that contain separator characters (data rows)
         var dataLines =
                 result.output().lines().filter(l -> l.contains("│") && !l.contains("─")).count();
@@ -769,8 +769,8 @@ public class ViewCommandTest {
             assertThat(view.err()).doesNotContain("potentially unknown type: percentage");
             assertThat(view.out()).contains("%");
             assertThat(view.out())
-                    .contains("Jvm User")
-                    .contains("Jvm System")
+                    .contains("JVM User")
+                    .contains("JVM System")
                     .contains("Machine Total");
         } finally {
             Files.deleteIfExists(output);

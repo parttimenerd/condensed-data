@@ -16,6 +16,7 @@ import me.bechberger.condensed.ReadStruct;
 import me.bechberger.condensed.types.CondensedType;
 import me.bechberger.condensed.types.StructType;
 import me.bechberger.condensed.types.StructType.Field;
+import me.bechberger.jfr.BasicJFRWriter;
 import me.bechberger.util.MemoryUtil;
 
 /** Tabular view for JFR events */
@@ -662,11 +663,15 @@ public class JFRView {
         }
 
         static Column of(String property, CondensedType<?, ?> type, int avDepth) {
+            return of(property, propertyToHeader(property), type, avDepth);
+        }
+
+        static Column of(String property, String header, CondensedType<?, ?> type, int avDepth) {
             if (avDepth <= 0 || !(type instanceof StructType<?, ?> structType)) {
                 return new Column() {
                     @Override
                     public String header() {
-                        return propertyToHeader(property);
+                        return header;
                     }
 
                     @Override
@@ -773,11 +778,26 @@ public class JFRView {
                 || name.equals("lastKnownHeapUsage");
     }
 
+    /** Returns the @Label for the field, falling back to the camelCase-converted field name. */
+    private static String fieldDisplayName(Field<?, ?, ?> field) {
+        String desc = field.description();
+        if (desc != null && !desc.isEmpty()) {
+            try {
+                String label = BasicJFRWriter.parseFieldDescription(desc).label();
+                if (label != null && !label.isEmpty()) return label;
+            } catch (RuntimeException ignored) {
+            }
+        }
+        return propertyToHeader(field.name());
+    }
+
     private static Column fieldToColumn(Field<?, ?, ?> field, int avDepth) {
         var typeName = field.type().getName();
+        var prop = field.name();
+        var header = fieldDisplayName(field);
         // @MemoryAddress renders as a hex address regardless of the underlying numeric type.
         if (hasAnnotation(field, "jdk.jfr.MemoryAddress")) {
-            return new JFRView.MemoryAddressColumn(field.name());
+            return new JFRView.MemoryAddressColumn(header, prop);
         }
         // A @DataAmount + @Frequency field is a data rate (bytes/second or bits/second), e.g.
         // G1BasicIHOP.recentAllocationRate or NetworkUtilization.readRate. It must render as
@@ -789,76 +809,89 @@ public class JFRView {
                     desc != null && desc.contains("BITS")
                             ? MemoryUtil.MemoryUnit.BITS
                             : MemoryUtil.MemoryUnit.BYTES;
-            return new JFRView.DataRateColumn(field.name(), unit);
+            return new JFRView.DataRateColumn(header, prop, unit);
         }
         // Check for fields where @Unsigned shadows @Timespan or @Timestamp in the type name
         if (typeName.equals("jdk.jfr.Unsigned")) {
             if (hasAnnotation(field, "jdk.jfr.Timespan")) {
-                return new JFRView.DurationColumn(field.name());
+                return new JFRView.DurationColumn(header, prop);
             }
             if (hasAnnotation(field, "jdk.jfr.Timestamp")) {
-                return new JFRView.InstantColumn(field.name());
+                return new JFRView.InstantColumn(header, prop);
             }
         }
         return switch (typeName) {
             case "millis", "nanos", "tickspan", "microseconds", "timespan" ->
-                    new JFRView.DurationColumn(field.name());
-            case "timestamp" -> new JFRView.InstantColumn(field.name());
+                    new JFRView.DurationColumn(header, prop);
+            case "timestamp" -> new JFRView.InstantColumn(header, prop);
             case "bytes", "memory BYTES", "memory varint BYTES", "jdk.jfr.DataAmount" ->
-                    new JFRView.MemoryColumn(field.name(), MemoryUtil.MemoryUnit.BYTES);
+                    new JFRView.MemoryColumn(header, prop, MemoryUtil.MemoryUnit.BYTES);
             case "memory BITS", "memory varint BITS" ->
-                    new JFRView.MemoryColumn(field.name(), MemoryUtil.MemoryUnit.BITS);
-            case "java.lang.String" -> new JFRView.StringColumn(field.name());
+                    new JFRView.MemoryColumn(header, prop, MemoryUtil.MemoryUnit.BITS);
+            case "java.lang.String" -> new JFRView.StringColumn(header, prop);
             case "int", "jdk.jfr.Unsigned", "uint1", "uint2", "int1" -> {
                 // Some int fields use Integer.MIN_VALUE as a "not applicable" sentinel, e.g.
                 // OldObjectSample.arrayElements ("... or minimum value for the type int if it is
                 // not an array"). Render the sentinel as N/A instead of -2147483648.
                 var desc = field.description();
                 if (desc != null && desc.contains("minimum value for the type int")) {
-                    yield new JFRView.SentinelIntegerColumn(field.name(), 10);
+                    yield new JFRView.SentinelIntegerColumn(header, prop, 10);
                 }
-                yield new JFRView.IntegerColumn(field.name(), 10);
+                yield new JFRView.IntegerColumn(header, prop, 10);
             }
             case "long" -> {
                 // Fallback for fields that should be timestamp/duration but lost their
                 // type info due to missing annotations in the original JFR file (Bug 168)
-                if (field.name().equals("startTime")) {
-                    yield new JFRView.InstantColumn(field.name());
+                if (prop.equals("startTime")) {
+                    yield new JFRView.InstantColumn(header, prop);
                 }
-                if (field.name().equals("duration")) {
-                    yield new JFRView.DurationColumn(field.name());
+                if (prop.equals("duration")) {
+                    yield new JFRView.DurationColumn(header, prop);
                 }
                 // Fallback for @DataAmount fields that lost their annotation (Bug 212)
-                if (isLikelyDataAmountField(field.name())) {
-                    yield new JFRView.MemoryColumn(field.name(), MemoryUtil.MemoryUnit.BYTES);
+                if (isLikelyDataAmountField(prop)) {
+                    yield new JFRView.MemoryColumn(header, prop, MemoryUtil.MemoryUnit.BYTES);
                 }
-                yield new JFRView.IntegerColumn(field.name(), 20);
+                yield new JFRView.IntegerColumn(header, prop, 20);
             }
-            case "float", "double" -> new JFRView.FloatColumn(field.name(), 10, 2);
-            case "boolean" -> new JFRView.BooleanColumn(field.name());
-            case "jdk.jfr.Percentage", "percentage" -> new JFRView.PercentageColumn(field.name());
-            case "jdk.jfr.Frequency" -> new JFRView.FrequencyColumn(field.name());
-            case "jdk.types.Class", "java.lang.Class" -> new JFRView.ClassColumn(field.name());
-            case "jdk.types.ClassLoader" -> new JFRView.ClassLoaderColumn(field.name());
-            case "jdk.types.Method" -> new JFRView.MethodColumn(field.name());
-            case "jdk.types.StackTrace" -> new JFRView.StackTraceColumn(field.name());
-            case "java.lang.Thread" -> new JFRView.ThreadColumn(field.name());
+            case "float", "double" -> new JFRView.FloatColumn(header, prop, 10, 2);
+            case "boolean" -> new JFRView.BooleanColumn(header, prop);
+            case "jdk.jfr.Percentage", "percentage" -> new JFRView.PercentageColumn(header, prop);
+            case "jdk.jfr.Frequency" -> new JFRView.FrequencyColumn(header, prop);
+            case "jdk.types.Class", "java.lang.Class" -> new JFRView.ClassColumn(header, prop);
+            case "jdk.types.ClassLoader" -> new JFRView.ClassLoaderColumn(header, prop);
+            case "jdk.types.Method" -> new JFRView.MethodColumn(header, prop);
+            case "jdk.types.StackTrace" -> new JFRView.StackTraceColumn(header, prop);
+            case "java.lang.Thread" -> new JFRView.ThreadColumn(header, prop);
             default -> {
                 if (field.type() instanceof StructType<?, ?>) {
                     // Known struct types are handled via StructColumn
-                    yield StructColumn.of(field.name(), field.type(), avDepth - 1);
+                    yield StructColumn.of(prop, header, field.type(), avDepth - 1);
                 }
                 if (warnedTypes.add(typeName)) {
                     System.err.println("Warning: potentially unknown type: " + typeName);
                 }
-                yield StructColumn.of(field.name(), field.type(), avDepth - 1);
+                yield StructColumn.of(prop, header, field.type(), avDepth - 1);
             }
         };
     }
 
     public record JFRViewConfig(String name, List<Column> columns) {
         public JFRViewConfig(StructType<?, ?> type) {
-            this(type.getName(), type.getFields().stream().map(JFRView::fieldToColumn).toList());
+            this(typeDisplayName(type), type.getFields().stream().map(JFRView::fieldToColumn).toList());
+        }
+
+        /** Derive the display name: the @Label from the type description, or the raw type name. */
+        private static String typeDisplayName(StructType<?, ?> type) {
+            String desc = type.getDescription();
+            if (desc != null && !desc.isEmpty()) {
+                try {
+                    String label = BasicJFRWriter.parseEventDescription(desc).label();
+                    if (label != null && !label.isEmpty()) return label;
+                } catch (RuntimeException ignored) {
+                }
+            }
+            return type.getName();
         }
 
         List<Integer> computeColumnWidths(int width) {

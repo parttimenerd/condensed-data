@@ -453,7 +453,7 @@ public class CondenseCommandTest {
                                                     "1")
                                             .checkNoError()
                                             .run();
-                            assertThat(viewResult.output()).contains("TestEvent");
+                            assertThat(viewResult.output()).contains("Label");
                         })
                 .run();
     }

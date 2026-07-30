@@ -1762,3 +1762,17 @@ analysis tool ever uses them.
 **Root cause:** The delegation check in `ViewCommand.run()` used `viewName.contains("-")` as a heuristic for "this is a named JDK view, not an event type name". Most JDK named views are kebab-case (`gc-pauses`, `hot-methods`, …), so the heuristic worked. But four JDK views have no hyphen: `recording`, `modules`, `safepoints`, `tlabs`. These all use `FROM *` (not natively evaluable), so `tryNativeView` returned empty — and then the delegation guard `viewName.contains("-")` was false, so the code fell through to `reportNoEventType` instead of delegating to `jfr view`.
 
 **Fix:** Changed the delegation guard from `viewName.contains("-")` to `NativeView.isKnownView(viewName) || viewName.contains("-")`. The primary check uses the view.ini registry (accurate for all JDK 21+ views); the `-` heuristic remains as a fallback for pre-21 JDKs where the registry is empty but dash-named views are still meaningful.
+
+## Bug 304: `cjfr view <EventType>` showed raw type name and camelCase field names instead of `@Label` values
+
+**Status:** Fixed.
+
+**Observed:** `cjfr view jdk.GarbageCollection profile.jfr` printed the title "jdk.GarbageCollection" and column headers "Gc Id", "Sum Of Pauses", "Longest Pause" — raw type name and camelCase-converted field names. The JDK oracle (`jfr view`) shows "Garbage Collection" as title and "GC ID", "Sum of Pauses", "Longest Pause" as column headers.
+
+**Root cause:** `JFRViewConfig(StructType)` used `type.getName()` for the view title and `field.name()` (after camelCase→Title Case conversion via `propertyToHeader`) for column headers. Both the event type `@Label` and field `@Label` annotations are stored in the condensed stream's description JSON (`BasicJFRWriter.parseEventDescription` / `parseFieldDescription`), but were never consulted during view rendering.
+
+**Fix:** Two changes in `JFRView.java`:
+
+1. `JFRViewConfig.typeDisplayName(StructType)` — new helper that calls `BasicJFRWriter.parseEventDescription(type.getDescription()).label()` and falls back to `type.getName()` when the label is null/empty or parsing fails.
+
+2. `fieldDisplayName(Field)` — new helper that calls `BasicJFRWriter.parseFieldDescription(field.description()).label()` and falls back to `propertyToHeader(field.name())`. All column constructors updated to use `(header, prop)` 2-arg form with `header = fieldDisplayName(field)` and `prop = field.name()`, so the label drives the displayed header while the field name remains the data lookup key.

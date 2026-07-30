@@ -109,9 +109,9 @@ public class JFRViewTest {
         }
         assertEquals(
                 """
-                TestEvent
+                Label
 
-                Start Time Duration   Event Thread    Stack Trace                                       Number     Memory     String                                          \s
+                Start Time Duration   Event Thread    Stack Trace                                       Label      Memory     String                                          \s
                 ---------- ---------- --------------- ------------------------------------------------- ---------- ---------- -------------------------------------------------
                 """
                         .strip(),
@@ -124,9 +124,9 @@ public class JFRViewTest {
         JFRView view = new JFRView(new JFRViewConfig(testEventStruct.getType()), config);
         assertEquals(
                 """
-                TestEvent
+                Label
 
-                Start Time Duration   Event Thread     Number     Memory    \s
+                Start Time Duration   Event Thread     Label      Memory    \s
                 ---------- ---------- ---------------  ---------- ----------
                 """
                         .strip(),
@@ -160,7 +160,8 @@ public class JFRViewTest {
         System.err.println(line);
         // Method may appear with line number ("initJFRStructs:N") or without ("initJFRStructs "),
         // depending on whether BCI/line-number removal is active in the writer configuration.
-        assertTrue(line.contains(".bechberger.jfr.cli.JFRViewTest.initJFRStructs"),
+        assertTrue(
+                line.contains(".bechberger.jfr.cli.JFRViewTest.initJFRStructs"),
                 "Row should contain the stack frame method name");
         assertTrue(line.contains("Hello"));
         assertTrue(line.contains("main"));
