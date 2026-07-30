@@ -1860,6 +1860,21 @@ analysis tool ever uses them.
 
 **Fix:** Changed `ViewPrecompute.Accumulator` to buffer all events per view as `(startTimeNanos, Object[] colValues)` rows, then sort by `startTime` at `build()` time before feeding reducers — but only for views that have at least one order-sensitive reducer (DIFF/FIRST/LAST). Order-insensitive views (MIN/AVG/MAX/SUM/COUNT) are fed immediately in arrival order (no buffering overhead). Also updated `FooterCollector.collectPrecomputedView` to call the new `acceptRow(viewName, startTime, values)` API.
 
+## Bug 315: `cjfr view deprecated-methods-for-removal` shows too few rows (SET deduplication wrong)
+
+**Status:** Fixed.
+
+**Observed:** `cjfr view deprecated-methods-for-removal benchmark/renaissance-all_default_G1.jfr` showed 33 lines (30 content lines) while the oracle `jfr view` showed 72 lines. The same 24 deprecated methods were present but each had far fewer "Called from Class" entries.
+
+**Root cause:** Two bugs:
+1. `SetReducer` used `LinkedHashSet` with `ReadStruct.equals()` (value equality). Multiple events in the same group with the same caller class were collapsed into a single entry — e.g. 9 distinct `LoaderUtil` entries (from 9 different invocations with different `invocationTime` values) were collapsed into 1. The oracle's JDK SDK interns class objects by pool identity, so two events with the same invocationTime+caller share the same `RecordedClass` instance (deduplicated), while different invocationTimes produce distinct instances (kept separate).
+2. `ViewRenderer` rendered `List`-valued cells with `cell-height > 1` as a comma-joined string via `ValueFormatter.format(List, ...)` instead of expanding each element onto its own physical line. The `wrapCell()` method also didn't handle `\n`-separated intra-cell content.
+
+**Fix:**
+- `SetReducer` now uses an `IdentityHashMap`-based set (keyed by object identity), matching the JDK pool-sharing semantics. When cjfr reads `.jfr` or `.cjfr` files, same-pool-entry structs share the same `ReadStruct` identity, so the identity set correctly deduplicates periodic re-emissions of the same deprecated invocation while keeping distinct invocations separate.
+- `ViewRenderer.renderTable()`: List-valued cells in a column with `cell-height > 1` are now formatted as `\n`-separated lines (one element per line) instead of comma-joined.
+- `ViewRenderer.wrapCell()`: now splits `\n`-separated intra-cell content before hard-wrapping each sub-line independently.
+
 ## Bug 314: `cjfr view thread-cpu-load` collapses recycled thread names into one row per name
 
 **Status:** Fixed.

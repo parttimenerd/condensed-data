@@ -316,15 +316,25 @@ final class Aggregators {
         }
     }
 
+    // JFR's SET() keeps distinct values by *object identity*, not value equality. In the JFR SDK
+    // pool, the same class used across multiple periodic re-emissions of the same invocation maps
+    // to the same RecordedClass instance — deduplication by identity collapses those copies.
+    // Different invocation times produce distinct pool entries (different instances), so they are
+    // kept separate even when the class name is the same string.
     private static final class SetReducer implements Reducer {
-        private final Set<Object> seen = new java.util.LinkedHashSet<>();
+        // IdentityHashMap used as a set — key = value, value = ignored marker.
+        private final java.util.IdentityHashMap<Object, Boolean> seen =
+                new java.util.IdentityHashMap<>();
+        private final List<Object> insertion = new ArrayList<>();
 
         public void accept(Object value) {
-            if (value != null) seen.add(value);
+            if (value != null && seen.put(value, Boolean.TRUE) == null) {
+                insertion.add(value);
+            }
         }
 
         public Object result() {
-            return new ArrayList<>(seen);
+            return new ArrayList<>(insertion);
         }
     }
 }

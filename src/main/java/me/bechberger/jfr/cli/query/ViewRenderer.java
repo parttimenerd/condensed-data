@@ -272,7 +272,21 @@ final class ViewRenderer {
                     }
                     continue;
                 }
-                cells[r][c] = sanitize(ValueFormatter.format(raw, hintFor(c), kindFor(c)));
+                // A List-valued cell (e.g. from SET()) with cell-height > 1: render each
+                // element on its own physical line (oracle inserts one row per element).
+                // With cell-height 1 the oracle comma-joins them into one line — same as our
+                // existing ValueFormatter.format(List) path. We use \n as an intra-cell separator;
+                // wrapCell splits on \n before hard-wrapping individual sub-lines.
+                if (raw instanceof List<?> list && cellHeightFor(c) > 1) {
+                    var sb = new StringBuilder();
+                    for (int i = 0; i < list.size(); i++) {
+                        if (i > 0) sb.append('\n');
+                        sb.append(ValueFormatter.format(list.get(i), hintFor(c), kindFor(c)));
+                    }
+                    cells[r][c] = sb.toString();
+                } else {
+                    cells[r][c] = sanitize(ValueFormatter.format(raw, hintFor(c), kindFor(c)));
+                }
                 if (raw != null) {
                     anyValue[c] = true;
                     if (raw instanceof java.time.Instant) {
@@ -300,7 +314,15 @@ final class ViewRenderer {
         for (int c = 0; c < nCols; c++) {
             int w = labels.get(c).length();
             for (int r = 0; r < rows.size(); r++) {
-                w = Math.max(w, cells[r][c].length());
+                // A \n-separated cell (multi-line list) contributes the width of the longest line.
+                String cell = cells[r][c];
+                if (cell.indexOf('\n') >= 0) {
+                    for (String line : cell.split("\n", -1)) {
+                        w = Math.max(w, line.length());
+                    }
+                } else {
+                    w = Math.max(w, cell.length());
+                }
             }
             widths[c] = w;
         }
@@ -362,12 +384,27 @@ final class ViewRenderer {
      * last kept line for {@code --truncate end}, or at the start of the first line (keeping the
      * tail) for {@code --truncate beginning}. With {@code maxLines == 1} this collapses to
      * single-line truncation ({@code "GC Phase P..."} / {@code "...ase Level 1"}).
+     *
+     * <p>When {@code s} contains {@code \n} separators (a multi-element SET() cell), each sub-line
+     * is hard-wrapped independently; the resulting lines are concatenated and then truncated to
+     * {@code maxLines} as a whole.
      */
     private List<String> wrapCell(String s, int width, int maxLines) {
+        // Multi-element cells use \n as an intra-cell separator. Split, wrap each sub-line, then
+        // apply the maxLines cap to the combined result.
+        if (s.indexOf('\n') >= 0) {
+            List<String> all = new ArrayList<>();
+            for (String sub : s.split("\n", -1)) {
+                all.addAll(hardWrap(sub, width));
+                if (all.size() >= maxLines) break;
+            }
+            if (all.size() <= maxLines) return all;
+            // Truncate to maxLines, replacing the last kept line with an ellipsis suffix/prefix.
+            return truncateLines(all, maxLines, width);
+        }
         if (width <= 0 || s.length() <= width) return List.of(s);
         int capacity = width * maxLines;
         if (s.length() <= capacity) {
-            // Fits within the allowed lines: hard-wrap into width-sized chunks, no ellipsis.
             return hardWrap(s, width);
         }
         // Content exceeds the visible box: keep (capacity - 3) characters and mark the elision.
@@ -378,6 +415,24 @@ final class ViewRenderer {
                         ? ell + s.substring(s.length() - keep)
                         : s.substring(0, keep) + ell;
         return hardWrap(kept, width);
+    }
+
+    /** Truncate a line list to {@code maxLines}, appending/prepending "..." on the boundary. */
+    private List<String> truncateLines(List<String> lines, int maxLines, int width) {
+        if (truncateBeginning) {
+            // Keep the last maxLines lines, prefix the first kept line with "...".
+            List<String> kept = lines.subList(lines.size() - maxLines, lines.size());
+            List<String> out = new ArrayList<>(kept);
+            String first = out.get(0);
+            out.set(0, ("..." + first).substring(0, Math.min(("..." + first).length(), width)));
+            return out;
+        } else {
+            List<String> out = new ArrayList<>(lines.subList(0, maxLines));
+            String last = out.get(maxLines - 1);
+            String truncated = last.length() + 3 <= width ? last + "..." : last.substring(0, Math.max(0, width - 3)) + "...";
+            out.set(maxLines - 1, truncated);
+            return out;
+        }
     }
 
     /**
