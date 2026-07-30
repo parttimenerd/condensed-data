@@ -460,6 +460,17 @@ public class WritingJFRReader {
                                 }));
     }
 
+    private Type getOrCreateArrayAnnotationType(String name) {
+        // Use a distinct cache key so scalar and array registrations don't collide.
+        // The actual registered type name is still the bare annotation name.
+        return customAnnotationTypes.computeIfAbsent(
+                name + " array",
+                n ->
+                        recording.registerAnnotationType(
+                                name,
+                                builder -> builder.addField("value", Builtin.STRING, fb -> fb.asArray())));
+    }
+
     /**
      * Convert a Duration to the unit specified by the @Timespan annotation in the field
      * description. The condensed format always stores durations in nanoseconds, but the JFR file
@@ -677,14 +688,20 @@ public class WritingJFRReader {
             var values = ann.values();
             if (values.isEmpty()) {
                 builder.addAnnotation(getOrCreateAnnotationType(annName, false));
+            } else if (values.size() == 1 && values.get(0) instanceof List<?> arrayValue) {
+                // Array-valued annotation (e.g. @Category({"Flight Recorder"}) stored as
+                // [["Flight Recorder"]] — a list-of-strings). Write via the Consumer overload.
+                Type annType = getOrCreateArrayAnnotationType(annName);
+                String[] strArray =
+                        arrayValue.stream().map(Object::toString).toArray(String[]::new);
+                builder.addAnnotation(annType, b -> b.putField("value", strArray));
             } else if (values.size() == 1 && !(values.get(0) instanceof List)) {
                 // Single scalar value (the writer's addAnnotation(Type,String) only supports one).
                 builder.addAnnotation(
                         getOrCreateAnnotationType(annName, true), values.get(0).toString());
             }
-            // Multi-value / array-valued annotations (e.g. @Category's String[]) are not
-            // reconstructable via the single-value writer API, so are intentionally dropped; they
-            // do not affect jfr view output.
+            // Annotations with multiple distinct scalar values remain unsupported (none appear
+            // in practice in standard JFR recordings).
         }
     }
 

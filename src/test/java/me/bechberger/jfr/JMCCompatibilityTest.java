@@ -307,4 +307,56 @@ public class JMCCompatibilityTest {
                             + String.join("\n\n", allErrors));
         }
     }
+
+    /**
+     * Verifies that array-valued type-level annotations (e.g. @Category) survive the
+     * condense→inflate round-trip. Without the fix these were silently dropped, causing JMC's
+     * Event Type Tree to be empty for inflated recordings.
+     */
+    @Test
+    void categoryAnnotationsSurviveRoundTrip() throws Exception {
+        Path src = Path.of("profile.jfr");
+        Assumptions.assumeTrue(Files.exists(src), "profile.jfr not found — skipping");
+
+        ByteArrayOutputStream cjfrBytes = new ByteArrayOutputStream();
+        try (CondensedOutputStream out =
+                new CondensedOutputStream(cjfrBytes, StartMessage.DEFAULT)) {
+            BasicJFRWriter writer = new BasicJFRWriter(out, Configuration.LOSSLESS);
+            try (RecordingFile recording = new RecordingFile(src)) {
+                writer.registerEventTypes(recording.readEventTypes());
+                while (recording.hasMoreEvents()) {
+                    writer.processEvent(recording.readEvent());
+                }
+            }
+            writer.close();
+        }
+
+        Path inflated = tempDir.resolve("category-test.jfr");
+        try (CondensedInputStream in = new CondensedInputStream(cjfrBytes.toByteArray())) {
+            WritingJFRReader.toJFRFile(new BasicJFRReader(in), inflated);
+        }
+
+        // Check that event types which have events in this recording have @Category preserved
+        try (RecordingFile rf = new RecordingFile(inflated)) {
+            List<jdk.jfr.EventType> types = rf.readEventTypes();
+            var missingCategory = new ArrayList<String>();
+            // Only check event types that we know have @Category in the original JFR
+            try (RecordingFile orig = new RecordingFile(src)) {
+                var origCategory =
+                        orig.readEventTypes().stream()
+                                .filter(t -> t.getCategoryNames() != null && !t.getCategoryNames().isEmpty())
+                                .map(jdk.jfr.EventType::getName)
+                                .collect(java.util.stream.Collectors.toSet());
+                for (var t : types) {
+                    if (!origCategory.contains(t.getName())) continue;
+                    if (t.getCategoryNames() == null || t.getCategoryNames().isEmpty()) {
+                        missingCategory.add(t.getName());
+                    }
+                }
+            }
+            if (!missingCategory.isEmpty()) {
+                fail("@Category lost after round-trip for: " + missingCategory);
+            }
+        }
+    }
 }
