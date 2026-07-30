@@ -211,8 +211,10 @@ public class CondenseCommandTest {
                         (result, files) -> {
                             result.assertNoErrorOrOutput();
                             var testFile = files.get("test.cjfr");
-                            // archival-max is its own named config (same data reductions as reduced)
-                            assertThat(readConfiguration(testFile).name()).isEqualTo("archival-max");
+                            // archival-max is its own named config (same data reductions as
+                            // reduced)
+                            assertThat(readConfiguration(testFile).name())
+                                    .isEqualTo("archival-max");
                             // ... plus the strongest compression level, carried in the header.
                             assertThat(readStartMessage(testFile).compressionLevel())
                                     .isEqualTo(Compression.CompressionLevel.MAX_COMPRESSION);

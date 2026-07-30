@@ -48,13 +48,7 @@ public enum CombinedEventType {
     THREAD_PARK_LOSSLESS("jdk.combined.ThreadParkLossless", "jdk.ThreadPark"),
     THREAD_SLEEP("jdk.combined.ThreadSleep", "jdk.ThreadSleep"),
     JAVA_MONITOR_ENTER("jdk.combined.JavaMonitorEnter", "jdk.JavaMonitorEnter"),
-    JAVA_MONITOR_WAIT("jdk.combined.JavaMonitorWait", "jdk.JavaMonitorWait"),
-    EXECUTION_SAMPLE("jdk.combined.ExecutionSample", "jdk.ExecutionSample"),
-    SOCKET_READ("jdk.combined.SocketRead", "jdk.SocketRead"),
-    SOCKET_WRITE("jdk.combined.SocketWrite", "jdk.SocketWrite"),
-    FILE_READ("jdk.combined.FileRead", "jdk.FileRead"),
-    FILE_WRITE("jdk.combined.FileWrite", "jdk.FileWrite"),
-    FILE_FORCE("jdk.combined.FileForce", "jdk.FileForce");
+    JAVA_MONITOR_WAIT("jdk.combined.JavaMonitorWait", "jdk.JavaMonitorWait");
 
     private final String combinedTypeName;
     private final String originalTypeName;

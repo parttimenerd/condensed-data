@@ -17,10 +17,6 @@ import java.util.Map;
  * @param combinePLABPromotionEvents combine and reduce jdk.PromoteObjectInNewPLAB and
  *     jdk.PromoteObjectOutsidePLAB events
  * @param combineObjectAllocationSampleEvents combine and reduce jdk.ObjectSample events
- * @param combineProfilingSamples combine and bucket profiling sample events (e.g.
- *     jdk.ExecutionSample)
- * @param combineIOEvents combine and bucket IO events (e.g. jdk.FileRead, jdk.SocketRead)
- * @param profilingBucketSeconds bucket size in seconds for profiling sample combiners (default 10)
  * @param collapseInternalFramesPrefixes newline-delimited class-name prefixes to collapse in
  *     profiling stack traces (reduced/archival-max only); empty = disabled
  * @param collapseAppFramesPrefixes newline-delimited class-name prefixes to force-keep even if they
@@ -49,9 +45,6 @@ public record Configuration(
         boolean combineThreadParkLossless,
         boolean dropGCWorkerThreadFromGCPhaseParallel,
         long cpuBucketSeconds,
-        boolean combineProfilingSamples,
-        boolean combineIOEvents,
-        long profilingBucketSeconds,
         String collapseInternalFramesPrefixes,
         String collapseAppFramesPrefixes)
         implements Comparable<Configuration> {
@@ -90,9 +83,6 @@ public record Configuration(
                     false, // dropGCWorkerThreadFromGCPhaseParallel: kept by default (and in
                     // default); only reduced drops it
                     10L,
-                    false,
-                    false,
-                    10L,
                     "",
                     "");
 
@@ -120,9 +110,6 @@ public record Configuration(
                     .withCombineExceptionEvents(true)
                     .withCombineBlockingEvents(true)
                     .withDropGCWorkerThreadFromGCPhaseParallel(true)
-                    // combineProfilingSamples and combineIOEvents are omitted: at depth-16 stacks
-                    // and 100 Hz sampling (default JFR config) the combiners save <1%; they would
-                    // help for profile-config recordings (1000 Hz) but those are not benchmarked.
                     .withCollapseInternalFramesPrefixes(DEFAULT_COLLAPSE_PREFIXES);
 
     /**
@@ -168,9 +155,6 @@ public record Configuration(
                 false,
                 false,
                 10L,
-                false,
-                false,
-                10L,
                 "",
                 "");
     }
@@ -191,10 +175,6 @@ public record Configuration(
         } else if (cpuBucketSeconds < 0) {
             throw new IllegalArgumentException("cpuBucketSeconds must be positive");
         }
-        if (profilingBucketSeconds == 0) profilingBucketSeconds = 10L;
-        else if (profilingBucketSeconds < 0)
-            throw new IllegalArgumentException(
-                    "profilingBucketSeconds must be > 0, got " + profilingBucketSeconds);
         if (collapseInternalFramesPrefixes == null) collapseInternalFramesPrefixes = "";
         if (collapseAppFramesPrefixes == null) collapseAppFramesPrefixes = "";
     }
@@ -304,18 +284,6 @@ public record Configuration(
         return withFieldValue("dropGCWorkerThreadFromGCPhaseParallel", drop);
     }
 
-    public Configuration withCombineProfilingSamples(boolean combineProfilingSamples) {
-        return withFieldValue("combineProfilingSamples", combineProfilingSamples);
-    }
-
-    public Configuration withCombineIOEvents(boolean combineIOEvents) {
-        return withFieldValue("combineIOEvents", combineIOEvents);
-    }
-
-    public Configuration withProfilingBucketSeconds(long profilingBucketSeconds) {
-        return withFieldValue("profilingBucketSeconds", profilingBucketSeconds);
-    }
-
     public Configuration withCollapseInternalFramesPrefixes(String prefixes) {
         return withFieldValue("collapseInternalFramesPrefixes", prefixes == null ? "" : prefixes);
     }
@@ -358,9 +326,7 @@ public record Configuration(
                 || combineExceptionEvents
                 || combineG1HeapRegionTypeChangeEvents
                 || combineBlockingEvents
-                || combineThreadParkLossless
-                || combineProfilingSamples
-                || combineIOEvents;
+                || combineThreadParkLossless;
     }
 
     @Override
