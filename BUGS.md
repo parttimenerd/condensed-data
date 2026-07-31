@@ -2084,3 +2084,23 @@ recording has zero events of that type.
 `jdk.PromotionFailed`, `jdk.EvacuationFailed`, and ~40 others.
 
 **Status:** Fixed in `BasicJFRWriter.registerEventTypes()`.
+
+## Bug 331: Inflated lossless JFR missing `state` field in ExecutionSample/NativeMethodSample
+
+**Symptom:** `jfr print inflated.jfr` shows no `state = "STATE_RUNNABLE"` line in
+`jdk.ExecutionSample` and `jdk.NativeMethodSample` events, whereas the original JFR has it
+for every event.
+
+**Root cause:** `ReducedJFRTypes` removes the `state` field unconditionally (`c -> true`),
+since JFR only samples RUNNABLE threads so the field is always STATE_RUNNABLE. But this also
+applied to lossless inflate, where the field was never re-added: the CJFR StructType lacked
+`state` in its schema, so neither the JMC type definition nor the event data had the field.
+
+**Fix (two-part):**
+1. `WritingJFRReader.createType()`: when building the JMC schema for `ExecutionSample` or
+   `NativeMethodSample` and the `state` field is absent from the CJFR struct, add it as a
+   `Builtin.STRING` field so the inflated type includes it.
+2. `WritingJFRReader.toTypedValue()`: when `state` is null in the ReadStruct (dropped at
+   condense), inject the constant `"STATE_RUNNABLE"` instead of null.
+
+**Status:** Fixed.

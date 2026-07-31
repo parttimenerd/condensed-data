@@ -783,6 +783,17 @@ public class WritingJFRReader {
                                 }
                             }
                         }
+                        // ExecutionSample/NativeMethodSample: state was dropped at condense
+                        // (always STATE_RUNNABLE). Re-add it to the schema so jfr print shows it.
+                        boolean needsStateField =
+                                ("jdk.ExecutionSample".equals(structType.getName())
+                                                || "jdk.NativeMethodSample".equals(
+                                                        structType.getName()))
+                                        && structType.getFields().stream()
+                                                .noneMatch(f -> "state".equals(f.name()));
+                        if (needsStateField) {
+                            builder.addField("state", Builtin.STRING);
+                        }
                         return;
                     }
                     throw new IllegalArgumentException("Unsupported type: " + type);
@@ -944,6 +955,15 @@ public class WritingJFRReader {
                             fieldName,
                             new TypedFieldValueImpl(
                                     field, (TypedValueImpl) field.getType().asValue((int) -1)));
+                } else if (fieldName.equals("state")
+                        && (structType.getName().equals("jdk.ExecutionSample")
+                                || structType.getName().equals("jdk.NativeMethodSample"))) {
+                    // state was dropped unconditionally (always STATE_RUNNABLE); reinstate constant.
+                    fieldValues.put(
+                            fieldName,
+                            new TypedFieldValueImpl(
+                                    field,
+                                    (TypedValueImpl) field.getType().asValue("STATE_RUNNABLE")));
                 } else {
                     fieldValues.put(fieldName, getNullFieldValue(field));
                 }

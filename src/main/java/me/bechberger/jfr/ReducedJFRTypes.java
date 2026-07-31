@@ -185,7 +185,8 @@ public class ReducedJFRTypes {
                             "jdk.types.OldObject",
                             entry("jdk.types.OldObject", addressField("address"))),
                     // ExecutionSample/NativeMethodSample: state is always STATE_RUNNABLE
-                    // (JFR only samples RUNNABLE threads by design) — drop unconditionally
+                    // (JFR only samples RUNNABLE threads by design) — drop unconditionally.
+                    // WritingJFRReader reinstates the constant at inflate time.
                     Map.entry(
                             "jdk.ExecutionSample",
                             entry(
