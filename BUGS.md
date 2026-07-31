@@ -1946,3 +1946,15 @@ Oracle (`jfr view`) showed a blank in the Message column with count 118.
 **Root cause:** `ValueFormatter.isEmpty(Object)` returned `true` for empty strings (`v instanceof String s && s.isEmpty()`). The `format()` method treats any value for which `isEmpty` is true the same as `null`, rendering it as "N/A" (or a `missing:` hint value). JFR exceptions thrown without a message have an empty-string message field; the oracle renders these as blank cells, not "N/A".
 
 **Fix:** Changed `isEmpty` to always return `false`. Only `null` values now fall through to the N/A / missing-hint path. Empty strings are rendered by the normal `value.toString()` fallback, producing a blank cell matching oracle output.
+
+## Bug 321: `deoptimizations-by-site` shows N/A for `lineNumber` and `bci` columns
+
+**Status:** Fixed.
+
+**Observed:** `cjfr view deoptimizations-by-site` showed `N/A` for the Line Number and Bytecode Index columns on all rows. Oracle (`jfr view`) showed correct integer values (e.g., `649 0`, `2.014 311`). Additionally, cjfr showed ~1075 rows vs oracle's ~1119 rows.
+
+**Root cause:** `ReducedJFRTypes.java` contained entries for `jdk.Deoptimization` and `jdk.CompilerInlining` that removed their `lineNumber` and `bci` fields when `removeBCIAndLineNumberFromStackFrames` is true (which is the default in `Configuration.DEFAULT`). The comment said these were "direct bci+lineNumber fields on the event itself (distinct from StackFrame fields) — drop with same flag." However, these fields are the primary identifying data for the `deoptimizations-by-site` view's GROUP BY — dropping them causes all events to group by method only, losing site granularity and rendering N/A.
+
+**Fix:** Removed `jdk.Deoptimization` and `jdk.CompilerInlining` from `REDUCED_JFR_TYPES`. These events' `lineNumber` and `bci` fields are the core data, not StackFrame overhead to trim.
+
+**Note:** The remaining row-count difference (1119 vs 1075) and value differences (e.g., line numbers differ by a few) are due to JVM JIT non-determinism: the deoptimizations recorded in the `.jfr` occur at dynamically-compiled code positions that differ between the original run and the inflation run. Confirmed by comparing oracle `.jfr` against its own inflated `.jfr` — same discrepancy appears, ruling out data loss.
