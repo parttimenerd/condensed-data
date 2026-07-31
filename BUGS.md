@@ -2154,3 +2154,120 @@ applied to lossless inflate, where the field was never re-added: the CJFR Struct
 **Fix:** Added a special case in `printTextEvent`: for `jdk.ExecutionSample` and `jdk.NativeMethodSample`, inject `state = "STATE_RUNNABLE"` before the `stackTrace` tail field when the struct lacks a `state` field.
 
 **Status:** Fixed.
+
+## Bug 337: `cjfr view jdk.ExecutionSample` / `jdk.NativeMethodSample` missing `Thread State` column
+
+**Symptom:** `cjfr view jdk.ExecutionSample recording.cjfr` showed only `Start Time`, `Thread`, and `Stack Trace` columns — no `Thread State` column. Oracle `jfr view jdk.ExecutionSample` shows a fourth column `Thread State` with value `STATE_RUNNABLE` for all rows.
+
+**Root cause:** The condenser drops the `state` field from `jdk.ExecutionSample` and `jdk.NativeMethodSample` at condense time (it is always `STATE_RUNNABLE`). Bug 336 added a special-case injection in `PrintCommand` for the `print` path. The `view` path uses `JFRViewConfig(StructType)` to build column definitions from the event type's stored fields — since `state` is absent from the StructType, no column was generated for it.
+
+**Fix:** Added a `buildColumns()` helper in `JFRViewConfig` that post-hoc injects a synthetic `Thread State` column before the `Stack Trace` column when the event type is `jdk.ExecutionSample` or `jdk.NativeMethodSample` and the `state` field is absent from the StructType. The column always renders `STATE_RUNNABLE` (falling back to the actual field value if somehow present). Also added matching synthetic resolution in `FieldResolver` for query evaluator paths.
+
+**Status:** Fixed.
+
+## Bug 338: `cjfr view active-settings` shows all event types instead of one row (default preset)
+
+**Symptom:** `cjfr view active-settings profile.cjfr` (default preset) shows ~80 rows instead of
+the oracle's 1 row. Lossless correctly shows 1 row.
+
+**Root cause:** The `active-settings` view uses a 6-way self-JOIN on `jdk.ActiveSetting` with a
+`LAST_BATCH` filter. The oracle (ns-precision timestamps) works because only the group for event type
+"File Force" (id=1519) has its last `enabled` setting at the globally-last timestamp
+(`.357318834`); all others have slightly earlier timestamps (`.357308667`, `.357313709`, etc.), so
+only 1 group passes `LAST_BATCH`. With 1ms quantized timestamps (default preset), all 80 enabled
+events in the last batch collapse to `.357ms`, so all 80 groups appear to be in the last batch.
+
+**Why not fixable:** Any fix that keeps only 1 group (e.g., by stream position) incorrectly
+breaks recordings where multiple event types genuinely share the exact same ns-precision timestamp
+at the last batch — in which case oracle correctly shows all of them (verified: renaissance G1 file
+shows 187 rows with all 187 event types at the identical timestamp `.991321792`).
+
+**Status:** Known degradation of default (1ms) preset. Lossless preset is correct. The LAST_BATCH
+filter in `evaluateJoin` uses per-alias global-max-timestamp comparison, which is semantically
+correct for ns precision and merely over-inclusive under ms quantization.
+
+## Bug 339: `cjfr print --json` missing `state` field for ExecutionSample/NativeMethodSample
+
+**Symptom:** `cjfr print --json` output for `jdk.ExecutionSample` and `jdk.NativeMethodSample` had 3 fields (`startTime`, `sampledThread`, `stackTrace`) where oracle has 4. The `state: "STATE_RUNNABLE"` field was absent from the JSON output.
+
+**Root cause:** The `printJsonEvent` method iterates `event.getType().getFields()` directly. Since the `state` field is dropped at condense time (it is always `STATE_RUNNABLE`), it is not in the StructType field list and was not emitted in JSON. The text path (Bug 336) had a special injection before `stackTrace`, but the JSON path had no equivalent injection.
+
+**Fix:** Added the same injection in `printJsonEvent`: after writing the `stackTrace` field, if the event type is `jdk.ExecutionSample` or `jdk.NativeMethodSample` and `state` is absent from the StructType, emit `"state": "STATE_RUNNABLE"`. Field ordering matches oracle (JSON puts `state` after `stackTrace`, unlike text which puts it before).
+
+**Status:** Fixed.
+
+## Bug 340: Lossless preset incorrectly deduplicates per-chunk events in multi-chunk JFR files
+
+**Symptom:** For multi-chunk JFR files (recordings with 18 chunks), `cjfr condense -c lossless` produced far fewer events than oracle for `jdk.BooleanFlag`, `jdk.ActiveSetting`, `jdk.SystemProcess`, `jdk.InitialEnvironmentVariable`, `jdk.InitialSystemProperty`, `jdk.PhysicalMemory`, `jdk.GCSurvivorConfiguration`, `jdk.CPUInformation`, and other chunk-boundary events. Example: oracle has 11826 `BooleanFlag` events, lossless had only 657 (ratio = 18 = number of chunks). Single-chunk JFR files were unaffected.
+
+**Root cause:** `JFREventDeduplication` unconditionally registered deduplicators for `FLAG_EVENTS`, `SINGLETON_EVENTS`, `ActiveSetting`, `SystemProcess`, `InitialEnvironmentVariable/SystemProperty/SecurityProperty`, `ModuleRequire/Export/Resolution`, `PhysicalMemory`, `SwapSpace`, `JavaAgent`, `NativeAgent`, `DeprecatedInvocation` for ALL presets including lossless. These events are all emitted once per JFR chunk with distinct timestamps. In a multi-chunk recording, the deduplication (keyed by payload value) collapsed all 18 copies of each event down to 1 — correctly for default/reduced presets, but incorrectly for lossless which must preserve every distinct-timestamp event.
+
+**Fix:** Wrapped all deduplicator registrations in `JFREventDeduplication` inside a new `registerAllDeduplicators()` method, called only when `!isLosslessPreset(configuration)`. For lossless, no deduplication is applied at all. The inner lossless guard that was previously protecting only the `registerPeriodicTimeSeries()` call was removed (redundant after the outer guard).
+
+**Status:** Fixed.
+
+## Bug 341: `cjfr print --json` crashes with `Invalid value for EpochDay` for sentinel Instant fields
+
+**Symptom:** `cjfr print --json profile_lossless.cjfr` terminated with `Error: Invalid value for EpochDay (valid values -365243219162 - 365241780471): -365243219528` mid-output, producing truncated/invalid JSON. The `until` field of `jdk.ThreadPark` events with no timeout (sentinel `Instant.MIN`) was the trigger.
+
+**Root cause:** The `toJson(Object, String)` method formatted `Instant` values via `instant.atZone(ZoneId.systemDefault())`. Converting `Instant.MIN` (representing "no value set", stored as Long.MIN_VALUE nanoseconds) to a `ZonedDateTime` calls `LocalDate.ofEpochDay()` internally, which throws `DateTimeException` for epoch-day values outside its valid range.
+
+**Fix:** Wrapped the `instant.atZone()` call in a try-catch for `DateTimeException`. On failure, falls back to `instant.toString()` which produces `-1000000000-01-01T00:00:00Z` (valid ISO-8601, slightly different from oracle's timezone-aware rendering but semantically equivalent).
+
+**Status:** Fixed.
+
+## Bug 342: Inflation loses event type metadata for event types with 0 recorded events
+
+**Symptom:** `cjfr view events-by-count recording.cjfr` outputs `Event Types by Count` (no `(Experimental)` suffix), while oracle `jfr view events-by-count recording.jfr` outputs `Event Types by Count (Experimental)`. Also, the inflated `.jfr` file has fewer event type definitions (e.g. `jdk.Flush`, `jdk.SyncOnValueBasedClass`, `jdk.ZStatisticsCounter`, `jdk.ZStatisticsSampler`, `jdk.ZThreadPhase`) than the original.
+
+**Root cause:** CJFR format stores only event types for which at least one event was written. During inflation (`WritingJFRReader.toJFRFile`), event type definitions are emitted only for types that appear in the CJFR event stream. Event types that existed in the original recording with 0 events (their type definition is in the JFR metadata chunk, but no event data) are never written to the CJFR stream and therefore absent from inflated files.
+
+**Impact:** The `jfr view events-by-count` oracle marks the view title `(Experimental)` when any event type in `FROM *` has `@Experimental` annotation. With `@Experimental` types absent from the inflated file, the title is rendered without the suffix. Inflated files have fewer event type definitions, affecting any tool that relies on JFR type metadata (e.g. `jfr metadata`).
+
+**Fix:** Would require storing 0-event type definitions in the CJFR format (format version bump) or maintaining a separate type-definition-only section. Not currently worth the format complexity.
+
+**Status:** Known limitation. Accept as won't-fix.
+
+## Bug 343: `cjfr print --json` float fields rendered with double precision instead of float precision
+
+**Symptom:** `cjfr print --json` outputs `0.44999998807907104` for `jdk.G1BasicIHOP.thresholdPercentage`, while oracle shows `0.45`. Similarly `jdk.G1AdaptiveIHOP.thresholdPercentage` outputs `0.4736842215061188` instead of `0.47368422`.
+
+**Root cause:** In `PrintCommand.toJson()`, the `Float` case called `n.doubleValue()` which converts float32 → float64, exposing the float32 representation error at double precision. `String.valueOf(0.44999998807907104f)` should be `0.45` but `String.valueOf((double)0.45f)` is `0.44999998807907104`.
+
+**Fix:** Added a separate `instanceof Float` branch that calls `n.floatValue()` and uses `String.valueOf(float)`, preserving the float32 representation exactly.
+
+**Status:** Fixed.
+
+## Bug 344: `cjfr print --json` renders `Instant.MIN` sentinel as `-1000000000-01-01T00:00:00Z` instead of oracle's `-999999999-01-01T00:00+18:00`
+
+**Symptom:** `cjfr print --json` outputs `"-1000000000-01-01T00:00:00Z"` for `jdk.ThreadPark.until` (the "no deadline" sentinel), while oracle outputs `"-999999999-01-01T00:00+18:00"`.
+
+**Root cause:** The earlier Bug 341 fix used `instant.toString()` as a fallback for `Instant.MIN` (which throws `DateTimeException` when converted through `atZone`). Java's `Instant.MIN.toString()` produces `-1000000000-01-01T00:00:00Z` (UTC). The oracle renders it as the earliest local date-time in Java's proleptic Gregorian calendar (`LocalDateTime.MIN` at `ZoneOffset.MAX` = `+18:00`), which is `-999999999-01-01T00:00+18:00` (without zero seconds, as oracle omits them).
+
+**Fix:** Changed fallback in `PrintCommand.toJson()` for negative-sentinel Instants that exceed `LocalDate` range to return the string literal `-999999999-01-01T00:00+18:00`, exactly matching oracle. MAX Instant returns `+999999999-12-31T23:59:59.999999999-18:00`.
+
+**Status:** Fixed.
+
+## Bug 345: `cjfr print` omits classloader instance ID `(id = N)` in standalone ClassLoader fields
+
+**Symptom:** `cjfr print` renders `classLoader = jdk.internal.reflect.DelegatingClassLoader` while oracle renders `classLoader = jdk.internal.reflect.DelegatingClassLoader (id = 6)`. Affects any event with a standalone `classLoader` field (e.g. `jdk.ClassLoaderStatistics`, `jdk.ModuleExport`, `jdk.ModuleRequire`).
+
+**Root cause:** The oracle adds `(id = N)` from `RecordedClassLoader.getId()`, which returns the constant pool slot number of the classloader instance in the JFR recording. cjfr's `formatClassLoaderStandalone()` has no access to this ID because:
+1. The classloader's constant pool ID is not stored as a regular field in the `jdk.types.ClassLoader` struct (only `type` and `name` are stored).
+2. During condense, all `DelegatingClassLoader` instances (same type, null name) are deduplicated into a single pool entry — so all inflated entries share the same ID.
+
+**Impact:** Minor: display-only difference in classloader identity. Semantic data (type name, loader name) is preserved. Different `DelegatingClassLoader` instances can't be distinguished in print output (they differ by ID in the original).
+
+**Fix:** Would require storing the original classloader pool ID as a synthetic field in the condensed format, or preserving per-instance identity for classloaders during deduplication. Non-trivial format change.
+
+**Status:** Known limitation.
+
+## Bug 346: `cjfr print --json` timestamps have fewer than 9 fractional-second digits (trailing zeros stripped)
+
+**Symptom:** `cjfr print --json` renders `"2025-12-05T12:12:20.4844675+01:00"` while oracle outputs `"2025-12-05T12:12:20.484467500+01:00"`. Timestamps whose nanosecond value has trailing zeros are shortened (`.484467500` → `.4844675`).
+
+**Root cause:** `PrintCommand.toJson()` used `DateTimeFormatter.ISO_OFFSET_DATE_TIME` which outputs the minimum number of fractional digits needed to represent the value without loss (Java's standard behavior). Oracle's `jfr print --json` always outputs exactly 9 nanosecond digits.
+
+**Fix:** Added a static `JSON_TIMESTAMP_FMT` built with `DateTimeFormatterBuilder.appendFraction(ChronoField.NANO_OF_SECOND, 9, 9, true)` to force exactly 9 fractional digits, matching oracle's fixed-width nanosecond format.
+
+**Status:** Fixed.

@@ -6,6 +6,8 @@ import java.time.Duration;
 import java.time.Instant;
 import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
+import java.time.format.DateTimeFormatterBuilder;
+import java.time.temporal.ChronoField;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
@@ -31,6 +33,16 @@ import me.bechberger.jfr.cli.query.ValueFormatter;
         description = "Print events from a .cjfr (or .jfr) file in jfr-print format",
         mixinStandardHelpOptions = true)
 public class PrintCommand implements Callable<Integer> {
+
+    // Oracle's jfr print --json always outputs exactly 9 fractional-second digits (nanoseconds).
+    // Java's ISO_OFFSET_DATE_TIME strips trailing zeros ("484467500" → "4844675").
+    // This formatter forces min=max=9 fractional digits to match oracle's fixed-9-digit format.
+    private static final DateTimeFormatter JSON_TIMESTAMP_FMT =
+            new DateTimeFormatterBuilder()
+                    .appendPattern("yyyy-MM-dd'T'HH:mm:ss")
+                    .appendFraction(ChronoField.NANO_OF_SECOND, 9, 9, true)
+                    .appendOffsetId()
+                    .toFormatter();
 
     @Parameters(
             description = "The input .cjfr or .jfr files, can be folders or zips",
@@ -251,7 +263,8 @@ public class PrintCommand implements Callable<Integer> {
             // STATE_RUNNABLE); inject it before stackTrace to match oracle output.
             if (field.name().equals("stackTrace")) {
                 String typeName = event.getType().getName();
-                if ((typeName.equals("jdk.ExecutionSample") || typeName.equals("jdk.NativeMethodSample"))
+                if ((typeName.equals("jdk.ExecutionSample")
+                                || typeName.equals("jdk.NativeMethodSample"))
                         && !event.hasField("state")) {
                     System.out.println("  state = \"STATE_RUNNABLE\"");
                 }
@@ -327,6 +340,15 @@ public class PrintCommand implements Callable<Integer> {
         @SuppressWarnings("unchecked")
         List<StructType.Field<Object, ?, ?>> fields =
                 (List<StructType.Field<Object, ?, ?>>) (List<?>) event.getType().getFields();
+        // ExecutionSample/NativeMethodSample: state field dropped at condense; inject after
+        // stackTrace
+        // (oracle JSON puts state after stackTrace, unlike text which puts it before)
+        boolean needsStateInject =
+                (event.getType().getName().equals("jdk.ExecutionSample")
+                                || event.getType().getName().equals("jdk.NativeMethodSample"))
+                        && !event.hasField("state");
+        int totalFields = fields.size() + (needsStateInject ? 1 : 0);
+        int written = 0;
         for (int i = 0; i < fields.size(); i++) {
             StructType.Field<?, ?, ?> field = fields.get(i);
             Object value = event.get(field.name());
@@ -337,7 +359,13 @@ public class PrintCommand implements Callable<Integer> {
                             + field.name()
                             + "\": "
                             + toJson(value, indent + "    "));
-            if (i < fields.size() - 1) System.out.print(", ");
+            written++;
+            if (written < totalFields) System.out.print(", ");
+            if (needsStateInject && field.name().equals("stackTrace")) {
+                System.out.print("\n" + indent + "    \"state\": \"STATE_RUNNABLE\"");
+                written++;
+                if (written < totalFields) System.out.print(", ");
+            }
         }
         System.out.print("\n" + indent + "  }");
         System.out.print("\n" + indent + "}");
@@ -346,10 +374,19 @@ public class PrintCommand implements Callable<Integer> {
     private String toJson(Object value, String indent) {
         if (value == null) return "null";
         if (value instanceof Instant instant) {
-            return "\""
-                    + DateTimeFormatter.ISO_OFFSET_DATE_TIME.format(
-                            instant.atZone(ZoneId.systemDefault()))
-                    + "\"";
+            try {
+                return "\""
+                        + JSON_TIMESTAMP_FMT.format(instant.atZone(ZoneId.systemDefault()))
+                        + "\"";
+            } catch (java.time.DateTimeException e) {
+                // Instant.MIN/MAX are outside LocalDate range; oracle uses the minimum/maximum
+                // representable Java local date-time at the extreme UTC offsets, formatted without
+                // zero seconds (oracle omits :00 seconds).
+                if (instant.compareTo(Instant.EPOCH) < 0) {
+                    return "\"-999999999-01-01T00:00+18:00\"";
+                }
+                return "\"+999999999-12-31T23:59:59.999999999-18:00\"";
+            }
         }
         if (value instanceof Duration d) {
             // jfr renders durations as ISO-8601 duration strings in JSON
@@ -371,8 +408,12 @@ public class PrintCommand implements Callable<Integer> {
             return b ? "true" : "false";
         }
         if (value instanceof Number n) {
-            // render integers without decimal point, doubles as-is
-            if (value instanceof Double || value instanceof Float) {
+            // Float must use floatValue() to preserve float32 precision (e.g. 0.45 not
+            // 0.44999998...)
+            if (value instanceof Float) {
+                return String.valueOf(n.floatValue());
+            }
+            if (value instanceof Double) {
                 return String.valueOf(n.doubleValue());
             }
             return String.valueOf(n.longValue());
@@ -650,8 +691,8 @@ public class PrintCommand implements Callable<Integer> {
 
     /**
      * Format a ClassLoader struct as a standalone field value (not inline within a Class field).
-     * Oracle shows the loader's type class name here, not the "name" field.
-     * Bootstrap loader (null type) renders as "null" to match oracle.
+     * Oracle shows the loader's type class name here, not the "name" field. Bootstrap loader (null
+     * type) renders as "null" to match oracle.
      */
     private String formatClassLoaderStandalone(ReadStruct loader) {
         ReadStruct type = loader.hasField("type") ? loader.getStruct("type") : null;

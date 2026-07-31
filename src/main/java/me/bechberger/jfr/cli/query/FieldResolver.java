@@ -84,6 +84,15 @@ final class FieldResolver {
                 }
                 return null;
             }
+            // Synthetic state field for ExecutionSample/NativeMethodSample: the condenser drops
+            // this field because it is always STATE_RUNNABLE (only runnable threads are sampled).
+            // Reinstate it here so `cjfr view jdk.ExecutionSample` shows the Thread State column.
+            if ("state".equals(part)
+                    && !s.hasField("state")
+                    && isExecutionSampleType(s.getType().getName())) {
+                current = "STATE_RUNNABLE";
+                continue;
+            }
             if (!s.hasField(part)) {
                 return null;
             }
@@ -132,6 +141,14 @@ final class FieldResolver {
             }
         }
         return null;
+    }
+
+    /**
+     * Whether the event type name is one of the sampled-thread types that always have
+     * STATE_RUNNABLE.
+     */
+    private static boolean isExecutionSampleType(String typeName) {
+        return "jdk.ExecutionSample".equals(typeName) || "jdk.NativeMethodSample".equals(typeName);
     }
 
     /** Whether a fully-qualified class name belongs to a JDK/runtime package. */

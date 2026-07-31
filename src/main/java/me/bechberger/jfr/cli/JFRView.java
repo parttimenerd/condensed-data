@@ -981,14 +981,64 @@ public class JFRView {
         }
 
         public JFRViewConfig(StructType<?, ?> type, Map<String, String> typeLabels) {
-            this(
-                    typeDisplayName(type),
-                    type.getFields().stream()
-                            .flatMap(
-                                    f ->
-                                            topLevelFieldColumns(f, type.getName(), typeLabels)
-                                                    .stream())
-                            .toList());
+            this(typeDisplayName(type), buildColumns(type, typeLabels));
+        }
+
+        private static List<Column> buildColumns(
+                StructType<?, ?> type, Map<String, String> typeLabels) {
+            List<Column> cols =
+                    new java.util.ArrayList<>(
+                            type.getFields().stream()
+                                    .flatMap(
+                                            f ->
+                                                    topLevelFieldColumns(
+                                                            f, type.getName(), typeLabels)
+                                                            .stream())
+                                    .toList());
+            // ExecutionSample/NativeMethodSample: state field dropped at condense (always
+            // STATE_RUNNABLE); inject it before stackTrace to match oracle output.
+            String typeName = type.getName();
+            if (("jdk.ExecutionSample".equals(typeName)
+                            || "jdk.NativeMethodSample".equals(typeName))
+                    && type.getFields().stream().noneMatch(f -> "state".equals(f.name()))) {
+                int stackIdx = -1;
+                for (int i = 0; i < cols.size(); i++) {
+                    Column c = cols.get(i);
+                    if (c instanceof StackTraceColumn) {
+                        stackIdx = i;
+                        break;
+                    }
+                }
+                Column stateCol =
+                        new Column() {
+                            @Override
+                            public String header() {
+                                return "Thread State";
+                            }
+
+                            @Override
+                            public int width() {
+                                return -1;
+                            }
+
+                            @Override
+                            public List<String> format(ReadStruct event, int rows) {
+                                Object val = event.get("state");
+                                return List.of(val != null ? val.toString() : "STATE_RUNNABLE");
+                            }
+
+                            @Override
+                            public Alignment alignment() {
+                                return Alignment.LEFT;
+                            }
+                        };
+                if (stackIdx >= 0) {
+                    cols.add(stackIdx, stateCol);
+                } else {
+                    cols.add(stateCol);
+                }
+            }
+            return cols;
         }
 
         /** Derive the display name: the @Label from the type description, or the raw type name. */
