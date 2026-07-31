@@ -360,7 +360,7 @@ public class JFREventCombinerTest {
                         Map.of(
                                 "jdk.ObjectAllocationSample",
                                 new CombinerAndReconstitutor(
-                                        "jdk.combined.ObjectAllocationSampleLossless")),
+                                        "jdk.combined.ObjectAllocationSampleLosslessV2")),
                         Configuration.LOSSLESS.withCombineObjectAllocationSampleLossless(true),
                         () -> {
                             System.out.println(new byte[1024 * 1024 * 1024].length);
@@ -875,14 +875,16 @@ public class JFREventCombinerTest {
                     config.name() + ": per-worker eventThread must be kept");
         }
 
-        // Since commit 45f8422, all presets use the full array combiner (no per-worker thread drop).
+        // Since commit 45f8422, all presets use the full array combiner (no per-worker thread
+        // drop).
         EventWriteTree[] rootHolder = new EventWriteTree[1];
         runJFRWithCombinerCapturingStats(combiners, Configuration.REDUCED, gc, rootHolder);
         EventWriteTree combined = findNode(rootHolder[0], "jdk.combined.GCPhaseParallel");
         assertNotNull(combined, "reduced: combined node present");
         assertTrue(
                 sumBytesForCause(combined, "java.lang.Thread") > 0,
-                "reduced: per-worker eventThread must be kept (all presets now use full array combiner)");
+                "reduced: per-worker eventThread must be kept (all presets now use full array"
+                        + " combiner)");
     }
 
     /** Depth-first search for the first node whose cause name equals {@code causeName}. */

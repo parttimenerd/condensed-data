@@ -1906,3 +1906,13 @@ The oracle groups threads by pool-object identity (unique pool pointer per threa
 **Root cause:** `Configuration.DEFAULT` included `.withIgnoreTooShortGCPauses(true)`. The `GCPhasePauseLevelCombiner` in `JFREventCombiner` uses this flag to drop phase names where every event's duration is below `isEffectivelyZeroDuration()` threshold (< 1 microsecond at `durationTicksPerSecond=1_000_000`). The two missing phases have sub-microsecond average durations and so were silently dropped from condensation entirely — they were absent from the `.cjfr` file and could not be recovered at inflate time.
 
 **Fix:** Removed `.withIgnoreTooShortGCPauses(true)` from `Configuration.DEFAULT` (`Configuration.java` line 134). Sub-microsecond GC phases are legitimate JVM events and should not be silently dropped; they now appear in the view output (durations quantized to "0 s" at 1 µs precision, which is correct).
+
+## Bug 318: `allocation-by-thread` shows `N/A` — `ObjectAllocationSample` lossless combiner dropped `eventThread`
+
+**Status:** Fixed.
+
+**Observed:** `cjfr view allocation-by-thread` showed `N/A` as the thread name (100.00%) instead of `main`. Oracle (`jfr view`) correctly showed `main` and `C1 CompilerThread0`.
+
+**Root cause:** `ObjectAllocationSampleCombiner` in lossless mode grouped events by `(objectClass, stackTrace)` only. The `eventThread` field was never stored in the combined type, so the reconstitutor could not set it on the reconstituted events. The view renders `N/A` for events with a null/missing thread.
+
+**Fix:** Added `eventThread` as an inner grouping level between `stackTrace` and `[weights]` in the lossless combiner, yielding the new format `objectClass → stackTrace → eventThread → [weights]`. The combined type is now `jdk.combined.ObjectAllocationSampleLosslessV2` (registered as `OBJECT_ALLOCATION_SAMPLE_LOSSLESS_V2` in `CombinedEventType`). The old `jdk.combined.ObjectAllocationSampleLossless` type (V1) is kept for backward-compatible inflate of old `.cjfr` files. The reconstitutor detects the format by type name and uses `ReadList.asMapEntryList()` to extract the per-thread buckets, mirroring the `PromoteObjectSample` eventThread recovery pattern.

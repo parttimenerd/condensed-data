@@ -1638,7 +1638,7 @@ public class JFREventCombiner extends EventCombiner {
                                             basicJFRWriter.getTypeCached(
                                                     eventType.getField("weight"));
 
-            // In lossless mode: objectClass -> stackTrace -> [weights]
+            // In lossless mode: objectClass -> stackTrace -> eventThread -> [weights]
             // In lossy mode:    objectClass -> (sum or [weights])
             MapEntry<RecordedEvent, Object> leafValue =
                     configuration.sumObjectSizes()
@@ -1656,10 +1656,29 @@ public class JFREventCombiner extends EventCombiner {
                                                             e -> e.getLong("weight")));
 
             if (losslessMode) {
-                // Insert a stackTrace grouping level between objectClass and weights.
-                // Events with the same (objectClass, stackTrace) are grouped — their weights form
-                // an array. Pool references are used as keys so identical stacks are deduplicated.
-                MapEntry<RecordedEvent, Object> stackToWeights =
+                // Wrap leaf weights in an eventThread-keyed map so thread info is preserved.
+                // Keyed by reference — thread objects repeat across GC cycles.
+                MapEntry<RecordedEvent, Object> threadToWeights =
+                        (MapEntry<RecordedEvent, Object>)
+                                (MapEntry)
+                                        new MapValue<>(
+                                                        new MapPartValue<RecordedEvent, Object>(
+                                                                "eventThread",
+                                                                (out, eventType) ->
+                                                                        (CondensedType<Object, Object>)
+                                                                                basicJFRWriter
+                                                                                        .getTypeCached(
+                                                                                                eventType
+                                                                                                        .getField(
+                                                                                                                "eventThread")),
+                                                                RecordedEvent::getThread),
+                                                        leafValue)
+                                                .withKeyByReference();
+
+                // Insert a stackTrace grouping level between objectClass and thread-weights.
+                // Events with the same (objectClass, stackTrace, eventThread) are grouped —
+                // their weights form an array.
+                MapEntry<RecordedEvent, Object> stackToThreadWeights =
                         (MapEntry<RecordedEvent, Object>)
                                 (MapEntry)
                                         new MapValue<>(
@@ -1675,7 +1694,7 @@ public class JFREventCombiner extends EventCombiner {
                                                                                                         .getField(
                                                                                                                 "stackTrace")),
                                                                 e -> e.getValue("stackTrace")),
-                                                        leafValue)
+                                                        threadToWeights)
                                                 .withKeyByReference();
 
                 return new MapValue<RecordedEvent, Object, Object>(
@@ -1686,7 +1705,7 @@ public class JFREventCombiner extends EventCombiner {
                                                 basicJFRWriter.getTypeCached(
                                                         eventType.getField("objectClass")),
                                 e -> e.getClass("objectClass")),
-                        stackToWeights);
+                        stackToThreadWeights);
             }
 
             return new MapValue<RecordedEvent, Object, Object>(
@@ -1727,19 +1746,19 @@ public class JFREventCombiner extends EventCombiner {
                 ReadStruct combinedReadEvent,
                 EventBuilder<E, ?> builder) {
             builder.put("endTime").addStandardFieldsIfNeeded();
+            String typeName = combinedReadEvent.getType().getName();
+            boolean hasEventThreadLevel =
+                    typeName.equals("jdk.combined.ObjectAllocationSampleLosslessV2");
             boolean hasStackTraceLevel =
-                    combinedReadEvent
-                            .getType()
-                            .getName()
-                            .equals("jdk.combined.ObjectAllocationSampleLossless");
+                    hasEventThreadLevel
+                            || typeName.equals("jdk.combined.ObjectAllocationSampleLossless");
+
             return combinedReadEvent.asMapEntryList("objectClass").stream()
                     .flatMap(
                             entry -> {
                                 var objectClass = entry.getKey();
                                 if (hasStackTraceLevel) {
-                                    // lossless format: objectClass -> stackTrace -> [weights]
-                                    // Null stackTrace key = events recorded without a stack;
-                                    // emit them without setting stackTrace on the builder.
+                                    // V1/V2 lossless: objectClass -> [{key:stackTrace, value:...}]
                                     return ((ReadList<?>) entry.getValue())
                                             .stream()
                                                     .flatMap(
@@ -1759,8 +1778,36 @@ public class JFREventCombiner extends EventCombiner {
                                                                             "objectClass",
                                                                             objectClass);
                                                                 }
+                                                                Object threadOrWeights =
+                                                                        pair.get("value");
+                                                                if (hasEventThreadLevel) {
+                                                                    // V2: value is
+                                                                    // [{key:eventThread,
+                                                                    // value:[weights]}]
+                                                                    return ((ReadList<?>)
+                                                                                    threadOrWeights)
+                                                                            .asMapEntryList()
+                                                                            .stream()
+                                                                            .flatMap(
+                                                                                    te -> {
+                                                                                        var thread =
+                                                                                                te
+                                                                                                        .getKey();
+                                                                                        if (thread
+                                                                                                != null) {
+                                                                                            builder
+                                                                                                    .put(
+                                                                                                            "eventThread",
+                                                                                                            thread);
+                                                                                        }
+                                                                                        return emitWeights(
+                                                                                                builder,
+                                                                                                te
+                                                                                                        .getValue());
+                                                                                    });
+                                                                }
                                                                 return emitWeights(
-                                                                        builder, pair.get("value"));
+                                                                        builder, threadOrWeights);
                                                             });
                                 }
                                 // lossy format: objectClass -> weight or [weights]
@@ -2541,7 +2588,7 @@ public class JFREventCombiner extends EventCombiner {
                 put(
                         eventType,
                         new JFREventCombiner.ObjectAllocationSampleCombiner(
-                                "jdk.combined.ObjectAllocationSampleLossless",
+                                "jdk.combined.ObjectAllocationSampleLosslessV2",
                                 true,
                                 configuration,
                                 basicJFRWriter,
@@ -2761,6 +2808,9 @@ public class JFREventCombiner extends EventCombiner {
                 new ObjectAllocationSampleReconstitutor());
         m.put(
                 CombinedEventType.OBJECT_ALLOCATION_SAMPLE_LOSSLESS,
+                new ObjectAllocationSampleReconstitutor());
+        m.put(
+                CombinedEventType.OBJECT_ALLOCATION_SAMPLE_LOSSLESS_V2,
                 new ObjectAllocationSampleReconstitutor());
         m.put(
                 CombinedEventType.OBJECT_ALLOCATION_IN_NEW_TLAB,
