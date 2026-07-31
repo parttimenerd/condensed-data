@@ -253,7 +253,9 @@ final class QueryEvaluator {
             List<String> aliases = aliasesOf(agg.arg());
             List<String> parts = trailingParts(agg.arg());
             Reducer r = Aggregators.reducer(agg.function()).get();
-            for (String a : aliases) {
+            // When the argument is unqualified (no alias prefix), aggregate across all aliases.
+            Iterable<String> targets = aliases.isEmpty() ? aliasRows.keySet() : aliases;
+            for (String a : targets) {
                 Instant batchTs = lastBatch ? aliasBatchTs.get(a) : null;
                 for (ReadStruct e : aliasRows.getOrDefault(a, List.of())) {
                     if (lastBatch && !inLastBatch(e, batchTs)) {
@@ -478,17 +480,16 @@ final class QueryEvaluator {
     }
 
     /**
-     * Canonicalize a group-key value. {@code jfr view} groups struct-valued keys (a stack
-     * frame, method, thread, class) by their <em>displayed</em> identity rather than raw
-     * struct equality — e.g. all samples whose top frame is the same method collapse into
-     * one group even when their bytecode index or line number differs. Mapping a struct key
-     * to its formatted string reproduces that: two structs that render identically share a
-     * group.
+     * Canonicalize a group-key value. {@code jfr view} groups struct-valued keys (a stack frame,
+     * method, thread, class) by their <em>displayed</em> identity rather than raw struct equality —
+     * e.g. all samples whose top frame is the same method collapse into one group even when their
+     * bytecode index or line number differs. Mapping a struct key to its formatted string
+     * reproduces that: two structs that render identically share a group.
      *
      * <p>Thread structs are the exception: two threads with the same display name ({@code
-     * javaName}) but different {@code javaThreadId}s must remain separate groups (recycled
-     * thread names). Thread structs pass through as raw {@link ReadStruct}; {@link
-     * ReadStruct#equals} compares all fields including {@code javaThreadId}.
+     * javaName}) but different {@code javaThreadId}s must remain separate groups (recycled thread
+     * names). Thread structs pass through as raw {@link ReadStruct}; {@link ReadStruct#equals}
+     * compares all fields including {@code javaThreadId}.
      */
     private static Object canonicalKey(Object value) {
         if (value instanceof ReadStruct s) {

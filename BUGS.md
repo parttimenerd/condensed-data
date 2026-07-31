@@ -2000,3 +2000,13 @@ The old V1 combiner is retained for backward-compatible reading of existing `.cj
 **Root cause:** `ReducedJFRTypes` had `jdk.JavaMonitorEnter.address` gated on `removeUnnecessaryAddresses` (true in DEFAULT), so the address field was stripped from every event in the `default` preset. The `contention-by-address` view uses this field as its primary grouping key, so all rows collapsed to `N/A`. After the Bug 322 fix (which changed the predicate to `removeUnnecessaryAddresses && !combineBlockingEvents`), the address was still removed in DEFAULT (combineBlockingEvents=false), reproducing the same symptom.
 
 **Fix:** Removed `jdk.JavaMonitorEnter.address` from `ReducedJFRTypes` entirely. The `address` field is semantically meaningful — it uniquely identifies which monitor instance caused contention, and is the grouping key for both the `contention-by-address` view and the V2 combiner. It is not a "raw memory pointer" in the dispensable-address sense.
+
+## Bug 325: `thread-start` view shows N/A for Duration column in cjfr native view
+
+**Status:** Fixed.
+
+**Observed:** `cjfr view thread-start` showed `N/A` for the Duration column for all thread entries, while `jfr view thread-start` showed actual durations (e.g., "26.1 s", "2.05 s").
+
+**Root cause:** The `thread-start` view query uses `DIFFERENCE(startTime)` — an unqualified aggregate over a field shared between two joined aliases (`ThreadStart AS S, ThreadEnd AS E`). In `QueryEvaluator.evalJoinCell`, when `aliasesOf(agg.arg())` is called with an unqualified `FieldPath`, it returns an empty list (no alias prefix → no aliases to iterate). The aggregation loop never ran, the `DiffReducer` received no values, and `result()` returned `null` → rendered as "N/A".
+
+**Fix:** In `evalJoinCell`, when `aliasesOf` returns empty (unqualified field argument), fall back to iterating over all aliases in `aliasRows` so the DIFFERENCE() reducer receives `startTime` from both `ThreadStart` and `ThreadEnd` events in the group, producing the correct duration.
