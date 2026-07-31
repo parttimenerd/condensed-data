@@ -2144,3 +2144,13 @@ applied to lossless inflate, where the field was never re-added: the CJFR Struct
 **Fix:** Changed to `"0x%08X"` — minimum 8 hex digits, zero-padded. Larger addresses (>8 digits) still print without leading zeros, matching oracle behavior.
 
 **Status:** Fixed.
+
+## Bug 336: `cjfr print` ExecutionSample/NativeMethodSample missing `state = "STATE_RUNNABLE"`
+
+**Symptom:** `cjfr print` output for `jdk.ExecutionSample` and `jdk.NativeMethodSample` had 3 fields where oracle has 4. The `state = "STATE_RUNNABLE"` field was absent.
+
+**Root cause:** The condenser drops the `state` field from these event types at condense time because it is always `STATE_RUNNABLE` (only runnable threads are sampled). The raw CJFR data has no `state` field, so `cjfr print` couldn't find it to render it. Bug 331's inflate-time fix injected `state` for JFR inflation but didn't address the print path.
+
+**Fix:** Added a special case in `printTextEvent`: for `jdk.ExecutionSample` and `jdk.NativeMethodSample`, inject `state = "STATE_RUNNABLE"` before the `stackTrace` tail field when the struct lacks a `state` field.
+
+**Status:** Fixed.
