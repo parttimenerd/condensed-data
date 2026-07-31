@@ -14,9 +14,10 @@ commands accept the same filtering flags, so you can zero in on the
 |---|---|
 | `cjfr summary` | Aggregate stats: event counts, GC summary, allocation rate |
 | `cjfr view <VIEW_OR_EVENT> <FILE...>` | Tabular view of a named view or one event type |
+| `cjfr print <FILE...>` | Print raw events in `jfr print` text or JSON format |
 | `cjfr inflate` | Convert to JFR for [JDK Mission Control](https://adoptium.net/jmc), [Firefox Profiler](https://parttimenerd.github.io/firefox-profiler/), [jfr-query](https://parttimenerd.github.io/jfr-query/), async-profiler, etc. |
 
-All three accept the **same filter flags** described below.
+All four accept the **same filter flags** described below.
 
 ---
 
@@ -231,6 +232,39 @@ the event types the view needs are read.
 `--truncate` accepts `beginning` (or `begin`) to keep the end of long cell values,
 or `end` (default) to keep the beginning. For fully-qualified class names in stack
 traces, `beginning` is usually more useful.
+
+---
+
+## `print` output and formatting
+
+`cjfr print` is a drop-in for the JDK `jfr print` command and renders events
+in the same text format:
+
+```shell
+# Print all events
+cjfr print recording.cjfr
+
+# Filter by event type or glob pattern
+cjfr print --events GCPhaseParallel recording.cjfr
+cjfr print --events "jdk.GC*" recording.cjfr
+cjfr print --events "CPULoad,GCHeapSummary" recording.cjfr
+
+# Filter by JFR category annotation (comma = OR, globs supported)
+cjfr print --categories GC recording.cjfr
+cjfr print --categories "GC,Profiling" recording.cjfr
+
+# Full-precision output: nanosecond timestamps, raw bytes, exact floats
+cjfr print --exact recording.cjfr
+
+# Limit stack trace depth
+cjfr print --stack-depth 5 recording.cjfr
+
+# JSON output
+cjfr print --json recording.cjfr
+
+# Also works on raw .jfr files
+cjfr print recording.jfr
+```
 
 ---
 

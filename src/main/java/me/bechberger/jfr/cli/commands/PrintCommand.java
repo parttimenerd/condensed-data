@@ -229,8 +229,10 @@ public class PrintCommand implements Callable<Integer> {
         for (StructType.Field<Object, ?, ?> field : domain) {
             Object value = event.get(field.name());
             if (shouldSuppressField(value, field)) continue;
-            if (field.name().equals("object") && value instanceof ReadStruct rs
-                    && rs.hasField("type") && rs.hasField("description")) {
+            if (field.name().equals("object")
+                    && value instanceof ReadStruct rs
+                    && rs.hasField("type")
+                    && rs.hasField("description")) {
                 // OldObject special rendering: "  object =  [\n    ClassName [desc/size]\n  ]"
                 Object ae = event.hasField("arrayElements") ? event.get("arrayElements") : null;
                 long arrayLen = ae instanceof Number n ? n.longValue() : Integer.MIN_VALUE;
@@ -525,6 +527,10 @@ public class PrintCommand implements Callable<Integer> {
             className = typeName != null ? decodeClassName(typeName.toString()) : "";
         }
         if (arrayElements != Integer.MIN_VALUE && arrayElements > 0) {
+            // For array types (e.g. "byte[]"), replace trailing [] with [N]: byte[N]
+            if (className.endsWith("[]")) {
+                return className.substring(0, className.length() - 2) + "[" + arrayElements + "]";
+            }
             return className + "[" + arrayElements + "]";
         }
         Object desc = obj.get("description");

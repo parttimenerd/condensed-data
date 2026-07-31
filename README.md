@@ -38,6 +38,7 @@ Commands:
   agent     Use the included Java agent on a specific JVM process
   summary   Print a summary of the condensed JFR file
   view      View a named view or event type from a .cjfr or .jfr file as a table.
+  print     Print events from a .cjfr (or .jfr) file in jfr-print format
 ```
 But you can also use its built-in Java agent to directly record condensed JFR files:
 ```shell
@@ -130,6 +131,34 @@ JDK before 21 (which has no `view.ini`) — transparently falls back to delegati
 `$JAVA_HOME/bin/jfr view`, so `cjfr view` never renders less than `jfr view` would. Because it
 queries the compact `.cjfr` directly, event-heavy views run ~2–3× faster than opening the original
 `.jfr` (measured on a 253 MB `gc_details` recording). See [Analyzing Recordings](docs/analysis.md).
+
+### `jfr print` drop-in on `.cjfr`
+
+`cjfr print` is a drop-in for the JDK `jfr print` command and supports the same options:
+
+```shell
+# Print all events (same format as jfr print)
+cjfr print recording.cjfr
+
+# Filter by event type or glob
+cjfr print --events GCPhaseParallel,jdk.GC* recording.cjfr
+
+# Filter by JFR category (comma = OR, glob patterns supported)
+cjfr print --categories GC recording.cjfr
+cjfr print --categories "GC,Profiling" recording.cjfr
+
+# Full-precision output (nanosecond timestamps, raw bytes, exact floats)
+cjfr print --exact recording.cjfr
+
+# Limit stack trace depth
+cjfr print --stack-depth 5 recording.cjfr
+
+# JSON output
+cjfr print --json recording.cjfr
+
+# Also works on raw .jfr files
+cjfr print recording.jfr
+```
 
 Requirements
 ------------

@@ -119,6 +119,21 @@ cjfr view jdk.GarbageCollection recording.cjfr
 cjfr view --json jdk.GarbageCollection recording.cjfr | jq '.[] | {cause, pause: .longestPause}'
 ```
 
+Print raw events in `jfr print` format — a drop-in for `jfr print`:
+
+```shell
+# All events (same text format as jfr print)
+cjfr print recording.cjfr
+
+# Filter by event type or category
+cjfr print --events GCPhaseParallel recording.cjfr
+cjfr print --categories GC recording.cjfr
+
+# JSON output or full-precision numbers
+cjfr print --json recording.cjfr
+cjfr print --exact recording.cjfr
+```
+
 Inflate to `.jfr` for JDK Mission Control or other JFR viewers:
 
 ```shell
