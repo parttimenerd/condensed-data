@@ -2104,3 +2104,43 @@ applied to lossless inflate, where the field was never re-added: the CJFR Struct
    condense), inject the constant `"STATE_RUNNABLE"` instead of null.
 
 **Status:** Fixed.
+
+## Bug 332: `cjfr print` aborts mid-event on out-of-range Instant sentinel (ThreadPark.until)
+
+**Symptom:** `cjfr print profile.cjfr` output for `jdk.ThreadPark` was truncated after the `timeout` field — `until`, `address`, `eventThread`, and `stackTrace` were all missing, and no closing `}` was emitted.
+
+**Root cause:** `ThreadPark.until` is a `@Timestamp("MILLISECONDS_SINCE_EPOCH")` field. When the value is "no timeout" (represented as epoch-millis `Long.MIN_VALUE`), the CJFR reader produces an `Instant` far before `Instant.MIN`. `DateTimeFormatter.format(instant.atZone(...))` threw a `DateTimeException` (invalid EpochDay), which propagated up through `printTextEvent` and aborted output mid-event. The error went to stderr and the closing `}` was never printed.
+
+**Fix:** Added a sentinel guard in `PrintCommand.formatValue`: if the Instant's epoch-second is at or beyond `Instant.MIN`/`Instant.MAX`, return `"N/A"` without calling the formatter. Added a catch-all `DateTimeException → "N/A"` fallback for other edge cases.
+
+**Status:** Fixed. Also affects any other event type with epoch-millis "unset" sentinels.
+
+## Bug 333: `cjfr print` nested struct fields indented at fixed depth instead of relative depth
+
+**Symptom:** `jdk.ModuleExport` and similar events with multiply-nested structs printed inner struct fields at wrong indent level (all at 4 spaces, regardless of nesting depth). Oracle uses 2-space increments per nesting level.
+
+**Root cause:** `formatStruct` hardcoded `"    "` (4 spaces) for field indent and `"  }"` for closing brace, regardless of how deeply the struct was nested.
+
+**Fix:** Added `indent` parameter to `formatStruct(ReadStruct, String)`. The caller passes the current field indent (`"  "` at top level); each nesting level appends `"  "` more. All `formatValue` callers threaded through `indent` parameter.
+
+**Status:** Fixed.
+
+## Bug 334: `cjfr print` shows ClassLoader `name` field ("app") instead of type class name in struct context
+
+**Symptom:** `jdk.ModuleExport` showed `classLoader = app` where oracle shows `classLoader = jdk.internal.loader.ClassLoaders$AppClassLoader`. `jdk.ModuleRequire` showed `classLoader = bootstrap` where oracle shows `classLoader = null` for the bootstrap loader.
+
+**Root cause:** `formatClassLoader` used the loader's `name` field ("app", "bootstrap") as primary, then fell back to type class name. But in standalone struct contexts (not inline within a Class field), oracle renders the type class name directly, and null type (bootstrap) renders as the literal `null`.
+
+**Fix:** Added `formatClassLoaderStandalone` for use in `formatStruct` dispatch: prefers type class name; null type renders as `"null"`. The existing `formatClassLoader` (used inline in Class fields) continues using the `name` field for "bootstrap"/"app".
+
+**Status:** Fixed. ClassLoader.id (shown by oracle as `(id = 3)`) is JFR-internal and not available in CJFR data — this remains a minor known diff.
+
+## Bug 335: `cjfr print` zero memory address renders as `0x0` instead of `0x00000000`
+
+**Symptom:** `jdk.NativeLibrary.topAddress` (and similar zero `@MemoryAddress` fields) printed as `0x0` where oracle shows `0x00000000`.
+
+**Root cause:** `PrintCommand.formatValue` used `"0x%X"` format with no minimum width for MemoryAddress fields.
+
+**Fix:** Changed to `"0x%08X"` — minimum 8 hex digits, zero-padded. Larger addresses (>8 digits) still print without leading zeros, matching oracle behavior.
+
+**Status:** Fixed.
