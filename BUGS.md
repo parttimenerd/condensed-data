@@ -2049,3 +2049,15 @@ With LOSSLESS precision (nanosecond), the 80 events have unique sequential nanos
 The `DIFFERENCE([B|E].startTime)` aggregate uses oracle semantics: when the joined `SafepointEnd` alias `E` has no events for a group, the "end time" is undefined, so the duration is `Indefinite` (`Long.MAX_VALUE` nanos). The cjfr `DiffReducer` received only one value (`B.startTime`) per group (because alias `E` had no rows), and computed `last - first = 0 ns`, rendering as `0 s`.
 
 **Fix:** In `QueryEvaluator.evalJoinCell`, after aggregating a `DIFFERENCE` aggregate with a `Coalesce` argument, check if any alias in the coalesce list has no events in the current group. If so, override the result with `Duration.ofNanos(Long.MAX_VALUE)` → renders as `Indefinite`. This matches oracle behavior where an absent joined alias means the difference is undefined.
+
+## Bug 329: `jvm-flags` double values use 3 significant figures instead of oracle's 4
+
+**Status:** Partially fixed (trailing-zero stripping corrected; 1 rounding edge case remains).
+
+**Observed:** `cjfr view jvm-flags` on lossless `.cjfr` showed:
+- `SweeperThreshold: 0.500` (should be `0.5` — trailing zeros)  
+- `InitialRAMPercentage: 1.56` (should be `1.562` — too few sig figs)
+
+**Root cause:** `ValueFormatter.formatDouble` called `threeSigFigs` (3 sig figs) instead of oracle's apparent 4-sig-fig format. Oracle strips trailing decimal zeros (e.g. `0.5000` → `0.5`).
+
+**Fix:** Changed `formatDouble` to use `%.4g` with explicit trailing-zero stripping. This fixes the `0.5` case. One remaining diff: `InitialRAMPercentage 1.5625` → cjfr shows `1.563` (Java HALF_UP rounding) while oracle shows `1.562` (HALF_EVEN / banker's rounding). This is a Java `String.format` vs oracle internal rounding mode difference for a specific binary-fraction value.

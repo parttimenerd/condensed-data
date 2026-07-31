@@ -126,7 +126,13 @@ public final class ValueFormatter {
         if (v == Math.rint(v) && !Double.isInfinite(v)) {
             return groupInteger((long) v);
         }
-        return threeSigFigs(v);
+        // jfr uses 4 significant figures with trailing-zero stripping for raw double fields
+        // (e.g. JVM flag values like InitialRAMPercentage=1.5625 → "1.562", SweeperThreshold=0.5 → "0.5")
+        String s = String.format(Locale.ROOT, "%.4g", v);
+        if (s.contains(".") && !s.contains("e") && !s.contains("E")) {
+            s = s.replaceAll("0+$", "").replaceAll("\\.$", "");
+        }
+        return s;
     }
 
     // ── timespan (3 significant figures, space before unit) ───────────────────
