@@ -1930,3 +1930,19 @@ The oracle groups threads by pool-object identity (unique pool pointer per threa
 2. `getDurationType()`: directly returned `getCachedTimespanType(1_000_000_000 / configuration.timeStampTicksPerSecond())` — same 1 ms resolution bug. Used by `GCPhasePauseLevelCombiner` and `CombinerSpec.gcPhasePauseLevel` for the explicit `duration` field in the phase-entry struct.
 
 **Fix:** Both methods now unconditionally use `configuration.durationTicksPerSecond()` for duration quantization. Events with durations below 1 µs still quantize to 0 (acceptable at DEFAULT precision), but events from ~1 µs to ~1 ms now retain their values.
+
+## Bug 320: `exception-by-message` renders empty message as "N/A" instead of blank
+
+**Status:** Fixed.
+
+**Observed:** `cjfr view exception-by-message benchmark/renaissance-all_default_G1.jfr` showed:
+
+```
+N/A    118
+```
+
+Oracle (`jfr view`) showed a blank in the Message column with count 118.
+
+**Root cause:** `ValueFormatter.isEmpty(Object)` returned `true` for empty strings (`v instanceof String s && s.isEmpty()`). The `format()` method treats any value for which `isEmpty` is true the same as `null`, rendering it as "N/A" (or a `missing:` hint value). JFR exceptions thrown without a message have an empty-string message field; the oracle renders these as blank cells, not "N/A".
+
+**Fix:** Changed `isEmpty` to always return `false`. Only `null` values now fall through to the N/A / missing-hint path. Empty strings are rendered by the normal `value.toString()` fallback, producing a blank cell matching oracle output.

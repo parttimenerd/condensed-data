@@ -96,7 +96,7 @@ public final class ValueFormatter {
     }
 
     private static boolean isEmpty(Object v) {
-        return v instanceof String s && s.isEmpty();
+        return false;
     }
 
     /** The {@code missing:VALUE} replacement text for null/empty cells, or null if no such hint. */
