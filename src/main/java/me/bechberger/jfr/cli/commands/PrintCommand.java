@@ -577,6 +577,13 @@ public class PrintCommand implements Callable<Integer> {
         if (desc != null && desc.contains("jdk.jfr.Frequency") && value instanceof Number n) {
             return n.longValue() + " Hz";
         }
+        // @Unsigned long fields: Java stores as signed -1 but should render as unsigned max
+        if (field != null
+                && field.type() instanceof VarIntType vit
+                && !vit.isSigned()
+                && value instanceof Long l) {
+            return Long.toUnsignedString(l);
+        }
         return value.toString();
     }
 

@@ -196,7 +196,8 @@ public final class ViewPrecompute {
             return new PrecomputedCell(k, PrecomputedCell.TAG_NULL, 0L, 0.0);
         }
         if (result instanceof Duration d) {
-            return new PrecomputedCell(k, PrecomputedCell.TAG_DURATION_NANOS, ValueFormatter.safeToNanos(d), 0.0);
+            return new PrecomputedCell(
+                    k, PrecomputedCell.TAG_DURATION_NANOS, ValueFormatter.safeToNanos(d), 0.0);
         }
         if (result instanceof Instant i) {
             long nanos = i.getEpochSecond() * 1_000_000_000L + i.getNano();

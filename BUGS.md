@@ -2317,3 +2317,21 @@ correct for ns precision and merely over-inclusive under ms quantization.
 **Root cause:** cjfr's `ValueFormatter` uses `Locale.ROOT` consistently for reproducible output; oracle's `jfr print` uses the JVM default locale (e.g., `String.format(...)` without explicit Locale).
 
 **Status:** Known limitation. cjfr's behavior is arguably better (locale-independent). Not planned to fix.
+
+## Bug 352: `cjfr print` (text format) renders `@Unsigned long` fields as signed longs
+
+**Symptom:** `UnsignedLongFlag.value` for `MaxGCMinorPauseMillis` and `MaxMetaspaceSize` shows `-1` in cjfr text output but `18446744073709551615` (0xFFFFFFFFFFFFFFFF) in oracle. Bug 348 only fixed the JSON path.
+
+**Root cause:** `PrintCommand.formatValue()` (text path) fell through to `value.toString()` without checking `VarIntType.isSigned()`. The JSON path was separately fixed in Bug 348 via `toJson()`.
+
+**Fix:** Added unsigned check near end of `formatValue()`: when `field.type() instanceof VarIntType vit && !vit.isSigned() && value instanceof Long l`, use `Long.toUnsignedString(l)`.
+
+**Status:** Fixed.
+
+## Bug 353: `cjfr print` omits ClassLoader `(id = N)` suffix in text output
+
+**Symptom:** Oracle `jfr print` shows `classLoader = jdk.internal.reflect.DelegatingClassLoader (id = 6)` while cjfr shows only `classLoader = jdk.internal.reflect.DelegatingClassLoader`. The `(id = N)` distinguishes multiple instances of the same ClassLoader class (e.g., different `DelegatingClassLoader` instances with ids 4, 6, 11, 13...).
+
+**Root cause:** The `(id = N)` suffix is derived from the constant pool reference index in the JFR file. cjfr's pool-less struct design (inline struct encoding, deduplication) does not preserve pool indices — there is no ID available to the printer.
+
+**Status:** Known limitation (structural: pool IDs not preserved in cjfr format). Affects events with classLoader fields: `jdk.ModuleExport`, `jdk.ModuleRequire`, `jdk.ClassLoaderStatistics`, etc.
