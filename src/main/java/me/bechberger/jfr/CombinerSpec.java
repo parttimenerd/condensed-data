@@ -989,6 +989,37 @@ public class CombinerSpec {
                             });
         }
 
+        static CombinerSpec threadParkV2() {
+            return CombinerSpec.nextGcIdBased("jdk.ThreadPark")
+                    .combinedName("jdk.combined.ThreadParkV2")
+                    .mapKeyValue(
+                            "parkedClass",
+                            "occurrences",
+                            ValueDef.collectNamedStructArray("ThreadParkOccurrence", "duration"))
+                    .keyByReference()
+                    .reconstitute(
+                            new MapEntryReconstitutor() {
+                                @Override
+                                public <E> List<E> reconstitute(
+                                        EventBuilder<E, ?> builder, Object key, Object value) {
+                                    List<?> structs = (List<?>) value;
+                                    List<E> events = new ArrayList<>(structs.size());
+                                    for (Object v : structs) {
+                                        events.add(
+                                                builder.put("parkedClass", key)
+                                                        .put(
+                                                                "duration",
+                                                                ((ReadStruct) v).get("duration"))
+                                                        .put("timeout", 0L)
+                                                        .put("until", 0L)
+                                                        .put("address", 0L)
+                                                        .build());
+                                    }
+                                    return events;
+                                }
+                            });
+        }
+
         static CombinerSpec threadSleep() {
             return CombinerSpec.nextGcIdBased("jdk.ThreadSleep")
                     .mapKeyValue("time", "count", ValueDef.countEvents())
@@ -1003,6 +1034,33 @@ public class CombinerSpec {
                                         events.add(
                                                 builder.put("time", key)
                                                         .put("duration", 0L)
+                                                        .build());
+                                    }
+                                    return events;
+                                }
+                            });
+        }
+
+        static CombinerSpec threadSleepV2() {
+            return CombinerSpec.nextGcIdBased("jdk.ThreadSleep")
+                    .combinedName("jdk.combined.ThreadSleepV2")
+                    .mapKeyValue(
+                            "time",
+                            "occurrences",
+                            ValueDef.collectNamedStructArray("ThreadSleepOccurrence", "duration"))
+                    .reconstitute(
+                            new MapEntryReconstitutor() {
+                                @Override
+                                public <E> List<E> reconstitute(
+                                        EventBuilder<E, ?> builder, Object key, Object value) {
+                                    List<?> structs = (List<?>) value;
+                                    List<E> events = new ArrayList<>(structs.size());
+                                    for (Object v : structs) {
+                                        events.add(
+                                                builder.put("time", key)
+                                                        .put(
+                                                                "duration",
+                                                                ((ReadStruct) v).get("duration"))
                                                         .build());
                                     }
                                     return events;
@@ -1033,6 +1091,22 @@ public class CombinerSpec {
                             });
         }
 
+        static CombinerSpec javaMonitorEnterV2() {
+            return CombinerSpec.nextGcIdBased("jdk.JavaMonitorEnter")
+                    .combinedName("jdk.combined.JavaMonitorEnterV2")
+                    .mapKeyValue(
+                            "address",
+                            "monitorInstances",
+                            ValueDef.collectNamedStructArray(
+                                    "MonitorInstance",
+                                    "monitorClass",
+                                    "eventThread",
+                                    "duration",
+                                    "stackTrace",
+                                    "previousOwner"))
+                    .keyExtractor(e -> e.getLong("address"));
+        }
+
         static CombinerSpec javaMonitorWait() {
             return CombinerSpec.nextGcIdBased("jdk.JavaMonitorWait")
                     .mapKeyValue("monitorClass", "count", ValueDef.countEvents())
@@ -1047,6 +1121,38 @@ public class CombinerSpec {
                                         events.add(
                                                 builder.put("monitorClass", key)
                                                         .put("duration", 0L)
+                                                        .put("notifier", null)
+                                                        .put("timeout", 0L)
+                                                        .put("timedOut", false)
+                                                        .put("address", 0L)
+                                                        .build());
+                                    }
+                                    return events;
+                                }
+                            });
+        }
+
+        static CombinerSpec javaMonitorWaitV2() {
+            return CombinerSpec.nextGcIdBased("jdk.JavaMonitorWait")
+                    .combinedName("jdk.combined.JavaMonitorWaitV2")
+                    .mapKeyValue(
+                            "monitorClass",
+                            "occurrences",
+                            ValueDef.collectNamedStructArray("MonitorWaitOccurrence", "duration"))
+                    .keyByReference()
+                    .reconstitute(
+                            new MapEntryReconstitutor() {
+                                @Override
+                                public <E> List<E> reconstitute(
+                                        EventBuilder<E, ?> builder, Object key, Object value) {
+                                    List<?> structs = (List<?>) value;
+                                    List<E> events = new ArrayList<>(structs.size());
+                                    for (Object v : structs) {
+                                        events.add(
+                                                builder.put("monitorClass", key)
+                                                        .put(
+                                                                "duration",
+                                                                ((ReadStruct) v).get("duration"))
                                                         .put("notifier", null)
                                                         .put("timeout", 0L)
                                                         .put("timedOut", false)

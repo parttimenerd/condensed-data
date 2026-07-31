@@ -1958,3 +1958,35 @@ Oracle (`jfr view`) showed a blank in the Message column with count 118.
 **Fix:** Removed `jdk.Deoptimization` and `jdk.CompilerInlining` from `REDUCED_JFR_TYPES`. These events' `lineNumber` and `bci` fields are the core data, not StackFrame overhead to trim.
 
 **Note:** The remaining row-count difference (1119 vs 1075) and value differences (e.g., line numbers differ by a few) are due to JVM JIT non-determinism: the deoptimizations recorded in the `.jfr` occur at dynamically-compiled code positions that differ between the original run and the inflation run. Confirmed by comparing oracle `.jfr` against its own inflated `.jfr` — same discrepancy appears, ruling out data loss.
+
+## Bug 322: `contention-by-address` view shows N/A for Monitor Address column
+
+**Status:** Fixed.
+
+**Observed:** `cjfr view contention-by-address` on a `.cjfr` condensed with the `reduced` preset showed `N/A` for the Monitor Address column on all rows.
+
+**Root cause:** Two compounding issues:
+
+1. `CombinerSpec.javaMonitorEnter()` (used by `combineBlockingEvents`) keyed the map by `monitorClass` (a class reference, grouped per-GC-cycle) and wrote `address=0L` for all reconstituted events, discarding the actual monitor address.
+
+2. `ReducedJFRTypes` removed the `address` field from `jdk.JavaMonitorEnter` events when `removeUnnecessaryAddresses=true` (enabled in DEFAULT/REDUCED presets), so even with a corrected combiner, the address field was absent from events before the combiner ran.
+
+**Fix:**
+
+1. Added `jdk.combined.JavaMonitorEnterV2` (new `CombinedEventType` enum entry + `CombinerSpec.Specs.javaMonitorEnterV2()`). The V2 spec keys the map by `address` (Long, via `keyExtractor(e -> e.getLong("address"))`) and uses `collectNamedStructArray` to preserve `monitorClass`, `eventThread`, `duration`, `stackTrace`, and `previousOwner` per event. Default reconstitution copies all struct fields back plus the address key, giving the view correct data for `UNIQUE(eventThread)` and `MAX(duration)`.
+
+2. Changed the `ReducedJFRTypes` removal predicate for `jdk.JavaMonitorEnter.address` from `Configuration::removeUnnecessaryAddresses` to `c -> c.removeUnnecessaryAddresses() && !c.combineBlockingEvents()`, so the address field is preserved when the V2 combiner needs it.
+
+The old V1 combiner is retained for backward-compatible reading of existing `.cjfr` files.
+
+**Note:** After reconstitution, the `contention-by-address` view on the inflated/cjfr output shows fewer rows than the oracle on the raw `.jfr` (e.g., 1 merged row for IndexShuffleBlockResolver instead of 3), because the V2 combiner's `nextGcIdBased` grouping collapses events across GC cycles into a single address entry per monitor object per cycle. This is an acceptable fidelity trade-off for the lossy `reduced` preset.
+
+## Bug 323: `latencies-by-type` shows `0 s` for ThreadPark, ThreadSleep, JavaMonitorWait durations
+
+**Status:** Fixed.
+
+**Observed:** `cjfr view latencies-by-type` on a `.cjfr` condensed with the `reduced` preset showed `0 s` for Average, P99, Longest, and Total columns for Java Thread Park, Java Thread Sleep, and Java Monitor Wait.
+
+**Root cause:** The `combineBlockingEvents` V1 combiners for `ThreadPark`, `ThreadSleep`, and `JavaMonitorWait` used `countEvents()` as the map value, discarding the `duration` of each event. On reconstitution, `duration=0L` was hardcoded for all events.
+
+**Fix:** Added V2 combiners for all three event types (`threadParkV2`, `threadSleepV2`, `javaMonitorWaitV2`) that use `collectNamedStructArray("...", "duration")` to preserve the actual duration per event. Added new `CombinedEventType` entries (`THREAD_PARK_V2`, `THREAD_SLEEP_V2`, `JAVA_MONITOR_WAIT_V2`) for schema versioning. The V1 combiners are retained for backward-compatible reading of existing `.cjfr` files.

@@ -1665,7 +1665,9 @@ public class JFREventCombiner extends EventCombiner {
                                                         new MapPartValue<RecordedEvent, Object>(
                                                                 "eventThread",
                                                                 (out, eventType) ->
-                                                                        (CondensedType<Object, Object>)
+                                                                        (CondensedType<
+                                                                                        Object,
+                                                                                        Object>)
                                                                                 basicJFRWriter
                                                                                         .getTypeCached(
                                                                                                 eventType
@@ -1786,25 +1788,26 @@ public class JFREventCombiner extends EventCombiner {
                                                                     // value:[weights]}]
                                                                     return ((ReadList<?>)
                                                                                     threadOrWeights)
-                                                                            .asMapEntryList()
-                                                                            .stream()
-                                                                            .flatMap(
-                                                                                    te -> {
-                                                                                        var thread =
-                                                                                                te
-                                                                                                        .getKey();
-                                                                                        if (thread
-                                                                                                != null) {
-                                                                                            builder
-                                                                                                    .put(
-                                                                                                            "eventThread",
-                                                                                                            thread);
-                                                                                        }
-                                                                                        return emitWeights(
-                                                                                                builder,
-                                                                                                te
-                                                                                                        .getValue());
-                                                                                    });
+                                                                                    .asMapEntryList()
+                                                                                    .stream()
+                                                                                    .flatMap(
+                                                                                            te -> {
+                                                                                                var
+                                                                                                        thread =
+                                                                                                                te
+                                                                                                                        .getKey();
+                                                                                                if (thread
+                                                                                                        != null) {
+                                                                                                    builder
+                                                                                                            .put(
+                                                                                                                    "eventThread",
+                                                                                                                    thread);
+                                                                                                }
+                                                                                                return emitWeights(
+                                                                                                        builder,
+                                                                                                        te
+                                                                                                                .getValue());
+                                                                                            });
                                                                 }
                                                                 return emitWeights(
                                                                         builder, threadOrWeights);
@@ -2751,25 +2754,25 @@ public class JFREventCombiner extends EventCombiner {
             if (eventType.getName().equals("jdk.ThreadPark")) {
                 put(
                         eventType,
-                        CombinerSpec.Specs.threadPark()
+                        CombinerSpec.Specs.threadParkV2()
                                 .createCombiner(configuration, basicJFRWriter, gcIdPerTimestamp));
             }
             if (eventType.getName().equals("jdk.ThreadSleep")) {
                 put(
                         eventType,
-                        CombinerSpec.Specs.threadSleep()
+                        CombinerSpec.Specs.threadSleepV2()
                                 .createCombiner(configuration, basicJFRWriter, gcIdPerTimestamp));
             }
             if (eventType.getName().equals("jdk.JavaMonitorEnter")) {
                 put(
                         eventType,
-                        CombinerSpec.Specs.javaMonitorEnter()
+                        CombinerSpec.Specs.javaMonitorEnterV2()
                                 .createCombiner(configuration, basicJFRWriter, gcIdPerTimestamp));
             }
             if (eventType.getName().equals("jdk.JavaMonitorWait")) {
                 put(
                         eventType,
-                        CombinerSpec.Specs.javaMonitorWait()
+                        CombinerSpec.Specs.javaMonitorWaitV2()
                                 .createCombiner(configuration, basicJFRWriter, gcIdPerTimestamp));
             }
         }
@@ -2889,14 +2892,26 @@ public class JFREventCombiner extends EventCombiner {
                 CombinedEventType.THREAD_PARK_LOSSLESS,
                 CombinerSpec.Specs.threadParkLossless().createReconstitutor());
         m.put(
+                CombinedEventType.THREAD_PARK_V2,
+                CombinerSpec.Specs.threadParkV2().createReconstitutor());
+        m.put(
                 CombinedEventType.THREAD_SLEEP,
                 CombinerSpec.Specs.threadSleep().createReconstitutor());
+        m.put(
+                CombinedEventType.THREAD_SLEEP_V2,
+                CombinerSpec.Specs.threadSleepV2().createReconstitutor());
         m.put(
                 CombinedEventType.JAVA_MONITOR_ENTER,
                 CombinerSpec.Specs.javaMonitorEnter().createReconstitutor());
         m.put(
+                CombinedEventType.JAVA_MONITOR_ENTER_V2,
+                CombinerSpec.Specs.javaMonitorEnterV2().createReconstitutor());
+        m.put(
                 CombinedEventType.JAVA_MONITOR_WAIT,
                 CombinerSpec.Specs.javaMonitorWait().createReconstitutor());
+        m.put(
+                CombinedEventType.JAVA_MONITOR_WAIT_V2,
+                CombinerSpec.Specs.javaMonitorWaitV2().createReconstitutor());
         m.put(
                 CombinedEventType.EXECUTION_SAMPLE,
                 CombinerSpec.Specs.executionSample().createReconstitutor());

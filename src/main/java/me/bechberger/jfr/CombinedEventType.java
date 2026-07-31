@@ -53,9 +53,13 @@ public enum CombinedEventType {
     PS_HEAP_SUMMARY("jdk.combined.PSHeapSummary", "jdk.PSHeapSummary"),
     THREAD_PARK("jdk.combined.ThreadPark", "jdk.ThreadPark"),
     THREAD_PARK_LOSSLESS("jdk.combined.ThreadParkLossless", "jdk.ThreadPark"),
+    THREAD_PARK_V2("jdk.combined.ThreadParkV2", "jdk.ThreadPark"),
     THREAD_SLEEP("jdk.combined.ThreadSleep", "jdk.ThreadSleep"),
+    THREAD_SLEEP_V2("jdk.combined.ThreadSleepV2", "jdk.ThreadSleep"),
     JAVA_MONITOR_ENTER("jdk.combined.JavaMonitorEnter", "jdk.JavaMonitorEnter"),
+    JAVA_MONITOR_ENTER_V2("jdk.combined.JavaMonitorEnterV2", "jdk.JavaMonitorEnter"),
     JAVA_MONITOR_WAIT("jdk.combined.JavaMonitorWait", "jdk.JavaMonitorWait"),
+    JAVA_MONITOR_WAIT_V2("jdk.combined.JavaMonitorWaitV2", "jdk.JavaMonitorWait"),
     EXECUTION_SAMPLE("jdk.combined.ExecutionSample", "jdk.ExecutionSample"),
     NATIVE_METHOD_SAMPLE("jdk.combined.NativeMethodSample", "jdk.NativeMethodSample");
 

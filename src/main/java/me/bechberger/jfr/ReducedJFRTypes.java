@@ -105,10 +105,17 @@ public class ReducedJFRTypes {
                             entry("jdk.G1HeapRegionInformation", addressField("start"))),
                     Map.entry("jdk.ThreadPark", entry("jdk.ThreadPark", addressField("address"))),
                     // Monitor address fields: raw object addresses, monitorClass provides the
-                    // semantic info
+                    // semantic info. When combineBlockingEvents is set, the combiner groups by
+                    // address, so it must be preserved.
                     Map.entry(
                             "jdk.JavaMonitorEnter",
-                            entry("jdk.JavaMonitorEnter", addressField("address"))),
+                            entry(
+                                    "jdk.JavaMonitorEnter",
+                                    new RemovedPrimitiveField(
+                                            "address",
+                                            c ->
+                                                    c.removeUnnecessaryAddresses()
+                                                            && !c.combineBlockingEvents()))),
                     Map.entry(
                             "jdk.JavaMonitorWait",
                             entry("jdk.JavaMonitorWait", addressField("address"))),
