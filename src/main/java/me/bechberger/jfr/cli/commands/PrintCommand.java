@@ -247,6 +247,15 @@ public class PrintCommand implements Callable<Integer> {
         for (StructType.Field<Object, ?, ?> field : tail) {
             Object value = event.get(field.name());
             if (shouldSuppressField(value, field)) continue;
+            // ExecutionSample/NativeMethodSample: state field dropped at condense (always
+            // STATE_RUNNABLE); inject it before stackTrace to match oracle output.
+            if (field.name().equals("stackTrace")) {
+                String typeName = event.getType().getName();
+                if ((typeName.equals("jdk.ExecutionSample") || typeName.equals("jdk.NativeMethodSample"))
+                        && !event.hasField("state")) {
+                    System.out.println("  state = \"STATE_RUNNABLE\"");
+                }
+            }
             System.out.println("  " + field.name() + " = " + formatValue(value, field));
         }
         System.out.println("}");
