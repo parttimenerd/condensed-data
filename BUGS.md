@@ -2271,3 +2271,49 @@ correct for ns precision and merely over-inclusive under ms quantization.
 **Fix:** Added a static `JSON_TIMESTAMP_FMT` built with `DateTimeFormatterBuilder.appendFraction(ChronoField.NANO_OF_SECOND, 9, 9, true)` to force exactly 9 fractional digits, matching oracle's fixed-width nanosecond format.
 
 **Status:** Fixed.
+
+## Bug 347: `cjfr print --json` timestamps use wrong fractional digit count (fixed 9 vs oracle's ms/µs/ns trimming)
+
+**Symptom:** After Bug 346 fix, `cjfr print --json` outputs `"2025-12-05T12:12:20.354000000+01:00"` (9 digits) where oracle outputs `"2025-12-05T12:12:20.354+01:00"` (3 digits). Oracle trims trailing zeros at 3-digit (ms/µs/ns) boundaries.
+
+**Root cause:** The Bug 346 fix used `appendFraction(..., 9, 9, true)` (fixed 9 digits). Oracle always trims at 3-digit group boundaries: outputs 3 digits when last 6 nanosecond digits are 0, 6 digits when last 3 are 0, and 9 digits otherwise. Java's `appendFraction(..., 0, 9, true)` strips individual zeros (wrong), and fixed-9 never trims (also wrong).
+
+**Fix:** Replaced single `JSON_TIMESTAMP_FMT` with three formatters (`JSON_TS_3`, `JSON_TS_6`, `JSON_TS_9`) and a `jsonTimestampFmt(Instant)` selector that picks based on `instant.getNano() % 1_000_000 == 0` (→ 3 digits) / `% 1_000 == 0` (→ 6 digits) / else (→ 9 digits).
+
+**Status:** Fixed.
+
+## Bug 348: `cjfr print --json` renders unsigned long values as negative signed longs
+
+**Symptom:** `UnsignedLongFlag.value` for `MaxGCMinorPauseMillis` and `MaxMetaspaceSize` shows `-1` in cjfr but `18446744073709551615` (0xFFFFFFFFFFFFFFFF) in oracle. Affects all `@Unsigned long` JFR fields.
+
+**Root cause:** `PrintCommand.toJson()` called `n.longValue()` unconditionally, rendering Java's signed `-1L` as `-1` instead of the unsigned representation `18446744073709551615`.
+
+**Fix:** Added `CondensedType<?,?>` parameter to `toJson()`. When `fieldType instanceof VarIntType vit && !vit.isSigned()`, use `Long.toUnsignedString(l)` to render unsigned longs correctly.
+
+**Status:** Fixed.
+
+## Bug 349: `cjfr print --json` Duration sentinel values rendered incorrectly (Forever/N/A)
+
+**Symptom:** `jdk.ActiveRecording.maxAge` shows `PT2562047H47M16.854S` (≈292 years) instead of oracle's `PT2562047788015215H30M7.999999999S` (Duration.MAX_VALUE). `jdk.GCConfiguration.pauseTarget` shows a similarly wrong negative Duration instead of oracle's `PT-2562047788015215H-30M-8S`.
+
+**Root cause:** `JFRReduction.TIMESPAN_REDUCTION.inflate()` returned `Duration.ofNanos(Long.MAX_VALUE)` for the "Forever" sentinel and `Duration.ofNanos(Long.MIN_VALUE)` for the "N/A" sentinel. These differ from oracle's `Duration.ofSeconds(Long.MAX_VALUE, 999_999_999)` and `Duration.ofSeconds(Long.MIN_VALUE, 0)`. Additionally, the millisecond-quantization VarIntType divided `Long.MAX_VALUE` by 1_000_000, making the round-tripped value `9223372036854000000` (not exactly `Long.MAX_VALUE`), so an exact equality check failed.
+
+**Fix:** `TIMESPAN_REDUCTION.inflate()` now checks for the near-max/near-min range (within 1_000_000 ns tolerance) and returns `Duration.ofSeconds(Long.MAX_VALUE, 999_999_999)` / `Duration.ofSeconds(Long.MIN_VALUE, 0)` respectively. `PrintCommand.formatDuration()` updated to guard against `getSeconds() >= Long.MAX_VALUE - 1` overflow before calling `toNanos()`.
+
+**Status:** Fixed.
+
+## Bug 350: `cjfr print` renders `jdk.ActiveSetting.id` as event-type-name string instead of oracle's integer event-type-id
+
+**Symptom:** `jfr print` shows `id = 10` (integer event type ID), but `cjfr print` shows `id = "jdk.AllocationRequiringGC"` (the event type name string). Affects both text and JSON output.
+
+**Root cause:** At condense time, `ActiveSetting.id` is remapped from the raw integer event type ID to the event type name string, for JMC compatibility (`project_jmc_compat.md`). This makes the field value a String in the condensed type system, which serializes as a quoted name.
+
+**Status:** Known limitation (intentional JMC compatibility trade-off). Not planned to fix without a way to preserve both integer and name representations.
+
+## Bug 351: `cjfr print` uses `Locale.ROOT` decimal separator (`.`) while oracle's `jfr print` uses system locale (may be `,` on European systems)
+
+**Symptom:** On a JVM with locale `English (Germany)`, oracle outputs `flushInterval = 1,00 s` (comma) but cjfr outputs `flushInterval = 1.00 s` (period).
+
+**Root cause:** cjfr's `ValueFormatter` uses `Locale.ROOT` consistently for reproducible output; oracle's `jfr print` uses the JVM default locale (e.g., `String.format(...)` without explicit Locale).
+
+**Status:** Known limitation. cjfr's behavior is arguably better (locale-independent). Not planned to fix.

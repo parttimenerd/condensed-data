@@ -19,6 +19,7 @@ import me.bechberger.condensed.ReadList;
 import me.bechberger.condensed.ReadStruct;
 import me.bechberger.condensed.types.CondensedType;
 import me.bechberger.condensed.types.StructType;
+import me.bechberger.condensed.types.VarIntType;
 import me.bechberger.femtocli.annotations.Command;
 import me.bechberger.femtocli.annotations.Option;
 import me.bechberger.femtocli.annotations.Parameters;
@@ -26,6 +27,7 @@ import me.bechberger.jfr.CombiningJFRReader;
 import me.bechberger.jfr.cli.CLIUtils;
 import me.bechberger.jfr.cli.FileOptionConverters.ExistingCJFROrJFRFileOrZipOrFolderConverter;
 import me.bechberger.jfr.cli.query.ValueFormatter;
+import org.jetbrains.annotations.Nullable;
 
 /** Prints events from one or more .cjfr (or .jfr) files in the same format as {@code jfr print}. */
 @Command(
@@ -34,15 +36,34 @@ import me.bechberger.jfr.cli.query.ValueFormatter;
         mixinStandardHelpOptions = true)
 public class PrintCommand implements Callable<Integer> {
 
-    // Oracle's jfr print --json always outputs exactly 9 fractional-second digits (nanoseconds).
-    // Java's ISO_OFFSET_DATE_TIME strips trailing zeros ("484467500" → "4844675").
-    // This formatter forces min=max=9 fractional digits to match oracle's fixed-9-digit format.
-    private static final DateTimeFormatter JSON_TIMESTAMP_FMT =
+    // Oracle's jfr print --json trims fractional seconds at 3-digit (ms/µs/ns) boundaries:
+    // 0 trailing µs+ns → 3 digits (ms); 0 trailing ns → 6 digits (µs); else 9 digits (ns).
+    // Java's ISO_OFFSET_DATE_TIME strips individual trailing zeros, giving wrong digit counts.
+    private static final DateTimeFormatter JSON_TS_3 =
+            new DateTimeFormatterBuilder()
+                    .appendPattern("yyyy-MM-dd'T'HH:mm:ss")
+                    .appendFraction(ChronoField.NANO_OF_SECOND, 3, 3, true)
+                    .appendOffsetId()
+                    .toFormatter();
+    private static final DateTimeFormatter JSON_TS_6 =
+            new DateTimeFormatterBuilder()
+                    .appendPattern("yyyy-MM-dd'T'HH:mm:ss")
+                    .appendFraction(ChronoField.NANO_OF_SECOND, 6, 6, true)
+                    .appendOffsetId()
+                    .toFormatter();
+    private static final DateTimeFormatter JSON_TS_9 =
             new DateTimeFormatterBuilder()
                     .appendPattern("yyyy-MM-dd'T'HH:mm:ss")
                     .appendFraction(ChronoField.NANO_OF_SECOND, 9, 9, true)
                     .appendOffsetId()
                     .toFormatter();
+
+    private static DateTimeFormatter jsonTimestampFmt(Instant instant) {
+        int nano = instant.getNano();
+        if (nano % 1_000_000 == 0) return JSON_TS_3;
+        if (nano % 1_000 == 0) return JSON_TS_6;
+        return JSON_TS_9;
+    }
 
     @Parameters(
             description = "The input .cjfr or .jfr files, can be folders or zips",
@@ -358,7 +379,7 @@ public class PrintCommand implements Callable<Integer> {
                             + "    \""
                             + field.name()
                             + "\": "
-                            + toJson(value, indent + "    "));
+                            + toJson(value, indent + "    ", field.type()));
             written++;
             if (written < totalFields) System.out.print(", ");
             if (needsStateInject && field.name().equals("stackTrace")) {
@@ -372,11 +393,15 @@ public class PrintCommand implements Callable<Integer> {
     }
 
     private String toJson(Object value, String indent) {
+        return toJson(value, indent, null);
+    }
+
+    private String toJson(Object value, String indent, @Nullable CondensedType<?, ?> fieldType) {
         if (value == null) return "null";
         if (value instanceof Instant instant) {
             try {
                 return "\""
-                        + JSON_TIMESTAMP_FMT.format(instant.atZone(ZoneId.systemDefault()))
+                        + jsonTimestampFmt(instant).format(instant.atZone(ZoneId.systemDefault()))
                         + "\"";
             } catch (java.time.DateTimeException e) {
                 // Instant.MIN/MAX are outside LocalDate range; oracle uses the minimum/maximum
@@ -416,6 +441,10 @@ public class PrintCommand implements Callable<Integer> {
             if (value instanceof Double) {
                 return String.valueOf(n.doubleValue());
             }
+            // Unsigned long fields: Java stores as signed; render as unsigned to match oracle
+            if (fieldType instanceof VarIntType vit && !vit.isSigned() && value instanceof Long l) {
+                return Long.toUnsignedString(l);
+            }
             return String.valueOf(n.longValue());
         }
         return "\"" + jsonEscape(value.toString()) + "\"";
@@ -435,7 +464,7 @@ public class PrintCommand implements Callable<Integer> {
                     .append("\"")
                     .append(field.name())
                     .append("\": ")
-                    .append(toJson(val, inner));
+                    .append(toJson(val, inner, field.type()));
             if (i < fields.size() - 1) sb.append(", ");
         }
         sb.append("\n").append(indent).append("}");
@@ -558,6 +587,10 @@ public class PrintCommand implements Callable<Integer> {
     }
 
     private String formatDuration(Duration d) {
+        // Duration.ofSeconds(Long.MAX/MIN_VALUE,...) cannot be passed to toNanos() (overflow).
+        // They are the "Forever" / "N/A" sentinels used by JFR @Timespan fields.
+        if (d.getSeconds() >= Long.MAX_VALUE - 1) return "Forever";
+        if (d.getSeconds() <= Long.MIN_VALUE + 1) return "N/A";
         long nanos = d.toNanos();
         if (nanos >= Long.MAX_VALUE - 1_000_000L) return "Forever";
         if (nanos <= Long.MIN_VALUE + 1_000_000L) return "N/A";

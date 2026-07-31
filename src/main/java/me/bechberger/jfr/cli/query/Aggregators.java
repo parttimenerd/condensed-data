@@ -104,7 +104,7 @@ final class Aggregators {
     private static double toDouble(Object v) {
         if (v instanceof Number n) return n.doubleValue();
         if (v instanceof Instant i) return i.getEpochSecond() * 1_000_000_000.0 + i.getNano();
-        if (v instanceof Duration d) return d.toNanos();
+        if (v instanceof Duration d) return ValueFormatter.safeToNanos(d);
         return 0;
     }
 

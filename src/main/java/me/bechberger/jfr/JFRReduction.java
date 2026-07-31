@@ -134,6 +134,15 @@ public enum JFRReduction {
                 @Override
                 public Duration inflate(
                         Configuration configuration, Universe universe, Long reduced) {
+                    // Restore sentinels so oracle-style Duration strings are reproduced on print.
+                    // "Forever": any value ≥ Long.MAX_VALUE − 1e6 ns (quantization tolerance)
+                    //            → Duration.ofSeconds(MAX_LONG, 999_999_999) = oracle's max
+                    // "N/A":     any value ≤ Long.MIN_VALUE + 1e6 ns
+                    //            → Duration.ofSeconds(MIN_LONG, 0) = oracle's "N/A" timespan
+                    if (reduced >= Long.MAX_VALUE - 1_000_000L)
+                        return Duration.ofSeconds(Long.MAX_VALUE, 999_999_999);
+                    if (reduced <= Long.MIN_VALUE + 1_000_000L)
+                        return Duration.ofSeconds(Long.MIN_VALUE, 0);
                     return Duration.ofNanos(reduced);
                 }
             }),

@@ -138,8 +138,19 @@ public final class ValueFormatter {
 
     // ── timespan (3 significant figures, space before unit) ───────────────────
 
+    /**
+     * Safe nanos conversion: Duration sentinel values (seconds near Long.MIN/MAX_VALUE) cannot be
+     * passed to toNanos() without overflow. Return sentinel nanos directly for those.
+     */
+    static long safeToNanos(Duration d) {
+        long sec = d.getSeconds();
+        if (sec >= Long.MAX_VALUE / 1_000_000_000L - 1) return Long.MAX_VALUE;
+        if (sec <= Long.MIN_VALUE / 1_000_000_000L + 1) return Long.MIN_VALUE;
+        return d.toNanos();
+    }
+
     public static String formatTimespan(Duration d) {
-        long nanos = d.toNanos();
+        long nanos = safeToNanos(d);
         // jfr treats the extreme sentinels as "unset": Long.MIN nanos → N/A, Long.MAX → Indefinite.
         // The reader reduces to millisecond precision, so the stored value is within ~1ms of the
         // raw extreme rather than exactly it; match anything within that tolerance (no real
