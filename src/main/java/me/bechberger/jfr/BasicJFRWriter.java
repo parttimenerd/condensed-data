@@ -787,12 +787,7 @@ public class BasicJFRWriter {
 
     private GetterAndCachedType getTimespanType(ValueDescriptor field, boolean topLevel) {
         long specifiedTicksPerSec = getSpecifiedTicksPerSec(field);
-        long ticksPerSec =
-                Math.min(
-                        specifiedTicksPerSec,
-                        field.getName().equals("duration") && topLevel
-                                ? configuration.timeStampTicksPerSecond()
-                                : configuration.durationTicksPerSecond());
+        long ticksPerSec = Math.min(specifiedTicksPerSec, configuration.durationTicksPerSecond());
         // Use the no-arg getDuration() for the built-in event duration field,
         // because getDuration("duration") requires @Timespan annotation which
         // may be missing in some JFR file chunks.
@@ -838,7 +833,7 @@ public class BasicJFRWriter {
     }
 
     VarIntType getDurationType() {
-        long ticksPerSec = configuration.timeStampTicksPerSecond();
+        long ticksPerSec = configuration.durationTicksPerSecond();
         return getCachedTimespanType(1_000_000_000 / ticksPerSec);
     }
 

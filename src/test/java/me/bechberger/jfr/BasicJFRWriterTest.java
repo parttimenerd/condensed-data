@@ -4,6 +4,8 @@ import static java.util.Map.entry;
 import static org.junit.jupiter.api.Assertions.*;
 
 import java.io.ByteArrayOutputStream;
+import java.time.Duration;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.atomic.AtomicReference;
 import jdk.jfr.*;
@@ -116,6 +118,68 @@ public class BasicJFRWriterTest {
             this.key = key;
             this.value = value;
         }
+    }
+
+    /**
+     * Guard against sub-millisecond event durations being silently zeroed under DEFAULT config
+     * (timeStampTicksPerSecond=1_000 = 1ms, durationTicksPerSecond=1_000_000 = 1µs).
+     *
+     * <p>Before the fix, {@code getTimespanType} and {@code getDurationType} both used {@code
+     * timeStampTicksPerSecond} (1ms) for the built-in {@code duration} field, quantizing any sub-ms
+     * event duration to 0. The fix uses {@code durationTicksPerSecond} (1µs) for all duration
+     * fields.
+     */
+    @Test
+    public void testSubMillisecondTopLevelDurationPreservedUnderDefaultConfig() throws Exception {
+        ByteArrayOutputStream baos = new ByteArrayOutputStream();
+        List<RecordedEvent> captured = new ArrayList<>();
+
+        try (CondensedOutputStream out = new CondensedOutputStream(baos, StartMessage.DEFAULT)) {
+            BasicJFRWriter writer =
+                    new BasicJFRWriter(out, me.bechberger.jfr.Configuration.DEFAULT);
+            try (RecordingStream rs = new RecordingStream()) {
+                rs.enable("TestEvent").withThreshold(java.time.Duration.ZERO);
+                rs.onEvent(
+                        "TestEvent",
+                        event -> {
+                            writer.processEvent(event);
+                            captured.add(event);
+                            if (captured.size() >= 5) rs.close();
+                        });
+                rs.startAsync();
+                for (int i = 0; i < 5; i++) {
+                    TestEvent e = new TestEvent();
+                    e.begin();
+                    Thread.sleep(0, 50_000); // 50µs
+                    e.commit();
+                }
+                rs.awaitTermination();
+            }
+            writer.close();
+        }
+
+        assertTrue(captured.size() > 0, "Should have captured some events");
+        long nonZeroInJfr = captured.stream().filter(e -> !e.getDuration().isZero()).count();
+        assertTrue(nonZeroInJfr > 0, "Some recorded events should have non-zero duration");
+
+        byte[] data = baos.toByteArray();
+        BasicJFRReader reader = new BasicJFRReader(new CondensedInputStream(data));
+        List<me.bechberger.condensed.ReadStruct> events = reader.readAll();
+        long nonZeroInCjfr =
+                events.stream()
+                        .filter(s -> s.getType().getName().equals("TestEvent"))
+                        .filter(
+                                s -> {
+                                    Object d = s.get("duration");
+                                    return d instanceof Duration dur && !dur.isZero();
+                                })
+                        .count();
+        assertTrue(
+                nonZeroInCjfr > 0,
+                "At least one reconstituted TestEvent must have a non-zero duration under DEFAULT"
+                    + " config (durationTicksPerSecond=1_000_000 gives 1µs precision). All-zero"
+                    + " durations would reproduce Bug 319 where the built-in duration field used"
+                    + " 1ms timestamp precision instead of 1µs duration precision.");
     }
 
     @Test

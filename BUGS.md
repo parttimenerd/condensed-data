@@ -1916,3 +1916,17 @@ The oracle groups threads by pool-object identity (unique pool pointer per threa
 **Root cause:** `ObjectAllocationSampleCombiner` in lossless mode grouped events by `(objectClass, stackTrace)` only. The `eventThread` field was never stored in the combined type, so the reconstitutor could not set it on the reconstituted events. The view renders `N/A` for events with a null/missing thread.
 
 **Fix:** Added `eventThread` as an inner grouping level between `stackTrace` and `[weights]` in the lossless combiner, yielding the new format `objectClass → stackTrace → eventThread → [weights]`. The combined type is now `jdk.combined.ObjectAllocationSampleLosslessV2` (registered as `OBJECT_ALLOCATION_SAMPLE_LOSSLESS_V2` in `CombinedEventType`). The old `jdk.combined.ObjectAllocationSampleLossless` type (V1) is kept for backward-compatible inflate of old `.cjfr` files. The reconstitutor detects the format by type name and uses `ReadList.asMapEntryList()` to extract the per-thread buckets, mirroring the `PromoteObjectSample` eventThread recovery pattern.
+
+## Bug 319: Sub-millisecond event durations lost — `getTimespanType` used timestamp precision for built-in `duration` field
+
+**Status:** Fixed.
+
+**Observed:** `cjfr view vm-operations` showed `HandshakeAllThreads` (avg 0.0150 ms), `ClassLoaderStatsOperation` (avg 0.151 ms), `ICBufferFull`, and `JFROldObject` all as "0 s". Oracle showed correct sub-millisecond durations. Similarly, `cjfr view gc-pause-phases` Level 1 phases `Notify Soft/WeakReferences` (avg 0.0112 ms) and `Notify PhantomReferences` (avg 0.00633 ms) showed "0 s" instead of correct microsecond values (after the Bug 317 fix made them visible).
+
+**Root cause:** Two methods in `BasicJFRWriter` incorrectly used `timeStampTicksPerSecond` (1,000/sec → 1 ms resolution) instead of `durationTicksPerSecond` (1,000,000/sec → 1 µs resolution) for duration fields:
+
+1. `getTimespanType(ValueDescriptor, boolean)`: the `Math.min` pick for the built-in `duration` field (when `fieldName.equals("duration") && topLevel`) used `configuration.timeStampTicksPerSecond()` rather than `configuration.durationTicksPerSecond()`. Durations below 1 ms were quantized to 0, and JFR omits zero-duration fields from the inflated output.
+
+2. `getDurationType()`: directly returned `getCachedTimespanType(1_000_000_000 / configuration.timeStampTicksPerSecond())` — same 1 ms resolution bug. Used by `GCPhasePauseLevelCombiner` and `CombinerSpec.gcPhasePauseLevel` for the explicit `duration` field in the phase-entry struct.
+
+**Fix:** Both methods now unconditionally use `configuration.durationTicksPerSecond()` for duration quantization. Events with durations below 1 µs still quantize to 0 (acceptable at DEFAULT precision), but events from ~1 µs to ~1 ms now retain their values.
