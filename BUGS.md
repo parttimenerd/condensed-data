@@ -2363,3 +2363,23 @@ correct for ns precision and merely over-inclusive under ms quantization.
 **Root cause:** The `(id = N)` suffix is derived from the constant pool reference index in the JFR file. cjfr's pool-less struct design (inline struct encoding, deduplication) does not preserve pool indices — there is no ID available to the printer.
 
 **Status:** Known limitation (structural: pool IDs not preserved in cjfr format). Affects events with classLoader fields: `jdk.ModuleExport`, `jdk.ModuleRequire`, `jdk.ClassLoaderStatistics`, etc.
+
+## Bug 357: `cjfr print --json` serializes `Infinity`/`NaN` float values instead of `null`
+
+**Symptom:** Oracle `jfr print --json` renders non-finite double/float values (e.g. `jdk.G1BasicIHOP.recentAllocationRate` when prediction has not yet started) as JSON `null`. cjfr renders them as the non-standard JSON token `Infinity` (via Java's `String.valueOf(double)`).
+
+**Root cause:** `toJson()` called `String.valueOf(n.doubleValue())` / `String.valueOf(n.floatValue())` unconditionally. `String.valueOf(Double.POSITIVE_INFINITY)` = `"Infinity"`, which is invalid JSON and differs from oracle's `null`.
+
+**Fix:** Added `Double.isFinite(dv) ? ... : "null"` guard for both Float and Double branches in `toJson()`.
+
+**Status:** Fixed.
+
+## Bug 358: `cjfr print --json` formats epoch-zero `Instant` as `HH:mm:ss.mmm+offset` instead of oracle's `HH:mm+offset`
+
+**Symptom:** `jdk.ThreadPark.until` with value `Instant.EPOCH` (0ms, representing "park indefinitely") shows `1970-01-01T01:00:00.000+01:00` in cjfr but `1970-01-01T01:00+01:00` in oracle.
+
+**Root cause:** `jsonTimestampFmt()` always selected `JSON_TS_3` (3-decimal format) for millisecond-boundary timestamps. Oracle omits the `:00.000` seconds+fraction when both are zero for the epoch sentinel.
+
+**Fix:** Added `JSON_TS_0` formatter (`yyyy-MM-dd'T'HH:mm` + offset) and select it when `instant == Instant.EPOCH` (`epochSecond == 0 && nano == 0`).
+
+**Status:** Fixed.

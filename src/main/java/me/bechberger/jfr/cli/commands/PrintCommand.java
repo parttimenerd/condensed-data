@@ -39,6 +39,11 @@ public class PrintCommand implements Callable<Integer> {
     // Oracle's jfr print --json trims fractional seconds at 3-digit (ms/µs/ns) boundaries:
     // 0 trailing µs+ns → 3 digits (ms); 0 trailing ns → 6 digits (µs); else 9 digits (ns).
     // Java's ISO_OFFSET_DATE_TIME strips individual trailing zeros, giving wrong digit counts.
+    private static final DateTimeFormatter JSON_TS_0 =
+            new DateTimeFormatterBuilder()
+                    .appendPattern("yyyy-MM-dd'T'HH:mm")
+                    .appendOffsetId()
+                    .toFormatter();
     private static final DateTimeFormatter JSON_TS_3 =
             new DateTimeFormatterBuilder()
                     .appendPattern("yyyy-MM-dd'T'HH:mm:ss")
@@ -60,6 +65,9 @@ public class PrintCommand implements Callable<Integer> {
 
     private static DateTimeFormatter jsonTimestampFmt(Instant instant) {
         int nano = instant.getNano();
+        // Epoch zero (1970-01-01T00:00:00Z) renders without :ss.mmm — oracle omits the zero
+        // seconds for this sentinel value (used as "no timeout" in ThreadPark.until etc.).
+        if (nano == 0 && instant.getEpochSecond() == 0) return JSON_TS_0;
         if (nano % 1_000_000 == 0) return JSON_TS_3;
         if (nano % 1_000 == 0) return JSON_TS_6;
         return JSON_TS_9;
@@ -438,10 +446,12 @@ public class PrintCommand implements Callable<Integer> {
             // Float must use floatValue() to preserve float32 precision (e.g. 0.45 not
             // 0.44999998...)
             if (value instanceof Float) {
-                return String.valueOf(n.floatValue());
+                float fv = n.floatValue();
+                return Float.isFinite(fv) ? String.valueOf(fv) : "null";
             }
             if (value instanceof Double) {
-                return String.valueOf(n.doubleValue());
+                double dv = n.doubleValue();
+                return Double.isFinite(dv) ? String.valueOf(dv) : "null";
             }
             // Unsigned long fields: Java stores as signed; render as unsigned to match oracle
             if (fieldType instanceof VarIntType vit && !vit.isSigned() && value instanceof Long l) {
