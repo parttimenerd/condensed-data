@@ -2328,7 +2328,35 @@ correct for ns precision and merely over-inclusive under ms quantization.
 
 **Status:** Fixed.
 
-## Bug 353: `cjfr print` omits ClassLoader `(id = N)` suffix in text output
+## Bug 354: `cjfr print` memory/bitrate scale stops at PB — should include EB
+
+**Symptom:** `jdk.G1BasicIHOP.recentAllocationRate` shows `8192.0 PB/s` in cjfr but `8,0 EB/s` in oracle `jfr print`. Similarly, any memory or bitrate value in the exabyte/exabit range (≥ 1024 PB) formats incorrectly.
+
+**Root cause:** `ValueFormatter.formatMemory()` and `ValueFormatter.formatBitrate()` defined unit arrays that topped out at `"PB"` / `"Pbps"`. Values such as `Long.MAX_VALUE` bytes (≈ 8 EB, used as a sentinel for "initial/unset allocation rate" in IHOP events) exceeded the maximum unit and were printed in PB with a large mantissa.
+
+**Fix:** Added `"EB"` to `formatMemory`'s unit array and `"Ebps"` to `formatBitrate`'s unit array.
+
+**Status:** Fixed.
+
+## Bug 355: `cjfr print` emits `eventThread = N/A` when oracle `jfr print` omits null eventThread
+
+**Symptom:** Events such as `jdk.JavaErrorThrow`, `jdk.JavaMonitorWait`, `jdk.ObjectAllocationSample`, and `jdk.ThreadPark` (which have a null `eventThread`) show `eventThread = N/A` in cjfr but have no `eventThread` line in oracle output.
+
+**Root cause:** `shouldSuppressField()` only suppressed null stackTrace and zero event duration. Null `eventThread` was not suppressed, so `formatValue(null, field)` returned `"N/A"` and the line was printed.
+
+**Fix:** Added `if (value == null && "eventThread".equals(field.name())) return true;` to `shouldSuppressField()`.
+
+**Status:** Fixed.
+
+## Bug 356: `cjfr print` renders empty stackTrace as `[]` instead of oracle's `[\n  ]`
+
+**Symptom:** `jdk.ThreadStart` events with an empty (zero-frame) stackTrace show `stackTrace = []` in cjfr but `stackTrace = [\n  ]` (open bracket, blank line, close bracket) in oracle.
+
+**Root cause:** `formatStackTrace()` returned the compact `"[]"` string for empty frame lists. Oracle prints the open bracket, an empty line, and the close bracket on separate lines.
+
+**Fix:** Changed `if (frames.isEmpty()) return "[]"` to `return "[\n  ]"` in `formatStackTrace()`.
+
+**Status:** Fixed.
 
 **Symptom:** Oracle `jfr print` shows `classLoader = jdk.internal.reflect.DelegatingClassLoader (id = 6)` while cjfr shows only `classLoader = jdk.internal.reflect.DelegatingClassLoader`. The `(id = N)` distinguishes multiple instances of the same ClassLoader class (e.g., different `DelegatingClassLoader` instances with ids 4, 6, 11, 13...).
 

@@ -192,7 +192,7 @@ public final class ValueFormatter {
     public static String formatMemory(long bytes) {
         boolean neg = bytes < 0;
         long abs = Math.abs(bytes);
-        String[] units = {"bytes", "kB", "MB", "GB", "TB", "PB"};
+        String[] units = {"bytes", "kB", "MB", "GB", "TB", "PB", "EB"};
         double value = abs;
         int u = 0;
         while (value >= 1024 && u < units.length - 1) {
@@ -211,7 +211,7 @@ public final class ValueFormatter {
     public static String formatBitrate(long bits) {
         boolean neg = bits < 0;
         long abs = Math.abs(bits);
-        String[] units = {"bps", "kbps", "Mbps", "Gbps", "Tbps", "Pbps"};
+        String[] units = {"bps", "kbps", "Mbps", "Gbps", "Tbps", "Pbps", "Ebps"};
         double value = abs;
         int u = 0;
         while (value >= 1024 && u < units.length - 1) {

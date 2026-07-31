@@ -297,11 +297,13 @@ public class PrintCommand implements Callable<Integer> {
     }
 
     /**
-     * Returns true for fields that oracle {@code jfr print} omits: null stackTrace, zero event
-     * duration (but NOT zero domain duration fields like lastMarkingDuration).
+     * Returns true for fields that oracle {@code jfr print} omits: null stackTrace, null
+     * eventThread, zero event duration (but NOT zero domain duration fields like
+     * lastMarkingDuration).
      */
     private static boolean shouldSuppressField(Object value, StructType.Field<?, ?, ?> field) {
         if (value == null && isStackTrace(field)) return true;
+        if (value == null && "eventThread".equals(field.name())) return true;
         // Only suppress zero duration for the event-level "duration" field, not domain fields
         if (value instanceof Duration d && d.isZero() && "duration".equals(field.name()))
             return true;
@@ -797,7 +799,7 @@ public class PrintCommand implements Callable<Integer> {
             return "[]";
         }
 
-        if (frames.isEmpty()) return "[]";
+        if (frames.isEmpty()) return "[\n  ]";
 
         boolean truncated = false;
         if (stackTrace.hasField("truncated")) {
