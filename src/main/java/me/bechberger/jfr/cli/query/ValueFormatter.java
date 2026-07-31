@@ -197,7 +197,7 @@ public final class ValueFormatter {
 
     // ── bit rate (DataAmount(BITS)+Frequency: binary scaling, "bps" suffix) ────
 
-    static String formatBitrate(long bits) {
+    public static String formatBitrate(long bits) {
         boolean neg = bits < 0;
         long abs = Math.abs(bits);
         String[] units = {"bps", "kbps", "Mbps", "Gbps", "Tbps", "Pbps"};

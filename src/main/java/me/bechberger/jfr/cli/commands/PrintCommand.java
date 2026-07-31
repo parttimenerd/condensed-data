@@ -1,6 +1,7 @@
 package me.bechberger.jfr.cli.commands;
 
 import java.nio.file.Path;
+import java.time.DateTimeException;
 import java.time.Duration;
 import java.time.Instant;
 import java.time.ZoneId;
@@ -253,11 +254,14 @@ public class PrintCommand implements Callable<Integer> {
     }
 
     /**
-     * Returns true for fields that oracle {@code jfr print} omits: null stackTrace, zero duration.
+     * Returns true for fields that oracle {@code jfr print} omits: null stackTrace, zero event
+     * duration (but NOT zero domain duration fields like lastMarkingDuration).
      */
     private static boolean shouldSuppressField(Object value, StructType.Field<?, ?, ?> field) {
         if (value == null && isStackTrace(field)) return true;
-        if (value instanceof Duration d && d.isZero()) return true;
+        // Only suppress zero duration for the event-level "duration" field, not domain fields
+        if (value instanceof Duration d && d.isZero() && "duration".equals(field.name()))
+            return true;
         return false;
     }
 
@@ -412,18 +416,32 @@ public class PrintCommand implements Callable<Integer> {
     // ── text value formatting ─────────────────────────────────────────────────
 
     private String formatValue(Object value, StructType.Field<?, ?, ?> field) {
+        return formatValue(value, field, "  ");
+    }
+
+    private String formatValue(Object value, StructType.Field<?, ?, ?> field, String indent) {
         if (value == null) return "N/A";
         String desc = field != null ? field.description() : null;
 
         if (value instanceof Instant instant) {
+            // Epoch-millis sentinel Long.MIN_VALUE (e.g. ThreadPark.until "no timeout") maps to
+            // an Instant far outside the DateTimeFormatter range; treat as N/A.
+            if (instant.getEpochSecond() <= Instant.MIN.getEpochSecond() + 1
+                    || instant.getEpochSecond() >= Instant.MAX.getEpochSecond() - 1) {
+                return "N/A";
+            }
             DateTimeFormatter fmt = exact ? TIMESTAMP_EXACT_FMT : TIMESTAMP_FMT;
-            return fmt.format(instant.atZone(ZoneId.systemDefault()));
+            try {
+                return fmt.format(instant.atZone(ZoneId.systemDefault()));
+            } catch (DateTimeException e) {
+                return "N/A";
+            }
         }
         if (value instanceof Duration duration) {
             return formatDuration(duration);
         }
         if (value instanceof ReadStruct struct) {
-            return formatStruct(struct);
+            return formatStruct(struct, indent);
         }
         if (value instanceof ReadList<?> list) {
             return formatListItems(list, isStackTrace(field));
@@ -445,7 +463,25 @@ public class PrintCommand implements Callable<Integer> {
         }
         if (desc != null && desc.contains("jdk.jfr.MemoryAddress")) {
             long addr = ((Number) value).longValue();
-            return String.format(Locale.ROOT, "0x%X", addr);
+            // Oracle zero-pads to at least 8 hex digits (e.g. 0x00000000 for null address)
+            return String.format(Locale.ROOT, "0x%08X", addr);
+        }
+        if (desc != null
+                && desc.contains("jdk.jfr.DataAmount")
+                && desc.contains("jdk.jfr.Frequency")
+                && value instanceof Number n) {
+            // Combined @DataAmount + @Frequency = data rate (byte/s or bit/s)
+            long v = (long) n.doubleValue();
+            boolean bits = desc.contains("BITS");
+            if (exact) {
+                return v + (bits ? " bits/s" : " bytes/s");
+            }
+            if (bits) {
+                return ValueFormatter.formatBitrate(v);
+            }
+            String mem = ValueFormatter.formatMemory(v);
+            // oracle uses singular "byte/s" at zero, "KB/s"/"MB/s" etc. otherwise
+            return mem.equals("0 bytes") ? "0 byte/s" : mem + "/s";
         }
         if (desc != null && desc.contains("jdk.jfr.DataAmount")) {
             if (exact) {
@@ -484,6 +520,10 @@ public class PrintCommand implements Callable<Integer> {
     }
 
     private String formatStruct(ReadStruct s) {
+        return formatStruct(s, "  ");
+    }
+
+    private String formatStruct(ReadStruct s, String indent) {
         String typeName = s.getType().getName();
 
         if (typeName.endsWith("Thread") || s.hasField("javaName") || s.hasField("osName")) {
@@ -502,20 +542,23 @@ public class PrintCommand implements Callable<Integer> {
             return formatMethod(s);
         }
         if (typeName.endsWith("ClassLoader")) {
-            return formatClassLoader(s);
+            return formatClassLoaderStandalone(s);
         }
 
-        // Generic struct: render as nested block
+        // Generic struct: render as nested block with depth-aware indentation.
+        // indent is the current field indent (e.g. "  " at top level, "    " one level in).
+        String fieldIndent = indent + "  ";
+        String closeIndent = indent;
         StringBuilder sb = new StringBuilder("{\n");
         for (StructType.Field<?, ?, ?> field : s.getType().getFields()) {
             Object val = s.get(field.name());
-            sb.append("    ")
+            sb.append(fieldIndent)
                     .append(field.name())
                     .append(" = ")
-                    .append(formatValue(val, field))
+                    .append(formatValue(val, field, fieldIndent))
                     .append("\n");
         }
-        sb.append("  }");
+        sb.append(closeIndent).append("}");
         return sb.toString();
     }
 
@@ -594,6 +637,23 @@ public class PrintCommand implements Callable<Integer> {
         Object typeName = type.get("name");
         if (typeName == null || typeName.toString().isEmpty()) return "bootstrap";
         return decodeClassName(typeName.toString());
+    }
+
+    /**
+     * Format a ClassLoader struct as a standalone field value (not inline within a Class field).
+     * Oracle shows the loader's type class name here, not the "name" field.
+     * Bootstrap loader (null type) renders as "null" to match oracle.
+     */
+    private String formatClassLoaderStandalone(ReadStruct loader) {
+        ReadStruct type = loader.hasField("type") ? loader.getStruct("type") : null;
+        if (type != null) {
+            Object typeName = type.get("name");
+            if (typeName != null && !typeName.toString().isEmpty()) {
+                return decodeClassName(typeName.toString());
+            }
+        }
+        // Null type = bootstrap loader; oracle prints "null" in struct context
+        return "null";
     }
 
     private String formatMethod(ReadStruct method) {
