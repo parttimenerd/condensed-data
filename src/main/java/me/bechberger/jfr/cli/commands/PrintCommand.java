@@ -14,6 +14,7 @@ import java.util.concurrent.Callable;
 import java.util.regex.Pattern;
 import me.bechberger.condensed.ReadList;
 import me.bechberger.condensed.ReadStruct;
+import me.bechberger.condensed.types.CondensedType;
 import me.bechberger.condensed.types.StructType;
 import me.bechberger.femtocli.annotations.Command;
 import me.bechberger.femtocli.annotations.Option;
@@ -55,23 +56,96 @@ public class PrintCommand implements Callable<Integer> {
             description = "Print recording in JSON format")
     private boolean json;
 
+    @Option(
+            names = {"--categories"},
+            description =
+                    "Select events matching a category name. Comma-separated list of names and/or"
+                            + " glob patterns (e.g. 'GC,Profiling'). Matches any segment of the"
+                            + " event's category path.",
+            split = ",")
+    private List<String> categoryFilter;
+
+    @Option(
+            names = {"--exact"},
+            description =
+                    "Print numbers and timestamps with full precision (nanosecond timestamps,"
+                            + " raw byte counts, full-precision floats)")
+    private boolean exact;
+
     private static final DateTimeFormatter TIMESTAMP_FMT =
             DateTimeFormatter.ofPattern("HH:mm:ss.SSS (yyyy-MM-dd)", Locale.ROOT);
+    private static final DateTimeFormatter TIMESTAMP_EXACT_FMT =
+            DateTimeFormatter.ofPattern("HH:mm:ss.SSSSSSSSS (yyyy-MM-dd)", Locale.ROOT);
 
     @Override
     public Integer call() {
         List<Pattern> filterPatterns = buildFilterPatterns();
+        List<Pattern> categoryPatterns = buildCategoryPatterns();
         var reader = CombiningJFRReader.fromPaths(inputFiles);
         try {
             if (json) {
-                printJson(reader, filterPatterns);
+                printJson(reader, filterPatterns, categoryPatterns);
             } else {
-                printText(reader, filterPatterns);
+                printText(reader, filterPatterns, categoryPatterns);
             }
         } catch (Exception e) {
             return CLIUtils.printError(e);
         }
         return 0;
+    }
+
+    private List<Pattern> buildCategoryPatterns() {
+        if (categoryFilter == null || categoryFilter.isEmpty()) return null;
+        List<Pattern> patterns = new ArrayList<>();
+        for (String f : categoryFilter) {
+            patterns.add(globToPattern(f.trim()));
+        }
+        return patterns;
+    }
+
+    /**
+     * Extracts category path segments from the type description JSON. Description format: [label,
+     * desc, [[annotationName, [args...]], ...]] The jdk.jfr.Category annotation has one arg: a list
+     * of path segments.
+     */
+    static List<String> extractCategories(CondensedType<?, ?> type) {
+        String desc = type.getDescription();
+        if (desc == null || !desc.contains("jdk.jfr.Category")) return List.of();
+        // Find "jdk.jfr.Category" and extract the following array
+        int catIdx = desc.indexOf("\"jdk.jfr.Category\"");
+        if (catIdx < 0) return List.of();
+        // After "jdk.jfr.Category", expect: ,[[seg1,seg2,...]]
+        int bracketStart = desc.indexOf("[[", catIdx);
+        if (bracketStart < 0) return List.of();
+        int bracketEnd = desc.indexOf("]]", bracketStart);
+        if (bracketEnd < 0) return List.of();
+        String inner = desc.substring(bracketStart + 2, bracketEnd);
+        // inner is like: "Java Virtual Machine","GC","Phases"
+        List<String> segments = new ArrayList<>();
+        int i = 0;
+        while (i < inner.length()) {
+            if (inner.charAt(i) == '"') {
+                int end = inner.indexOf('"', i + 1);
+                if (end < 0) break;
+                segments.add(inner.substring(i + 1, end));
+                i = end + 1;
+            } else {
+                i++;
+            }
+        }
+        return segments;
+    }
+
+    private boolean matchesCategories(List<Pattern> categoryPatterns, CondensedType<?, ?> type) {
+        if (categoryPatterns == null) return true;
+        List<String> segments = extractCategories(type);
+        if (segments.isEmpty()) return false;
+        for (Pattern p : categoryPatterns) {
+            for (String seg : segments) {
+                if (p.matcher(seg).matches()) return true;
+            }
+        }
+        return false;
     }
 
     private List<Pattern> buildFilterPatterns() {
@@ -115,12 +189,16 @@ public class PrintCommand implements Callable<Integer> {
 
     // ── text output ──────────────────────────────────────────────────────────
 
-    private void printText(CombiningJFRReader reader, List<Pattern> filterPatterns) {
+    private void printText(
+            CombiningJFRReader reader,
+            List<Pattern> filterPatterns,
+            List<Pattern> categoryPatterns) {
         Set<String> seen = filterPatterns != null ? new HashSet<>() : null;
         ReadStruct event;
         while ((event = reader.readNextEvent()) != null) {
             String typeName = event.getType().getName();
             if (!matchesFilter(filterPatterns, typeName)) continue;
+            if (!matchesCategories(categoryPatterns, event.getType())) continue;
             if (seen != null) seen.add(typeName);
             printTextEvent(event);
         }
@@ -131,9 +209,19 @@ public class PrintCommand implements Callable<Integer> {
         System.out.println(event.getType().getName() + " {");
         for (StructType.Field<?, ?, ?> field : event.getType().getFields()) {
             Object value = event.get(field.name());
+            if (shouldSuppressField(value, field)) continue;
             System.out.println("  " + field.name() + " = " + formatValue(value, field));
         }
         System.out.println("}");
+    }
+
+    /**
+     * Returns true for fields that oracle {@code jfr print} omits: null stackTrace, zero duration.
+     */
+    private static boolean shouldSuppressField(Object value, StructType.Field<?, ?, ?> field) {
+        if (value == null && isStackTrace(field)) return true;
+        if (value instanceof Duration d && d.isZero()) return true;
+        return false;
     }
 
     private void warnUnknownFilters(List<Pattern> filterPatterns, Set<String> seen) {
@@ -160,7 +248,10 @@ public class PrintCommand implements Callable<Integer> {
 
     // ── JSON output ──────────────────────────────────────────────────────────
 
-    private void printJson(CombiningJFRReader reader, List<Pattern> filterPatterns) {
+    private void printJson(
+            CombiningJFRReader reader,
+            List<Pattern> filterPatterns,
+            List<Pattern> categoryPatterns) {
         System.out.println("{");
         System.out.println("  \"recording\": {");
         System.out.println("    \"events\": [");
@@ -168,6 +259,7 @@ public class PrintCommand implements Callable<Integer> {
         ReadStruct event;
         while ((event = reader.readNextEvent()) != null) {
             if (!matchesFilter(filterPatterns, event.getType().getName())) continue;
+            if (!matchesCategories(categoryPatterns, event.getType())) continue;
             if (!first) System.out.println(",");
             first = false;
             printJsonEvent(event, "    ");
@@ -287,7 +379,8 @@ public class PrintCommand implements Callable<Integer> {
         String desc = field != null ? field.description() : null;
 
         if (value instanceof Instant instant) {
-            return TIMESTAMP_FMT.format(instant.atZone(ZoneId.systemDefault()));
+            DateTimeFormatter fmt = exact ? TIMESTAMP_EXACT_FMT : TIMESTAMP_FMT;
+            return fmt.format(instant.atZone(ZoneId.systemDefault()));
         }
         if (value instanceof Duration duration) {
             return formatDuration(duration);
@@ -307,14 +400,26 @@ public class PrintCommand implements Callable<Integer> {
         if (value instanceof Boolean b) {
             return b ? "true" : "false";
         }
+        if (value instanceof Number n
+                && n.longValue() == Integer.MIN_VALUE
+                && desc != null
+                && desc.contains("minimum value for the type int")) {
+            return "N/A";
+        }
         if (desc != null && desc.contains("jdk.jfr.MemoryAddress")) {
             long addr = ((Number) value).longValue();
             return String.format(Locale.ROOT, "0x%X", addr);
         }
         if (desc != null && desc.contains("jdk.jfr.DataAmount")) {
+            if (exact) {
+                return ((Number) value).longValue() + " bytes";
+            }
             return ValueFormatter.formatMemory(((Number) value).longValue());
         }
         if (desc != null && desc.contains("jdk.jfr.Percentage") && value instanceof Number n) {
+            if (exact) {
+                return String.format(Locale.ROOT, "%.9f%%", n.doubleValue() * 100.0);
+            }
             return String.format(Locale.ROOT, "%.2f%%", n.doubleValue() * 100.0);
         }
         if (desc != null && desc.contains("jdk.jfr.Frequency") && value instanceof Number n) {
@@ -333,6 +438,11 @@ public class PrintCommand implements Callable<Integer> {
         long nanos = d.toNanos();
         if (nanos >= Long.MAX_VALUE - 1_000_000L) return "Forever";
         if (nanos <= Long.MIN_VALUE + 1_000_000L) return "N/A";
+        if (exact) {
+            // Oracle --exact: raw seconds as decimal with nanosecond precision
+            double secs = nanos / 1_000_000_000.0;
+            return String.format(Locale.ROOT, "%.9f s", secs);
+        }
         return ValueFormatter.formatTimespan(d);
     }
 
