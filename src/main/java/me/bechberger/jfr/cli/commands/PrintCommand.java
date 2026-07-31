@@ -207,12 +207,47 @@ public class PrintCommand implements Callable<Integer> {
 
     private void printTextEvent(ReadStruct event) {
         System.out.println(event.getType().getName() + " {");
-        for (StructType.Field<?, ?, ?> field : event.getType().getFields()) {
+        @SuppressWarnings("unchecked")
+        List<StructType.Field<Object, ?, ?>> fields =
+                (List<StructType.Field<Object, ?, ?>>) (List<?>) event.getType().getFields();
+        // Oracle jfr print order: startTime/duration first, then domain fields, then
+        // eventThread/stackTrace last — mirror that ordering here.
+        List<StructType.Field<Object, ?, ?>> meta = new ArrayList<>();
+        List<StructType.Field<Object, ?, ?>> domain = new ArrayList<>();
+        List<StructType.Field<Object, ?, ?>> tail = new ArrayList<>();
+        for (StructType.Field<Object, ?, ?> f : fields) {
+            String n = f.name();
+            if (n.equals("startTime") || n.equals("duration")) meta.add(f);
+            else if (n.equals("eventThread") || n.equals("stackTrace")) tail.add(f);
+            else domain.add(f);
+        }
+        for (StructType.Field<Object, ?, ?> field : meta) {
+            Object value = event.get(field.name());
+            if (shouldSuppressField(value, field)) continue;
+            System.out.println("  " + field.name() + " = " + formatValue(value, field));
+        }
+        for (StructType.Field<Object, ?, ?> field : domain) {
+            Object value = event.get(field.name());
+            if (shouldSuppressField(value, field)) continue;
+            if (field.name().equals("object") && value instanceof ReadStruct rs
+                    && rs.hasField("type") && rs.hasField("description")) {
+                // OldObject special rendering: "  object =  [\n    ClassName [desc/size]\n  ]"
+                Object ae = event.hasField("arrayElements") ? event.get("arrayElements") : null;
+                long arrayLen = ae instanceof Number n ? n.longValue() : Integer.MIN_VALUE;
+                System.out.println("  object =  [");
+                System.out.println("    " + formatOldObject(rs, arrayLen));
+                System.out.println("  ]");
+            } else {
+                System.out.println("  " + field.name() + " = " + formatValue(value, field));
+            }
+        }
+        for (StructType.Field<Object, ?, ?> field : tail) {
             Object value = event.get(field.name());
             if (shouldSuppressField(value, field)) continue;
             System.out.println("  " + field.name() + " = " + formatValue(value, field));
         }
         System.out.println("}");
+        System.out.println();
     }
 
     /**
@@ -482,6 +517,23 @@ public class PrintCommand implements Callable<Integer> {
         return sb.toString();
     }
 
+    private String formatOldObject(ReadStruct obj, long arrayElements) {
+        ReadStruct type = obj.hasField("type") ? obj.getStruct("type") : null;
+        String className = "";
+        if (type != null) {
+            Object typeName = type.get("name");
+            className = typeName != null ? decodeClassName(typeName.toString()) : "";
+        }
+        if (arrayElements != Integer.MIN_VALUE && arrayElements > 0) {
+            return className + "[" + arrayElements + "]";
+        }
+        Object desc = obj.get("description");
+        if (desc != null && !desc.toString().isEmpty()) {
+            return className + " " + desc;
+        }
+        return className;
+    }
+
     private String formatThread(ReadStruct thread) {
         Object javaName = thread.hasField("javaName") ? thread.get("javaName") : null;
         Object osName = thread.hasField("osName") ? thread.get("osName") : null;
@@ -535,14 +587,13 @@ public class PrintCommand implements Callable<Integer> {
         if (type == null) return "bootstrap";
         Object typeName = type.get("name");
         if (typeName == null || typeName.toString().isEmpty()) return "bootstrap";
-        String decoded = decodeClassName(typeName.toString());
-        int dot = decoded.lastIndexOf('.');
-        return dot >= 0 ? decoded.substring(dot + 1) : decoded;
+        return decodeClassName(typeName.toString());
     }
 
     private String formatMethod(ReadStruct method) {
         ReadStruct type = method.hasField("type") ? method.getStruct("type") : null;
-        // oracle jfr print omits classLoader in method fields (class name only, no "(classLoader = x)")
+        // oracle jfr print omits classLoader in method fields (class name only, no "(classLoader =
+        // x)")
         String cls = "";
         if (type != null) {
             Object typeName = type.get("name");
