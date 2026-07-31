@@ -490,16 +490,24 @@ public class PrintCommand implements Callable<Integer> {
                         ? javaName.toString()
                         : (osName != null ? osName.toString() : "");
 
+        // Prefer javaThreadId when > 0 (GC threads have javaThreadId=0 but valid osThreadId)
         if (thread.hasField("javaThreadId")) {
             Object tid = thread.get("javaThreadId");
-            if (tid != null) {
-                return "\"" + name + "\" (javaThreadId = " + tid + ")";
+            if (tid instanceof Number n && n.longValue() > 0) {
+                return "\"" + name + "\" (javaThreadId = " + n.longValue() + ")";
             }
         }
         if (thread.hasField("osThreadId")) {
             Object tid = thread.get("osThreadId");
+            if (tid instanceof Number n && n.longValue() > 0) {
+                return "\"" + name + "\" (osThreadId = " + n.longValue() + ")";
+            }
+        }
+        // javaThreadId=0 with no valid osThreadId — show javaThreadId=0
+        if (thread.hasField("javaThreadId")) {
+            Object tid = thread.get("javaThreadId");
             if (tid != null) {
-                return "\"" + name + "\" (osThreadId = " + tid + ")";
+                return "\"" + name + "\" (javaThreadId = " + tid + ")";
             }
         }
         return "\"" + name + "\"";
@@ -516,6 +524,13 @@ public class PrintCommand implements Callable<Integer> {
     }
 
     private String formatClassLoader(ReadStruct loader) {
+        // Use the loader's own name field when available (e.g. "app", "bootstrap")
+        if (loader.hasField("name")) {
+            Object loaderName = loader.get("name");
+            if (loaderName != null && !loaderName.toString().isEmpty()) {
+                return loaderName.toString();
+            }
+        }
         ReadStruct type = loader.hasField("type") ? loader.getStruct("type") : null;
         if (type == null) return "bootstrap";
         Object typeName = type.get("name");
@@ -527,7 +542,12 @@ public class PrintCommand implements Callable<Integer> {
 
     private String formatMethod(ReadStruct method) {
         ReadStruct type = method.hasField("type") ? method.getStruct("type") : null;
-        String cls = type != null ? formatClass(type) : "";
+        // oracle jfr print omits classLoader in method fields (class name only, no "(classLoader = x)")
+        String cls = "";
+        if (type != null) {
+            Object typeName = type.get("name");
+            cls = typeName != null ? decodeClassName(typeName.toString()) : "";
+        }
         Object name = method.get("name");
         Object descriptor = method.hasField("descriptor") ? method.get("descriptor") : null;
         String params = descriptor != null ? decodeParams(descriptor.toString()) : "";
