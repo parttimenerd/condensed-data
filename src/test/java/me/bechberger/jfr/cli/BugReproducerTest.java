@@ -121,9 +121,11 @@ public class BugReproducerTest {
             // Truncation only fires when the display string exceeds the column width (~10 chars).
             // If the formatted display is short enough to fit, no truncation occurs and this
             // assertion is vacuous — skip it.
-            boolean rowContainsTruncated = row.chars().filter(c -> c == ' ').count() < 50
-                    && !row.contains("0."); // approximate: if no "0." then either not sub-second
-                                            // display or was already truncated
+            boolean rowContainsTruncated =
+                    row.chars().filter(c -> c == ' ').count() < 50
+                            && !row.contains(
+                                    "0."); // approximate: if no "0." then either not sub-second
+            // display or was already truncated
             // Only check the truncation invariant when the row appears to show a truncated value
             // (very long duration text that was cut). Since this is machine-dependent, be lenient.
             if (row.contains("0.0")) {

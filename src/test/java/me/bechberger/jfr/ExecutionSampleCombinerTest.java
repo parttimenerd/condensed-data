@@ -20,13 +20,12 @@ public class ExecutionSampleCombinerTest {
      * Condense a list of events captured via RecordingStream into a byte array, then read them
      * back. Returns the reconstituted events.
      */
-    private List<RecordedEvent> roundTrip(
-            Configuration config, Runnable workload) throws Exception {
+    private List<RecordedEvent> roundTrip(Configuration config, Runnable workload)
+            throws Exception {
         ByteArrayOutputStream baos = new ByteArrayOutputStream();
         List<RecordedEvent> captured = new ArrayList<>();
 
-        try (CondensedOutputStream out =
-                new CondensedOutputStream(baos, StartMessage.DEFAULT)) {
+        try (CondensedOutputStream out = new CondensedOutputStream(baos, StartMessage.DEFAULT)) {
             BasicJFRWriter writer = new BasicJFRWriter(out, config);
             try (RecordingStream rs = new RecordingStream()) {
                 rs.enable("jdk.ExecutionSample").withPeriod(java.time.Duration.ofMillis(10));
@@ -105,9 +104,9 @@ public class ExecutionSampleCombinerTest {
         for (var event : result) {
             if (!event.getEventType().getName().equals("jdk.ExecutionSample")) continue;
             var fields = event.getEventType().getFields();
-            boolean hasState =
-                    fields.stream().anyMatch(f -> f.getName().equals("state"));
-            assertFalse(hasState, "state field should be stripped when ignoreUnnecessaryEvents=true");
+            boolean hasState = fields.stream().anyMatch(f -> f.getName().equals("state"));
+            assertFalse(
+                    hasState, "state field should be stripped when ignoreUnnecessaryEvents=true");
             break;
         }
     }

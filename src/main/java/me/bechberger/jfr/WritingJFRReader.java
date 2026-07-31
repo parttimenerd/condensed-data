@@ -468,7 +468,9 @@ public class WritingJFRReader {
                 n ->
                         recording.registerAnnotationType(
                                 name,
-                                builder -> builder.addField("value", Builtin.STRING, fb -> fb.asArray())));
+                                builder ->
+                                        builder.addField(
+                                                "value", Builtin.STRING, fb -> fb.asArray())));
     }
 
     /**

@@ -429,7 +429,10 @@ final class ViewRenderer {
         } else {
             List<String> out = new ArrayList<>(lines.subList(0, maxLines));
             String last = out.get(maxLines - 1);
-            String truncated = last.length() + 3 <= width ? last + "..." : last.substring(0, Math.max(0, width - 3)) + "...";
+            String truncated =
+                    last.length() + 3 <= width
+                            ? last + "..."
+                            : last.substring(0, Math.max(0, width - 3)) + "...";
             out.set(maxLines - 1, truncated);
             return out;
         }
