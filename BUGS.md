@@ -1990,3 +1990,13 @@ The old V1 combiner is retained for backward-compatible reading of existing `.cj
 **Root cause:** The `combineBlockingEvents` V1 combiners for `ThreadPark`, `ThreadSleep`, and `JavaMonitorWait` used `countEvents()` as the map value, discarding the `duration` of each event. On reconstitution, `duration=0L` was hardcoded for all events.
 
 **Fix:** Added V2 combiners for all three event types (`threadParkV2`, `threadSleepV2`, `javaMonitorWaitV2`) that use `collectNamedStructArray("...", "duration")` to preserve the actual duration per event. Added new `CombinedEventType` entries (`THREAD_PARK_V2`, `THREAD_SLEEP_V2`, `JAVA_MONITOR_WAIT_V2`) for schema versioning. The V1 combiners are retained for backward-compatible reading of existing `.cjfr` files.
+
+## Bug 324: `contention-by-address` shows N/A addresses for the `default` preset
+
+**Status:** Fixed.
+
+**Observed:** `cjfr view contention-by-address` on a `.cjfr` file condensed with the `default` preset showed `N/A` for the Monitor Address column for all rows.
+
+**Root cause:** `ReducedJFRTypes` had `jdk.JavaMonitorEnter.address` gated on `removeUnnecessaryAddresses` (true in DEFAULT), so the address field was stripped from every event in the `default` preset. The `contention-by-address` view uses this field as its primary grouping key, so all rows collapsed to `N/A`. After the Bug 322 fix (which changed the predicate to `removeUnnecessaryAddresses && !combineBlockingEvents`), the address was still removed in DEFAULT (combineBlockingEvents=false), reproducing the same symptom.
+
+**Fix:** Removed `jdk.JavaMonitorEnter.address` from `ReducedJFRTypes` entirely. The `address` field is semantically meaningful — it uniquely identifies which monitor instance caused contention, and is the grouping key for both the `contention-by-address` view and the V2 combiner. It is not a "raw memory pointer" in the dispensable-address sense.
