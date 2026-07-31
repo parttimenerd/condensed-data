@@ -2061,3 +2061,26 @@ The `DIFFERENCE([B|E].startTime)` aggregate uses oracle semantics: when the join
 **Root cause:** `ValueFormatter.formatDouble` called `threeSigFigs` (3 sig figs) instead of oracle's apparent 4-sig-fig format. Oracle strips trailing decimal zeros (e.g. `0.5000` → `0.5`).
 
 **Fix:** Changed `formatDouble` to use `%.4g` with explicit trailing-zero stripping. This fixes the `0.5` case. One remaining diff: `InitialRAMPercentage 1.5625` → cjfr shows `1.563` (Java HALF_UP rounding) while oracle shows `1.562` (HALF_EVEN / banker's rounding). This is a Java `String.format` vs oracle internal rounding mode difference for a specific binary-fraction value.
+
+## Bug 330: Inflate drops fields from zero-occurrence event types
+
+**Symptom:** `jfr view gc /inflated.jfr` fails with "Can't find field named 'gcId' in
+jdk.OldGarbageCollection". Metadata inspection shows the inflated JFR only has
+`stackTrace`, `eventThread`, `startTime` for any event type with zero occurrences in the
+recording.
+
+**Root cause:** `BasicJFRWriter.registerEventTypes()` only stored the ID→name mapping and
+`@Label` for pre-registered event types; it did NOT write their `StructType` to the CJFR
+stream. At inflate time, `WritingJFRReader.resolveInflatedEventTypeId()` couldn't find these
+types in the CJFR type collection and fell back to `recording.registerEventType(name, b -> {})`
+— an empty builder yielding only the three default JFR event fields.
+
+**Fix:** `registerEventTypes()` now calls `writeOutEventTypeIfNeeded(t)` for each type,
+writing its full `StructType` (all fields + annotations) to the CJFR stream even when the
+recording has zero events of that type.
+
+**Scope:** Affects all event types with zero occurrences in the recording, including
+`jdk.OldGarbageCollection`, `jdk.ObjectCount`, `jdk.GCPhaseConcurrent`, `jdk.ParallelOldGarbageCollection`,
+`jdk.PromotionFailed`, `jdk.EvacuationFailed`, and ~40 others.
+
+**Status:** Fixed in `BasicJFRWriter.registerEventTypes()`.

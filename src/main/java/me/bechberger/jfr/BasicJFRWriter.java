@@ -948,6 +948,12 @@ public class BasicJFRWriter {
         for (jdk.jfr.EventType t : types) {
             eventTypeIdToName.put(t.getId(), t.getName());
             recordEventTypeLabel(t);
+            // Write the full StructType to the CJFR stream so that event types with zero
+            // occurrences still have their complete field schema at inflate time. Without this,
+            // inflate falls back to a minimal stub (stackTrace/eventThread/startTime only), which
+            // causes tools like 'jfr view gc' to fail when they look up e.g.
+            // OldGarbageCollection.gcId.
+            writeOutEventTypeIfNeeded(t);
         }
     }
 
