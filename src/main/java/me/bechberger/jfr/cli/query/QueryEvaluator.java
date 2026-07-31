@@ -1,5 +1,6 @@
 package me.bechberger.jfr.cli.query;
 
+import java.time.Duration;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
@@ -263,6 +264,16 @@ final class QueryEvaluator {
                     }
                     r.accept(parts.isEmpty() ? e : FieldResolver.resolve(e, parts));
                 }
+            }
+            // DIFFERENCE([B|E].startTime): when any alias in a coalesce has no rows, the
+            // difference is undefined. Oracle renders this as "Indefinite" (Long.MAX_VALUE nanos).
+            if ("DIFF".equalsIgnoreCase(agg.function()) && agg.arg() instanceof Coalesce c) {
+                boolean anyAliasEmpty =
+                        c.aliases().stream()
+                                .anyMatch(
+                                        a ->
+                                                aliasRows.getOrDefault(a, List.of()).isEmpty());
+                if (anyAliasEmpty) return Duration.ofNanos(Long.MAX_VALUE);
             }
             return r.result();
         }

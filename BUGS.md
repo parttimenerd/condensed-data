@@ -2010,3 +2010,42 @@ The old V1 combiner is retained for backward-compatible reading of existing `.cj
 **Root cause:** The `thread-start` view query uses `DIFFERENCE(startTime)` — an unqualified aggregate over a field shared between two joined aliases (`ThreadStart AS S, ThreadEnd AS E`). In `QueryEvaluator.evalJoinCell`, when `aliasesOf(agg.arg())` is called with an unqualified `FieldPath`, it returns an empty list (no alias prefix → no aliases to iterate). The aggregation loop never ran, the `DiffReducer` received no values, and `result()` returned `null` → rendered as "N/A".
 
 **Fix:** In `evalJoinCell`, when `aliasesOf` returns empty (unqualified field argument), fall back to iterating over all aliases in `aliasRows` so the DIFFERENCE() reducer receives `startTime` from both `ThreadStart` and `ThreadEnd` events in the group, producing the correct duration.
+
+## Bug 326: `jvm-flags` Name column truncated (phantom)
+
+**Status:** Not a bug / phantom.
+
+**Reported:** `cjfr view jvm-flags` appeared to show truncated flag names (e.g., "A..." at 4 chars) in an earlier stale run.
+
+**Investigation:** Retested on current build with `profile.jfr` directly and on `.cjfr` files — the Name column renders at full width (54 chars at width=160). The earlier truncation was from a stale pre-rebuild JAR. No fix required.
+
+## Bug 327: `active-settings` view shows 81 rows on `default` preset instead of 1
+
+**Status:** Known diff (data-loss artifact of 1ms timestamp quantization in DEFAULT preset).
+
+**Observed:** `cjfr view active-settings profile_default.cjfr` shows 81 rows (one per event type). `jfr view active-settings profile.jfr` and `cjfr view active-settings profile_lossless.cjfr` both show 1 row (File Force — the only event type whose settings changed in the last periodic batch).
+
+**Root cause:** The `active-settings` view.ini query uses `LAST_BATCH` aggregation to select only the most recent periodic snapshot of settings. The `LAST_BATCH` implementation in `QueryEvaluator` finds the global maximum `startTime` across events and retains only groups where at least one event has `startTime == globalBatchTs` (exact nanosecond equality).
+
+The DEFAULT preset uses `timeStampTicksPerSecond = 1_000` (1ms precision). The recording has two JFR chunks. All 80 `ActiveSetting` events in chunk 2 are emitted in the same millisecond and thus share the same quantized `startTime` after condensation. Since `lastBatchTimestamp()` returns that quantized ms value and all 80 chunk-2 events match it exactly, all 80 `id` groups survive the LAST_BATCH filter → 81 rows.
+
+With LOSSLESS precision (nanosecond), the 80 events have unique sequential nanosecond timestamps. Only one event has the globally maximum ns timestamp (id=1519 = File Force), so only that group survives → 1 row.
+
+**Impact:** DEFAULT preset produces incorrect `active-settings` output. The LAST_BATCH design relies on sub-millisecond timestamp precision to distinguish "the last periodic flush" from earlier flushes. When timestamps are quantized to ms, the distinction is lost.
+
+**Possible fixes:**
+1. Accept as a known limitation of the DEFAULT lossy preset (1ms quantization inherently loses intra-millisecond ordering).
+2. Increase `timeStampTicksPerSecond` in DEFAULT to µs or ns precision (breaks backward compatibility of existing `.cjfr` files, increases file size).
+3. Change `inLastBatch()` to use a tolerance window (e.g., events within 1ms of the max are "in last batch") — would fix DEFAULT but might collapse two genuinely distinct batches into one.
+
+## Bug 328: `safepoints` Duration shows `0 s` instead of `Indefinite` when joined event type has no events
+
+**Status:** Fixed.
+
+**Observed:** `cjfr view safepoints profile.jfr` showed `0 s` for the Duration column on all rows. Oracle (`jfr view safepoints profile.jfr`) showed `Indefinite`.
+
+**Root cause:** The `safepoints` view.ini query computes `DIFFERENCE([B|E].startTime)` over a three-way join of `SafepointBegin AS B, SafepointEnd AS E, SafepointStateSynchronization AS S`. In the test recording, `SafepointEnd` and `SafepointStateSynchronization` have zero events — they are not emitted by the JVM in this recording.
+
+The `DIFFERENCE([B|E].startTime)` aggregate uses oracle semantics: when the joined `SafepointEnd` alias `E` has no events for a group, the "end time" is undefined, so the duration is `Indefinite` (`Long.MAX_VALUE` nanos). The cjfr `DiffReducer` received only one value (`B.startTime`) per group (because alias `E` had no rows), and computed `last - first = 0 ns`, rendering as `0 s`.
+
+**Fix:** In `QueryEvaluator.evalJoinCell`, after aggregating a `DIFFERENCE` aggregate with a `Coalesce` argument, check if any alias in the coalesce list has no events in the current group. If so, override the result with `Duration.ofNanos(Long.MAX_VALUE)` → renders as `Indefinite`. This matches oracle behavior where an absent joined alias means the difference is undefined.
