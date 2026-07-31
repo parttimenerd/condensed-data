@@ -127,7 +127,8 @@ public final class ValueFormatter {
             return groupInteger((long) v);
         }
         // jfr uses 4 significant figures with trailing-zero stripping for raw double fields
-        // (e.g. JVM flag values like InitialRAMPercentage=1.5625 → "1.562", SweeperThreshold=0.5 → "0.5")
+        // (e.g. JVM flag values like InitialRAMPercentage=1.5625 → "1.562", SweeperThreshold=0.5 →
+        // "0.5")
         String s = String.format(Locale.ROOT, "%.4g", v);
         if (s.contains(".") && !s.contains("e") && !s.contains("E")) {
             s = s.replaceAll("0+$", "").replaceAll("\\.$", "");

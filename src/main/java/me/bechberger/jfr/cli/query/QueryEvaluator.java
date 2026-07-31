@@ -270,9 +270,7 @@ final class QueryEvaluator {
             if ("DIFF".equalsIgnoreCase(agg.function()) && agg.arg() instanceof Coalesce c) {
                 boolean anyAliasEmpty =
                         c.aliases().stream()
-                                .anyMatch(
-                                        a ->
-                                                aliasRows.getOrDefault(a, List.of()).isEmpty());
+                                .anyMatch(a -> aliasRows.getOrDefault(a, List.of()).isEmpty());
                 if (anyAliasEmpty) return Duration.ofNanos(Long.MAX_VALUE);
             }
             return r.result();

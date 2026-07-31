@@ -787,8 +787,8 @@ public class WritingJFRReader {
                         // (always STATE_RUNNABLE). Re-add it to the schema so jfr print shows it.
                         boolean needsStateField =
                                 ("jdk.ExecutionSample".equals(structType.getName())
-                                                || "jdk.NativeMethodSample".equals(
-                                                        structType.getName()))
+                                                || "jdk.NativeMethodSample"
+                                                        .equals(structType.getName()))
                                         && structType.getFields().stream()
                                                 .noneMatch(f -> "state".equals(f.name()));
                         if (needsStateField) {
@@ -958,7 +958,8 @@ public class WritingJFRReader {
                 } else if (fieldName.equals("state")
                         && (structType.getName().equals("jdk.ExecutionSample")
                                 || structType.getName().equals("jdk.NativeMethodSample"))) {
-                    // state was dropped unconditionally (always STATE_RUNNABLE); reinstate constant.
+                    // state was dropped unconditionally (always STATE_RUNNABLE); reinstate
+                    // constant.
                     fieldValues.put(
                             fieldName,
                             new TypedFieldValueImpl(

@@ -13,6 +13,7 @@ import jdk.jfr.consumer.RecordingFile;
 import me.bechberger.condensed.Compression;
 import me.bechberger.condensed.CondensedOutputStream;
 import me.bechberger.condensed.Message.StartMessage;
+import me.bechberger.condensed.stats.FlamegraphGenerator;
 import me.bechberger.femtocli.annotations.Command;
 import me.bechberger.femtocli.annotations.Option;
 import me.bechberger.femtocli.annotations.Parameters;
@@ -233,6 +234,7 @@ public class CondenseCommand implements Callable<Integer> {
                     for (var input : resolvedInputs) {
                         resolvedInputSize += Files.size(input);
                     }
+                    out.enableFullStatistics();
                 }
                 var basicJFRWriter = new BasicJFRWriter(out, configuration);
                 // Read chunk header start times to get the actual recording start
@@ -303,7 +305,14 @@ public class CondenseCommand implements Callable<Integer> {
                 }
                 basicJFRWriter.close();
                 if (statistics) {
-                    System.out.println(out.getStatistics().toPrettyString());
+                    var stat = out.getStatistics();
+                    var flamegraph = new FlamegraphGenerator(stat.getContextRoot());
+                    System.out.println("\nBytes by type (uncompressed):");
+                    System.out.println("==============================");
+                    flamegraph.writeTable(System.out);
+                    System.out.println("\nMode summary:");
+                    System.out.println("=============");
+                    System.out.println(stat.toPrettyString());
                 }
             }
             Files.move(tempFile, finalOutput, StandardCopyOption.REPLACE_EXISTING);
