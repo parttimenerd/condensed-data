@@ -2486,3 +2486,31 @@ correct for ns precision and merely over-inclusive under ms quantization.
 **Fix:** (1) Added `.replace("/", "\\/")` to `jsonEscape()`. (2) `printJson()` now prints `{` (for first event) or `, {` (for subsequent) before calling `printJsonEvent()`; `printJsonEvent()` no longer prints the opening `{`.
 
 **Status:** Fixed.
+
+## Bug 369: `cjfr print` renders `jdk.ActiveSetting.id` as event-type name string instead of numeric ID
+
+**Symptom:** Oracle `jfr print` renders `id = 2` (the original numeric event-type class ID), but cjfr renders `id = "jdk.ThreadStart"` (the resolved event-type name in string form, with quotes).
+
+**Root cause:** At condense time, `BasicJFRWriter.createActiveSettingIdField()` stores the event-type name as a String instead of the original numeric ID. This was intentional (Bug 2 in JMC_FIX.md) to fix a JMC NPE when inflating recordings. The remapping is a non-reversible schema change: the numeric class ID from the original recording is discarded and replaced with the string name.
+
+**Status:** Known accepted difference (JMC compatibility requirement). The print output differs from oracle for this field.
+
+## Bug 370: `cjfr print --json` emits a trailing newline after the final `}`
+
+**Symptom:** Oracle `jfr print --json` ends without a trailing newline (`}` is the last byte), but cjfr emitted `}\n` (extra newline).
+
+**Root cause:** `printJson()` used `System.out.println("}")` for the final closing brace, which appends `\n`.
+
+**Fix:** Changed final `println("}")` to `print("}")` in `printJson()`.
+
+**Status:** Fixed.
+
+## Bug 371: `cjfr print --json` uses expanded array format instead of oracle's compact `[{...}, {...}]`
+
+**Symptom:** Oracle renders JSON arrays as `"frames": [{...frame1...}, {...frame2...}]` — first element on same line as `[`, elements separated by `, ` (no extra newlines between the `}` of one element and `, {` of the next). cjfr rendered `[\n  {...}\n  {...}]` with extra leading newline and extra indentation.
+
+**Root cause:** `listToJson()` prepended `\n + inner` before each element (including the first), and used `inner = indent + "  "` as the element indentation context, adding 2 extra spaces vs oracle.
+
+**Fix:** Removed the leading `\n` before the first element (so it starts on the same line as `[`). Changed separator between elements from `\n` to just `, ` (the `}` closing the previous struct already ends with `\n + indent`, so `, {` appears on the same line as the closing `}`). Changed element indentation from `inner = indent + "  "` to `indent` to match oracle's nesting level. Removed the trailing `\n + indent` before `]` (so `]` appears immediately after the last element's closing `}`).
+
+**Status:** Fixed.

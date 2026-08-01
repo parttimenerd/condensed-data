@@ -372,7 +372,7 @@ public class PrintCommand implements Callable<Integer> {
         }
         System.out.println("]");
         System.out.println("  }");
-        System.out.println("}");
+        System.out.print("}");
     }
 
     private void printJsonEvent(ReadStruct event, String indent) {
@@ -504,14 +504,17 @@ public class PrintCommand implements Callable<Integer> {
 
     private String listToJson(List<?> list, String indent) {
         if (list.isEmpty()) return "[]";
-        String inner = indent + "  ";
         StringBuilder sb = new StringBuilder("[");
         int limit = stackDepth > 0 ? Math.min(stackDepth, list.size()) : list.size();
         for (int i = 0; i < limit; i++) {
-            sb.append("\n").append(inner).append(toJson(list.get(i), inner));
-            if (i < list.size() - 1) sb.append(", ");
+            if (i == 0) {
+                sb.append(toJson(list.get(i), indent));
+            } else {
+                sb.append(", ").append(toJson(list.get(i), indent));
+            }
+            if (i < list.size() - 1 && i == limit - 1) sb.append(", ");
         }
-        sb.append("\n").append(indent).append("]");
+        sb.append("]");
         return sb.toString();
     }
 
