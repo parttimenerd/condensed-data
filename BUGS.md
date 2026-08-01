@@ -2514,3 +2514,13 @@ correct for ns precision and merely over-inclusive under ms quantization.
 **Fix:** Removed the leading `\n` before the first element (so it starts on the same line as `[`). Changed separator between elements from `\n` to just `, ` (the `}` closing the previous struct already ends with `\n + indent`, so `, {` appears on the same line as the closing `}`). Changed element indentation from `inner = indent + "  "` to `indent` to match oracle's nesting level. Removed the trailing `\n + indent` before `]` (so `]` appears immediately after the last element's closing `}`).
 
 **Status:** Fixed.
+
+## Bug 372: `cjfr print --json --stack-depth N` produces invalid JSON with trailing comma
+
+**Symptom:** Using `--stack-depth N` with JSON output caused `json.decoder.JSONDecodeError: Illegal trailing comma before end of array` when N is less than the stack trace depth. The generated JSON included a trailing `, ` after the last included frame.
+
+**Root cause:** `listToJson()` had `if (i < list.size() - 1 && i == limit - 1) sb.append(", ");` — intended to signal truncation but actually appended a trailing comma after the last element, which is illegal JSON.
+
+**Fix:** Removed the trailing-comma append. Oracle simply shows the top N frames without any trailing marker; `"truncated"` on the stackTrace struct conveys whether frames were omitted.
+
+**Status:** Fixed.

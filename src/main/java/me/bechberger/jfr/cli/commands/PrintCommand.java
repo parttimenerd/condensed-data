@@ -512,7 +512,6 @@ public class PrintCommand implements Callable<Integer> {
             } else {
                 sb.append(", ").append(toJson(list.get(i), indent));
             }
-            if (i < list.size() - 1 && i == limit - 1) sb.append(", ");
         }
         sb.append("]");
         return sb.toString();
