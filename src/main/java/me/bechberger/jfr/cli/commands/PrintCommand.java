@@ -354,24 +354,28 @@ public class PrintCommand implements Callable<Integer> {
             List<Pattern> categoryPatterns) {
         System.out.println("{");
         System.out.println("  \"recording\": {");
-        System.out.println("    \"events\": [");
+        System.out.print("    \"events\": [");
         boolean first = true;
         ReadStruct event;
         while ((event = reader.readNextEvent()) != null) {
             if (!matchesFilter(filterPatterns, event.getType().getName())) continue;
             if (!matchesCategories(categoryPatterns, event.getType())) continue;
-            if (!first) System.out.println(",");
+            if (first) {
+                // First event: attach { directly to [ on same line
+                System.out.print("{");
+            } else {
+                // Subsequent events: separate with ", " then {
+                System.out.print(", {");
+            }
             first = false;
             printJsonEvent(event, "    ");
         }
-        if (!first) System.out.println();
-        System.out.println("    ]");
+        System.out.println("]");
         System.out.println("  }");
         System.out.println("}");
     }
 
     private void printJsonEvent(ReadStruct event, String indent) {
-        System.out.print(indent + "{");
         System.out.print("\n" + indent + "  \"type\": \"" + event.getType().getName() + "\", ");
         System.out.print("\n" + indent + "  \"values\": {");
         @SuppressWarnings("unchecked")
@@ -514,6 +518,7 @@ public class PrintCommand implements Callable<Integer> {
     private static String jsonEscape(String s) {
         return s.replace("\\", "\\\\")
                 .replace("\"", "\\\"")
+                .replace("/", "\\/")
                 .replace("\n", "\\n")
                 .replace("\r", "\\r")
                 .replace("\t", "\\t");
@@ -691,11 +696,7 @@ public class PrintCommand implements Callable<Integer> {
             } else {
                 rendered = formatValue(val, field, fieldIndent);
             }
-            sb.append(fieldIndent)
-                    .append(field.name())
-                    .append(" = ")
-                    .append(rendered)
-                    .append("\n");
+            sb.append(fieldIndent).append(field.name()).append(" = ").append(rendered).append("\n");
         }
         sb.append(closeIndent).append("}");
         return sb.toString();

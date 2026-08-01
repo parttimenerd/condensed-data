@@ -2474,3 +2474,15 @@ correct for ns precision and merely over-inclusive under ms quantization.
 **Fix:** Added `getPoolId(String fieldName)` to `ReadStruct` to expose the `idsOrNull` pool ID for a given field. In `PrintCommand.printTextEvent()`, ClassLoader-typed domain fields are now detected before the generic `formatValue()` dispatch, and `formatClassLoaderStandalone(loader, poolId)` is called with the event's pool ID for that field. The pool IDs in cjfr output differ from oracle because cjfr deduplicates identical ClassLoader structs in its constant pool (a known accepted difference: opaque pool renumbering).
 
 **Status:** Fixed (structural format matches; pool IDs are renumbered as expected).
+
+## Bug 368: `cjfr print --json` does not escape forward slashes and uses expanded array format
+
+**Symptom:** Two JSON formatting differences from oracle `jfr print --json`:
+1. Oracle escapes forward slashes as `\/` (e.g. `"destination": "\/Users\/..."`) but cjfr emitted literal `/`.
+2. Oracle uses compact array notation `"events": [{...}, {...}]` — the first event starts on the same line as `[`, and between events the delimiter is `, {` — but cjfr used an expanded format with the array opening on its own line.
+
+**Root cause:** (1) `PrintCommand.jsonEscape()` had `replace` calls for `\`, `"`, and control characters but missed `/`. (2) `printJson()` called `printJsonEvent()` which began with `System.out.print(indent + "{")`, so each event's `{` was printed by the event method itself rather than being attached to the preceding `[` or `}, `.
+
+**Fix:** (1) Added `.replace("/", "\\/")` to `jsonEscape()`. (2) `printJson()` now prints `{` (for first event) or `, {` (for subsequent) before calling `printJsonEvent()`; `printJsonEvent()` no longer prints the opening `{`.
+
+**Status:** Fixed.
