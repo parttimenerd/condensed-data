@@ -167,13 +167,17 @@ public final class ValueFormatter {
 
     private static String formatTimespanAbs(long nanos) {
         double seconds = nanos / 1_000_000_000.0;
-        if (seconds >= 3600) {
+        // Use the 3-sig-fig-rounded value for unit-selection thresholds: a value like
+        // 59.999999958 s displays as "60.0 s" and should route to the minutes branch, not
+        // the seconds branch (oracle does the same — it rounds before selecting units).
+        double roundedSeconds = Double.parseDouble(threeSigFigs(seconds));
+        if (roundedSeconds >= 3600) {
             long totalSec = Math.round(seconds);
             long h = totalSec / 3600;
             long m = (totalSec % 3600) / 60;
             return h + " h " + m + " m";
         }
-        if (seconds >= 60) {
+        if (roundedSeconds >= 60) {
             long totalSec = Math.round(seconds);
             long m = totalSec / 60;
             long sec = totalSec % 60;
@@ -200,9 +204,11 @@ public final class ValueFormatter {
             u++;
         }
         // jfr renders raw bytes as an integer count, and any larger unit with exactly one decimal.
+        // For the raw "bytes" unit, use singular "byte" when abs == 1 (including -1).
+        String unit = (u == 0 && abs == 1) ? "byte" : units[u];
         String num =
                 u == 0 ? Long.toString((long) value) : String.format(Locale.ROOT, "%.1f", value);
-        String s = num + " " + units[u];
+        String s = num + " " + unit;
         return neg ? "-" + s : s;
     }
 

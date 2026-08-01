@@ -2383,3 +2383,43 @@ correct for ns precision and merely over-inclusive under ms quantization.
 **Fix:** Added `JSON_TS_0` formatter (`yyyy-MM-dd'T'HH:mm` + offset) and select it when `instant == Instant.EPOCH` (`epochSecond == 0 && nano == 0`).
 
 **Status:** Fixed.
+
+## Bug 359: `cjfr print` renders `Long.MIN_VALUE` DataAmount sentinel as `--9223372036854775808 bytes` instead of `N/A`
+
+**Symptom:** `jdk.YoungGenerationConfiguration.maxSize` shows `--9223372036854775808 bytes` in cjfr but `N/A` in oracle. Reproducible with ZGC recordings where ZGC has no young generation size limit.
+
+**Root cause:** The JFR field is declared `@Unsigned long maxSize`. When no limit is configured, ZGC sets it to `Long.MIN_VALUE` as an "unset" sentinel. The condensed storage uses a signed VarInt for DataAmount fields. `formatMemory(Long.MIN_VALUE)` sets `neg = true` and calls `Math.abs(Long.MIN_VALUE)`, which overflows back to `Long.MIN_VALUE` (negative). The result is `"-" + "-9223372036854775808 bytes"` = `"--9223372036854775808 bytes"`. In JSON, the value is emitted as `-9223372036854775808` while oracle emits the unsigned `9223372036854775808`.
+
+**Fix:** In the `jdk.jfr.DataAmount` branch of `formatValue()`, check for `v == Long.MIN_VALUE` before calling `formatMemory` and return `"N/A"`. In `toJson()`, added a check: when `fieldType` is a `"memory varint"` VarIntType and value is `Long.MIN_VALUE`, emit `Long.toUnsignedString(Long.MIN_VALUE)` = `"9223372036854775808"`.
+
+**Status:** Fixed.
+
+## Bug 360: `cjfr print` renders near-60-second timeouts as `60.0 s` instead of `1 m 0 s`
+
+**Symptom:** `jdk.ThreadPark.timeout` values of `PT59.999999958S` (≈60s, but not exactly) are rendered as `60.0 s` by cjfr but as `1 m 0 s` by oracle. Affects 3767 ThreadPark events in the gauss-mix recording.
+
+**Root cause:** `formatTimespanAbs` used the raw `seconds` value for threshold comparison. `59.999999958 < 60.0` so it skips the `>= 60` branch, falls into the `>= 1_000_000_000L` (nanos ≥ 1s) branch, and calls `threeSigFigs(59.999999958)` which rounds to `"60.0"` — a correct display value but in the wrong unit. Oracle rounds before unit selection.
+
+**Fix:** Computed `roundedSeconds = Double.parseDouble(threeSigFigs(seconds))` and used that for the `>= 60` and `>= 3600` threshold tests in `ValueFormatter.formatTimespanAbs`.
+
+**Status:** Fixed.
+
+## Bug 361: `cjfr print` renders float `@Frequency` fields as integers (drops decimal part)
+
+**Symptom:** `jdk.ThreadContextSwitchRate.switchRate = 8975.555 Hz` in oracle but `8975 Hz` in cjfr. The decimal part is truncated.
+
+**Root cause:** The `@Frequency` branch in `formatValue()` called `n.longValue() + " Hz"`, which truncates floats/doubles to integers. The `switchRate` field is declared as `float` in the JFR metadata.
+
+**Fix:** Added float/double handling in the `@Frequency` branch: if the value is a float or double, use the float/double representation. Integer-valued floats still render without decimal (e.g. `1000 Hz`).
+
+**Status:** Fixed.
+
+## Bug 362: `cjfr print` renders `-1 byte` as `-1 bytes` (wrong plural for memory count of 1)
+
+**Symptom:** `jdk.GCHeapMemoryPoolUsage.max = -1 byte` in oracle but `-1 bytes` in cjfr. Also affects `bytesRead = 1 byte` positive case.
+
+**Root cause:** `formatMemory` always used `"bytes"` (plural) for the raw-bytes unit. Oracle uses singular `"byte"` when the absolute value is exactly 1.
+
+**Fix:** In `formatMemory`, when `u == 0` (bytes unit) and `abs == 1`, use `"byte"` (singular) instead of `"bytes"`.
+
+**Status:** Fixed.

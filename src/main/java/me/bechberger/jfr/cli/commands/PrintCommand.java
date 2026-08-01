@@ -457,6 +457,15 @@ public class PrintCommand implements Callable<Integer> {
             if (fieldType instanceof VarIntType vit && !vit.isSigned() && value instanceof Long l) {
                 return Long.toUnsignedString(l);
             }
+            // Memory DataAmount fields use signed VarInt internally but are @Unsigned in JFR.
+            // Long.MIN_VALUE is the "not set" sentinel; oracle emits it as the unsigned value
+            // 9223372036854775808 (= 2^63), not as a negative number.
+            if (value instanceof Long l
+                    && l == Long.MIN_VALUE
+                    && fieldType instanceof VarIntType vit
+                    && vit.getName().startsWith("memory varint")) {
+                return Long.toUnsignedString(l);
+            }
             return String.valueOf(n.longValue());
         }
         return "\"" + jsonEscape(value.toString()) + "\"";
@@ -575,10 +584,14 @@ public class PrintCommand implements Callable<Integer> {
             return mem.equals("0 bytes") ? "0 byte/s" : mem + "/s";
         }
         if (desc != null && desc.contains("jdk.jfr.DataAmount")) {
+            long v = ((Number) value).longValue();
+            // Long.MIN_VALUE is the "not set" sentinel for unsigned DataAmount fields (e.g.
+            // YoungGenerationConfiguration.maxSize when ZGC has no young generation limit).
+            if (v == Long.MIN_VALUE) return "N/A";
             if (exact) {
-                return ((Number) value).longValue() + " bytes";
+                return v + " bytes";
             }
-            return ValueFormatter.formatMemory(((Number) value).longValue());
+            return ValueFormatter.formatMemory(v);
         }
         if (desc != null && desc.contains("jdk.jfr.Percentage") && value instanceof Number n) {
             if (exact) {
@@ -587,6 +600,18 @@ public class PrintCommand implements Callable<Integer> {
             return String.format(Locale.ROOT, "%.2f%%", n.doubleValue() * 100.0);
         }
         if (desc != null && desc.contains("jdk.jfr.Frequency") && value instanceof Number n) {
+            // Frequency fields can be float (e.g. ThreadContextSwitchRate.switchRate).
+            // Oracle renders with the decimal part if present; use float string for floats.
+            if (value instanceof Float f) {
+                float fv = f;
+                if (fv == Math.rint(fv)) return (long) fv + " Hz";
+                return fv + " Hz";
+            }
+            if (value instanceof Double d) {
+                double dv = d;
+                if (dv == Math.rint(dv)) return (long) dv + " Hz";
+                return dv + " Hz";
+            }
             return n.longValue() + " Hz";
         }
         // @Unsigned long fields: Java stores as signed -1 but should render as unsigned max
