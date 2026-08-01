@@ -2423,3 +2423,23 @@ correct for ns precision and merely over-inclusive under ms quantization.
 **Fix:** In `formatMemory`, when `u == 0` (bytes unit) and `abs == 1`, use `"byte"` (singular) instead of `"bytes"`.
 
 **Status:** Fixed.
+
+## Bug 363: `cjfr view/print` renders sub-second durations near 1 s as "1000 ms" instead of "1.00 s"
+
+**Symptom:** A duration of 999.5 ms (or any value in ~[999.5 ms, 1000 ms)) renders as `1000 ms` in cjfr but `1.00 s` (or `1,00 s` in German locale) in oracle. Oracle rounds to 3 significant figures before selecting the display unit; cjfr did not apply this rounding for the ms→s boundary.
+
+**Root cause:** `formatTimespanAbs` used the raw `nanos >= 1_000_000_000L` condition to select the seconds branch. `roundedSeconds` was already computed for the `>= 60` and `>= 3600` thresholds (Bug 360 fix), but not used for the ms→s boundary. For `nanos = 999_500_000` (999.5 ms), `nanos < 1_000_000_000` so the code fell into the ms branch and called `threeSigFigs(999.5)`, which rounds to `"1000"`, producing `"1000 ms"` instead of `"1.00 s"`.
+
+**Fix:** Added `|| roundedSeconds >= 1.0` to the seconds branch condition, matching the Bug 360 pattern. Now `roundedSeconds = 1.00` routes to the seconds branch → `threeSigFigs(0.9995) + " s"` = `"1.00 s"`.
+
+**Status:** Fixed.
+
+## Bug 364: `cjfr view` FREQUENCY ColumnType truncates float frequencies to integers
+
+**Symptom:** In views, a float-typed `@Frequency` field like `ThreadContextSwitchRate.switchRate = 8975.555f` renders as `8975 Hz` instead of `8975.555 Hz`. This is the view-path equivalent of Bug 361 (which fixed only the print path).
+
+**Root cause:** `ValueFormatter.format()` handled `ColumnType.Kind.FREQUENCY` with `n.longValue() + " Hz"`, which truncates float/double values to integers. The print path (`PrintCommand.formatValue()`) was separately fixed in Bug 361.
+
+**Fix:** Applied the same float/double handling as Bug 361 to `ValueFormatter.format()`'s FREQUENCY branch: float and double values check for whole-number (`== Math.rint(v)`) and either render without decimal (integer-valued) or with decimal (non-integer).
+
+**Status:** Fixed.

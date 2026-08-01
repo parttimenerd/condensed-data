@@ -53,6 +53,15 @@ public final class ValueFormatter {
             return formatPercentage(n.doubleValue());
         }
         if (kind == ColumnType.Kind.FREQUENCY && value instanceof Number n) {
+            // Frequency fields can be float (e.g. ThreadContextSwitchRate.switchRate).
+            if (value instanceof Float f) {
+                float fv = f;
+                return fv == Math.rint(fv) ? (long) fv + " Hz" : fv + " Hz";
+            }
+            if (value instanceof Double d) {
+                double dv = d;
+                return dv == Math.rint(dv) ? (long) dv + " Hz" : dv + " Hz";
+            }
             return n.longValue() + " Hz";
         }
         if (kind == ColumnType.Kind.BITRATE && value instanceof Number n) {
@@ -183,7 +192,10 @@ public final class ValueFormatter {
             long sec = totalSec % 60;
             return m + " m " + sec + " s";
         }
-        if (nanos >= 1_000_000_000L) {
+        // Use roundedSeconds >= 1.0 as the ms→s boundary, matching oracle: a value like
+        // 999.5 ms rounds to "1.00 s" and must route here, not to the ms branch (where
+        // threeSigFigs(999.5) would produce "1000 ms" instead).
+        if (nanos >= 1_000_000_000L || roundedSeconds >= 1.0) {
             return threeSigFigs(seconds) + " s";
         }
         // jfr's timespan renderer keeps sub-second values in milliseconds (with more significant

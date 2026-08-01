@@ -2,6 +2,7 @@ package me.bechberger.jfr.cli.query;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 
+import java.time.Duration;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.CsvSource;
@@ -83,5 +84,36 @@ class ValueFormatterTest {
     void formatWholeDoubleGroups() {
         // A whole-valued double (e.g. a summed count) renders as a grouped integer, not "12345.0".
         assertEquals("12,345", ValueFormatter.format(12345.0, null));
+    }
+
+    /**
+     * Bug 363: a sub-second duration that 3-sig-fig-rounds to ≥ 1 s must use the seconds unit, not
+     * the milliseconds unit. Previously, a 999.5 ms duration would produce "1000 ms" because the ms
+     * branch was taken (nanos < 1_000_000_000), then threeSigFigs(999.5) rounded to "1000". Oracle
+     * renders this as "1.00 s".
+     */
+    @Test
+    void timespanNearOneSSecondRoundsToSeconds() {
+        // 999_500_000 ns = 999.5 ms → 3-sig-fig rounds to 1.00 s
+        assertEquals("1.00 s", ValueFormatter.formatTimespan(Duration.ofNanos(999_500_000)));
+        // 999_000_000 ns = 999 ms → 3 sig figs = "999 ms", stays in ms
+        assertEquals("999 ms", ValueFormatter.formatTimespan(Duration.ofNanos(999_000_000)));
+        // Exactly 1 s
+        assertEquals("1.00 s", ValueFormatter.formatTimespan(Duration.ofNanos(1_000_000_000)));
+    }
+
+    /**
+     * Bug 364: FREQUENCY ColumnType in views used n.longValue() which truncated float frequencies.
+     * Bug 361 fixed the print path; this test covers the view/ValueFormatter path.
+     */
+    @Test
+    void formatFrequencyFloatPreservesDecimal() {
+        // Float frequency with decimal part must not be truncated
+        assertEquals(
+                "8975.555 Hz", ValueFormatter.format(8975.555f, null, ColumnType.Kind.FREQUENCY));
+        // Integer-valued float still renders without decimal
+        assertEquals("1000 Hz", ValueFormatter.format(1000.0f, null, ColumnType.Kind.FREQUENCY));
+        // Double frequency
+        assertEquals("2600.5 Hz", ValueFormatter.format(2600.5, null, ColumnType.Kind.FREQUENCY));
     }
 }
