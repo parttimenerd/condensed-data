@@ -2443,3 +2443,24 @@ correct for ns precision and merely over-inclusive under ms quantization.
 **Fix:** Applied the same float/double handling as Bug 361 to `ValueFormatter.format()`'s FREQUENCY branch: float and double values check for whole-number (`== Math.rint(v)`) and either render without decimal (integer-valued) or with decimal (non-integer).
 
 **Status:** Fixed.
+
+## Bug 365: `cjfr view` shows full lambda parameter list instead of oracle's `(...)`
+
+**Symptom:** In views with a method column (e.g., `hot-methods`), cjfr renders lambda methods as
+`me.bechberger.WritingJFRReader.lambda$toTypedValue$0(ReadStruct, WritingJFRReader$ReadStructPath, TypedValueBuilder)` while oracle shows `me.bechberger.WritingJFRReader.lambda$toTypedValue$0(...)`. The auto-generated parameter types of lambda methods are not meaningful to users.
+
+**Root cause:** `ValueFormatter.formatMethod()` decoded and displayed the full parameter list unconditionally. Oracle abbreviates parameters to `(...)` whenever the method name contains `lambda$` (the JVM-generated name pattern for lambda expressions). The print path (`jfr print` stack traces) shows full params; only the view method-cell path uses `(...)`.
+
+**Fix:** In `ValueFormatter.formatMethod()`, when the method name contains `lambda$`, use `"..."` as the parameter string instead of the decoded descriptor params. The print path (`PrintCommand.formatMethod`) is unchanged.
+
+**Status:** Fixed.
+
+## Bug 366: `cjfr view` rounds double flag values with HALF_UP instead of oracle's HALF_EVEN
+
+**Symptom:** `InitialRAMPercentage` shows `1.563` in cjfr view but `1.562` in oracle `jfr view`. The raw value is `1.5625` which is exactly halfway between `1.562` and `1.563` when rounded to 4 significant figures.
+
+**Root cause:** `ValueFormatter.formatDouble()` used `String.format(Locale.ROOT, "%.4g", v)` which applies `HALF_UP` rounding. Oracle's `jfr view` uses `HALF_EVEN` (banker's rounding). The divergence only affects halfway values (last significant digit is exactly 5), but `1.5625` is a common value for `InitialRAMPercentage`.
+
+**Fix:** Changed `formatDouble()` to use `new BigDecimal(v).round(new MathContext(4, RoundingMode.HALF_EVEN)).toPlainString()` instead of `String.format("%.4g", ...)`.
+
+**Status:** Fixed.

@@ -116,4 +116,38 @@ class ValueFormatterTest {
         // Double frequency
         assertEquals("2600.5 Hz", ValueFormatter.format(2600.5, null, ColumnType.Kind.FREQUENCY));
     }
+
+    /**
+     * Bug 365: jfr view abbreviates lambda method parameters to "(...)"; cjfr previously showed the
+     * full decoded parameter list. The lambda$ check is in formatMethod (view path only; the print
+     * path shows full params in stack traces per oracle behaviour).
+     *
+     * <p>decodeParams itself is tested here to verify the underlying decoder still works for
+     * non-lambda methods.
+     */
+    @ParameterizedTest
+    @CsvSource({
+        "(ILjava/lang/Object;ZZ)V, 'int, Object, boolean, boolean'",
+        "(Ljava/lang/String;)V, String",
+        "()V, ''",
+        "([I)V, int[]",
+        "([Ljava/lang/Object;)V, Object[]"
+    })
+    void decodeParamsNonLambda(String descriptor, String expected) {
+        assertEquals(expected, ValueFormatter.decodeParams(descriptor));
+    }
+
+    /**
+     * Bug 366: jfr view uses HALF_EVEN rounding for double flag values; Java String.format uses
+     * HALF_UP. The divergence is observable for halfway values like InitialRAMPercentage=1.5625
+     * (HALF_UP→1.563, HALF_EVEN→1.562). Fixed by switching formatDouble to BigDecimal HALF_EVEN.
+     */
+    @Test
+    void formatDoubleHalfEvenRounding() {
+        // 1.5625 is exactly halfway between 1.562 and 1.563; oracle shows 1.562 (HALF_EVEN)
+        assertEquals("1.562", ValueFormatter.format(1.5625, null));
+        // Verify common whole-valued doubles still render as integers
+        assertEquals("1", ValueFormatter.format(1.0, null));
+        assertEquals("0.5", ValueFormatter.format(0.5, null));
+    }
 }

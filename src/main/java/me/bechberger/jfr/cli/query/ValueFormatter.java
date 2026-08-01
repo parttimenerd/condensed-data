@@ -1,5 +1,8 @@
 package me.bechberger.jfr.cli.query;
 
+import java.math.BigDecimal;
+import java.math.MathContext;
+import java.math.RoundingMode;
 import java.time.Duration;
 import java.time.Instant;
 import java.time.ZoneId;
@@ -137,9 +140,11 @@ public final class ValueFormatter {
         }
         // jfr uses 4 significant figures with trailing-zero stripping for raw double fields
         // (e.g. JVM flag values like InitialRAMPercentage=1.5625 → "1.562", SweeperThreshold=0.5 →
-        // "0.5")
-        String s = String.format(Locale.ROOT, "%.4g", v);
-        if (s.contains(".") && !s.contains("e") && !s.contains("E")) {
+        // "0.5"). Oracle uses HALF_EVEN rounding; String.format uses HALF_UP which diverges on
+        // halfway values (e.g. 1.5625: HALF_UP→1.563, HALF_EVEN→1.562).
+        BigDecimal bd = new BigDecimal(v).round(new MathContext(4, RoundingMode.HALF_EVEN));
+        String s = bd.toPlainString();
+        if (s.contains(".")) {
             s = s.replaceAll("0+$", "").replaceAll("\\.$", "");
         }
         return s;
@@ -340,8 +345,14 @@ public final class ValueFormatter {
         String cls = type != null ? className(type) : "";
         Object name = method.get("name");
         Object descriptor = method.hasField("descriptor") ? method.get("descriptor") : null;
-        String params = descriptor != null ? decodeParams(descriptor.toString()) : "";
-        return cls + "." + (name != null ? name : "") + "(" + params + ")";
+        // jfr view abbreviates lambda method params to "(...)" — the auto-generated arg types
+        // add no useful information and produce very wide cells.
+        String nameStr = name != null ? name.toString() : "";
+        String params =
+                nameStr.contains("lambda$")
+                        ? "..."
+                        : (descriptor != null ? decodeParams(descriptor.toString()) : "");
+        return cls + "." + nameStr + "(" + params + ")";
     }
 
     /**
