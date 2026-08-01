@@ -281,6 +281,12 @@ public class PrintCommand implements Callable<Integer> {
                 System.out.println("  object =  [");
                 System.out.println("    " + formatOldObject(rs, arrayLen));
                 System.out.println("  ]");
+            } else if (value instanceof ReadStruct rs
+                    && rs.getType().getName().endsWith("ClassLoader")) {
+                // ClassLoader standalone fields include the pool id: "TypeName (id = N)"
+                Integer poolId = event.getPoolId(field.name());
+                System.out.println(
+                        "  " + field.name() + " = " + formatClassLoaderStandalone(rs, poolId));
             } else {
                 System.out.println("  " + field.name() + " = " + formatValue(value, field));
             }
@@ -669,7 +675,7 @@ public class PrintCommand implements Callable<Integer> {
             return formatMethod(s);
         }
         if (typeName.endsWith("ClassLoader")) {
-            return formatClassLoaderStandalone(s);
+            return formatClassLoaderStandalone(s, null);
         }
 
         // Generic struct: render as nested block with depth-aware indentation.
@@ -679,10 +685,16 @@ public class PrintCommand implements Callable<Integer> {
         StringBuilder sb = new StringBuilder("{\n");
         for (StructType.Field<?, ?, ?> field : s.getType().getFields()) {
             Object val = s.get(field.name());
+            String rendered;
+            if (val instanceof ReadStruct rs && rs.getType().getName().endsWith("ClassLoader")) {
+                rendered = formatClassLoaderStandalone(rs, s.getPoolId(field.name()));
+            } else {
+                rendered = formatValue(val, field, fieldIndent);
+            }
             sb.append(fieldIndent)
                     .append(field.name())
                     .append(" = ")
-                    .append(formatValue(val, field, fieldIndent))
+                    .append(rendered)
                     .append("\n");
         }
         sb.append(closeIndent).append("}");
@@ -769,18 +781,23 @@ public class PrintCommand implements Callable<Integer> {
     /**
      * Format a ClassLoader struct as a standalone field value (not inline within a Class field).
      * Oracle shows the loader's type class name here, not the "name" field. Bootstrap loader (null
-     * type) renders as "null" to match oracle.
+     * type) renders as "null" to match oracle. When poolId is non-null, appends " (id = N)".
      */
-    private String formatClassLoaderStandalone(ReadStruct loader) {
+    private String formatClassLoaderStandalone(ReadStruct loader, Integer poolId) {
         ReadStruct type = loader.hasField("type") ? loader.getStruct("type") : null;
+        String base;
         if (type != null) {
             Object typeName = type.get("name");
             if (typeName != null && !typeName.toString().isEmpty()) {
-                return decodeClassName(typeName.toString());
+                base = decodeClassName(typeName.toString());
+            } else {
+                base = "null";
             }
+        } else {
+            // Null type = bootstrap loader; oracle prints "null" in struct context
+            base = "null";
         }
-        // Null type = bootstrap loader; oracle prints "null" in struct context
-        return "null";
+        return (poolId != null && !"null".equals(base)) ? base + " (id = " + poolId + ")" : base;
     }
 
     private String formatMethod(ReadStruct method) {

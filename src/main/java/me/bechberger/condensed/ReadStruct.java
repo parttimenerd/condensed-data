@@ -202,6 +202,12 @@ public class ReadStruct implements Map<String, Object>, ReadContainer<ReadStruct
         return get(ReadStruct.class, key);
     }
 
+    /** Returns the constant-pool ID for a reference field, or null if inline/absent. */
+    public @Nullable Integer getPoolId(String fieldName) {
+        if (idsOrNull == null) return null;
+        return idsOrNull.get(fieldName);
+    }
+
     @Nullable
     @Override
     public Object put(String key, Object value) {

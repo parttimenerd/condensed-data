@@ -2464,3 +2464,13 @@ correct for ns precision and merely over-inclusive under ms quantization.
 **Fix:** Changed `formatDouble()` to use `new BigDecimal(v).round(new MathContext(4, RoundingMode.HALF_EVEN)).toPlainString()` instead of `String.format("%.4g", ...)`.
 
 **Status:** Fixed.
+
+## Bug 367: `cjfr print` omits `(id = N)` for standalone ClassLoader fields
+
+**Symptom:** Oracle `jfr print` renders a ClassLoader-typed event field as `classLoader = jdk.internal.reflect.DelegatingClassLoader (id = 6)`, but cjfr rendered it as `classLoader = jdk.internal.reflect.DelegatingClassLoader` — without the pool ID suffix.
+
+**Root cause:** `PrintCommand.formatClassLoaderStandalone()` returned only the type class name, ignoring the constant-pool ID of the ClassLoader instance. Oracle always appends ` (id = N)` for standalone ClassLoader fields (those that are direct fields of an event, not ClassLoader values nested inside a Class struct).
+
+**Fix:** Added `getPoolId(String fieldName)` to `ReadStruct` to expose the `idsOrNull` pool ID for a given field. In `PrintCommand.printTextEvent()`, ClassLoader-typed domain fields are now detected before the generic `formatValue()` dispatch, and `formatClassLoaderStandalone(loader, poolId)` is called with the event's pool ID for that field. The pool IDs in cjfr output differ from oracle because cjfr deduplicates identical ClassLoader structs in its constant pool (a known accepted difference: opaque pool renumbering).
+
+**Status:** Fixed (structural format matches; pool IDs are renumbered as expected).
