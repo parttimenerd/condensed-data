@@ -2968,3 +2968,18 @@ Our code had no such deduplication, so all three were expanded.
 struct type is seen again, return `List.of()` (drop) rather than expanding or rendering as leaf.
 
 **Status:** Fixed.
+
+## Bug 413: `cjfr view <EventType>` Duration column truncates sub-millisecond values
+
+**Observation:** `cjfr view jdk.GCPhasePauseLevel1` showed `0.000292 m` (truncated) instead of
+`0.000292 ms`. Duration values like `0.000292 ms` (11 chars) were clipped to 10 chars.
+
+**Root cause:** `DurationColumn.width()` returned `Math.max(10, header.length()) = 10` as a
+hardcoded minimum, and `maxWidth()` defaulted to `width()=10`, capping the data-driven natural
+width at 10. Sub-millisecond durations like `0.000292 ms` (11 chars) were truncated to 10.
+
+**Fix:** Changed `DurationColumn.width()` to `Math.max(8, header.length())` (matching the "Duration"
+header length) and added `maxWidth()` returning `-1` (no cap), allowing the data-driven width
+computation to size the column to fit the widest actual value.
+
+**Status:** Fixed.

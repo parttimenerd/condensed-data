@@ -111,8 +111,8 @@ public class JFRViewTest {
                 """
                 Label
 
-                Start Time Duration   Event Thread    Stack Trace                                       Label      Memory     String                                          \s
-                ---------- ---------- --------------- ------------------------------------------------- ---------- ---------- -------------------------------------------------
+                Start Time Duration Event Thread    Stack Trace                                        Label      Memory     String                                           \s
+                ---------- -------- --------------- -------------------------------------------------- ---------- ---------- --------------------------------------------------
                 """
                         .strip(),
                 String.join("\n", view.header()).strip());
@@ -126,8 +126,8 @@ public class JFRViewTest {
                 """
                 Label
 
-                Start Time Duration   Event Thread     Label      Memory    \s
-                ---------- ---------- ---------------  ---------- ----------
+                Start Time Duration Event Thread     Label      Memory    \s
+                ---------- -------- ---------------  ---------- ----------
                 """
                         .strip(),
                 String.join("\n", view.header()).strip());

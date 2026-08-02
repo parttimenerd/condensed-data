@@ -70,7 +70,12 @@ public class JFRView {
 
         @Override
         public int width() {
-            return Math.max(10, header.length());
+            return Math.max(8, header.length());
+        }
+
+        @Override
+        public int maxWidth() {
+            return -1;
         }
 
         @Override
