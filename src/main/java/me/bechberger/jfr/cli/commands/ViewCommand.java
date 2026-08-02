@@ -545,7 +545,9 @@ public class ViewCommand implements Callable<Integer> {
             // Determine the display limit: events beyond this are not shown but are still
             // needed for data-driven column width computation.
             List<ReadStruct> displayEvents =
-                    limit == -1 ? matchingEvents : matchingEvents.subList(0, Math.min(limit, matchingEvents.size()));
+                    limit == -1
+                            ? matchingEvents
+                            : matchingEvents.subList(0, Math.min(limit, matchingEvents.size()));
             var view =
                     new JFRView(
                             new JFRViewConfig(

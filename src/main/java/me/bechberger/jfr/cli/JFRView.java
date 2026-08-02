@@ -824,17 +824,39 @@ public class JFRView {
     }
 
     static List<Column> topLevelFieldColumns(
-            Field<?, ?, ?> field, String parentTypeName, Map<String, String> typeLabels,
+            Field<?, ?, ?> field,
+            String parentTypeName,
+            Map<String, String> typeLabels,
             boolean hasDuration) {
+        return topLevelFieldColumns(
+                field, parentTypeName, typeLabels, hasDuration, new java.util.HashSet<>());
+    }
+
+    static List<Column> topLevelFieldColumns(
+            Field<?, ?, ?> field,
+            String parentTypeName,
+            Map<String, String> typeLabels,
+            boolean hasDuration,
+            java.util.Set<String> expandedStructTypes) {
         // ActiveSetting/RecordingSetting.id: stored as event-type name, render as @Label
         if ("id".equals(field.name())
                 && ("jdk.ActiveSetting".equals(parentTypeName)
                         || "jdk.RecordingSetting".equals(parentTypeName))
                 && !typeLabels.isEmpty()) {
-            return List.of(new EventIdColumn(fieldDisplayName(field, hasDuration), field.name(), typeLabels));
+            return List.of(
+                    new EventIdColumn(
+                            fieldDisplayName(field, hasDuration), field.name(), typeLabels));
         }
         Column col = fieldToColumn(field, hasDuration);
         if (col instanceof StructColumn && field.type() instanceof StructType<?, ?> structType) {
+            String structTypeName = structType.getName();
+            // Oracle deduplicates struct-type expansions: the first occurrence is expanded into
+            // sub-columns; subsequent fields with the same struct type are dropped entirely
+            // (e.g. MetaspaceSummary's dataSpace and classSpace use the same MetaspaceSizes type
+            // as metaspace and are omitted — oracle's HashSet dedup skips them completely).
+            if (!expandedStructTypes.add(structTypeName)) {
+                return List.of();
+            }
             String parentHeader = fieldDisplayName(field, hasDuration);
             String parentProp = field.name();
             return structType.getFields().stream()
@@ -900,9 +922,12 @@ public class JFRView {
     private static String fieldDisplayName(Field<?, ?, ?> field, boolean hasDuration) {
         // Oracle's FieldBuilder.makeLabel() hardcodes abbreviations for a few field names.
         switch (field.name()) {
-            case "gcId": return "GC ID";
-            case "compilerId": return "Compiler ID";
-            case "startTime": if (!hasDuration) return "Time";
+            case "gcId":
+                return "GC ID";
+            case "compilerId":
+                return "Compiler ID";
+            case "startTime":
+                if (!hasDuration) return "Time";
         }
         String desc = field.description();
         if (desc != null && !desc.isEmpty()) {
@@ -1011,19 +1036,27 @@ public class JFRView {
 
         private static List<Column> buildColumns(
                 StructType<?, ?> type, Map<String, String> typeLabels) {
-            boolean hasDuration = type.getFields().stream().anyMatch(f -> "duration".equals(f.name()));
+            boolean hasDuration =
+                    type.getFields().stream().anyMatch(f -> "duration".equals(f.name()));
+            // Oracle deduplicates struct-type expansions: if two fields share the same struct type
+            // (same ValueDescriptor identity), only the first is expanded into sub-columns; the
+            // rest are left as leaf columns. Replicate this by tracking expanded type names.
+            java.util.Set<String> expandedStructTypes = new java.util.HashSet<>();
             List<Column> cols =
                     new java.util.ArrayList<>(
                             type.getFields().stream()
                                     .flatMap(
                                             f ->
                                                     topLevelFieldColumns(
-                                                            f, type.getName(), typeLabels,
-                                                            hasDuration)
+                                                            f,
+                                                            type.getName(),
+                                                            typeLabels,
+                                                            hasDuration,
+                                                            expandedStructTypes)
                                                             .stream())
                                     .toList());
             // ExecutionSample/NativeMethodSample: state field dropped at condense (always
-            // STATE_RUNNABLE); inject it before stackTrace to match oracle output.
+            // STATE_RUNNABLE); inject it after stackTrace to match oracle output.
             String typeName = type.getName();
             if (("jdk.ExecutionSample".equals(typeName)
                             || "jdk.NativeMethodSample".equals(typeName))
@@ -1060,7 +1093,7 @@ public class JFRView {
                             }
                         };
                 if (stackIdx >= 0) {
-                    cols.add(stackIdx, stateCol);
+                    cols.add(stackIdx + 1, stateCol);
                 } else {
                     cols.add(stateCol);
                 }
@@ -1082,10 +1115,11 @@ public class JFRView {
         }
 
         /**
-         * Data-driven width computation: each column is first sized to its natural width
-         * (max of header length and max formatted data value). When natural widths + separators
-         * leave unused terminal space, flex columns expand proportionally to fill it.
-         * When total exceeds terminal, flex columns shrink. Matches oracle behavior.
+         * Data-driven width computation: each column is first sized to its natural width (max of
+         * header length and max formatted data value). When natural widths + separators leave
+         * unused terminal space, flex columns expand proportionally to fill it. When all columns
+         * are fixed and total < terminal, all columns expand to fill (oracle distributes remainder
+         * round-robin). When total exceeds terminal, flex columns shrink. Matches oracle behavior.
          */
         List<Integer> computeColumnWidths(int termWidth, List<ReadStruct> events, int cellHeight) {
             int n = columns.size();
@@ -1105,20 +1139,24 @@ public class JFRView {
             // Total without separators (termWidth already accounts for separators via caller)
             int naturalTotal = 0;
             for (int w : natural) naturalTotal += w;
-            int flexCount = (int) java.util.Arrays.stream(columns.toArray())
-                    .filter(c -> ((Column) c).width() < 0).count();
-            if (naturalTotal == termWidth || flexCount == 0) {
+            int flexCount =
+                    (int)
+                            java.util.Arrays.stream(columns.toArray())
+                                    .filter(c -> ((Column) c).width() < 0)
+                                    .count();
+            if (naturalTotal == termWidth) {
                 return java.util.Arrays.stream(natural).boxed().toList();
             }
             if (naturalTotal < termWidth) {
-                // Expand flex columns to fill remaining space
+                // Expand flex columns to fill remaining space; if none, expand all columns.
+                int effectiveFlexCount = flexCount > 0 ? flexCount : n;
                 int extra = termWidth - naturalTotal;
-                int perFlex = extra / flexCount;
-                int remainder = extra % flexCount;
+                int perFlex = extra / effectiveFlexCount;
+                int remainder = extra % effectiveFlexCount;
                 int[] result = new int[n];
                 int flexIdx = 0;
                 for (int i = 0; i < n; i++) {
-                    if (columns.get(i).width() < 0) {
+                    if (flexCount == 0 || columns.get(i).width() < 0) {
                         result[i] = natural[i] + perFlex + (flexIdx < remainder ? 1 : 0);
                         flexIdx++;
                     } else {
@@ -1128,6 +1166,9 @@ public class JFRView {
                 return java.util.Arrays.stream(result).boxed().toList();
             }
             // naturalTotal > termWidth: shrink flex columns
+            if (flexCount == 0) {
+                return java.util.Arrays.stream(natural).boxed().toList();
+            }
             int fixedTotal = 0;
             for (int i = 0; i < n; i++) {
                 if (columns.get(i).width() >= 0) fixedTotal += natural[i];

@@ -220,12 +220,13 @@ public final class NativeView {
             select.add(new ViewQuery.SelectItem(new ViewQuery.FieldPath(List.of(name)), null));
             // jfr applies hardcoded label abbreviations for a few field names (from FieldBuilder
             // in the JDK): gcId→"GC ID", compilerId→"Compiler ID", startTime→"Time".
-            labels.add(switch (name) {
-                case "startTime" -> "Time";
-                case "gcId" -> "GC ID";
-                case "compilerId" -> "Compiler ID";
-                default -> null;
-            });
+            labels.add(
+                    switch (name) {
+                        case "startTime" -> "Time";
+                        case "gcId" -> "GC ID";
+                        case "compilerId" -> "Compiler ID";
+                        default -> null;
+                    });
         }
         // Only supply explicit labels if we overrode at least one; otherwise leave columnLabels
         // empty so the renderer derives metadata labels per column.

@@ -2924,3 +2924,47 @@ E.g. "Garbage Collection" (18 chars) over 79-char header: oracle shows 31 spaces
 **Fix:** Changed to `(headerLine.length() - name.length() + 1) / 2`.
 
 **Status:** Fixed.
+
+## Bug 408: `cjfr view <EventType>` all-fixed-width columns not expanded to fill terminal width
+
+**Observation:** `cjfr view jdk.TenuringDistribution` showed very narrow columns (GC ID=6, Age=5,
+Size=6) leaving most of the 80-char terminal blank. Oracle fills the terminal with equal expansion.
+
+**Root cause:** `computeColumnWidths` returned natural widths immediately when `flexCount == 0`
+(no flex/string columns), leaving all-numeric tables at minimal natural widths. Oracle's
+`TableRenderer.setColumnWidths()` has a 4th pass `distribute(true)` that expands ALL columns to
+fill remaining terminal width when no flex columns consumed the space.
+
+**Fix:** When `naturalTotal < termWidth && flexCount == 0`, treat all `n` columns as expandable
+(equivalent to oracle's pass 4 with `allow_all = true`), distributing extra space equally.
+
+**Status:** Fixed.
+
+## Bug 409: `cjfr view jdk.ExecutionSample` shows Thread State BEFORE Stack Trace
+
+**Observation:** `cjfr view jdk.ExecutionSample` column order was: Time, Thread, Thread State,
+Stack Trace. Oracle: Time, Thread, Stack Trace, Thread State.
+
+**Root cause:** The synthetic Thread State column injection used `cols.add(stackIdx, stateCol)`
+which inserts AT the stackTrace index (pushing stackTrace right), so Thread State ended up before
+Stack Trace. The insert should be at `stackIdx + 1` (after stackTrace).
+
+**Fix:** Changed `cols.add(stackIdx, stateCol)` → `cols.add(stackIdx + 1, stateCol)`.
+
+**Status:** Fixed.
+
+## Bug 412: `cjfr view jdk.MetaspaceSummary` shows extra `Data Space` and `Class Space` columns
+
+**Observation:** `cjfr view jdk.MetaspaceSummary` showed columns `Data Space` and `Class Space`
+in addition to `Total : Committed/Used/Reserved`. Oracle shows only the Total sub-columns.
+
+**Root cause:** `MetaspaceSummary` has three fields of type `MetaspaceSizes` (`metaspace`/Total,
+`dataSpace`/Data, `classSpace`/Class). Oracle uses `HashSet<ValueDescriptor>` in
+`FieldBuilder.createWildcardFields()` to skip re-expansion of already-seen struct types — only
+the first occurrence (`metaspace`) is expanded; `dataSpace` and `classSpace` are dropped entirely.
+Our code had no such deduplication, so all three were expanded.
+
+**Fix:** Added `expandedStructTypes: Set<String>` tracking in `topLevelFieldColumns`. When a
+struct type is seen again, return `List.of()` (drop) rather than expanding or rendering as leaf.
+
+**Status:** Fixed.

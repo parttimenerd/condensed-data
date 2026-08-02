@@ -192,9 +192,11 @@ public class JFRMultiFileTest {
         // StackTrace is the sole flex column and expands to fill remaining terminal width.
         String stripped = result.strip();
         assertThat(stripped).contains("TestEvent");
-        assertThat(stripped).containsPattern("Start Time\\s+Duration\\s+Event Thread\\s+Stack Trace.*Number");
+        assertThat(stripped)
+                .containsPattern("Start Time\\s+Duration\\s+Event Thread\\s+Stack Trace.*Number");
         for (int i = 0; i < 4; i++) {
-            assertThat(stripped).containsPattern("[0-9]{1,2}:[0-9]{1,2}:[0-9]{1,2}.*0 s.*main.*" + i);
+            assertThat(stripped)
+                    .containsPattern("[0-9]{1,2}:[0-9]{1,2}:[0-9]{1,2}.*0 s.*main.*" + i);
         }
     }
 
