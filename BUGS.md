@@ -3188,3 +3188,24 @@ delegate to it. This includes `(ParamType1, ParamType2, ...)` when a `descriptor
 present, matching oracle's output format.
 
 **Status:** Fixed.
+
+## Bug 428: `cjfr view <EventType>` determineTableWidth wrong for small tables with ≥3 columns
+
+**Observation:** `cjfr view jdk.PhysicalMemory` showed 41-char output while oracle shows 80.
+`jdk.PhysicalMemory` has only 3 columns with prefSum=32 (total preferred widths).
+
+**Root cause:** Our implementation of oracle's `determineTableWidth()` had the wrong condition.
+When `prefSum < 40 AND n < 3`, oracle returns 40 (early exit). When `prefSum < 40 AND n >= 3`,
+oracle falls through to the next condition `if prefSum < 80 → return 80`. Our code instead
+returned `(n < 3) ? prefSum : 40`, which returned 40 for n≥3 and prefSum<40 instead of 80.
+
+Verified from `TableRenderer.class` bytecode: the `n < 3` guard only applies to the `return 40`
+early exit; for n≥3 with prefSum<40, execution falls through to `return 80`.
+
+**Fix:** Changed `determineTableWidth` logic to:
+1. `prefSum > 120` → 120
+2. `prefSum < 40 AND n < 3` → 40 (early exit)
+3. `prefSum < 80` → 80 (covers both `40 <= prefSum < 80` and `prefSum < 40 with n >= 3`)
+4. else → prefSum
+
+**Status:** Fixed.

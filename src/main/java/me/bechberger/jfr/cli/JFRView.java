@@ -1232,10 +1232,10 @@ public class JFRView {
                 tableWidth = termWidth;
             } else if (prefSum > 120) {
                 tableWidth = 120;
-            } else if (prefSum < 40) {
-                tableWidth = (n < 3) ? prefSum : 40;
+            } else if (prefSum < 40 && n < 3) {
+                tableWidth = 40;
             } else if (prefSum < 80) {
-                tableWidth = (n < 3) ? prefSum : 80;
+                tableWidth = 80;
             } else {
                 tableWidth = prefSum;
             }
