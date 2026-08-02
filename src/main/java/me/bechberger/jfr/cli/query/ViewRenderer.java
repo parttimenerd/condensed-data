@@ -632,13 +632,14 @@ final class ViewRenderer {
         }
 
         if (delta > 0) {
-            if (flexIdx.isEmpty()) return;
-            int per = delta / flexIdx.size();
-            int extra = delta - per * flexIdx.size();
-            for (int i = 0; i < flexIdx.size(); i++) {
-                int c = flexIdx.get(i);
-                widths[c] += per + (i == flexIdx.size() - 1 ? extra : 0);
-            }
+            // Oracle distributes surplus across ALL columns using ceil(surplus/nCols), whether
+            // flex or not (observed: active-settings all-7-flex gets +3 each; gc-references
+            // all-non-flex also gets +ceil each via the block above). This path handles the
+            // has-flex case.
+            int surplus = termWidth - used;
+            if (surplus <= 0) return;
+            int pad = (surplus + nCols - 1) / nCols;
+            for (int c = 0; c < nCols; c++) widths[c] += pad;
         } else if (delta < 0 && !shrinkIdx.isEmpty()) {
             // Overflow: the wrapping columns give back the excess (evenly), then wrap their
             // content.

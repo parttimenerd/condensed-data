@@ -3,6 +3,7 @@ package me.bechberger.jfr.cli.query;
 import java.util.List;
 import java.util.Map;
 import me.bechberger.condensed.ReadStruct;
+import me.bechberger.condensed.types.StringType;
 import me.bechberger.condensed.types.StructType;
 import me.bechberger.jfr.cli.query.ViewQuery.Aggregate;
 import me.bechberger.jfr.cli.query.ViewQuery.Coalesce;
@@ -386,6 +387,8 @@ final class ColumnType {
      */
     private static boolean isFlexibleField(StructType.Field<?, ?, ?> field) {
         if (field.type() instanceof StructType<?, ?>) return true;
+        // A StringType field (e.g. ActiveSetting.id remapped to event-type name) is text-like.
+        if (field.type() instanceof StringType) return true;
         String desc = field.description();
         if (desc == null) return false;
         return desc.contains("java.lang.String")

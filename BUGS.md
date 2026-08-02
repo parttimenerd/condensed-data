@@ -2803,3 +2803,17 @@ On `.jfr` input: cjfr evaluates `safepoints` natively (correctly returns 31 rows
 **Fix:** In `distributeFlexibleWidth`, when `delta ≤ 0` (no growth needed), `used ≥ termWidth` (content fills or overflows the terminal), and there are no shrinkable columns, return early without any flex distribution. This preserves the natural content width when the table already fits within the terminal.
 
 **Status:** Fixed. vm-operations: column widths now match oracle (residual 12 diffs = locale number format `1,234` vs `1.234` = known deviation).
+
+## Bug 399: `cjfr view` active-settings Event Type column non-flexible; column widths 1 char narrower
+
+**Symptom:** `cjfr view active-settings` showed a line width of 85 instead of oracle's 84. The last column (Throttle) was 12 chars wide instead of 11, and the Event Type header was right-truncated.
+
+**Root cause:** Two issues:
+1. `ColumnType.isFlexibleField` did not recognise `StringType` fields as flexible. The `ActiveSetting.id` field is remapped at condensation time from a numeric class ID to a `StringType` (event type name). But `isFlexibleField` only checked the field's declared description for `java.lang.String` (the original JFR class-reference type), not the condensed `StringType`. So Event Type was treated as non-flexible.
+2. The grow path in `distributeFlexibleWidth` distributed all surplus exclusively to flex columns (last flex col absorbing the rounding remainder). Oracle distributes `ceil(surplus / nCols)` to **all** columns uniformly — the same algorithm as the all-non-flex case — regardless of flex vs non-flex distinction.
+
+**Fix (1):** In `ColumnType.isFlexibleField`, added `if (field.type() instanceof StringType) return true` before the description probe. `StringType` fields store free text and should expand like `java.lang.String` columns.
+
+**Fix (2):** In `distributeFlexibleWidth`, replaced the grow path (`delta > 0`, flex-only expansion) with the same `ceil(surplus / nCols)` pad applied to all columns, matching the all-non-flex algorithm.
+
+**Status:** Fixed. active-settings: 0 diffs.
