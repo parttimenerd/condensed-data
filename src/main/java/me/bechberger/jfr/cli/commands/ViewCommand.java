@@ -555,6 +555,7 @@ public class ViewCommand implements Callable<Integer> {
                                     matchingEvents.get(0).getType(), matches.typeLabels()),
                             new PrintConfig(
                                     effectiveWidth(),
+                                    width != -1,
                                     effectiveCellHeight(),
                                     TruncateMode.fromCliValue(truncate)),
                             matchingEvents);
