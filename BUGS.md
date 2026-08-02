@@ -2754,6 +2754,18 @@ On `.jfr` input: cjfr evaluates `safepoints` natively (correctly returns 31 rows
 
 **Root cause (alignment):** `renderTable` set `rightAlign[c] = true` when any cell was `Boolean` or `isNumericLike`. For jvm-flags Value, `AbortVMOnCompilationFailure = false` is a Boolean → rightAlign fired. Then `ActiveProcessorCount = -1` is numeric → reinforced. Oracle left-aligns coalesced/mixed-type columns regardless of cell content.
 
-**Fix (alignment):** After processing all rows, if any cell in a column is a `Boolean` or `String` (`anyText[c] = true`), force `rightAlign[c] = false`. Columns that mix text and numeric values are always left-aligned. Additionally removed `|| raw instanceof Boolean` from the right-alignment condition — oracle never right-aligns standalone boolean columns.
+**Fix (alignment):** After processing all rows, if any cell in a column is a `String` (`anyText[c] = true`), force `rightAlign[c] = false`. Columns that mix String and non-String values are always left-aligned. Pure-boolean columns (e.g. `longest-compilations` Succeeded) stay right-aligned since `anyText` is only set for String cells.
 
 **Status:** Fixed.
+
+## Bug 395: `cjfr view` COUNT aggregate column treated as non-flexible; deoptimizations-by-reason Count column width 5 instead of 25
+
+**Symptom:** `cjfr view deoptimizations-by-reason` at width 80 showed Reason=73, Count=5 (total=79). Oracle shows Reason=54, Count=25 (total=80). The narrow Count column was because `COUNT` was hard-coded as non-flexible regardless of its argument type.
+
+**Root cause:** `ColumnType.flexibleFor` for `Aggregate` nodes hard-coded `return false` for `COUNT` and `UNIQUE`, even when the argument field (e.g. `reason`, `thrownClass`) is text-like (String or class reference). Oracle sizes COUNT columns as flexible when the argument is a flexible field — the count column absorbs its share of leftover terminal width alongside the grouping column.
+
+**Fix:** Removed the special-case `false` for COUNT/UNIQUE in `flexibleFor`; delegate to `flexibleFor(agg.arg())` like all other aggregates. With both `reason` and `COUNT(reason)` flexible, `deoptimizations-by-reason` gets target=80 (2 flex), budget=40 distributed as Reason=54, Count=25.
+
+**Known residual difference:** `exception-by-message` (Message=74 vs oracle=73) — oracle inconsistently treats `COUNT(message)` as non-flexible despite `message` being a String, yielding target=79 (1 flex). The exact oracle decision criterion is unclear; the 1-char width difference is accepted as a known deviation.
+
+**Status:** Fixed (net improvement; exception-by-message 1-char residual accepted).

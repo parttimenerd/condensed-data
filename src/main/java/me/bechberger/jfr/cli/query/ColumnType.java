@@ -324,11 +324,9 @@ final class ColumnType {
         List<String> parts;
         List<String> aliases;
         if (expr instanceof Aggregate agg) {
-            // MIN/MAX/FIRST/LAST/SET over a text field keep that field's flexibility; counts don't.
-            if ("COUNT".equalsIgnoreCase(agg.function())
-                    || "UNIQUE".equalsIgnoreCase(agg.function())) {
-                return false;
-            }
+            // COUNT and UNIQUE always produce a numeric count, but oracle sizes them as flexible
+            // when the argument field is text-like (e.g. COUNT(reason) in deoptimizations-by-reason
+            // absorbs leftover width just like the Reason column does). Delegate to the argument.
             return flexibleFor(agg.arg(), query, eventsByType);
         } else if (expr instanceof Coalesce c) {
             aliases = c.aliases();
