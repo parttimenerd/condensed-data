@@ -2769,3 +2769,37 @@ On `.jfr` input: cjfr evaluates `safepoints` natively (correctly returns 31 rows
 **Known residual difference:** `exception-by-message` (Message=74 vs oracle=73) — oracle inconsistently treats `COUNT(message)` as non-flexible despite `message` being a String, yielding target=79 (1 flex). The exact oracle decision criterion is unclear; the 1-char width difference is accepted as a known deviation.
 
 **Status:** Fixed (net improvement; exception-by-message 1-char residual accepted).
+
+## Bug 396: `cjfr view` all-non-flex tables not padded to terminal width; gc-references and safepoints column widths 1–3 chars narrower
+
+**Symptom:** `cjfr view gc-references` and `cjfr view safepoints` showed columns 2–3 chars narrower than oracle. For example gc-references: oracle `[12, 10, 10, 10, 10, 10, 10]` (total=84), cjfr `[10, 10, 10, 10, 10, 10, 10]` (total=79).
+
+**Root cause:** `distributeFlexibleWidth` returned early when there were no flex or shrinkable columns (all-non-flex table), leaving the table at its natural content width. Oracle pads all-non-flex tables with `ceil((termWidth − used) / nCols)` per column so the total slightly exceeds `termWidth`.
+
+**Fix:** In `distributeFlexibleWidth`, when `flexIdx` and `shrinkIdx` are both empty and `surplus = termWidth − used > 0`, add `ceil(surplus / nCols)` to every column width.
+
+**Status:** Fixed. gc-references: 0 diffs. safepoints: widths now match.
+
+## Bug 397: `cjfr view` "Indefinite" sentinel in Duration column right-aligned instead of left; safepoints data rows differ
+
+**Symptom:** `cjfr view safepoints` data rows showed `Indefinite` right-aligned (trailing-padded) in the Duration column, while oracle left-aligns it. Also the State Syncronization column (all nulls) was left-aligned instead of right-aligned.
+
+**Root cause:** Two related issues:
+1. `Duration.ofNanos(Long.MAX_VALUE)` — the "Indefinite" sentinel from `DIFF([B|E].startTime)` when the SafepointEnd event is absent — is a real `Duration` value, not a `String`. Since `anyText[c]` was never set for it, the column remained right-aligned (Duration is numeric-like). Oracle treats "Indefinite" as text-like and left-aligns it.
+2. The State Syncronization column is all-null (SafepointStateSynchronization absent from recording). With no observed values, `rightAlign[c]` stayed false (left-aligned default), but oracle right-aligns the `N/A` placeholder in what is semantically a Duration column.
+
+**Fix (1):** When a `Duration` value's nanos exceed `Long.MAX_VALUE − 1_000_000` (the Indefinite sentinel), set `anyText[c] = true`. The `anyText` override then forces left-alignment.
+
+**Fix (2):** After the main cell loop, for all-null columns (`!anyValue[c]`), set `rightAlign[c] = !flexibleFor(c)` (schema-based: non-flex/Duration columns default to right-aligned, flex/String columns to left-aligned). This is applied before the `anyText` override so the Indefinite fix takes priority.
+
+**Status:** Fixed. safepoints: 0 diffs.
+
+## Bug 398: `cjfr view` flex tables incorrectly shrink when natural content fills or overflows the terminal
+
+**Symptom:** `cjfr view vm-operations` at width 80 showed VM Operation column width 24 instead of 25 (oracle). Content naturally fills exactly 80 chars but cjfr's formula `target = termWidth + flexIdx.size() − 2 = 79` caused a 1-char shrink of the flex column.
+
+**Root cause:** The formula `target = termWidth + flexIdx.size() − 2` produces `termWidth − 1` for 1-flex tables, causing a 1-char shrink even when the natural content exactly fills the terminal. Oracle only shrinks when the table overflows the terminal (`used > termWidth`); when `used ≤ termWidth`, oracle leaves the natural content widths unchanged.
+
+**Fix:** In `distributeFlexibleWidth`, when `delta ≤ 0` (no growth needed), `used ≥ termWidth` (content fills or overflows the terminal), and there are no shrinkable columns, return early without any flex distribution. This preserves the natural content width when the table already fits within the terminal.
+
+**Status:** Fixed. vm-operations: column widths now match oracle (residual 12 diffs = locale number format `1,234` vs `1.234` = known deviation).

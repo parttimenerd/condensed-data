@@ -296,6 +296,13 @@ final class ViewRenderer {
                     if (raw instanceof String) {
                         anyText[c] = true;
                     }
+                    // "Indefinite" (Duration.MAX sentinel for a missing join partner) renders as
+                    // a word, not a number. Oracle left-aligns duration columns that contain it,
+                    // so treat it as text-like here so the anyText override fires.
+                    if (raw instanceof java.time.Duration d
+                            && d.toNanos() >= Long.MAX_VALUE - 1_000_000L) {
+                        anyText[c] = true;
+                    }
                     // jfr left-aligns time (Instant) columns; numeric, unit, and boolean values
                     // are right-aligned. Mixed columns (any String cell) are left-aligned via the
                     // anyText override below.
@@ -311,6 +318,13 @@ final class ViewRenderer {
         // A column with String values mixed alongside numeric/boolean values (e.g. jvm-flags'
         // Value, which coalesces int/bool/string flag types) is always left-aligned — oracle
         // right-aligns pure-numeric or pure-boolean columns, but left-aligns mixed ones.
+        // Also: an all-null column (no observed values) should inherit the schema-based alignment
+        // for its type; non-flex (numeric/duration) columns are right-aligned, flex (text) are
+        // left-aligned. This must be applied BEFORE the anyText override below so that Duration.MAX
+        // ("Indefinite") columns — which set anyText but not anyValue=false — are unaffected.
+        for (int c = 0; c < nCols; c++) {
+            if (!anyValue[c]) rightAlign[c] = !flexibleFor(c);
+        }
         for (int c = 0; c < nCols; c++) {
             if (anyText[c]) rightAlign[c] = false;
         }
@@ -593,13 +607,29 @@ final class ViewRenderer {
             if (flexibleFor(c)) flexIdx.add(c);
             if (shrinkable(c)) shrinkIdx.add(c);
         }
-        if (flexIdx.isEmpty() && shrinkIdx.isEmpty()) return;
-
         int used = nCols - 1; // single-space separators
         for (int w : widths) used += w;
 
+        if (flexIdx.isEmpty() && shrinkIdx.isEmpty()) {
+            // All-non-flex tables: oracle pads each column by ceil(surplus/nCols) so that the
+            // table fills slightly past termWidth (observed in gc-references, safepoints, etc.).
+            // If the table already exceeds termWidth, leave it unchanged.
+            int surplus = termWidth - used;
+            if (surplus <= 0) return;
+            int pad = (surplus + nCols - 1) / nCols; // ceil division
+            for (int c = 0; c < nCols; c++) widths[c] += pad;
+            return;
+        }
+
         int target = shrinkIdx.isEmpty() ? termWidth + flexIdx.size() - 2 : termWidth - 1;
         int delta = target - used;
+
+        // When content already fills or exceeds the terminal width, keep the natural content
+        // sizes — oracle does not shrink flex columns when the table already fits within the
+        // terminal (observed: vm-operations natural=80 at termWidth=80 stays 80, not 79).
+        if (delta <= 0 && used >= termWidth && shrinkIdx.isEmpty()) {
+            return;
+        }
 
         if (delta > 0) {
             if (flexIdx.isEmpty()) return;
