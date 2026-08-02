@@ -2817,3 +2817,18 @@ On `.jfr` input: cjfr evaluates `safepoints` natively (correctly returns 31 rows
 **Fix (2):** In `distributeFlexibleWidth`, replaced the grow path (`delta > 0`, flex-only expansion) with the same `ceil(surplus / nCols)` pad applied to all columns, matching the all-non-flex algorithm.
 
 **Status:** Fixed. active-settings: 0 diffs.
+
+## Bug 400: `cjfr view active-recordings` crashes with "Error: long overflow"
+
+**Symptom:** `cjfr view active-recordings profile.cjfr` prints `Error: long overflow` and exits with no output. The recording has an active recording whose `duration` and `maxAge` fields are set to the "Indefinite"/"Forever" sentinel (`Duration.ofSeconds(Long.MAX_VALUE)`, meaning no limit).
+
+**Root cause:** Bug 397's fix added an "Indefinite sentinel" check that called `d.toNanos()` on the duration value. For `Duration.ofNanos(Long.MAX_VALUE)` (used for safepoints' missing-join `DIFF` sentinel), `toNanos()` returns `Long.MAX_VALUE` safely. But `Duration.ofSeconds(Long.MAX_VALUE)` (used for active-recordings' "no limit" sentinel) makes `toNanos()` call `Math.multiplyExact(Long.MAX_VALUE, 1_000_000_000)` — which throws `ArithmeticException: long overflow`.
+
+**Fix:** Use `d.getSeconds() >= Long.MAX_VALUE / 1_000_000_000L` instead of `d.toNanos() >= Long.MAX_VALUE - 1_000_000`. The threshold `9223372036` correctly identifies both forms of the sentinel:
+- `Duration.ofNanos(Long.MAX_VALUE).getSeconds() = 9223372036` → `>= 9223372036` → `true` ✓
+- `Duration.ofSeconds(Long.MAX_VALUE).getSeconds() = Long.MAX_VALUE >> 9223372036` → `true` ✓
+- Normal 10 s duration: `10 < 9223372036` → `false` ✓
+
+**Known residual difference:** Without `--width`, oracle uses the natural content width (105 chars for this recording) while cjfr defaults to 80 and shrinks the Destination column to fit. This is a terminal-width mismatch category — not caused by this fix; oracle uses natural width on non-TTY output. With explicit `--width 80` both produce matching output.
+
+**Status:** Crash fixed. Terminal-width mismatch on default width is a known deviation.

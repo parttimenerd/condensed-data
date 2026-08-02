@@ -299,8 +299,10 @@ final class ViewRenderer {
                     // "Indefinite" (Duration.MAX sentinel for a missing join partner) renders as
                     // a word, not a number. Oracle left-aligns duration columns that contain it,
                     // so treat it as text-like here so the anyText override fires.
+                    // Use getSeconds() rather than toNanos() to avoid overflow for durations
+                    // stored as Duration.ofSeconds(Long.MAX_VALUE) ("Forever"/"Indefinite").
                     if (raw instanceof java.time.Duration d
-                            && d.toNanos() >= Long.MAX_VALUE - 1_000_000L) {
+                            && d.getSeconds() >= Long.MAX_VALUE / 1_000_000_000L) {
                         anyText[c] = true;
                     }
                     // jfr left-aligns time (Instant) columns; numeric, unit, and boolean values
