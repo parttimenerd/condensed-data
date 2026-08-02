@@ -101,7 +101,7 @@ public class JFRView {
         public List<String> format(ReadStruct event, int rows) {
             var raw = event.get(property);
             if (raw == null) {
-                return List.of("-");
+                return List.of("N/A");
             }
             Duration val;
             if (raw instanceof Duration d) {
@@ -137,7 +137,7 @@ public class JFRView {
         public List<String> format(ReadStruct event, int rows) {
             var raw = event.get(property);
             if (raw == null) {
-                return List.of("-");
+                return List.of("N/A");
             }
             Instant value;
             if (raw instanceof Instant inst) {
@@ -186,13 +186,13 @@ public class JFRView {
         public List<String> format(ReadStruct event, int rows) {
             var value = event.getStruct(property);
             if (value == null) {
-                return List.of("-");
+                return List.of("N/A");
             }
             var name = value.get("javaName", String.class);
             if (name == null) {
                 name = value.get("osName", String.class);
             }
-            return List.of(name != null ? name : "-");
+            return List.of(name != null ? name : "N/A");
         }
 
         @Override
@@ -217,7 +217,7 @@ public class JFRView {
         public List<String> format(ReadStruct event, int rows) {
             var prop = event.get(property);
             if (prop == null) {
-                return List.of("-");
+                return List.of("N/A");
             }
             var value = prop instanceof Number ? ((Number) prop).longValue() : (long) prop;
             if (unit == MemoryUtil.MemoryUnit.BITS) {
@@ -247,7 +247,7 @@ public class JFRView {
         public List<String> format(ReadStruct event, int rows) {
             var prop = event.get(property);
             if (prop == null) {
-                return List.of("-");
+                return List.of("N/A");
             }
             long value = prop instanceof Number ? ((Number) prop).longValue() : (long) prop;
             return List.of(String.format("0x%08X", value));
@@ -278,7 +278,7 @@ public class JFRView {
         @Override
         public List<String> format(ReadStruct event, int rows) {
             var val = event.get(property, String.class);
-            return List.of(val != null ? val : "-");
+            return List.of(val != null ? val : "N/A");
         }
 
         @Override
@@ -301,7 +301,7 @@ public class JFRView {
         @Override
         public List<String> format(ReadStruct event, int rows) {
             var val = event.get(property);
-            if (val == null) return List.of("-");
+            if (val == null) return List.of("N/A");
             if (val instanceof Number n)
                 return List.of(String.format(java.util.Locale.ROOT, "%,d", n.longValue()));
             return List.of(String.valueOf(val));
@@ -332,7 +332,7 @@ public class JFRView {
         public List<String> format(ReadStruct event, int rows) {
             var val = event.get(property);
             if (val == null) {
-                return List.of("-");
+                return List.of("N/A");
             }
             if (val instanceof Number n && n.longValue() == Integer.MIN_VALUE) {
                 return List.of("N/A");
@@ -363,7 +363,7 @@ public class JFRView {
         public List<String> format(ReadStruct event, int rows) {
             var val = event.get(property);
             if (val == null) {
-                return List.of("-");
+                return List.of("N/A");
             }
             return List.of(String.format(java.util.Locale.ROOT, "%." + precision + "f", val));
         }
@@ -388,7 +388,7 @@ public class JFRView {
         @Override
         public List<String> format(ReadStruct event, int rows) {
             var val = event.get(property, Boolean.class);
-            return List.of(val != null ? (val ? "true" : "false") : "-");
+            return List.of(val != null ? (val ? "true" : "false") : "N/A");
         }
 
         @Override
@@ -412,7 +412,7 @@ public class JFRView {
         public List<String> format(ReadStruct event, int rows) {
             var val = event.get(property);
             if (val == null) {
-                return List.of("-");
+                return List.of("N/A");
             }
             double d = val instanceof Double ? (double) val : ((Number) val).doubleValue();
             return List.of(String.format(java.util.Locale.ROOT, "%.2f%%", d * 100));
@@ -439,7 +439,7 @@ public class JFRView {
         public List<String> format(ReadStruct event, int rows) {
             var val = event.get(property);
             if (val == null) {
-                return List.of("-");
+                return List.of("N/A");
             }
             long hz = val instanceof Long ? (long) val : ((Number) val).longValue();
             return List.of(hz + " Hz");
@@ -473,7 +473,7 @@ public class JFRView {
         public List<String> format(ReadStruct event, int rows) {
             var prop = event.get(property);
             if (prop == null) {
-                return List.of("-");
+                return List.of("N/A");
             }
             long value = prop instanceof Number ? ((Number) prop).longValue() : (long) prop;
             return List.of(formatMemory(value, 1, 2, unit) + "/s");
@@ -505,7 +505,7 @@ public class JFRView {
         public List<String> format(ReadStruct event, int rows) {
             var klass = event.getStruct(property);
             if (klass == null) {
-                return List.of("-");
+                return List.of("N/A");
             }
             String pkg = null;
             var pkgStruct = klass.getStruct("package");
@@ -516,7 +516,7 @@ public class JFRView {
                 pkg = klass.get("package", String.class);
             }
             var rawName = klass.get("name", String.class);
-            var klassName = rawName != null ? decodeClassName(rawName) : "-";
+            var klassName = rawName != null ? decodeClassName(rawName) : "N/A";
             if (pkg == null) {
                 return List.of(klassName);
             }
@@ -646,7 +646,7 @@ public class JFRView {
         public List<String> format(ReadStruct event, int rows) {
             var method = event.getStruct(property);
             if (method == null) {
-                return List.of("-");
+                return List.of("N/A");
             }
             return List.of(ValueFormatter.formatMethod(method));
         }
@@ -772,7 +772,7 @@ public class JFRView {
         @Override
         public List<String> format(ReadStruct event, int rows) {
             var val = event.get(property);
-            if (val == null) return List.of("-");
+            if (val == null) return List.of("N/A");
             String raw = val.toString();
             String label = typeLabels.getOrDefault(raw, raw);
             return List.of(label);
@@ -817,7 +817,7 @@ public class JFRView {
                     public List<String> format(ReadStruct event, int rows) {
                         var val = event.get(property);
                         if (val == null) {
-                            return List.of("-");
+                            return List.of("N/A");
                         }
                         return List.of(val.toString());
                     }
@@ -850,7 +850,7 @@ public class JFRView {
         public List<String> format(ReadStruct event, int rows) {
             var struct = event.getStruct(property);
             if (struct == null) {
-                return List.of("-");
+                return List.of("N/A");
             }
             if (rows == 1) {
                 if (parts.size() == 1) {

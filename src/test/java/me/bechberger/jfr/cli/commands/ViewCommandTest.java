@@ -373,9 +373,7 @@ public class ViewCommandTest {
                             assertThat(viewResult.output())
                                     .contains(
                                             String.format(
-                                                    java.util.Locale.ROOT,
-                                                    "%,d",
-                                                    Long.MAX_VALUE));
+                                                    java.util.Locale.ROOT, "%,d", Long.MAX_VALUE));
                         })
                 .run();
     }

@@ -3251,3 +3251,19 @@ for the Value column).
 `String.format(Locale.ROOT, "%,d", n.longValue())` for `Number` values.
 
 **Status:** Fixed.
+
+## Bug 432: `cjfr view <EventType>` shows `-` for null values instead of `N/A`
+
+**Observation:** Multiple event type views (`jdk.StringFlag`, `jdk.OldObjectSample`, etc.)
+showed `-` for null/absent field values, while oracle shows `N/A`.
+
+**Root cause:** All `Column.format()` implementations in `JFRView` returned `List.of("-")` for
+null values. Oracle's `jfr view` uses `N/A` as the universal null replacement in table cells.
+
+**Fix:** Updated all `Column` implementations (`DurationColumn`, `InstantColumn`, `ThreadColumn`,
+`MemoryColumn`, `MemoryAddressColumn`, `StringColumn`, `IntegerColumn`, `SentinelIntegerColumn`,
+`FloatColumn`, `BooleanColumn`, `PercentageColumn`, `FrequencyColumn`, `DataRateColumn`,
+`ClassColumn`, `MethodColumn`, `NestedColumn`, `EventIdColumn`, `StructColumn`) to return
+`List.of("N/A")` instead of `List.of("-")` for null values.
+
+**Status:** Fixed.

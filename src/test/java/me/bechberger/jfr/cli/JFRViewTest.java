@@ -244,14 +244,14 @@ public class JFRViewTest {
     }
 
     @Test
-    public void testStructColumnFormatReturnsDashForNullStruct() {
+    public void testStructColumnFormatReturnsNAForNullStruct() {
         var eventType = createType("outer", "nested");
         var values = new java.util.HashMap<String, Object>();
         values.put("nested", null);
         var event = new ReadStruct(eventType, values);
         var column = new JFRView.StructColumn("nested", List.of(new JFRView.StringColumn("name")));
 
-        assertEquals(List.of("-"), column.format(event, 2));
+        assertEquals(List.of("N/A"), column.format(event, 2));
     }
 
     @Test
@@ -375,54 +375,54 @@ public class JFRViewTest {
     // ========== Null-safety tests (Bugs 161, 162, 165, 173-176) ==========
 
     @Test
-    public void testStringColumnReturnsHyphenForNull() {
+    public void testStringColumnReturnsNAForNull() {
         var eventType = createType("event", "name");
         var values = new java.util.HashMap<String, Object>();
         values.put("name", null);
         var event = new ReadStruct(eventType, values);
         var column = new JFRView.StringColumn("name");
-        assertEquals(List.of("-"), column.format(event, 1));
+        assertEquals(List.of("N/A"), column.format(event, 1));
     }
 
     @Test
-    public void testIntegerColumnReturnsHyphenForNull() {
+    public void testIntegerColumnReturnsNAForNull() {
         var eventType = createType("event", "count");
         var values = new java.util.HashMap<String, Object>();
         values.put("count", null);
         var event = new ReadStruct(eventType, values);
         var column = new JFRView.IntegerColumn("count", 10);
-        assertEquals(List.of("-"), column.format(event, 1));
+        assertEquals(List.of("N/A"), column.format(event, 1));
     }
 
     @Test
-    public void testFloatColumnReturnsHyphenForNull() {
+    public void testFloatColumnReturnsNAForNull() {
         var eventType = createType("event", "rate");
         var values = new java.util.HashMap<String, Object>();
         values.put("rate", null);
         var event = new ReadStruct(eventType, values);
         var column = new JFRView.FloatColumn("rate", 10, 2);
-        assertEquals(List.of("-"), column.format(event, 1));
+        assertEquals(List.of("N/A"), column.format(event, 1));
     }
 
     @Test
-    public void testBooleanColumnReturnsHyphenForNull() {
+    public void testBooleanColumnReturnsNAForNull() {
         var eventType = createType("event", "active");
         var values = new java.util.HashMap<String, Object>();
         values.put("active", null);
         var event = new ReadStruct(eventType, values);
         var column = new JFRView.BooleanColumn("active");
-        assertEquals(List.of("-"), column.format(event, 1));
+        assertEquals(List.of("N/A"), column.format(event, 1));
     }
 
     @Test
-    public void testMemoryColumnReturnsHyphenForNull() {
+    public void testMemoryColumnReturnsNAForNull() {
         var eventType = createType("event", "size");
         var values = new java.util.HashMap<String, Object>();
         values.put("size", null);
         var event = new ReadStruct(eventType, values);
         var column =
                 new JFRView.MemoryColumn("size", me.bechberger.util.MemoryUtil.MemoryUnit.BYTES);
-        assertEquals(List.of("-"), column.format(event, 1));
+        assertEquals(List.of("N/A"), column.format(event, 1));
     }
 
     @Test
@@ -448,23 +448,23 @@ public class JFRViewTest {
     }
 
     @Test
-    public void testDurationColumnReturnsHyphenForNull() {
+    public void testDurationColumnReturnsNAForNull() {
         var eventType = createType("event", "duration");
         var values = new java.util.HashMap<String, Object>();
         values.put("duration", null);
         var event = new ReadStruct(eventType, values);
         var column = new JFRView.DurationColumn("duration");
-        assertEquals(List.of("-"), column.format(event, 1));
+        assertEquals(List.of("N/A"), column.format(event, 1));
     }
 
     @Test
-    public void testInstantColumnReturnsHyphenForNull() {
+    public void testInstantColumnReturnsNAForNull() {
         var eventType = createType("event", "startTime");
         var values = new java.util.HashMap<String, Object>();
         values.put("startTime", null);
         var event = new ReadStruct(eventType, values);
         var column = new JFRView.InstantColumn("startTime");
-        assertEquals(List.of("-"), column.format(event, 1));
+        assertEquals(List.of("N/A"), column.format(event, 1));
     }
 
     // ========== Long value handling (Bug 18 — combined events) ==========
