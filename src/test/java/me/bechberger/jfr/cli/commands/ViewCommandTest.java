@@ -40,11 +40,8 @@ public class ViewCommandTest {
                         .run();
         assertThat(result.output())
                 .contains("Label")
-                .contains(
-                        """
-                        Start Time Duration   Event Thread    Stack Trace                                       Label      Memory     String                                          \s
-                        ---------- ---------- --------------- ------------------------------------------------- ---------- ---------- -------------------------------------------------
-                        """);
+                .containsPattern(
+                        "Start Time\\s+Duration\\s+Event Thread\\s+Stack Trace.*Label.*Memory.*String");
     }
 
     @Test

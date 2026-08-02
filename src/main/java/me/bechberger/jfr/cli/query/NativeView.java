@@ -218,12 +218,17 @@ public final class NativeView {
         for (var f : st.getFields()) {
             String name = f.name();
             select.add(new ViewQuery.SelectItem(new ViewQuery.FieldPath(List.of(name)), null));
-            // jfr labels the startTime column "Time" in a SELECT * view; other columns use their
-            // declared metadata label (resolved later by the renderer), so leave them blank here.
-            labels.add("startTime".equals(name) ? "Time" : null);
+            // jfr applies hardcoded label abbreviations for a few field names (from FieldBuilder
+            // in the JDK): gcId→"GC ID", compilerId→"Compiler ID", startTime→"Time".
+            labels.add(switch (name) {
+                case "startTime" -> "Time";
+                case "gcId" -> "GC ID";
+                case "compilerId" -> "Compiler ID";
+                default -> null;
+            });
         }
-        // Only supply explicit labels if we overrode at least one (the startTime → "Time" case);
-        // otherwise leave columnLabels empty so the renderer derives metadata labels per column.
+        // Only supply explicit labels if we overrode at least one; otherwise leave columnLabels
+        // empty so the renderer derives metadata labels per column.
         List<String> columnLabels =
                 labels.stream().anyMatch(l -> l != null)
                         ? materializeLabels(st, labels)

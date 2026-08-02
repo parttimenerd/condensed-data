@@ -129,7 +129,7 @@ public class JFRView {
 
         @Override
         public Alignment alignment() {
-            return Alignment.RIGHT;
+            return Alignment.LEFT;
         }
     }
 
@@ -798,7 +798,15 @@ public class JFRView {
     }
 
     static Column fieldToColumn(Field<?, ?, ?> field) {
-        return fieldToColumn(field, 2);
+        return fieldToColumn(field, 2, true);
+    }
+
+    static Column fieldToColumn(Field<?, ?, ?> field, int avDepth) {
+        return fieldToColumn(field, avDepth, true);
+    }
+
+    static Column fieldToColumn(Field<?, ?, ?> field, boolean hasDuration) {
+        return fieldToColumn(field, 2, hasDuration);
     }
 
     /**
@@ -812,16 +820,22 @@ public class JFRView {
 
     static List<Column> topLevelFieldColumns(
             Field<?, ?, ?> field, String parentTypeName, Map<String, String> typeLabels) {
+        return topLevelFieldColumns(field, parentTypeName, typeLabels, true);
+    }
+
+    static List<Column> topLevelFieldColumns(
+            Field<?, ?, ?> field, String parentTypeName, Map<String, String> typeLabels,
+            boolean hasDuration) {
         // ActiveSetting/RecordingSetting.id: stored as event-type name, render as @Label
         if ("id".equals(field.name())
                 && ("jdk.ActiveSetting".equals(parentTypeName)
                         || "jdk.RecordingSetting".equals(parentTypeName))
                 && !typeLabels.isEmpty()) {
-            return List.of(new EventIdColumn(fieldDisplayName(field), field.name(), typeLabels));
+            return List.of(new EventIdColumn(fieldDisplayName(field, hasDuration), field.name(), typeLabels));
         }
-        Column col = fieldToColumn(field);
+        Column col = fieldToColumn(field, hasDuration);
         if (col instanceof StructColumn && field.type() instanceof StructType<?, ?> structType) {
-            String parentHeader = fieldDisplayName(field);
+            String parentHeader = fieldDisplayName(field, hasDuration);
             String parentProp = field.name();
             return structType.getFields().stream()
                     .map(
@@ -879,6 +893,17 @@ public class JFRView {
 
     /** Returns the @Label for the field, falling back to the camelCase-converted field name. */
     private static String fieldDisplayName(Field<?, ?, ?> field) {
+        return fieldDisplayName(field, true);
+    }
+
+    /** Returns the @Label for the field, applying oracle's field-name abbreviations. */
+    private static String fieldDisplayName(Field<?, ?, ?> field, boolean hasDuration) {
+        // Oracle's FieldBuilder.makeLabel() hardcodes abbreviations for a few field names.
+        switch (field.name()) {
+            case "gcId": return "GC ID";
+            case "compilerId": return "Compiler ID";
+            case "startTime": if (!hasDuration) return "Time";
+        }
         String desc = field.description();
         if (desc != null && !desc.isEmpty()) {
             try {
@@ -890,10 +915,10 @@ public class JFRView {
         return propertyToHeader(field.name());
     }
 
-    private static Column fieldToColumn(Field<?, ?, ?> field, int avDepth) {
+    private static Column fieldToColumn(Field<?, ?, ?> field, int avDepth, boolean hasDuration) {
         var typeName = field.type().getName();
         var prop = field.name();
-        var header = fieldDisplayName(field);
+        var header = fieldDisplayName(field, hasDuration);
         // @MemoryAddress renders as a hex address regardless of the underlying numeric type.
         if (hasAnnotation(field, "jdk.jfr.MemoryAddress")) {
             return new JFRView.MemoryAddressColumn(header, prop);
@@ -986,13 +1011,15 @@ public class JFRView {
 
         private static List<Column> buildColumns(
                 StructType<?, ?> type, Map<String, String> typeLabels) {
+            boolean hasDuration = type.getFields().stream().anyMatch(f -> "duration".equals(f.name()));
             List<Column> cols =
                     new java.util.ArrayList<>(
                             type.getFields().stream()
                                     .flatMap(
                                             f ->
                                                     topLevelFieldColumns(
-                                                            f, type.getName(), typeLabels)
+                                                            f, type.getName(), typeLabels,
+                                                            hasDuration)
                                                             .stream())
                                     .toList());
             // ExecutionSample/NativeMethodSample: state field dropped at condense (always
@@ -1054,6 +1081,70 @@ public class JFRView {
             return type.getName();
         }
 
+        /**
+         * Data-driven width computation: each column is first sized to its natural width
+         * (max of header length and max formatted data value). When natural widths + separators
+         * leave unused terminal space, flex columns expand proportionally to fill it.
+         * When total exceeds terminal, flex columns shrink. Matches oracle behavior.
+         */
+        List<Integer> computeColumnWidths(int termWidth, List<ReadStruct> events, int cellHeight) {
+            int n = columns.size();
+            int[] natural = new int[n];
+            for (int i = 0; i < n; i++) {
+                Column c = columns.get(i);
+                int w = c.header().length();
+                for (var ev : events) {
+                    for (var line : c.format(ev, cellHeight)) {
+                        w = Math.max(w, line.length());
+                    }
+                }
+                // Only cap at maxWidth when maxWidth doesn't truncate the header
+                if (c.maxWidth() > 0) w = Math.min(w, Math.max(c.maxWidth(), c.header().length()));
+                natural[i] = w;
+            }
+            // Total without separators (termWidth already accounts for separators via caller)
+            int naturalTotal = 0;
+            for (int w : natural) naturalTotal += w;
+            int flexCount = (int) java.util.Arrays.stream(columns.toArray())
+                    .filter(c -> ((Column) c).width() < 0).count();
+            if (naturalTotal == termWidth || flexCount == 0) {
+                return java.util.Arrays.stream(natural).boxed().toList();
+            }
+            if (naturalTotal < termWidth) {
+                // Expand flex columns to fill remaining space
+                int extra = termWidth - naturalTotal;
+                int perFlex = extra / flexCount;
+                int remainder = extra % flexCount;
+                int[] result = new int[n];
+                int flexIdx = 0;
+                for (int i = 0; i < n; i++) {
+                    if (columns.get(i).width() < 0) {
+                        result[i] = natural[i] + perFlex + (flexIdx < remainder ? 1 : 0);
+                        flexIdx++;
+                    } else {
+                        result[i] = natural[i];
+                    }
+                }
+                return java.util.Arrays.stream(result).boxed().toList();
+            }
+            // naturalTotal > termWidth: shrink flex columns
+            int fixedTotal = 0;
+            for (int i = 0; i < n; i++) {
+                if (columns.get(i).width() >= 0) fixedTotal += natural[i];
+            }
+            int flexBudget = termWidth - fixedTotal;
+            int perFlex = Math.max(1, flexBudget / flexCount);
+            int[] result = new int[n];
+            for (int i = 0; i < n; i++) {
+                if (columns.get(i).width() >= 0) {
+                    result[i] = natural[i];
+                } else {
+                    result[i] = Math.max(columns.get(i).header().length(), perFlex);
+                }
+            }
+            return java.util.Arrays.stream(result).boxed().toList();
+        }
+
         List<Integer> computeColumnWidths(int width) {
             // idea: distribute the remaining width evenly among columns with width=-1 up to their
             // maxWidth
@@ -1108,9 +1199,18 @@ public class JFRView {
     private final List<Integer> columnWidths;
 
     public JFRView(JFRViewConfig view, PrintConfig config) {
+        this(view, config, List.of());
+    }
+
+    public JFRView(JFRViewConfig view, PrintConfig config, List<ReadStruct> events) {
         this.view = view;
         this.config = config;
-        this.columnWidths = view.computeColumnWidths(config.width() - view.columns.size() + 1);
+        int termWidth = config.width() - view.columns.size();
+        if (!events.isEmpty()) {
+            this.columnWidths = view.computeColumnWidths(termWidth, events, config.cellHeight());
+        } else {
+            this.columnWidths = view.computeColumnWidths(config.width() - view.columns.size() + 1);
+        }
     }
 
     public record PrintConfig(int width, int cellHeight, TruncateMode truncateMode) {
@@ -1141,7 +1241,7 @@ public class JFRView {
                 sepLine.append(" ");
             }
         }
-        var padding = Math.max(0, (headerLine.length() - name.length()) / 2);
+        var padding = Math.max(0, (headerLine.length() - name.length() + 1) / 2);
         List<String> header = new ArrayList<>(List.of("", " ".repeat(padding) + name, ""));
         header.add(headerLine.toString());
         header.add(sepLine.toString());

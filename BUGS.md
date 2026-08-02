@@ -2858,3 +2858,69 @@ The Bug 398 fix was specifically for `vm-operations` where natural content width
 The `profile.cjfr` and `profile_lossless.cjfr` test fixtures were regenerated to include the new description bytes.
 
 **Status:** Fixed. events-by-name and events-by-count: `(Experimental)` suffix now matches oracle.
+
+## Bug 403: `cjfr view jdk.GarbageCollection` shows `GC Identifier` instead of `GC ID`
+
+**Observation:** `cjfr view jdk.GarbageCollection profile.cjfr` renders the `gcId` column header as
+`GC Identifier` (the `@Label` value from JFR metadata), but `jfr view jdk.GarbageCollection` shows
+`GC ID`.
+
+**Root cause:** Oracle's `FieldBuilder.makeLabel()` hardcodes field-name→label abbreviations:
+`gcId` → `GC ID`, `compilerId` → `Compiler ID`, `startTime` (no duration sibling) → `Time`.
+Our `JFRView.fieldDisplayName()` used the `@Label` annotation directly, bypassing these overrides.
+
+**Fix:** Applied the same hardcoded overrides in `JFRView.fieldDisplayName()` and `NativeView.expandStar()`.
+
+**Status:** Fixed.
+
+## Bug 404: `cjfr view jdk.GCReferenceStatistics` shows `Start Time` instead of `Time`
+
+**Observation:** Oracle shows column header `Time` for events without a `duration` field (e.g.
+`jdk.GCReferenceStatistics`), but cjfr showed `Start Time`.
+
+**Root cause:** Oracle's `makeLabel()` returns `"Time"` for `startTime` when there is no `duration`
+sibling field. Our code always used `@Label("Start Time")`.
+
+**Fix:** `JFRView.fieldDisplayName()` now checks the parent type's field list for a `duration` field
+and returns `"Time"` when absent, matching oracle.
+
+**Status:** Fixed.
+
+## Bug 405: `cjfr view <EventType>` columns have wrong widths (too wide or data truncated)
+
+**Observation:** Direct event-type views (e.g. `cjfr view jdk.GarbageCollection`) had wrong column
+widths: integer/duration columns were fixed at 10 chars minimum, causing `Cause` to be truncated and
+`GC ID` to be 10 wide instead of 5. Oracle sizes columns to their natural content width.
+
+**Root cause:** `JFRView.computeColumnWidths()` distributed remaining space evenly without scanning
+actual event data. Oracle scans all event data to compute natural column widths (max of header and
+data), then expands flex columns to fill remaining space.
+
+**Fix:** Added a data-driven `computeColumnWidths(termWidth, events, cellHeight)` overload that scans
+all events to find each column's natural width, expands flex columns to fill remaining terminal width
+when total < terminal, and shrinks flex columns when total > terminal. `renderMatches()` now passes
+the full event list to `JFRView` for data-driven layout.
+
+**Status:** Fixed.
+
+## Bug 406: `cjfr view <EventType>` `Start Time` column right-aligned instead of left-aligned
+
+**Observation:** `Start Time` values were right-aligned in direct event-type views, but oracle uses
+left-alignment for timestamp values.
+
+**Root cause:** `InstantColumn.alignment()` returned `Alignment.RIGHT`.
+
+**Fix:** Changed `InstantColumn.alignment()` to return `Alignment.LEFT`.
+
+**Status:** Fixed.
+
+## Bug 407: `cjfr view <EventType>` title centering off by 1
+
+**Observation:** Title centering used floor division, producing 1 fewer leading space than oracle.
+E.g. "Garbage Collection" (18 chars) over 79-char header: oracle shows 31 spaces, cjfr showed 30.
+
+**Root cause:** `(headerLine.length() - name.length()) / 2` uses floor; oracle uses ceiling.
+
+**Fix:** Changed to `(headerLine.length() - name.length() + 1) / 2`.
+
+**Status:** Fixed.

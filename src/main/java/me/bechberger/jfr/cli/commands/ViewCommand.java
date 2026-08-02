@@ -542,6 +542,10 @@ public class ViewCommand implements Callable<Integer> {
             }
             System.out.println(me.bechberger.util.json.PrettyPrinter.prettyPrint(jsonEvents));
         } else {
+            // Determine the display limit: events beyond this are not shown but are still
+            // needed for data-driven column width computation.
+            List<ReadStruct> displayEvents =
+                    limit == -1 ? matchingEvents : matchingEvents.subList(0, Math.min(limit, matchingEvents.size()));
             var view =
                     new JFRView(
                             new JFRViewConfig(
@@ -549,15 +553,13 @@ public class ViewCommand implements Callable<Integer> {
                             new PrintConfig(
                                     effectiveWidth(),
                                     effectiveCellHeight(),
-                                    TruncateMode.fromCliValue(truncate)));
+                                    TruncateMode.fromCliValue(truncate)),
+                            matchingEvents);
             for (var line : view.header()) {
                 System.out.println(line);
             }
             int count = 0;
-            for (var event : matchingEvents) {
-                if (limit != -1 && count >= limit) {
-                    break;
-                }
+            for (var event : displayEvents) {
                 for (var line : view.rows(event)) {
                     System.out.println(line);
                 }
