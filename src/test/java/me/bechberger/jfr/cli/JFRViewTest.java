@@ -111,7 +111,7 @@ public class JFRViewTest {
                 """
                 Label
 
-                Start Time Duration Event Thread    Stack Trace                                        Label      Memory     String                                           \s
+                Start Time Duration Event Thread    Stack Trace                                             Label     Memory String                                           \s
                 ---------- -------- --------------- -------------------------------------------------- ---------- ---------- --------------------------------------------------
                 """
                         .strip(),
@@ -126,7 +126,7 @@ public class JFRViewTest {
                 """
                 Label
 
-                Start Time Duration Event Thread     Label      Memory    \s
+                Start Time Duration Event Thread          Label     Memory\s
                 ---------- -------- ---------------  ---------- ----------
                 """
                         .strip(),
@@ -160,7 +160,8 @@ public class JFRViewTest {
         System.err.println(line);
         // Method may appear with line number ("initJFRStructs:N") or without ("initJFRStructs "),
         // depending on whether BCI/line-number removal is active in the writer configuration.
-        // The stack trace column is truncated to 50 chars so we only check for a suffix of the name.
+        // The stack trace column is truncated to 50 chars so we only check for a suffix of the
+        // name.
         assertTrue(
                 line.contains("JFRViewTest.initJFRStruct"),
                 "Row should contain the stack frame method name");

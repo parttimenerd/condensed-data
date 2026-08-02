@@ -3120,15 +3120,21 @@ with `isOracleFixedWidth()` method on `Column` interface (returns `false` for `S
 
 **Status:** Fixed.
 
-## Bug 424: `cjfr view <EventType>` column headers are right-aligned for numeric columns
+## Bug 424: `cjfr view <EventType>` column headers use wrong alignment (investigation)
 
 **Observation:** `cjfr view jdk.GCPhasePause` rendered the "Level" and "Duration" headers
-right-aligned, while oracle always left-aligns all column headers regardless of data alignment.
+left-aligned when oracle right-aligns those headers to match the data column alignment.
+`jdk.CPULoad` showed "Time" header left-aligned in a right-aligned column.
 
-**Root cause:** Header rendering used `column.alignment()` instead of always `Alignment.LEFT`.
-Oracle's `TableRenderer` unconditionally uses left-alignment for header cells.
+**Root cause:** An earlier attempted fix forced all headers to `Alignment.LEFT`, but oracle's
+`TableRenderer` uses the same alignment for both headers and data cells. The original code using
+`column.alignment()` for headers was correct; the incorrect patch introduced a regression.
 
-**Fix:** Changed header rendering to always use `Alignment.LEFT`.
+**Fix:** Reverted header rendering to use `column.alignment()` for headers, matching oracle
+which right-aligns numeric column headers (Duration, Memory, Integer, Percentage, etc.) and
+left-aligns string/stack column headers.
+
+**Status:** Fixed.
 
 **Status:** Fixed.
 
@@ -3146,5 +3152,22 @@ method didn't use it.
 directly as `tableWidth` when `userSetWidth=true`, bypassing `determineTableWidth()`. Updated
 `testViewOnCondensedExtremeNumericEvents` to pass `--width 300` so the 19-digit `Long.MAX_VALUE`
 is not truncated.
+
+**Status:** Fixed.
+
+## Bug 426: `cjfr view <EventType>` default (no --width) uses 80 chars instead of oracle's determineTableWidth
+
+**Observation:** `cjfr view jdk.Compilation profile.cjfr` produced 87-char output instead of
+oracle's 122-char output. `jdk.CPULoad` also had wrong widths with no `--width` flag.
+
+**Root cause:** `ViewCommand.effectiveWidth()` returns `DEFAULT_WIDTH=80` when `--width` is not
+set. This was passed to `new PrintConfig(width, cellHeight, truncate)` which uses the 3-arg
+constructor that sets `widthIsUserSet=true`. Thus `computeColumnWidths` used 80 as tableWidth
+instead of running oracle's `determineTableWidth()` algorithm.
+
+**Fix:** Changed `ViewCommand` to use the 4-arg `PrintConfig` constructor with
+`widthIsUserSet = (width != -1)`. When `--width` is not set (`width==-1`), `widthIsUserSet=false`
+and `computeColumnWidths` runs oracle's `determineTableWidth()` which caps at 120. When `--width N`
+is explicit, `widthIsUserSet=true` and N is used directly.
 
 **Status:** Fixed.

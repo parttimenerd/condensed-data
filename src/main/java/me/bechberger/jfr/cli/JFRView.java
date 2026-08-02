@@ -51,20 +51,19 @@ public class JFRView {
         Alignment alignment();
 
         /**
-         * Whether this column has fixed width in oracle's distribute() pass 3.
-         * Oracle sets fixedWidth=true for non-String fields (integers, timestamps, etc.)
-         * and fixedWidth=false for String-valued fields (names, class names, etc.).
-         * In pass 3, only non-fixed columns receive extra width.
-         * Default: true (fixed). Override to false in string-valued columns.
+         * Whether this column has fixed width in oracle's distribute() pass 3. Oracle sets
+         * fixedWidth=true for non-String fields (integers, timestamps, etc.) and fixedWidth=false
+         * for String-valued fields (names, class names, etc.). In pass 3, only non-fixed columns
+         * receive extra width. Default: true (fixed). Override to false in string-valued columns.
          */
         default boolean isOracleFixedWidth() {
             return true;
         }
 
         /**
-         * Compact representation of a value that doesn't fit in its column width.
-         * Oracle uses the last dot-separated component (e.g. strips package prefix from class names).
-         * Default: no compaction (return value as-is, rely on truncation).
+         * Compact representation of a value that doesn't fit in its column width. Oracle uses the
+         * last dot-separated component (e.g. strips package prefix from class names). Default: no
+         * compaction (return value as-is, rely on truncation).
          */
         default String compact(String value) {
             return value;
@@ -1207,7 +1206,8 @@ public class JFRView {
          * are fixed and total < terminal, all columns expand to fill (oracle distributes remainder
          * round-robin). When total exceeds terminal, flex columns shrink. Matches oracle behavior.
          */
-        List<Integer> computeColumnWidths(int termWidth, boolean userSetWidth, List<ReadStruct> events, int cellHeight) {
+        List<Integer> computeColumnWidths(
+                int termWidth, boolean userSetWidth, List<ReadStruct> events, int cellHeight) {
             // Simulate oracle's TableRenderer.setColumnWidths() exactly.
             // Oracle uses cell.width units (= content + 1 separator). We work in those units here,
             // then convert to content widths at the end.
@@ -1251,10 +1251,10 @@ public class JFRView {
             int[] rendererWidth = {0};
 
             java.util.function.IntPredicate[] passes = {
-                i -> widths[i] < MINIMAL,                          // pass 1: fill to minimal
-                i -> widths[i] < preferred[i],                     // pass 2: fill to preferred
-                i -> !columns.get(i).isOracleFixedWidth(),         // pass 3: fill non-fixed (String cols)
-                i -> true                                          // pass 4: fill all
+                i -> widths[i] < MINIMAL, // pass 1: fill to minimal
+                i -> widths[i] < preferred[i], // pass 2: fill to preferred
+                i -> !columns.get(i).isOracleFixedWidth(), // pass 3: fill non-fixed (String cols)
+                i -> true // pass 4: fill all
             };
             for (var pred : passes) {
                 long amountLeft = (long) tableWidth - rendererWidth[0];
@@ -1338,13 +1338,16 @@ public class JFRView {
         this.view = view;
         this.config = config;
         if (!events.isEmpty()) {
-            this.columnWidths = view.computeColumnWidths(config.width(), config.widthIsUserSet(), events, config.cellHeight());
+            this.columnWidths =
+                    view.computeColumnWidths(
+                            config.width(), config.widthIsUserSet(), events, config.cellHeight());
         } else {
             this.columnWidths = view.computeColumnWidths(config.width() - view.columns.size() + 1);
         }
     }
 
-    public record PrintConfig(int width, boolean widthIsUserSet, int cellHeight, TruncateMode truncateMode) {
+    public record PrintConfig(
+            int width, boolean widthIsUserSet, int cellHeight, TruncateMode truncateMode) {
         public PrintConfig() {
             this(160, false, 1, TruncateMode.END);
         }
@@ -1367,7 +1370,7 @@ public class JFRView {
                 if (hdr.length() > width) {
                     hdr = truncate(hdr, width);
                 }
-                headerLine.append(pad(hdr, width, Alignment.LEFT));
+                headerLine.append(pad(hdr, width, column.alignment()));
                 sepLine.append("-".repeat(width));
             }
             if (i < view.columns.size() - 1) {
