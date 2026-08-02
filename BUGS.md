@@ -2983,3 +2983,168 @@ header length) and added `maxWidth()` returning `-1` (no cap), allowing the data
 computation to size the column to fit the widest actual value.
 
 **Status:** Fixed.
+
+## Bug 414: `cjfr view <EventType>` flex column shrink uses equal split instead of oracle's greedy fill
+
+**Observation:** `cjfr view jdk.SystemProcess --width 120` showed `Process Identifier` column at
+54 chars and `Command Line` at 54 chars. Oracle gives `Process Identifier`=18 (its natural/header
+width) and `Command Line`=91 (remaining budget).
+
+**Root cause:** When `naturalTotal > termWidth`, the shrink path divided the total flex budget
+equally among all flex columns (`perFlex = flexBudget / flexCount`). Oracle's `distribute()`
+pass 2 increments columns one unit at a time until each reaches its natural width — equivalent to
+"fill smallest flex columns to their natural first, give remainder to larger".
+
+**Fix:** Replaced equal-split with a greedy fill: sort flex column indices by natural width
+ascending, then for each column compute `share = remaining / flexLeft` and assign
+`min(natural, share)`, carrying leftover to larger columns.
+
+**Status:** Fixed.
+
+## Bug 415: `cjfr view <EventType>` memory address formatted as lowercase hex without zero-padding
+
+**Observation:** `cjfr view jdk.NativeLibrary` showed `0x10230c000` (lowercase) and `0x0` (no
+zero-padding) instead of oracle's `0x10230C000` and `0x00000000`.
+
+**Root cause:** `MemoryAddressColumn.format()` used `Long.toHexString(value)` which produces
+lowercase hex with no padding. Oracle's `FieldFormatter` uses `String.format("0x%08X", d)`.
+
+**Fix:** Changed to `String.format("0x%08X", value)` — uppercase, minimum 8 hex digits.
+
+**Status:** Fixed.
+
+## Bug 416: `cjfr view <EventType>` null stack traces show `-` instead of `N/A`
+
+**Observation:** `cjfr view jdk.ActiveSetting` showed `-` in the Stack Trace column when no stack
+trace was recorded. Oracle shows `N/A`.
+
+**Root cause:** `StackTraceColumn.format()` returned `List.of("-")` for null stack traces.
+
+**Fix:** Changed to `List.of("N/A")`.
+
+**Status:** Fixed.
+
+## Bug 417: `cjfr view <EventType>` boolean values are left-aligned instead of right-aligned
+
+**Observation:** `cjfr view jdk.PromoteObjectInNewPLAB` showed `false ` (left-padded) instead of
+oracle's `  false` (right-aligned) in the Tenured column.
+
+**Root cause:** `BooleanColumn.alignment()` returned `Alignment.LEFT`. Oracle's FieldBuilder sets
+`field.alignLeft = false` for boolean fields.
+
+**Fix:** Changed `BooleanColumn.alignment()` to return `Alignment.RIGHT`.
+
+**Status:** Fixed.
+
+## Bug 418: `cjfr view <EventType>` memory address columns are right-aligned instead of left-aligned
+
+**Observation:** Memory address columns in `cjfr view jdk.NativeLibrary` were right-aligned.
+Oracle's FieldBuilder explicitly sets `field.alignLeft = true` for `@MemoryAddress` fields
+(overriding the default right-alignment for numeric types).
+
+**Root cause:** `MemoryAddressColumn.alignment()` returned `Alignment.RIGHT`.
+
+**Fix:** Changed to `Alignment.LEFT`.
+
+**Status:** Fixed.
+
+## Bug 419: `cjfr view <EventType>` truncation cuts without ellipsis
+
+**Observation:** `cjfr view jdk.JavaMonitorWait` showed `java.lang.Objec` instead of oracle's
+`java.lang.Obj...` for class names that don't fit in their column.
+
+**Root cause:** `JFRView.truncate()` used hard truncation (cut at column width) instead of
+adding `"..."` at the end. Oracle's `TableCell.truncate()` appends `"..."`.
+
+**Fix:** Changed `truncate()` to append `"..."` (3 chars) at the end for END truncation, or
+prepend for BEGIN truncation, when the value is too wide.
+
+**Status:** Fixed.
+
+## Bug 420: `cjfr view <EventType>` ClassLoader names not compacted when truncated
+
+**Observation:** `cjfr view jdk.ModuleRequire` showed `jdk.internal.loader.ClassLoaders$`
+(hard-truncated) instead of oracle's `ClassLoaders$AppClassLoader` (compact form).
+
+**Root cause:** Oracle applies a compact format (last dot-component of class name) when a value
+doesn't fit its column. Our code just hard-truncated. `ClassLoaderColumn` and `ClassColumn`
+lacked a `compact()` method, and `NestedColumn` didn't delegate it.
+
+**Fix:** Added `compact(String value)` method to `Column` interface (default = no-op). Override
+in `ClassLoaderColumn`, `ClassColumn`, and `NestedColumn` (delegates to inner) to strip package
+prefix: `value.substring(value.lastIndexOf('.') + 1)`.
+
+**Status:** Fixed.
+
+## Bug 421: `cjfr view <EventType>` null nested struct shows `-` instead of `N/A`
+
+**Observation:** `cjfr view jdk.ModuleExport` showed `-` for null `targetModule` fields.
+Oracle shows `N/A` for all null values (`field.missingText = "N/A"`).
+
+**Root cause:** `NestedColumn.format()` returned `List.of("-")` for null parent struct.
+
+**Fix:** Changed to `List.of("N/A")`.
+
+**Status:** Fixed.
+
+## Bug 422: `cjfr view <EventType>` "No events found" missing leading blank line
+
+**Observation:** `cjfr view jdk.ClassLoad` output started with `No events found for 'Class Load'.`
+without the blank line that oracle prints before it.
+
+**Root cause:** Oracle's `TableRenderer.render()` calls `out.println()` before the message.
+Our code in `ViewCommand` called `System.out.println(message)` directly without the preceding blank.
+
+**Fix:** Added `System.out.println()` before the "No events found" message.
+
+**Status:** Fixed.
+
+## Bug 423: `cjfr view <EventType>` column width algorithm uses greedy assignment instead of oracle's round-robin distribute
+
+**Observation:** `cjfr view jdk.ClassLoaderStatistics` produced a table 119 chars wide instead of
+oracle's 120. `cjfr view jdk.GCPhasePause` gave column widths [17,15,19,12,15] instead of oracle's
+[10,8,28,5,24].
+
+**Root cause:** Our width algorithm greedily assigned each column its preferred width then
+distributed remainder. Oracle's `TableRenderer.setColumnWidths()` uses a `distribute()` method that
+runs 4 passes, each an outer `while (amountLeft > 0 && amountLeft != lastAmountLeft)` loop
+containing an inner `for` loop over all cells. The inner loop distributes one unit to each
+qualifying cell without checking budget — it can overshoot the target by up to `n-1`. Pass 3 only
+fills non-fixed (String-typed) columns; Pass 4 fills all. Oracle decompiled from `jrt:/` confirms
+`fixedWidth = !typeName.equals("java.lang.String")` (set in `FieldBuilder.configureAliases()`).
+
+**Fix:** Reimplemented `computeColumnWidths` to simulate oracle's 4-pass `distribute()` exactly,
+with `isOracleFixedWidth()` method on `Column` interface (returns `false` for `StringColumn`,
+`ClassColumn`, `ClassLoaderColumn`, `MethodColumn`, `StackTraceColumn`, `ThreadColumn`,
+`EventIdColumn`, `NestedColumn` delegates to inner).
+
+**Status:** Fixed.
+
+## Bug 424: `cjfr view <EventType>` column headers are right-aligned for numeric columns
+
+**Observation:** `cjfr view jdk.GCPhasePause` rendered the "Level" and "Duration" headers
+right-aligned, while oracle always left-aligns all column headers regardless of data alignment.
+
+**Root cause:** Header rendering used `column.alignment()` instead of always `Alignment.LEFT`.
+Oracle's `TableRenderer` unconditionally uses left-alignment for header cells.
+
+**Fix:** Changed header rendering to always use `Alignment.LEFT`.
+
+**Status:** Fixed.
+
+## Bug 425: `cjfr view <EventType> --width N` is ignored; output uses oracle's default width
+
+**Observation:** `cjfr view TestEvent file.cjfr --width 40` produced the same 119-char output as
+without `--width`, and `testViewOnCondensedExtremeNumericEvents` truncated `Long.MAX_VALUE` values.
+
+**Root cause:** `computeColumnWidths(int termWidth, ...)` ignored `termWidth` and always ran
+oracle's `determineTableWidth()` capped at 120. The constructor passed `config.width()` but the
+method didn't use it.
+
+**Fix:** Added `widthIsUserSet` boolean to `PrintConfig`. The 3-arg public constructor sets it to
+`true`; the default no-arg constructor sets it to `false`. `computeColumnWidths` uses `termWidth`
+directly as `tableWidth` when `userSetWidth=true`, bypassing `determineTableWidth()`. Updated
+`testViewOnCondensedExtremeNumericEvents` to pass `--width 300` so the 19-digit `Long.MAX_VALUE`
+is not truncated.
+
+**Status:** Fixed.

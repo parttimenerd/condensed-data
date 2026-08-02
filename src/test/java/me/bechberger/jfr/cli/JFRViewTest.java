@@ -160,8 +160,9 @@ public class JFRViewTest {
         System.err.println(line);
         // Method may appear with line number ("initJFRStructs:N") or without ("initJFRStructs "),
         // depending on whether BCI/line-number removal is active in the writer configuration.
+        // The stack trace column is truncated to 50 chars so we only check for a suffix of the name.
         assertTrue(
-                line.contains(".bechberger.jfr.cli.JFRViewTest.initJFRStructs"),
+                line.contains("JFRViewTest.initJFRStruct"),
                 "Row should contain the stack frame method name");
         assertTrue(line.contains("Hello"));
         assertTrue(line.contains("main"));
@@ -209,10 +210,10 @@ public class JFRViewTest {
                 JFRView.class.getDeclaredMethod("truncate", String.class, int.class);
         truncateMethod.setAccessible(true);
 
-        // --truncate begin should mean "truncate the beginning" → keep the end
+        // --truncate begin should mean "truncate the beginning" → keep the end with ellipsis prefix
         String result = (String) truncateMethod.invoke(view, "ABCDEFGHIJ", 5);
         assertEquals(
-                "FGHIJ",
+                "...IJ",
                 result,
                 "TruncateMode.BEGIN should truncate the beginning and keep the end");
     }
@@ -226,10 +227,10 @@ public class JFRViewTest {
                 JFRView.class.getDeclaredMethod("truncate", String.class, int.class);
         truncateMethod.setAccessible(true);
 
-        // --truncate end should mean "truncate the end" → keep the beginning
+        // --truncate end should mean "truncate the end" → keep the beginning with ellipsis suffix
         String result = (String) truncateMethod.invoke(view, "ABCDEFGHIJ", 5);
         assertEquals(
-                "ABCDE", result, "TruncateMode.END should truncate the end and keep the beginning");
+                "AB...", result, "TruncateMode.END should truncate the end and keep the beginning");
     }
 
     private static StructType<?, ReadStruct> createType(String typeName, String... fieldNames) {
@@ -321,7 +322,7 @@ public class JFRViewTest {
         assertEquals(7, column.width());
         assertEquals(List.of("true"), column.format(trueEvent, 1));
         assertEquals(List.of("false"), column.format(falseEvent, 1));
-        assertEquals(JFRView.Alignment.LEFT, column.alignment());
+        assertEquals(JFRView.Alignment.RIGHT, column.alignment());
     }
 
     @Test
@@ -338,7 +339,7 @@ public class JFRViewTest {
         assertEquals(-1, column.width());
         // No `type` sub-struct present, so it falls back to the loader `name`.
         assertEquals(List.of("app-loader"), column.format(eventWithLoader, 1));
-        assertEquals(List.of("-"), column.format(eventWithoutLoader, 1));
+        assertEquals(List.of("N/A"), column.format(eventWithoutLoader, 1));
         assertEquals(JFRView.Alignment.LEFT, column.alignment());
     }
 
@@ -863,7 +864,7 @@ public class JFRViewTest {
         var event = new ReadStruct(eventType, values);
 
         var column = new JFRView.ClassLoaderColumn("classLoader");
-        assertEquals(List.of("-"), column.format(event, 1));
+        assertEquals(List.of("N/A"), column.format(event, 1));
     }
 
     // ========== Duration sentinel display (Bug 272) ==========

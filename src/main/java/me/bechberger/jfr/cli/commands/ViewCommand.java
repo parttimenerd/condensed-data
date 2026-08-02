@@ -493,6 +493,7 @@ public class ViewCommand implements Callable<Integer> {
         if (label != null && !label.isEmpty() && !label.equals(eventName)) {
             // Type is recognized (found in metadata/footer) but has no events — mirror oracle:
             // print to stdout, exit 0, no suggestions.
+            System.out.println();
             System.out.println("No events found for '" + label + "'.");
             return 0;
         } else {

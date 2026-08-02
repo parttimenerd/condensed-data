@@ -363,7 +363,9 @@ public class ViewCommandTest {
                                     new CommandExecuter(
                                                     "view",
                                                     "ExtremeNumericEvent",
-                                                    map.get("extreme_numeric.cjfr").toString())
+                                                    map.get("extreme_numeric.cjfr").toString(),
+                                                    "--width",
+                                                    "300")
                                             .run();
                             assertThat(viewResult.exitCode()).isEqualTo(0);
                             assertThat(viewResult.output()).contains("Extreme Numeric Event");

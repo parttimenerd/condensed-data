@@ -49,6 +49,26 @@ public class JFRView {
         List<String> format(ReadStruct event, int rows);
 
         Alignment alignment();
+
+        /**
+         * Whether this column has fixed width in oracle's distribute() pass 3.
+         * Oracle sets fixedWidth=true for non-String fields (integers, timestamps, etc.)
+         * and fixedWidth=false for String-valued fields (names, class names, etc.).
+         * In pass 3, only non-fixed columns receive extra width.
+         * Default: true (fixed). Override to false in string-valued columns.
+         */
+        default boolean isOracleFixedWidth() {
+            return true;
+        }
+
+        /**
+         * Compact representation of a value that doesn't fit in its column width.
+         * Oracle uses the last dot-separated component (e.g. strips package prefix from class names).
+         * Default: no compaction (return value as-is, rely on truncation).
+         */
+        default String compact(String value) {
+            return value;
+        }
     }
 
     private static String propertyToHeader(String property) {
@@ -128,8 +148,12 @@ public class JFRView {
             } else {
                 return List.of(raw.toString());
             }
-            return List.of(
-                    formatter.format(LocalDateTime.ofInstant(value, ZoneId.systemDefault())));
+            try {
+                return List.of(
+                        formatter.format(LocalDateTime.ofInstant(value, ZoneId.systemDefault())));
+            } catch (java.time.DateTimeException e) {
+                return List.of("N/A");
+            }
         }
 
         @Override
@@ -152,6 +176,11 @@ public class JFRView {
         @Override
         public int maxWidth() {
             return Math.max(width(), 25);
+        }
+
+        @Override
+        public boolean isOracleFixedWidth() {
+            return false;
         }
 
         @Override
@@ -222,12 +251,12 @@ public class JFRView {
                 return List.of("-");
             }
             long value = prop instanceof Number ? ((Number) prop).longValue() : (long) prop;
-            return List.of("0x" + Long.toHexString(value));
+            return List.of(String.format("0x%08X", value));
         }
 
         @Override
         public Alignment alignment() {
-            return Alignment.RIGHT;
+            return Alignment.LEFT;
         }
     }
 
@@ -240,6 +269,11 @@ public class JFRView {
         @Override
         public int width() {
             return -1;
+        }
+
+        @Override
+        public boolean isOracleFixedWidth() {
+            return false;
         }
 
         @Override
@@ -355,7 +389,7 @@ public class JFRView {
 
         @Override
         public Alignment alignment() {
-            return Alignment.LEFT;
+            return Alignment.RIGHT;
         }
     }
 
@@ -467,6 +501,11 @@ public class JFRView {
         }
 
         @Override
+        public boolean isOracleFixedWidth() {
+            return false;
+        }
+
+        @Override
         public List<String> format(ReadStruct event, int rows) {
             var klass = event.getStruct(property);
             if (klass == null) {
@@ -531,6 +570,12 @@ public class JFRView {
         public Alignment alignment() {
             return Alignment.LEFT;
         }
+
+        @Override
+        public String compact(String value) {
+            int dot = value.lastIndexOf('.');
+            return dot >= 0 ? value.substring(dot + 1) : value;
+        }
     }
 
     record ClassLoaderColumn(String header, String property) implements Column {
@@ -545,10 +590,15 @@ public class JFRView {
         }
 
         @Override
+        public boolean isOracleFixedWidth() {
+            return false;
+        }
+
+        @Override
         public List<String> format(ReadStruct event, int rows) {
             var cl = event.getStruct(property);
             if (cl == null) {
-                return List.of("-");
+                return List.of("N/A");
             }
             // jdk.types.ClassLoader has a `type` (the loader's class) and a `name` (the loader's
             // instance name, e.g. "app"/"platform", usually null for VM-internal loaders). The JDK
@@ -563,7 +613,13 @@ public class JFRView {
                 }
             }
             var name = cl.get("name", String.class);
-            return List.of(name != null && !name.isEmpty() ? name : "-");
+            return List.of(name != null && !name.isEmpty() ? name : "N/A");
+        }
+
+        @Override
+        public String compact(String value) {
+            int dot = value.lastIndexOf('.');
+            return dot >= 0 ? value.substring(dot + 1) : value;
         }
 
         @Override
@@ -583,6 +639,11 @@ public class JFRView {
         @Override
         public int width() {
             return -1;
+        }
+
+        @Override
+        public boolean isOracleFixedWidth() {
+            return false;
         }
 
         @Override
@@ -618,6 +679,11 @@ public class JFRView {
         }
 
         @Override
+        public boolean isOracleFixedWidth() {
+            return false;
+        }
+
+        @Override
         public int maxWidth() {
             return 50;
         }
@@ -632,7 +698,7 @@ public class JFRView {
         public List<String> format(ReadStruct event, int rows) {
             var val = event.getStruct(property);
             if (val == null) {
-                return List.of("-");
+                return List.of("N/A");
             }
             var frames = val.<ReadStruct>getList("frames");
             return frames.stream()
@@ -677,9 +743,19 @@ public class JFRView {
         public List<String> format(ReadStruct event, int rows) {
             var nested = event.getStruct(parentProperty);
             if (nested == null) {
-                return List.of("-");
+                return List.of("N/A");
             }
             return inner.format(nested, rows);
+        }
+
+        @Override
+        public String compact(String value) {
+            return inner.compact(value);
+        }
+
+        @Override
+        public boolean isOracleFixedWidth() {
+            return inner.isOracleFixedWidth();
         }
     }
 
@@ -703,6 +779,11 @@ public class JFRView {
             String raw = val.toString();
             String label = typeLabels.getOrDefault(raw, raw);
             return List.of(label);
+        }
+
+        @Override
+        public boolean isOracleFixedWidth() {
+            return false;
         }
 
         @Override
@@ -1126,9 +1207,15 @@ public class JFRView {
          * are fixed and total < terminal, all columns expand to fill (oracle distributes remainder
          * round-robin). When total exceeds terminal, flex columns shrink. Matches oracle behavior.
          */
-        List<Integer> computeColumnWidths(int termWidth, List<ReadStruct> events, int cellHeight) {
+        List<Integer> computeColumnWidths(int termWidth, boolean userSetWidth, List<ReadStruct> events, int cellHeight) {
+            // Simulate oracle's TableRenderer.setColumnWidths() exactly.
+            // Oracle uses cell.width units (= content + 1 separator). We work in those units here,
+            // then convert to content widths at the end.
+            int MINIMAL = 2; // TableCell.MINIMAL_CELL_WIDTH = 1 + len(" ")
             int n = columns.size();
-            int[] natural = new int[n];
+
+            // Compute preferredWidth per cell = max(data_content, header_len) + 1
+            int[] preferred = new int[n]; // in cell.width units
             for (int i = 0; i < n; i++) {
                 Column c = columns.get(i);
                 int w = c.header().length();
@@ -1137,57 +1224,56 @@ public class JFRView {
                         w = Math.max(w, line.length());
                     }
                 }
-                // Only cap at maxWidth when maxWidth doesn't truncate the header
-                if (c.maxWidth() > 0) w = Math.min(w, Math.max(c.maxWidth(), c.header().length()));
-                natural[i] = w;
+                preferred[i] = w + 1;
             }
-            // Total without separators (termWidth already accounts for separators via caller)
-            int naturalTotal = 0;
-            for (int w : natural) naturalTotal += w;
-            int flexCount =
-                    (int)
-                            java.util.Arrays.stream(columns.toArray())
-                                    .filter(c -> ((Column) c).width() < 0)
-                                    .count();
-            if (naturalTotal == termWidth) {
-                return java.util.Arrays.stream(natural).boxed().toList();
+
+            // determineTableWidth: if user set a width, use it; else sum of preferredWidths,
+            // capped at 120, min 40 or 80 (oracle's determineTableWidth logic)
+            int prefSum = 0;
+            for (int p : preferred) prefSum += p;
+            int tableWidth;
+            if (userSetWidth) {
+                tableWidth = termWidth;
+            } else if (prefSum > 120) {
+                tableWidth = 120;
+            } else if (prefSum < 40) {
+                tableWidth = (n < 3) ? prefSum : 40;
+            } else if (prefSum < 80) {
+                tableWidth = (n < 3) ? prefSum : 80;
+            } else {
+                tableWidth = prefSum;
             }
-            if (naturalTotal < termWidth) {
-                // Expand flex columns to fill remaining space; if none, expand all columns.
-                int effectiveFlexCount = flexCount > 0 ? flexCount : n;
-                int extra = termWidth - naturalTotal;
-                int perFlex = extra / effectiveFlexCount;
-                int remainder = extra % effectiveFlexCount;
-                int[] result = new int[n];
-                int flexIdx = 0;
-                for (int i = 0; i < n; i++) {
-                    if (flexCount == 0 || columns.get(i).width() < 0) {
-                        result[i] = natural[i] + perFlex + (flexIdx < remainder ? 1 : 0);
-                        flexIdx++;
-                    } else {
-                        result[i] = natural[i];
+
+            // Simulate oracle's 4-pass distribute():
+            // Each pass: while (amountLeft > 0 && amountLeft != lastAmountLeft):
+            //   iterate ALL cells, give +1 to qualifying cells (no per-cell budget check)
+            int[] widths = new int[n]; // starts at 0
+            int[] rendererWidth = {0};
+
+            java.util.function.IntPredicate[] passes = {
+                i -> widths[i] < MINIMAL,                          // pass 1: fill to minimal
+                i -> widths[i] < preferred[i],                     // pass 2: fill to preferred
+                i -> !columns.get(i).isOracleFixedWidth(),         // pass 3: fill non-fixed (String cols)
+                i -> true                                          // pass 4: fill all
+            };
+            for (var pred : passes) {
+                long amountLeft = (long) tableWidth - rendererWidth[0];
+                long lastAmountLeft = -1;
+                while (amountLeft > 0 && amountLeft != lastAmountLeft) {
+                    lastAmountLeft = amountLeft;
+                    for (int i = 0; i < n; i++) {
+                        if (pred.test(i)) {
+                            widths[i]++;
+                            rendererWidth[0]++;
+                            amountLeft--;
+                        }
                     }
                 }
-                return java.util.Arrays.stream(result).boxed().toList();
             }
-            // naturalTotal > termWidth: shrink flex columns
-            if (flexCount == 0) {
-                return java.util.Arrays.stream(natural).boxed().toList();
-            }
-            int fixedTotal = 0;
-            for (int i = 0; i < n; i++) {
-                if (columns.get(i).width() >= 0) fixedTotal += natural[i];
-            }
-            int flexBudget = termWidth - fixedTotal;
-            int perFlex = Math.max(1, flexBudget / flexCount);
+
+            // Convert cell.widths to content widths
             int[] result = new int[n];
-            for (int i = 0; i < n; i++) {
-                if (columns.get(i).width() >= 0) {
-                    result[i] = natural[i];
-                } else {
-                    result[i] = Math.max(columns.get(i).header().length(), perFlex);
-                }
-            }
+            for (int i = 0; i < n; i++) result[i] = Math.max(0, widths[i] - 1);
             return java.util.Arrays.stream(result).boxed().toList();
         }
 
@@ -1251,17 +1337,20 @@ public class JFRView {
     public JFRView(JFRViewConfig view, PrintConfig config, List<ReadStruct> events) {
         this.view = view;
         this.config = config;
-        int termWidth = config.width() - view.columns.size();
         if (!events.isEmpty()) {
-            this.columnWidths = view.computeColumnWidths(termWidth, events, config.cellHeight());
+            this.columnWidths = view.computeColumnWidths(config.width(), config.widthIsUserSet(), events, config.cellHeight());
         } else {
             this.columnWidths = view.computeColumnWidths(config.width() - view.columns.size() + 1);
         }
     }
 
-    public record PrintConfig(int width, int cellHeight, TruncateMode truncateMode) {
+    public record PrintConfig(int width, boolean widthIsUserSet, int cellHeight, TruncateMode truncateMode) {
         public PrintConfig() {
-            this(160, 1, TruncateMode.END);
+            this(160, false, 1, TruncateMode.END);
+        }
+
+        public PrintConfig(int width, int cellHeight, TruncateMode truncateMode) {
+            this(width, true, cellHeight, truncateMode);
         }
     }
 
@@ -1276,10 +1365,9 @@ public class JFRView {
             if (width > 0) {
                 var hdr = column.header();
                 if (hdr.length() > width) {
-                    hdr = hdr.substring(0, width);
+                    hdr = truncate(hdr, width);
                 }
-                headerLine.append(hdr);
-                headerLine.append(" ".repeat(width - hdr.length()));
+                headerLine.append(pad(hdr, width, Alignment.LEFT));
                 sepLine.append("-".repeat(width));
             }
             if (i < view.columns.size() - 1) {
@@ -1318,6 +1406,10 @@ public class JFRView {
                 var width = columnWidths.get(j);
                 var rowsForColumn = rowsPerColumn.get(colIdx);
                 var value = rowIndex < rowsForColumn.size() ? rowsForColumn.get(rowIndex) : "";
+                // If the value doesn't fit, try the compact representation before hard truncation
+                if (value.length() > width) {
+                    value = column.compact(value);
+                }
                 row.append(pad(truncate(value, width), width, column.alignment()));
                 if (colIdx < visibleColumnIndices.size() - 1) {
                     row.append(" ");
@@ -1332,9 +1424,17 @@ public class JFRView {
         if (width <= 0 || s.length() <= width) {
             return s;
         }
+        // Mirror oracle: truncate with ellipsis (3 dots). If width < 3, just cut.
+        String ellipsis = "...";
+        if (width < ellipsis.length()) {
+            return switch (config.truncateMode) {
+                case BEGIN -> s.substring(s.length() - width);
+                case END -> s.substring(0, width);
+            };
+        }
         return switch (config.truncateMode) {
-            case BEGIN -> s.substring(s.length() - width);
-            case END -> s.substring(0, width);
+            case BEGIN -> ellipsis + s.substring(s.length() - (width - ellipsis.length()));
+            case END -> s.substring(0, width - ellipsis.length()) + ellipsis;
         };
     }
 
