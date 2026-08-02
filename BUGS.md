@@ -2832,3 +2832,17 @@ On `.jfr` input: cjfr evaluates `safepoints` natively (correctly returns 31 rows
 **Known residual difference:** Without `--width`, oracle uses the natural content width (105 chars for this recording) while cjfr defaults to 80 and shrinks the Destination column to fit. This is a terminal-width mismatch category — not caused by this fix; oracle uses natural width on non-TTY output. With explicit `--width 80` both produce matching output.
 
 **Status:** Crash fixed. Terminal-width mismatch on default width is a known deviation.
+
+## Bug 401: `cjfr view jvm-flags` columns not shrunk at `--width 80`; rows 153 chars wide
+
+**Symptom:** `cjfr view jvm-flags --width 80` produced 153-char wide rows (Name=48, Value=104) instead of oracle's 39+39=79 chars. The title was centered over 153 chars instead of 79.
+
+**Root cause:** The Bug 398 fix added an early-return guard in `distributeFlexibleWidth` with condition `delta <= 0 && used >= termWidth && shrinkIdx.isEmpty()`. For jvm-flags, `used = 153 > termWidth = 80`, so `used >= termWidth` was true — causing the guard to fire and skip the shrink path. The condition was too broad: it prevented shrinking even when content significantly overflowed the terminal.
+
+The Bug 398 fix was specifically for `vm-operations` where natural content width exactly equals `termWidth` (both 80). In that case, the `target = termWidth + flexCount - 2` formula produces `target = 79`, causing a spurious 1-char shrink that oracle doesn't do. The guard was meant to preserve natural widths when content already fits — but `used >= termWidth` also fires when content far exceeds `termWidth`.
+
+**Fix:** Change `used >= termWidth` to `used <= termWidth` in the guard. Now:
+- vm-operations: `used = 79 (or 80) <= termWidth = 80` → return early → natural width preserved ✓
+- jvm-flags: `used = 153 > termWidth = 80` → guard does not fire → falls into shrink branch → Name=39, Value=39 ✓
+
+**Status:** Fixed. jvm-flags: only locale diffs remain (number format `.` vs `,`).

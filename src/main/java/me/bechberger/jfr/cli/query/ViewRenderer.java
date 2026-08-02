@@ -626,10 +626,11 @@ final class ViewRenderer {
         int target = shrinkIdx.isEmpty() ? termWidth + flexIdx.size() - 2 : termWidth - 1;
         int delta = target - used;
 
-        // When content already fills or exceeds the terminal width, keep the natural content
-        // sizes — oracle does not shrink flex columns when the table already fits within the
-        // terminal (observed: vm-operations natural=80 at termWidth=80 stays 80, not 79).
-        if (delta <= 0 && used >= termWidth && shrinkIdx.isEmpty()) {
+        // When content naturally fits within the terminal, keep the natural content sizes —
+        // oracle does not shrink flex columns that already fit (observed: vm-operations
+        // natural=80 at termWidth=80 stays 80, not 79). Only skip when used <= termWidth;
+        // when used > termWidth, oracle does shrink (e.g. jvm-flags natural=153 → 79).
+        if (delta <= 0 && used <= termWidth && shrinkIdx.isEmpty()) {
             return;
         }
 
