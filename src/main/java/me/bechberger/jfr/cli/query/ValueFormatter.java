@@ -340,7 +340,7 @@ public final class ValueFormatter {
      * Format a Method struct as {@code fqcn.name(SimpleParamType, ...)}, mirroring {@code jfr
      * view}.
      */
-    private static String formatMethod(ReadStruct method) {
+    public static String formatMethod(ReadStruct method) {
         ReadStruct type = method.getStruct("type");
         String cls = type != null ? className(type) : "";
         Object name = method.get("name");

@@ -3171,3 +3171,20 @@ and `computeColumnWidths` runs oracle's `determineTableWidth()` which caps at 12
 is explicit, `widthIsUserSet=true` and N is used directly.
 
 **Status:** Fixed.
+
+## Bug 427: `cjfr view <EventType>` MethodColumn omits method parameters in stack trace display
+
+**Observation:** `cjfr view jdk.ExecutionSample` showed stack frames as `Class.method` while
+oracle shows `Class.method(ParamType, ...)`. This caused the Stack Trace column to be narrower
+than oracle (83 vs 88 dashes in ExecutionSample, 67 vs 86 in NativeMethodSample).
+
+**Root cause:** `MethodColumn.format()` concatenated `ClassName` + `.` + `methodName`, ignoring
+the `descriptor` field. Oracle's `FieldFormatter` calls `Method.toString()` which includes decoded
+parameters. `ValueFormatter.formatMethod()` already decoded parameters correctly but was private
+and not called from `MethodColumn`.
+
+**Fix:** Made `ValueFormatter.formatMethod()` public and changed `MethodColumn.format()` to
+delegate to it. This includes `(ParamType1, ParamType2, ...)` when a `descriptor` field is
+present, matching oracle's output format.
+
+**Status:** Fixed.

@@ -651,11 +651,7 @@ public class JFRView {
             if (method == null) {
                 return List.of("-");
             }
-            var methodName = method.get("name", String.class);
-            return List.of(
-                    CLASS_COLUMN.format(method, 1).get(0)
-                            + "."
-                            + (methodName != null ? methodName : "?"));
+            return List.of(ValueFormatter.formatMethod(method));
         }
 
         @Override
