@@ -3209,3 +3209,45 @@ early exit; for n≥3 with prefSum<40, execution falls through to `return 80`.
 4. else → prefSum
 
 **Status:** Fixed.
+
+## Bug 429: `cjfr view jdk.CPUTimeStampCounter` renders frequency as GHz instead of Hz
+
+**Observation:** `cjfr view jdk.CPUTimeStampCounter` showed `1.00 GHz` for the OS Frequency
+and Fast Time Frequency columns, while oracle shows `1000000000 Hz`.
+
+**Root cause:** `JFRView.FrequencyColumn.format()` scaled the Hz value to GHz/MHz/kHz for large
+values, mimicking a human-friendly display that oracle doesn't use. Oracle's `jfr view` renders
+`@Frequency` fields as the raw integer value followed by ` Hz`, with no scaling.
+
+**Fix:** Removed the scaling logic from `FrequencyColumn.format()`; now always returns
+`value + " Hz"`, matching oracle's output.
+
+**Status:** Fixed.
+
+## Bug 430: `cjfr view jdk.Shutdown` shows `:−1` line number suffix for native frames
+
+**Observation:** `cjfr view jdk.Shutdown` showed `java.lang.Shutdown.beforeHalt():-1` in the
+Stack Trace column, while oracle shows `java.lang.Shutdown.beforeHalt()` (no line number).
+
+**Root cause:** `JFRView.StackTraceColumn.format()` unconditionally appended `:` + `lineNumber`
+for any frame that has a `lineNumber` field, including frames where line number is -1 (the JFR
+sentinel for "unknown/not applicable", used for native methods).
+
+**Fix:** In `StackTraceColumn.format()`, only append the line number when `lineNumber >= 0`.
+
+**Status:** Fixed.
+
+## Bug 431: `cjfr view jdk.LongFlag` and `jdk.UnsignedLongFlag` show integers without comma grouping
+
+**Observation:** `cjfr view jdk.LongFlag` showed values like `2147483647` without comma grouping,
+while oracle shows `2.147.483.647` (German locale thousands separator) which is structurally
+equivalent to `2,147,483,647` (ROOT locale). Column widths were wrong as a consequence (10 vs 13
+for the Value column).
+
+**Root cause:** `JFRView.IntegerColumn.format()` and `SentinelIntegerColumn.format()` used
+`String.valueOf(val)` which produces no thousands separating, instead of `String.format(Locale.ROOT, "%,d", n)`.
+
+**Fix:** Updated both `IntegerColumn.format()` and `SentinelIntegerColumn.format()` to use
+`String.format(Locale.ROOT, "%,d", n.longValue())` for `Number` values.
+
+**Status:** Fixed.

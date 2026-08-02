@@ -369,9 +369,13 @@ public class ViewCommandTest {
                                             .run();
                             assertThat(viewResult.exitCode()).isEqualTo(0);
                             assertThat(viewResult.output()).contains("Extreme Numeric Event");
-                            // Long.MAX_VALUE must be rendered correctly
+                            // Long.MAX_VALUE must be rendered correctly (with comma grouping)
                             assertThat(viewResult.output())
-                                    .contains(String.valueOf(Long.MAX_VALUE));
+                                    .contains(
+                                            String.format(
+                                                    java.util.Locale.ROOT,
+                                                    "%,d",
+                                                    Long.MAX_VALUE));
                         })
                 .run();
     }

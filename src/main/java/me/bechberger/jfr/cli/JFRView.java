@@ -301,7 +301,10 @@ public class JFRView {
         @Override
         public List<String> format(ReadStruct event, int rows) {
             var val = event.get(property);
-            return List.of(val != null ? String.valueOf(val) : "-");
+            if (val == null) return List.of("-");
+            if (val instanceof Number n)
+                return List.of(String.format(java.util.Locale.ROOT, "%,d", n.longValue()));
+            return List.of(String.valueOf(val));
         }
 
         @Override
@@ -334,6 +337,8 @@ public class JFRView {
             if (val instanceof Number n && n.longValue() == Integer.MIN_VALUE) {
                 return List.of("N/A");
             }
+            if (val instanceof Number n)
+                return List.of(String.format(java.util.Locale.ROOT, "%,d", n.longValue()));
             return List.of(String.valueOf(val));
         }
 
@@ -437,14 +442,6 @@ public class JFRView {
                 return List.of("-");
             }
             long hz = val instanceof Long ? (long) val : ((Number) val).longValue();
-            if (hz >= 1_000_000_000L) {
-                return List.of(
-                        String.format(java.util.Locale.ROOT, "%.2f GHz", hz / 1_000_000_000.0));
-            } else if (hz >= 1_000_000L) {
-                return List.of(String.format(java.util.Locale.ROOT, "%.2f MHz", hz / 1_000_000.0));
-            } else if (hz >= 1_000L) {
-                return List.of(String.format(java.util.Locale.ROOT, "%.2f kHz", hz / 1_000.0));
-            }
             return List.of(hz + " Hz");
         }
 
@@ -698,11 +695,16 @@ public class JFRView {
             var frames = val.<ReadStruct>getList("frames");
             return frames.stream()
                     .map(
-                            f ->
-                                    METHOD_COLUMN.format(f, 1).get(0)
-                                            + (f.hasField("lineNumber")
-                                                    ? (":" + f.get("lineNumber"))
-                                                    : ""))
+                            f -> {
+                                String m = METHOD_COLUMN.format(f, 1).get(0);
+                                if (f.hasField("lineNumber")) {
+                                    Object ln = f.get("lineNumber");
+                                    if (ln instanceof Number n && n.intValue() >= 0) {
+                                        m = m + ":" + n.intValue();
+                                    }
+                                }
+                                return m;
+                            })
                     .limit(rows)
                     .toList();
         }
