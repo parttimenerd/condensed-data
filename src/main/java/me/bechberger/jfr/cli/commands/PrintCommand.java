@@ -89,8 +89,8 @@ public class PrintCommand implements Callable<Integer> {
 
     @Option(
             names = {"--stack-depth"},
-            description = "Number of frames in stack traces (default: all)",
-            defaultValue = "-1")
+            description = "Number of frames in stack traces (default: 5)",
+            defaultValue = "5")
     private int stackDepth;
 
     @Option(
@@ -244,6 +244,9 @@ public class PrintCommand implements Callable<Integer> {
             if (seen != null) seen.add(typeName);
             printTextEvent(event);
         }
+        // Seed seen with all known type names (including 0-count types) so that we don't
+        // falsely warn about filters that match types that exist but have no events.
+        if (seen != null) seen.addAll(reader.getAllKnownTypeNames());
         if (seen != null) warnUnknownFilters(filterPatterns, seen);
     }
 
@@ -505,7 +508,7 @@ public class PrintCommand implements Callable<Integer> {
     private String listToJson(List<?> list, String indent) {
         if (list.isEmpty()) return "[]";
         StringBuilder sb = new StringBuilder("[");
-        int limit = stackDepth > 0 ? Math.min(stackDepth, list.size()) : list.size();
+        int limit = stackDepth >= 0 ? Math.min(stackDepth, list.size()) : list.size();
         for (int i = 0; i < limit; i++) {
             if (i == 0) {
                 sb.append(toJson(list.get(i), indent));
@@ -587,14 +590,19 @@ public class PrintCommand implements Callable<Integer> {
             long v = (long) n.doubleValue();
             boolean bits = desc.contains("BITS");
             if (exact) {
-                return v + (bits ? " bits/s" : " bytes/s");
+                if (bits) return v + (v >= -1 && v <= 1 ? " bit/s" : " bits/s");
+                return v + (v >= -1 && v <= 1 ? " byte/s" : " bytes/s");
             }
             if (bits) {
                 return ValueFormatter.formatBitrate(v);
             }
             String mem = ValueFormatter.formatMemory(v);
-            // oracle uses singular "byte/s" at zero, "KB/s"/"MB/s" etc. otherwise
-            return mem.equals("0 bytes") ? "0 byte/s" : mem + "/s";
+            // oracle uses "byte/s" (singular) when value stays at byte level; "kB/s", "MB/s" etc.
+            // otherwise
+            if (mem.endsWith(" bytes") || mem.endsWith(" byte")) {
+                return mem.replaceAll(" bytes?$", " byte") + "/s";
+            }
+            return mem + "/s";
         }
         if (desc != null && desc.contains("jdk.jfr.DataAmount")) {
             long v = ((Number) value).longValue();
@@ -602,7 +610,7 @@ public class PrintCommand implements Callable<Integer> {
             // YoungGenerationConfiguration.maxSize when ZGC has no young generation limit).
             if (v == Long.MIN_VALUE) return "N/A";
             if (exact) {
-                return v + " bytes";
+                return v + (v >= -1 && v <= 1 ? " byte" : " bytes");
             }
             return ValueFormatter.formatMemory(v);
         }
@@ -644,17 +652,16 @@ public class PrintCommand implements Callable<Integer> {
     }
 
     private String formatDuration(Duration d) {
-        // Duration.ofSeconds(Long.MAX/MIN_VALUE,...) cannot be passed to toNanos() (overflow).
-        // They are the "Forever" / "N/A" sentinels used by JFR @Timespan fields.
-        if (d.getSeconds() >= Long.MAX_VALUE - 1) return "Forever";
-        if (d.getSeconds() <= Long.MIN_VALUE + 1) return "N/A";
-        long nanos = d.toNanos();
-        if (nanos >= Long.MAX_VALUE - 1_000_000L) return "Forever";
-        if (nanos <= Long.MIN_VALUE + 1_000_000L) return "N/A";
+        // Duration.ofSeconds(Long.MAX/MIN_VALUE,...) are the "Forever"/"N/A" sentinels.
+        // These cannot be passed to toNanos() (overflow). Oracle preserves sentinel strings even
+        // in --exact mode. The sentinel check must use only getSeconds(), never toNanos().
+        boolean isForever = d.getSeconds() == Long.MAX_VALUE;
+        boolean isNA = d.getSeconds() == Long.MIN_VALUE;
+        if (isForever) return "Forever";
+        if (isNA) return "N/A";
         if (exact) {
-            // Oracle --exact: raw seconds as decimal with nanosecond precision
-            double secs = nanos / 1_000_000_000.0;
-            return String.format(Locale.ROOT, "%.9f s", secs);
+            // toNanos() overflows for durations with abs(seconds) ~9.2e9; compose via getSeconds().
+            return String.format(Locale.ROOT, "%d.%09d s", d.getSeconds(), d.getNano());
         }
         return ValueFormatter.formatTimespan(d);
     }
@@ -759,11 +766,14 @@ public class PrintCommand implements Callable<Integer> {
     private String formatClass(ReadStruct cls) {
         Object name = cls.get("name");
         String className = name != null ? decodeClassName(name.toString()) : "N/A";
-        ReadStruct loader = cls.hasField("classLoader") ? cls.getStruct("classLoader") : null;
+        if (!cls.hasField("classLoader")) return className;
+        ReadStruct loader = cls.getStruct("classLoader");
         if (loader != null) {
             return className + " (classLoader = " + formatClassLoader(loader) + ")";
         }
-        return className;
+        // null classLoader struct (anonymous/hidden class with no named loader) → oracle shows
+        // "null"
+        return className + " (classLoader = null)";
     }
 
     private String formatClassLoader(ReadStruct loader) {
@@ -862,16 +872,27 @@ public class PrintCommand implements Callable<Integer> {
             truncated = t instanceof Boolean b && b;
         }
 
-        int limit = maxDepth > 0 ? Math.min(maxDepth, frames.size()) : frames.size();
-        boolean showEllipsis = truncated || (maxDepth > 0 && frames.size() > maxDepth);
-
+        // Mirror oracle's PrettyWriter.printStackTrace() loop semantics:
+        // - iterate all frames (including hidden), tracking total index i and visible count
+        // - skip hidden/non-java frames without printing but still increment i
+        // - stop when visible count >= maxDepth (maxDepth=0: loop body never executes, i stays 0)
+        // - show "..." only when isTruncated OR i == maxDepth after the loop
+        //   (i == maxDepth means the first maxDepth total slots were all non-hidden;
+        //    when maxDepth=0, i=0=maxDepth so "..." always shown — matches oracle behavior)
+        // maxDepth < 0 means unlimited (show all frames, no "..." from depth limit)
         StringBuilder sb = new StringBuilder("[\n");
-        for (int i = 0; i < limit; i++) {
+        int visibleCount = 0;
+        int i = 0;
+        for (; i < frames.size(); i++) {
+            if (maxDepth >= 0 && visibleCount >= maxDepth) break;
             Object frameObj = frames.get(i);
             if (frameObj instanceof ReadStruct frame) {
+                if (isHiddenFrame(frame)) continue;
                 sb.append("    ").append(formatStackFrame(frame)).append("\n");
+                visibleCount++;
             }
         }
+        boolean showEllipsis = truncated || (maxDepth >= 0 && i == maxDepth);
         if (showEllipsis) {
             sb.append("    ...\n");
         }
@@ -879,10 +900,17 @@ public class PrintCommand implements Callable<Integer> {
         return sb.toString();
     }
 
+    private static boolean isHiddenFrame(ReadStruct frame) {
+        ReadStruct method = frame.hasField("method") ? frame.getStruct("method") : null;
+        if (method == null) return false;
+        Object hidden = method.hasField("hidden") ? method.get("hidden") : null;
+        return hidden instanceof Boolean b && b;
+    }
+
     private String formatListItems(List<?> list, boolean isStackTraceFrames) {
         if (list.isEmpty()) return "[]";
         int limit =
-                (!isStackTraceFrames && stackDepth > 0)
+                (!isStackTraceFrames && stackDepth >= 0)
                         ? Math.min(stackDepth, list.size())
                         : list.size();
         StringBuilder sb = new StringBuilder("[");

@@ -130,6 +130,16 @@ public final class NativeView {
             var evaluator = new QueryEvaluator(query, typeLabels);
             var rows = evaluator.evaluate(eventsByType);
             String title = def.label() != null ? def.label() : viewName;
+            // jfr appends "(Experimental)" to the view title when any source event type carries the
+            // @jdk.jfr.Experimental annotation (mirroring TableRenderer.isExperimental()).
+            boolean experimental =
+                    eventsByType.values().stream()
+                            .flatMap(java.util.Collection::stream)
+                            .anyMatch(
+                                    e ->
+                                            FieldResolver.typeIsExperimental(
+                                                    e.getType().getDescription()));
+            if (experimental) title += " (Experimental)";
             // jfr prints a single "No events found" line (not an empty table) when nothing matched.
             if (rows.isEmpty()) {
                 return Optional.of(List.of("", "No events found for '" + title + "'."));

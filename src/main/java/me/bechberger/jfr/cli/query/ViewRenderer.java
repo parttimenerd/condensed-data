@@ -430,10 +430,7 @@ final class ViewRenderer {
         String ell = "...";
         int keep = Math.max(0, capacity - ell.length());
         boolean tb = truncateBeginning || colTruncateBeginning;
-        String kept =
-                tb
-                        ? ell + s.substring(s.length() - keep)
-                        : s.substring(0, keep) + ell;
+        String kept = tb ? ell + s.substring(s.length() - keep) : s.substring(0, keep) + ell;
         return hardWrap(kept, width);
     }
 
@@ -491,11 +488,11 @@ final class ViewRenderer {
     }
 
     /**
-     * If {@code s} looks like a fully-qualified Java method signature
-     * ("pkg.Class.method(Param, ...)"), return the compact form "pkg.Class.method(...)", else null.
-     * Oracle does this when a method cell is too wide for its column — it calls formatCompact(),
-     * which replaces the parameter list with "..." (but keeps the empty-parens form when there are
-     * no parameters, matching oracle's isEmpty() check).
+     * If {@code s} looks like a fully-qualified Java method signature ("pkg.Class.method(Param,
+     * ...)"), return the compact form "pkg.Class.method(...)", else null. Oracle does this when a
+     * method cell is too wide for its column — it calls formatCompact(), which replaces the
+     * parameter list with "..." (but keeps the empty-parens form when there are no parameters,
+     * matching oracle's isEmpty() check).
      */
     private static String compactMethod(String s) {
         int open = s.lastIndexOf('(');
@@ -511,18 +508,41 @@ final class ViewRenderer {
     }
 
     /**
-     * If {@code s} looks like a Java class name (no spaces, no parentheses, contains a dot),
-     * return the simple class name (everything after the last dot), else null. Oracle uses this
-     * when a class-typed cell exceeds its column width, e.g. showing "TypedFieldValueImpl"
-     * instead of "org.openjdk.jmc.flightrecorder.writer.TypedFieldValueImpl", or "539690370"
-     * for a hidden-class ID like "...$$Lambda$N+0x...HEX.539690370".
+     * If {@code s} looks like a Java class name (no spaces, no parentheses, contains a dot), return
+     * the simple class name (everything after the last dot), else null. Oracle uses this when a
+     * class-typed cell exceeds its column width, e.g. showing "TypedFieldValueImpl" instead of
+     * "org.openjdk.jmc.flightrecorder.writer.TypedFieldValueImpl", or "539690370" for a
+     * hidden-class ID like "...$$Lambda$N+0x...HEX.539690370".
+     *
+     * <p>Rejects anything that is not a Java-style dotted identifier (e.g. file paths starting with
+     * {@code /} or {@code ~}, URLs, etc.), to avoid mangling path values in views like
+     * environment-variables or system-processes.
      */
     private static String compactClass(String s) {
         if (s.isEmpty()) return null;
         // Exclude methods (already handled by compactMethod) and anything with spaces.
         if (s.contains("(") || s.contains(")") || s.contains(" ")) return null;
+        // Reject paths and URLs: must not start with /, ~, or contain path separators.
+        if (s.startsWith("/") || s.startsWith("~") || s.contains("/") || s.contains("\\")) {
+            return null;
+        }
         int lastDot = s.lastIndexOf('.');
         if (lastDot < 0 || lastDot == s.length() - 1) return null;
+        // Require at least 2 dots total (3+ segments), so simple dotted words like "file.log"
+        // don't match — real Java class names always have at least one package level.
+        if (s.indexOf('.') == lastDot) return null; // only one dot
+        // Every dot-separated segment except the last must be a valid Java identifier
+        // (starts with letter/$/_).  All-digit or hyphenated segments like "56426642" or
+        // "33E8D0D7-2465" indicate this is not a Java class name (e.g. XPC_SERVICE_NAME).
+        // We don't check the last segment because it can be a numeric hidden-class ID.
+        // Hidden class names (containing "+0x") pass because the letter-start check for
+        // the segments-before-dot still succeeds (e.g. "OuterClass$$Lambda$257+0x...").
+        String prefix = s.substring(0, lastDot);
+        for (String part : prefix.split("\\.", -1)) {
+            if (part.isEmpty()) return null;
+            char first = part.charAt(0);
+            if (!Character.isLetter(first) && first != '$' && first != '_') return null;
+        }
         return s.substring(lastDot + 1);
     }
 

@@ -71,14 +71,6 @@ public class JFREventDeduplication extends EventDeduplication {
                 e -> stableKey(e, "exportedPackage") + "|" + stableKey(e, "targetModule"),
                 (a, b) -> true);
 
-        // SystemProcess can repeat per chunk with same content
-        put("jdk.SystemProcess", "pid", "commandLine");
-        put("jdk.NativeLibraryLoad", "name", "success");
-
-        // Hardware/OS constants — value is fixed for the machine.
-        putSingleton("jdk.PhysicalMemory");
-        putSingleton("jdk.SwapSpace");
-
         // Agent events: endChunk, identical across chunks
         put("jdk.JavaAgent", "name", "options", "dynamic");
         put("jdk.NativeAgent", "name", "options", "dynamic", "path");
@@ -154,6 +146,18 @@ public class JFREventDeduplication extends EventDeduplication {
 
         // NativeLibrary is periodic (everyChunk), dedup by name+addresses if unchanged
         put("jdk.NativeLibrary", "name", "baseAddress", "topAddress");
+
+        // NativeLibraryLoad is a lifecycle event that can repeat (same library tried multiple
+        // times, e.g. failed load retries). Dedup by (name, success) only for non-lossless.
+        put("jdk.NativeLibraryLoad", "name", "success");
+
+        // SystemProcess is emitted at each chunk boundary (snapshot of all running processes).
+        // Dedup by (pid, commandLine) for non-lossless only.
+        put("jdk.SystemProcess", "pid", "commandLine");
+
+        // PhysicalMemory and SwapSpace are periodic: usedSize changes per chunk.
+        putSingleton("jdk.PhysicalMemory");
+        putSingleton("jdk.SwapSpace");
 
         // Singleton periodic events (one value per chunk, dedup if unchanged)
         putSingleton("jdk.GCConfiguration");

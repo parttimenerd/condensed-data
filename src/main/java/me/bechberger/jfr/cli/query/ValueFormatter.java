@@ -345,13 +345,8 @@ public final class ValueFormatter {
         String cls = type != null ? className(type) : "";
         Object name = method.get("name");
         Object descriptor = method.hasField("descriptor") ? method.get("descriptor") : null;
-        // jfr view abbreviates lambda method params to "(...)" — the auto-generated arg types
-        // add no useful information and produce very wide cells.
         String nameStr = name != null ? name.toString() : "";
-        String params =
-                nameStr.contains("lambda$")
-                        ? "..."
-                        : (descriptor != null ? decodeParams(descriptor.toString()) : "");
+        String params = descriptor != null ? decodeParams(descriptor.toString()) : "";
         return cls + "." + nameStr + "(" + params + ")";
     }
 

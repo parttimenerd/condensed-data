@@ -537,6 +537,22 @@ public class CombiningJFRReader implements JFRReader {
         return result;
     }
 
+    /** Returns all event type names defined in the underlying streams (including 0-count types). */
+    public Set<String> getAllKnownTypeNames() {
+        Set<String> names = new HashSet<>();
+        for (var r : readers) {
+            r.reader()
+                    .getInputStream()
+                    .getTypeCollection()
+                    .getTypes()
+                    .forEach(
+                            t -> {
+                                if (t.getName() != null) names.add(t.getName());
+                            });
+        }
+        return names;
+    }
+
     @Override
     public CondensedInputStream getInputStream() {
         if (currentReader != null) {

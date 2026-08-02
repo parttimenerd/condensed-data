@@ -2723,3 +2723,23 @@ On `.jfr` input: cjfr evaluates `safepoints` natively (correctly returns 31 rows
 
 **Status:** Fixed (same fix as Bug 389).
 
+
+## Bug 392: `compactClass` incorrectly stripped non-Java-class dotted strings (paths, UUIDs)
+
+**Symptom:** `cjfr view environment-variables` showed `log` instead of the full path `/Users/.../restarter.log` for `IJ_RESTARTER_LOG`, and `33E8D0D7-2465-40C9-8F73-502205B012A9` instead of the full value for `XPC_SERVICE_NAME`. `cjfr view system-processes` showed `app/Contents/MacOS/BambuStudio` instead of oracle's `...ambuStudio.app/Contents/MacOS/BambuStudio`.
+
+**Root cause:** The `compactClass` method added in Bug 389/391 was too aggressive: it fired on any string with a `.` that had no spaces or parentheses, including file paths and dotted UUIDs. Paths starting with `/` like `/Users/foo/bar.log` were stripped to `log`; `application.com.jetbrains.56426642.UUID` was stripped to `UUID`.
+
+**Fix:** Added guards to `compactClass`: (1) reject strings containing `/` or `\` (paths); (2) require at least 2 dots (so `file.log` doesn't match); (3) require all non-last dot-delimited segments to start with a letter, `$`, or `_` (so all-digit segments like `56426642` in UUIDs/PIDs are rejected).
+
+**Status:** Fixed.
+
+## Bug 393: `cjfr print --events <zero-count-type>` prints spurious warning
+
+**Symptom:** `cjfr print --events jdk.ObjectAllocationOutsideTLAB file.cjfr` emits `Warning: No events found matching filter: jdk.ObjectAllocationOutsideTLAB` even though the event type is valid and defined in the recording — it just has 0 events. Oracle `jfr print` prints nothing (no warning) for event types that exist but have 0 events.
+
+**Root cause:** `PrintCommand.warnUnknownFilters()` seeds its `seen` set only from events actually read. A filter for a 0-count event type never matches a read event, so it's never added to `seen`, triggering the false warning.
+
+**Fix:** After reading all events, additionally seed `seen` with all type names from the stream's `TypeCollection` (via new `CombiningJFRReader.getAllKnownTypeNames()`). This includes types registered in the stream even if they have 0 events, suppressing false warnings while still warning for truly unknown type names.
+
+**Status:** Fixed.

@@ -182,6 +182,14 @@ final class FieldResolver {
     }
 
     /**
+     * Returns true if the condensed type description carries a {@code @jdk.jfr.Experimental}
+     * annotation (stored as a JSON string in the third element of the description array).
+     */
+    static boolean typeIsExperimental(String description) {
+        return description != null && description.contains("jdk.jfr.Experimental");
+    }
+
+    /**
      * Extract the human label from a condensed type description. The description is a JSON array
      * {@code ["label", "description"]}; we pull the first element. Falls back to the type name if
      * the description is absent or not in that shape.
