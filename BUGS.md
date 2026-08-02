@@ -2846,3 +2846,15 @@ The Bug 398 fix was specifically for `vm-operations` where natural content width
 - jvm-flags: `used = 153 > termWidth = 80` → guard does not fire → falls into shrink branch → Name=39, Value=39 ✓
 
 **Status:** Fixed. jvm-flags: only locale diffs remain (number format `.` vs `,`).
+
+## Bug 402: `cjfr view events-by-name/events-by-count` missing `(Experimental)` suffix in title
+
+**Symptom:** `cjfr view events-by-name` and `cjfr view events-by-count` displayed the plain title `Event Types by Name` instead of oracle's `Event Types by Name (Experimental)`. Any FROM-* view (all-event-types query) should append `(Experimental)` to the title when the recording contains experimental event types (those annotated with `@jdk.jfr.Experimental`).
+
+**Root cause:** `NativeView.render()` checks `typeIsExperimental(e.getType().getDescription())` for each event in the `eventsByType` map. For combined event types (e.g. `jdk.GCPhaseParallel` → combined as `jdk.combined.GCPhaseParallel`), the combiner's `createCombinedStateType` created the `StructType` with an empty description (`StructType(id, typeName, fields)`). So even though `jdk.GCPhaseParallel` is `@Experimental`, the description of the stored combined type contained no `jdk.jfr.Experimental` string, and `typeIsExperimental` returned false.
+
+**Fix:** In `JFREventCombiner.createCombinedStateType`, pass the original event type's description (via `basicJFRWriter.getEventDescription(eventType)`) to the `StructType` constructor instead of using the no-description variant. The description is now stored in the cjfr stream as part of the combined type's metadata, so on inflate/read the reconstituted events carry the original `@Experimental` (and other type-level) annotations in their `ReadStruct.getType().getDescription()`.
+
+The `profile.cjfr` and `profile_lossless.cjfr` test fixtures were regenerated to include the new description bytes.
+
+**Status:** Fixed. events-by-name and events-by-count: `(Experimental)` suffix now matches oracle.

@@ -428,7 +428,9 @@ public class JFREventCombiner extends EventCombiner {
                                             JFRObjectState::map)));
             fields.addAll(getAdditionalFields(eventType));
 
-            return out.writeAndStoreType(id -> new StructType<>(id, typeName, fields));
+            String eventDesc = basicJFRWriter.getEventDescription(eventType);
+            return out.writeAndStoreType(
+                    id -> new StructType<>(id, typeName, eventDesc, fields, r -> (S) r));
         }
 
         @Override
