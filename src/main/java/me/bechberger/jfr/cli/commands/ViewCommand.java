@@ -66,10 +66,10 @@ public class ViewCommand implements Callable<Integer> {
     // delegation path omits --width so `jfr view` uses its own per-view default.
     @Option(
             names = "--width",
-            description = "Total table width in characters (10-1000). Default: 160.")
+            description = "Total table width in characters (10-1000). Default: 80.")
     private int width = -1;
 
-    private static final int DEFAULT_WIDTH = 160;
+    private static final int DEFAULT_WIDTH = 80;
 
     private int effectiveWidth() {
         return width == -1 ? DEFAULT_WIDTH : width;

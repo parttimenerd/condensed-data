@@ -2524,3 +2524,202 @@ correct for ns precision and merely over-inclusive under ms quantization.
 **Fix:** Removed the trailing-comma append. Oracle simply shows the top N frames without any trailing marker; `"truncated"` on the stackTrace struct conveys whether frames were omitted.
 
 **Status:** Fixed.
+
+## Bug 373: `cjfr view class-loaders` collapses multiple `DelegatingClassLoader` instances into one row
+
+**Symptom:** `cjfr view class-loaders` shows one row for `jdk.internal.reflect.DelegatingClassLoader` while oracle `jfr view class-loaders` shows 21 distinct rows (one per unique ClassLoader instance).
+
+**Root cause:** The `class-loaders` view uses `GROUP BY classLoader`. Oracle groups by pool-object identity — each `DelegatingClassLoader` instance in the JFR file has a unique constant-pool slot (ids 4, 6, 10, 11, 13, 15, 16, 18, 19, 20, 21, …), so 21 distinct groups form. cjfr deduplicates identical ClassLoader structs (same type, null name) into a single pool entry during condensation, so all `DelegatingClassLoader` events reference the same `ReadStruct` object (pool id = 2). The `canonicalKey` method formats them to the same display string, collapsing all 21 groups into 1.
+
+**Impact:** `class-loaders` view understates the number of distinct classloader instances when multiple instances of the same ClassLoader type (with null name) exist in the recording.
+
+**Fix:** Would require preserving per-instance classloader identity through the condense pipeline (e.g., storing original JFR pool IDs for ClassLoader structs rather than deduplicating by value). Non-trivial format change; same root cause as Bug 345 (classLoader ID renumbering in `print`).
+
+**Status:** Known limitation (structural: classloader pool deduplication collapses instances with identical type+name).
+
+## Bug 374: `cjfr view` renders lambda method parameters as `(...)` instead of decoded types
+
+**Symptom:** `cjfr view allocation-by-site` (and other views showing stack frame methods) renders lambda methods as `lambda$export$0(...)` while oracle renders the actual decoded parameter types: `lambda$export$0(byte[][], ByteBuffer)`.
+
+**Root cause:** `ValueFormatter.formatMethod()` had a `nameStr.contains("lambda$")` branch that unconditionally replaced params with `"..."`. This was modelled after oracle's `ValueFormatter.formatMethod(m, compact=true)` compact rendering (which abbreviates to `"..."`). However, oracle's view table uses `FieldFormatter.format()` (not `formatCompact()`), which passes `compact=false` — displaying full decoded params. The compact form is only used as a fallback when text is wider than its column.
+
+**Fix:** Removed the `lambda$` special-case in `ValueFormatter.formatMethod`; all methods (including lambdas) now use the decoded descriptor parameter list.
+
+**Status:** Fixed.
+
+## Bug 375: `cjfr view events-by-count`/`events-by-name` missing `(Experimental)` suffix on `.cjfr` files
+
+**Symptom:** `cjfr view events-by-count recording.cjfr` renders `Event Types by Count` but oracle renders `Event Types by Count (Experimental)`. The `(Experimental)` suffix appears in oracle's output because the JFR recording contains experimental event types (e.g. `jdk.Flush`, `jdk.ZStatisticsCounter`) even though they have 0 events.
+
+**Root cause:** `events-by-count` and `events-by-name` use `FROM *` queries which cjfr cannot evaluate natively — they fall through to oracle `jfr view` via inflation. When inflating a `.cjfr` file, event types with 0 events are written as minimal stubs (3 fields, no annotations). The inflated `.jfr`'s stub types lack the `@Experimental` annotation, so oracle's `isExperimental()` check does not fire.
+
+For `.jfr` inputs, cjfr correctly delegates to oracle `jfr view` directly (no inflation), so the result matches oracle exactly.
+
+**Fix:** Preserve full event type schema (field definitions + annotations) in `.cjfr` for all event types, including zero-event ones. Requires storing zero-event type registrations in the `.cjfr` format. Non-trivial format change.
+
+**Status:** Known limitation (structural: zero-event type schemas not stored in `.cjfr`).
+
+## Bug 376: `cjfr view safepoints` fails on `.cjfr` files ("Missing event found")
+
+**Symptom:** `cjfr view safepoints recording.cjfr` produces "Missing event found for safepoints", while oracle `jfr view safepoints recording.jfr` shows a full table with 31 rows (all showing `Indefinite` duration). The view works correctly on `.jfr` input files with cjfr.
+
+**Root cause:** `safepoints` uses a correlated join on `SafepointBegin`, `SafepointEnd`, and `SafepointStateSynchronization`. The latter two have 0 events. When inflating `.cjfr` to `.jfr` for oracle delegation, zero-event types are written as minimal stubs without their actual fields (e.g. `SafepointStateSynchronization` loses its `duration` field). Oracle then reports "Can't find field named 'S.duration'" and fails.
+
+On `.jfr` input: cjfr evaluates `safepoints` natively (correctly returns 31 rows with `Indefinite` duration), and oracle `jfr view` also works since the original type definitions are intact.
+
+**Fix:** Same root cause as Bug 375 — requires preserving full type schema for zero-event types in `.cjfr` inflation.
+
+**Status:** Known limitation (structural: zero-event type schemas not stored in `.cjfr`; only affects `.cjfr` input, not `.jfr`).
+
+## Bug 377: `cjfr view system-processes` truncates Command Line from end instead of beginning
+
+**Symptom:** `cjfr view system-processes recording.cjfr` truncates long command line paths from the end (e.g. `"/Applications/Adobe Acrobat DC/Adobe Acrobat.app/Contents/Helpers/AdobeResourceSynchronizer.app/Contents/MacOS/Adobe..."`) instead of from the beginning (e.g. `"...Adobe Acrobat DC/Adobe Acrobat.app/Contents/Helpers/AdobeResourceSynchronizer.app/Contents/MacOS/AdobeResourceSynchronizer"`). Oracle uses beginning truncation for this column to show the most-specific (rightmost) part of the path.
+
+**Root cause:** `ViewRenderer.wrapCell()` used only the global `--truncate` CLI flag (`this.truncateBeginning`) and ignored per-column `FORMAT truncate-beginning` hints from `view.ini`. The `system-processes` Command Line column carries a `FORMAT truncate-beginning` hint in the on-system `view.ini`.
+
+**Fix:** Added `truncateBeginningFor(int col)` method (parallel to `shrinkable`/`normalizedFor`) that checks for a `truncate-beginning` FORMAT hint on the column. Updated `wrapCell` signature to accept `boolean colTruncateBeginning` and updated `truncateLines` similarly; both methods combine `truncateBeginning || colTruncateBeginning` for the direction decision.
+
+**Status:** Fixed.
+
+## Bug 378: `cjfr view hot-methods`/`memory-leaks-by-site` shows full method params when oracle truncates to `(...)`
+
+**Symptom:** When a method signature is too wide for its table column, oracle renders `ClassName.methodName(...)` (compact form) but cjfr renders the full signature truncated with trailing `...` (e.g. `lambda$toTypedValue$0(ReadStruct, WritingJFRReader$ReadStructPath...`). Affects any view where a method column is narrower than some method signatures.
+
+**Root cause:** Oracle's `TableRenderer.setCellContent()` detects when a formatted cell string exceeds the column width and calls `FieldFormatter.formatCompact()` which renders methods as `class.method(...)`. Our `ViewRenderer` had no equivalent: it passed the full string directly to `wrapCell()` which did end-truncation with `...` rather than compact method form.
+
+**Fix:** After `distributeFlexibleWidth()` finalizes column widths, scan all cells: if a cell's string exceeds its column width and `compactMethod()` produces a shorter result (strips params to `(...)`), apply the compact form. `compactMethod()` pattern-matches on the last `(.+)` suffix of fully-qualified method signatures.
+
+**Status:** Fixed.
+
+## Bug 379: `cjfr print` includes hidden lambda frames that oracle `jfr print` skips
+
+**Symptom:** `cjfr print` text output includes extra stack frames for synthetic lambda-generated classes (e.g., `me.bechberger.jfr.CombiningJFRReader$$Lambda$104+0x...`) that oracle `jfr print` omits.
+
+**Root cause:** In the raw JFR data, some stack frames have `method.hidden = true` indicating they are JVM-synthesized lambda dispatch frames. Oracle's `jfr print` (text mode) skips these hidden frames. cjfr's `formatStackTrace()` iterated all frames unconditionally.
+
+**Fix:** Added `isHiddenFrame(ReadStruct frame)` helper that reads `frame.method.hidden`; `formatStackTrace()` skips frames where it returns true. JSON output is unaffected (oracle also keeps hidden frames in `--json` mode).
+
+**Status:** Fixed.
+
+## Bug 380: `cjfr condense --preset lossless` drops repeated `jdk.NativeLibraryLoad` events
+
+**Symptom:** With lossless preset, if a native library load attempt is made multiple times in a recording (e.g., same library retried after failure), only the first `(name, success)` pair survives. For a benchmark recording with 116 `NativeLibraryLoad` events, lossless condense kept only 18 (98 events dropped).
+
+**Root cause:** `JFREventDeduplication` registered `NativeLibraryLoad` dedup by `(name, success)` in the block that runs for ALL presets including lossless, treating it like a static event. However, `NativeLibraryLoad` is a lifecycle event that can legitimately repeat multiple times (same library load retried, e.g. in Hadoop's classpath search), so deduping it is lossy.
+
+**Fix:** Moved `NativeLibraryLoad` dedup from the always-on block to `registerPeriodicTimeSeries()` (non-lossless only).
+
+**Status:** Fixed.
+
+## Bug 381: `cjfr condense --preset lossless` drops chunk-repeated `jdk.SystemProcess` events
+
+**Symptom:** With lossless preset, `jdk.SystemProcess` events (periodic per-chunk snapshot of all running processes) are deduplicated by `(pid, commandLine)`. For a 3-chunk recording with 2778 events and 1032 unique processes, only 1032 events survive (1746 dropped).
+
+**Root cause:** Same as Bug 380 — `SystemProcess` dedup was registered in the always-on block (not lossless-guarded). Like `NetworkUtilization` and other periodic events, `SystemProcess` is emitted at each chunk boundary; the same process appears in each snapshot. Lossless mode should preserve every distinct-timestamp observation.
+
+**Fix:** Moved `SystemProcess` dedup to `registerPeriodicTimeSeries()` (non-lossless only), matching the treatment of other periodic chunk events.
+
+**Status:** Fixed.
+
+## Bug 382: `cjfr condense --preset lossless` drops `jdk.PhysicalMemory`/`jdk.SwapSpace` when `usedSize` unchanged between chunks
+
+**Symptom:** With lossless preset, `PhysicalMemory` and `SwapSpace` events that share the same `usedSize` value as the previous chunk event are dropped. For a 6-chunk recording, lossless condense kept 5 events (1 dropped because two consecutive chunks had the same used memory).
+
+**Root cause:** `PhysicalMemory` and `SwapSpace` used `putSingleton` in the always-on block, with a comment calling them "hardware/OS constants". While `totalSize` is constant, `usedSize` changes per chunk. `putSingleton` dedupes when all non-timestamp fields match — two consecutive equal snapshots merge into one.
+
+**Fix:** Moved both to `registerPeriodicTimeSeries()` so lossless mode preserves every distinct-timestamp observation.
+
+**Status:** Fixed.
+
+## Bug 383: `cjfr print` default stack depth is unlimited; oracle defaults to 5 frames
+
+**Symptom:** `cjfr print` with no `--stack-depth` option prints all stack frames (e.g., 25–59 frames per event), while oracle `jfr print` defaults to 5 visible frames and shows `...` for truncated traces. For `jdk.ExecutionSample` on a benchmark recording, oracle shows `...` in 23957/27289 events; cjfr (before fix) showed `...` in only 5845 (only events flagged `truncated=true` in the raw recording).
+
+**Root cause (part 1):** `PrintCommand.java`'s `--stack-depth` option had `defaultValue = "-1"` (unlimited) instead of `"5"`. Oracle `jfr print` initialises `stackDepth = 5` (confirmed via `javap` on `Print.class`: `iconst_5; istore 5`).
+
+**Root cause (part 2):** `formatStackTrace()` showed `...` only when the `truncated` flag was set or when visible frames were still remaining after exhausting the frame list. Oracle's `PrettyWriter.printStackTrace()` uses a different rule (confirmed via `javap` on `PrettyWriter.class`): iterate all frames tracking total index `i` and visible count separately; skip hidden/non-Java frames without counting them; show `...` when `isTruncated() || i == stackDepth` (total-index equals stack depth). This means if hidden frames appear in the first `stackDepth` slots, `i > stackDepth` when the visible limit is hit and oracle does NOT show `...`.
+
+**Fix:** Changed `defaultValue` to `"5"`. Rewrote `formatStackTrace` to mirror oracle's exact loop: advance `i` for every frame (including hidden), increment `visibleCount` only for non-hidden frames, break when `visibleCount >= maxDepth`, then `showEllipsis = truncated || (maxDepth > 0 && i == maxDepth)`.
+
+**Status:** Fixed.
+
+## Bug 384: `cjfr print --stack-depth 0` shows all frames instead of suppressing all
+
+**Symptom:** `cjfr print --stack-depth 0` prints full stack traces (all frames, no `...`). Oracle `jfr print --stack-depth 0` shows zero frames with `...` for every event that has a stack trace.
+
+**Root cause:** `formatStackTrace()` checked `maxDepth > 0` before breaking the frame loop and before deciding to show `...`. When `maxDepth=0`, the condition was always false so the loop ran unconditionally and `showEllipsis` was always false (unless `truncated=true`). Same incorrect guard `stackDepth > 0` appeared in `listToJson()` (JSON frames) and `formatListItems()` (non-stack lists). Oracle's `PrettyWriter` loop condition is `count < stackDepth`; when `stackDepth=0`, `0 < 0` is false so the loop body never executes and `i == stackDepth == 0` triggers `...`.
+
+**Fix:** Changed all three guards from `> 0` to `>= 0`, making `0` a valid limit (show nothing). `maxDepth < 0` remains the unlimited sentinel (all frames, never depth-triggered `...`).
+
+**Status:** Fixed.
+
+## Bug 385: `cjfr print --exact` renders `0 bytes` and `0 bytes/s` instead of `0 byte` and `0 byte/s`
+
+**Symptom:** In `--exact` mode, `@DataAmount` fields render as `0 bytes` and data-rate fields render as `0 bytes/s`. Oracle renders these as `0 byte` (singular) and `0 byte/s`. Oracle also uses singular `1 byte` for exactly-1-byte values and `-1 byte` for the sentinel -1.
+
+**Root cause:** `PrintCommand.formatValue()` used `v + " bytes"` unconditionally for exact `@DataAmount` values, and `v + " bytes/s"` for exact data-rate values, without applying the oracle singular rule: singular when -1 ≤ v ≤ 1, plural otherwise.
+
+**Fix:** Also fixed `bits/s` data-rate fields (`readRate`, `writeRate`) which had the same issue: `0 bits/s` → `0 bit/s`. Changed all affected code paths to use `v >= -1 && v <= 1 ? " byte" : " bytes"` (and `" byte/s"` / `" bytes/s"` respectively) to match oracle's singular/plural boundary.
+
+**Status:** Fixed.
+
+## Bug 386: `cjfr print` shows `738 bytes/s` instead of `738 byte/s` for sub-kB data rates
+
+**Symptom:** In non-exact mode, byte-level data rates (combined `@DataAmount + @Frequency` fields like `recentAllocationRate`) render as `X bytes/s` when the value is at the byte level (< 1 KB/s). Oracle renders these as `X byte/s` (singular "byte" at the byte scale, e.g., `738 byte/s`).
+
+**Root cause:** The code used `mem + "/s"` where `mem` was the output of `formatMemory(v)` (which returns `"738 bytes"`). Only the zero case was special-cased to use `"0 byte/s"`. Oracle consistently uses singular `byte/s` for all byte-level rates.
+
+**Fix:** Changed the byte-rate path to strip the trailing `"s"` from the "bytes" unit when constructing the rate string: any memory value ending in `" bytes"` or `" byte"` is converted to `" byte/s"`.
+
+**Status:** Fixed.
+
+## Bug 387: `cjfr print --exact` shows raw nanosecond number instead of `N/A`/`Forever` for duration sentinels
+
+**Symptom:** In `--exact` mode, duration fields with `Long.MIN_VALUE` (the "N/A" sentinel, e.g. `jdk.ThreadPark.timeout` with no-timeout park) show as a large negative number (`-9223372036854776000.000000000 s`). Oracle shows `N/A`. Similarly, `Long.MAX_VALUE` (the "Forever" sentinel) must show `Forever`, which oracle preserves in exact mode.
+
+**Root cause:** `formatDuration()` checked the `exact` flag before the sentinel checks, so `isForever` / `isNA` were evaluated but the raw decimal path ran first, producing nonsensical large numbers. The oracle retains the sentinel substitution (`N/A` and `Forever`) even in `--exact` mode — only "real" durations get the raw-seconds treatment.
+
+**Fix:** Moved the sentinel checks (`isForever` → `"Forever"`, `isNA` → `"N/A"`) before the `exact` branch. Sentinel values return their substitution strings unconditionally; only non-sentinel durations proceed to the exact raw-seconds formatter.
+
+**Status:** Fixed.
+
+## Bug 388: `cjfr print` omits `(classLoader = null)` for anonymous/hidden class types
+
+**Symptom:** For hidden classes (e.g. `java.lang.String$$StringConcat.0x00003ff801148400`), oracle shows `(classLoader = null)` but cjfr omits the classLoader suffix entirely.
+
+**Root cause:** `PrintCommand.formatClass()` checked `if (loader != null)` before appending the classLoader suffix. For anonymous/hidden classes, the classLoader struct is stored as a null pool reference — `cls.hasField("classLoader")` is `true` but `cls.getStruct("classLoader")` returns `null`. The null-guard skipped the suffix entirely. Oracle shows `(classLoader = null)` in this case.
+
+**Fix:** Changed `formatClass()` to separate the "field exists" check from the "field is null" check. When `hasField("classLoader")` is true but `getStruct("classLoader")` returns null, emit `(classLoader = null)` to match oracle's behavior.
+
+**Status:** Fixed.
+
+## Bug 389: `cjfr view allocation-by-class` shows full hidden-class name instead of numeric ID
+
+**Symptom:** For hidden/lambda classes like `java.util.stream.Collectors$$Lambda$127+0x000000c8010dc040.539690370`, oracle `jfr view allocation-by-class` shows just `539690370` (the numeric ID suffix), but cjfr shows the full truncated name `org.openjdk.jmc.flightrecorder.writer.ConstantPool$$Lamb...`.
+
+**Root cause:** `ViewRenderer` had a `compactMethod` fallback for oversized cells (replacing parameter lists with `(...)`) but no equivalent for class names. When a class-type cell exceeds the column width, oracle strips to the simple class name (everything after the last `.`).
+
+**Fix:** Added `compactClass(String s)` to `ViewRenderer`: for strings with no spaces or parentheses (class-name-shaped), extract the last dot-delimited component. Applied alongside `compactMethod` in the per-cell compact-formatting pass.
+
+**Status:** Fixed.
+
+## Bug 390: `cjfr view` default width is 160 instead of oracle's 80
+
+**Symptom:** `cjfr view gc profile.jfr` (no `--width`) produces 159-char-wide tables while oracle produces 82-char-wide tables on an 80-column terminal.
+
+**Root cause:** `ViewCommand.DEFAULT_WIDTH = 160` hardcoded. Oracle uses the actual terminal width (80 when no TTY), so the default should match.
+
+**Fix:** Changed `DEFAULT_WIDTH = 80` and updated the `--width` description. Updated tests that previously relied on the 160-wide default to explicitly pass `--width 160`.
+
+**Status:** Fixed.
+
+## Bug 391: `cjfr view memory-leaks-by-class` truncates class names with `...` instead of simple name
+
+**Symptom:** At width 80, oracle shows `TypedFieldValueImpl` for `org.openjdk.jmc.flightrecorder.writer.TypedFieldValueImpl` in the Object Class column, while cjfr shows `org.openjdk.jmc.flightrecorder.writer.Type...`.
+
+**Root cause:** Same as Bug 389 — `ViewRenderer` lacked `compactClass` fallback for class-name cells that exceed the column width.
+
+**Fix:** Same fix as Bug 389 (`compactClass` method in `ViewRenderer`).
+
+**Status:** Fixed (same fix as Bug 389).
+

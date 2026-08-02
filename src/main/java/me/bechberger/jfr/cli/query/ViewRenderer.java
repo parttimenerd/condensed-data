@@ -328,6 +328,25 @@ final class ViewRenderer {
         }
         distributeFlexibleWidth(widths);
 
+        // After widths are finalized: compact-format any method/frame cells that exceed
+        // their column width. Oracle's TableRenderer does the same: when a formatted
+        // method string is longer than the column, it falls back to formatCompact() which
+        // renders "ClassName.methodName(...)" — hiding the parameter types. For class-name
+        // cells (no parens, only dots/dollars/brackets) oracle uses the simple class name
+        // (everything after the last dot), e.g. "TypedFieldValueImpl" or "539690370".
+        for (int r = 0; r < rows.size(); r++) {
+            for (int c = 0; c < nCols; c++) {
+                String cell = cells[r][c];
+                if (cell.length() > widths[c]) {
+                    String compact = compactMethod(cell);
+                    if (compact == null) compact = compactClass(cell);
+                    if (compact != null && compact.length() < cell.length()) {
+                        cells[r][c] = compact;
+                    }
+                }
+            }
+        }
+
         List<String> out = new ArrayList<>();
         int totalWidth = 0;
         for (int c = 0; c < nCols; c++) totalWidth += widths[c];
@@ -357,7 +376,7 @@ final class ViewRenderer {
         List<List<String>> chunks = new ArrayList<>(nCols);
         int lineCount = 1;
         for (int c = 0; c < nCols; c++) {
-            chunks.add(wrapCell(cells[c], widths[c], cellHeightFor(c)));
+            chunks.add(wrapCell(cells[c], widths[c], cellHeightFor(c), truncateBeginningFor(c)));
             lineCount = Math.max(lineCount, chunks.get(c).size());
         }
         List<String> out = new ArrayList<>(lineCount);
@@ -389,7 +408,7 @@ final class ViewRenderer {
      * is hard-wrapped independently; the resulting lines are concatenated and then truncated to
      * {@code maxLines} as a whole.
      */
-    private List<String> wrapCell(String s, int width, int maxLines) {
+    private List<String> wrapCell(String s, int width, int maxLines, boolean colTruncateBeginning) {
         // Multi-element cells use \n as an intra-cell separator. Split, wrap each sub-line, then
         // apply the maxLines cap to the combined result.
         if (s.indexOf('\n') >= 0) {
@@ -400,7 +419,7 @@ final class ViewRenderer {
             }
             if (all.size() <= maxLines) return all;
             // Truncate to maxLines, replacing the last kept line with an ellipsis suffix/prefix.
-            return truncateLines(all, maxLines, width);
+            return truncateLines(all, maxLines, width, truncateBeginning || colTruncateBeginning);
         }
         if (width <= 0 || s.length() <= width) return List.of(s);
         int capacity = width * maxLines;
@@ -410,16 +429,17 @@ final class ViewRenderer {
         // Content exceeds the visible box: keep (capacity - 3) characters and mark the elision.
         String ell = "...";
         int keep = Math.max(0, capacity - ell.length());
+        boolean tb = truncateBeginning || colTruncateBeginning;
         String kept =
-                truncateBeginning
+                tb
                         ? ell + s.substring(s.length() - keep)
                         : s.substring(0, keep) + ell;
         return hardWrap(kept, width);
     }
 
     /** Truncate a line list to {@code maxLines}, appending/prepending "..." on the boundary. */
-    private List<String> truncateLines(List<String> lines, int maxLines, int width) {
-        if (truncateBeginning) {
+    private List<String> truncateLines(List<String> lines, int maxLines, int width, boolean tb) {
+        if (tb) {
             // Keep the last maxLines lines, prefix the first kept line with "...".
             List<String> kept = lines.subList(lines.size() - maxLines, lines.size());
             List<String> out = new ArrayList<>(kept);
@@ -458,6 +478,52 @@ final class ViewRenderer {
             return h != null && "cell-height".equals(h.name());
         }
         return false;
+    }
+
+    /** True if column {@code col} carries a {@code truncate-beginning} FORMAT hint. */
+    private boolean truncateBeginningFor(int col) {
+        List<FormatHint> hints = query.formatHints();
+        if (col < hints.size()) {
+            FormatHint h = hints.get(col);
+            return h != null && "truncate-beginning".equals(h.name());
+        }
+        return false;
+    }
+
+    /**
+     * If {@code s} looks like a fully-qualified Java method signature
+     * ("pkg.Class.method(Param, ...)"), return the compact form "pkg.Class.method(...)", else null.
+     * Oracle does this when a method cell is too wide for its column — it calls formatCompact(),
+     * which replaces the parameter list with "..." (but keeps the empty-parens form when there are
+     * no parameters, matching oracle's isEmpty() check).
+     */
+    private static String compactMethod(String s) {
+        int open = s.lastIndexOf('(');
+        int close = s.lastIndexOf(')');
+        if (open < 0 || close != s.length() - 1) return null;
+        // Must have a dot before the open paren (method separator).
+        int dot = s.lastIndexOf('.', open);
+        if (dot < 0) return null;
+        String params = s.substring(open + 1, close);
+        // Empty params → already compact; no transformation needed.
+        if (params.isEmpty()) return null;
+        return s.substring(0, open + 1) + "..." + ")";
+    }
+
+    /**
+     * If {@code s} looks like a Java class name (no spaces, no parentheses, contains a dot),
+     * return the simple class name (everything after the last dot), else null. Oracle uses this
+     * when a class-typed cell exceeds its column width, e.g. showing "TypedFieldValueImpl"
+     * instead of "org.openjdk.jmc.flightrecorder.writer.TypedFieldValueImpl", or "539690370"
+     * for a hidden-class ID like "...$$Lambda$N+0x...HEX.539690370".
+     */
+    private static String compactClass(String s) {
+        if (s.isEmpty()) return null;
+        // Exclude methods (already handled by compactMethod) and anything with spaces.
+        if (s.contains("(") || s.contains(")") || s.contains(" ")) return null;
+        int lastDot = s.lastIndexOf('.');
+        if (lastDot < 0 || lastDot == s.length() - 1) return null;
+        return s.substring(lastDot + 1);
     }
 
     /**

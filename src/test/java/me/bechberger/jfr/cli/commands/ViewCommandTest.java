@@ -30,7 +30,11 @@ public class ViewCommandTest {
     public void testBasicView() throws Exception {
         var result =
                 new CommandExecuter(
-                                "view", "TestEvent", "T/" + CommandTestUtil.getSampleCJFRFileName())
+                                "view",
+                                "TestEvent",
+                                "T/" + CommandTestUtil.getSampleCJFRFileName(),
+                                "--width",
+                                "160")
                         .withFiles(CommandTestUtil.getSampleCJFRFile())
                         .checkNoError()
                         .run();
@@ -118,7 +122,7 @@ public class ViewCommandTest {
                                 "TestEvent",
                                 "T/" + CommandTestUtil.getSampleCJFRFileName(),
                                 "--width",
-                                "120")
+                                "40")
                         .withFiles(CommandTestUtil.getSampleCJFRFile())
                         .checkNoError()
                         .run();

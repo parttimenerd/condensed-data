@@ -127,13 +127,22 @@ public class JFRMultiFileTest {
         var args = paths.stream().map(Path::toString).toList();
         assertAll(
                 () -> checkSummaryResult(captureStdout("summary", args)),
-                () -> checkViewResult(captureStdout("view", combine("TestEvent", args))),
+                () -> checkViewResult(captureStdout("view", combine("TestEvent", "--width", "160", args))),
                 () -> checkInflateResult(args));
     }
 
     private List<String> combine(String val, List<String> args) {
         var combined = new ArrayList<String>();
         combined.add(val);
+        combined.addAll(args);
+        return combined;
+    }
+
+    private List<String> combine(String val, String opt1, String opt2, List<String> args) {
+        var combined = new ArrayList<String>();
+        combined.add(val);
+        combined.add(opt1);
+        combined.add(opt2);
         combined.addAll(args);
         return combined;
     }
