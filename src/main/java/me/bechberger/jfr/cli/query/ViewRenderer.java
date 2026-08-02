@@ -236,6 +236,7 @@ final class ViewRenderer {
         boolean[] rightAlign = new boolean[nCols];
         boolean[] instant = new boolean[nCols];
         boolean[] anyValue = new boolean[nCols];
+        boolean[] anyText = new boolean[nCols]; // true if any cell is Boolean or String-like
         // A "normalized" FORMAT column renders each numeric cell as its share of the column total
         // (a percentage). Precompute the per-column raw sums so each cell can divide by them.
         double[] colSum = new double[nCols];
@@ -292,8 +293,12 @@ final class ViewRenderer {
                     if (raw instanceof java.time.Instant) {
                         instant[c] = true;
                     }
-                    // jfr left-aligns time (Instant) columns for both header and data; numeric,
-                    // unit, and boolean values are right-aligned.
+                    if (raw instanceof String) {
+                        anyText[c] = true;
+                    }
+                    // jfr left-aligns time (Instant) columns; numeric, unit, and boolean values
+                    // are right-aligned. Mixed columns (any String cell) are left-aligned via the
+                    // anyText override below.
                     if (!(raw instanceof java.time.Instant)
                             && (isNumericLike(raw)
                                     || raw instanceof Boolean
@@ -302,6 +307,12 @@ final class ViewRenderer {
                     }
                 }
             }
+        }
+        // A column with String values mixed alongside numeric/boolean values (e.g. jvm-flags'
+        // Value, which coalesces int/bool/string flag types) is always left-aligned — oracle
+        // right-aligns pure-numeric or pure-boolean columns, but left-aligns mixed ones.
+        for (int c = 0; c < nCols; c++) {
+            if (anyText[c]) rightAlign[c] = false;
         }
         // jfr right-aligns a numeric header like its data, but time (Instant) headers stay left.
         boolean[] headerRight = new boolean[nCols];
@@ -618,7 +629,22 @@ final class ViewRenderer {
             // → single 24-wide flex col). A flex column whose preferred width already fits within
             // its fair share keeps that smaller width, and the space it frees is re-split among the
             // still-oversized flex columns.
-            int fixed = used;
+            //
+            // Additionally, a non-flex column whose preferred content width exceeds its fair share
+            // (target / nCols) is capped at the fair share. This prevents a large non-flex column
+            // (e.g. jvm-flags' StringFlag.value = 104 chars) from consuming the entire budget and
+            // leaving the flex column(s) with zero width. Oracle's table renderer applies this same
+            // proportional cap, giving jvm-flags a 39/39 split instead of 4/104.
+            int fairShare = target / nCols;
+            for (int c = 0; c < nCols; c++) {
+                if (!flexibleFor(c) && widths[c] > fairShare) {
+                    widths[c] = Math.max(labels.get(c).length(), fairShare);
+                }
+            }
+            // Recompute used/delta after capping.
+            int usedAfterCap = nCols - 1;
+            for (int w : widths) usedAfterCap += w;
+            int fixed = usedAfterCap;
             for (int c : flexIdx) fixed -= widths[c];
             int budget = target - fixed;
             if (budget < 0) budget = 0;

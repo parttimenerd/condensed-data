@@ -2743,3 +2743,17 @@ On `.jfr` input: cjfr evaluates `safepoints` natively (correctly returns 31 rows
 **Fix:** After reading all events, additionally seed `seen` with all type names from the stream's `TypeCollection` (via new `CombiningJFRReader.getAllKnownTypeNames()`). This includes types registered in the stream even if they have 0 events, suppressing false warnings while still warning for truly unknown type names.
 
 **Status:** Fixed.
+
+## Bug 394: `cjfr view jvm-flags` Name column width 4 instead of 39, Value right-aligned instead of left
+
+**Symptom:** `cjfr view jvm-flags` at width 80 showed Name truncated to 4 chars ("A..."), Value column at full 104 chars (extending beyond terminal), and all values right-aligned. Oracle shows Name=39, Value=39, left-aligned.
+
+**Root cause (column widths):** `ColumnType.flexibleFor` for `LAST(value)` short-circuited on the first candidate event type `IntFlag` whose `value` field is `int` (non-flexible), returning false. This left only `Name` as the single flex column (target=79). However, `StringFlag.value` is a 104-char string — its preferred width consumed the entire target, leaving budget=0 for Name which got clamped to its header label width of 4.
+
+**Fix (column widths):** In `distributeFlexibleWidth`, when in the overflow+flex branch, cap any non-flex column whose preferred width exceeds `target / nCols` (the "fair share") to that share. This prevents one large column from starving the flex column(s). jvm-flags: `fairShare = 79/2 = 39`, Value capped from 104 → 39, Name gets remaining budget of 39. Total = 79. ✓
+
+**Root cause (alignment):** `renderTable` set `rightAlign[c] = true` when any cell was `Boolean` or `isNumericLike`. For jvm-flags Value, `AbortVMOnCompilationFailure = false` is a Boolean → rightAlign fired. Then `ActiveProcessorCount = -1` is numeric → reinforced. Oracle left-aligns coalesced/mixed-type columns regardless of cell content.
+
+**Fix (alignment):** After processing all rows, if any cell in a column is a `Boolean` or `String` (`anyText[c] = true`), force `rightAlign[c] = false`. Columns that mix text and numeric values are always left-aligned. Additionally removed `|| raw instanceof Boolean` from the right-alignment condition — oracle never right-aligns standalone boolean columns.
+
+**Status:** Fixed.
