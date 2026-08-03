@@ -274,7 +274,7 @@ def main() -> None:
         print(f"Installed {group_id}:{artifact_id}:{version}:reader to local Maven repo.")
 
     if args.deploy:
-        mvn(["-Preader-publication", "deploy", "-DskipTests"], project_dir)
+        mvn(["-Preader-publication", "deploy", "-Dmaven.test.skip=true", "-P!jmc-test"], project_dir)
 
 
 if __name__ == "__main__":

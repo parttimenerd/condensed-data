@@ -15,7 +15,8 @@ class WritingJFRReaderStreamTest {
 
     @Test
     void toJFRStreamProducesSameBytesAsToJFRFile() throws Exception {
-        Assumptions.assumeTrue(Files.exists(PROFILE_CJFR), "profile_default.cjfr not present, skipping");
+        Assumptions.assumeTrue(
+                Files.exists(PROFILE_CJFR), "profile_default.cjfr not present, skipping");
         Path tmp;
         try (var cin = new CondensedInputStream(java.nio.file.Files.newInputStream(PROFILE_CJFR))) {
             tmp = WritingJFRReader.toJFRFile(new BasicJFRReader(cin));
@@ -35,7 +36,8 @@ class WritingJFRReaderStreamTest {
 
     @Test
     void toJFRStreamOutputIsValidJFR() throws Exception {
-        Assumptions.assumeTrue(Files.exists(PROFILE_CJFR), "profile_default.cjfr not present, skipping");
+        Assumptions.assumeTrue(
+                Files.exists(PROFILE_CJFR), "profile_default.cjfr not present, skipping");
         ByteArrayOutputStream baos = new ByteArrayOutputStream();
         try (var cin = new CondensedInputStream(java.nio.file.Files.newInputStream(PROFILE_CJFR))) {
             WritingJFRReader.toJFRStream(new BasicJFRReader(cin), baos);
