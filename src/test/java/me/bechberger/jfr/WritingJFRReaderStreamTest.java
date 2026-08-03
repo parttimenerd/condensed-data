@@ -1,0 +1,46 @@
+package me.bechberger.jfr;
+
+import static org.junit.jupiter.api.Assertions.*;
+
+import java.io.ByteArrayOutputStream;
+import java.nio.file.Path;
+import me.bechberger.condensed.CondensedInputStream;
+import org.junit.jupiter.api.Test;
+
+class WritingJFRReaderStreamTest {
+
+    private static final Path PROFILE_CJFR = Path.of("profile_default.cjfr");
+
+    @Test
+    void toJFRStreamProducesSameBytesAsToJFRFile() throws Exception {
+        Path tmp;
+        try (var cin = new CondensedInputStream(java.nio.file.Files.newInputStream(PROFILE_CJFR))) {
+            tmp = WritingJFRReader.toJFRFile(new BasicJFRReader(cin));
+        }
+        byte[] expected = java.nio.file.Files.readAllBytes(tmp);
+        java.nio.file.Files.deleteIfExists(tmp);
+
+        ByteArrayOutputStream baos = new ByteArrayOutputStream();
+        try (var cin = new CondensedInputStream(java.nio.file.Files.newInputStream(PROFILE_CJFR))) {
+            WritingJFRReader.toJFRStream(new BasicJFRReader(cin), baos);
+        }
+        byte[] actual = baos.toByteArray();
+
+        assertArrayEquals(
+                expected, actual, "toJFRStream output must be byte-identical to toJFRFile output");
+    }
+
+    @Test
+    void toJFRStreamOutputIsValidJFR() throws Exception {
+        ByteArrayOutputStream baos = new ByteArrayOutputStream();
+        try (var cin = new CondensedInputStream(java.nio.file.Files.newInputStream(PROFILE_CJFR))) {
+            WritingJFRReader.toJFRStream(new BasicJFRReader(cin), baos);
+        }
+        byte[] bytes = baos.toByteArray();
+        assertArrayEquals(
+                new byte[] {'F', 'L', 'R', 0},
+                new byte[] {bytes[0], bytes[1], bytes[2], bytes[3]},
+                "Output must start with JFR magic bytes");
+        assertTrue(bytes.length > 1024, "Output should be a non-trivial JFR file");
+    }
+}

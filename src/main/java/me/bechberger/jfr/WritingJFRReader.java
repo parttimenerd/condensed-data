@@ -1216,6 +1216,57 @@ public class WritingJFRReader {
         }
     }
 
+    /**
+     * Inflate a condensed recording to standard JFR and write it directly to {@code out}, entirely
+     * in memory (no temp file). Byte-for-byte equivalent to {@link #toJFRFile(JFRReader)} followed
+     * by reading the file back.
+     */
+    public static void toJFRStream(JFRReader reader, OutputStream out) throws IOException {
+        ByteArrayOutputStream baos = new ByteArrayOutputStream(65536);
+        WritingJFRReader writingJFRReader = new WritingJFRReader(reader, baos, false);
+        while (writingJFRReader.readNextJFREvent() != null) {
+            // drain
+        }
+        writingJFRReader.close();
+        long durationNanos = writingJFRReader.getActualDurationNanos();
+        byte[] bytes = baos.toByteArray();
+        patchChunkHeaderDurationInMemory(bytes, durationNanos);
+        out.write(bytes);
+    }
+
+    private static void patchChunkHeaderDurationInMemory(byte[] bytes, long durationNanos)
+            throws IOException {
+        if (durationNanos <= 0 || durationNanos > MAX_PLAUSIBLE_DURATION_NANOS) {
+            throw new IOException(
+                    "Implausible duration for chunk-header patch: " + durationNanos + " ns");
+        }
+        int chunkStart = 0;
+        while (chunkStart + CHUNK_HEADER_DURATION_OFFSET + 8 <= bytes.length) {
+            if (bytes[chunkStart] != 'F'
+                    || bytes[chunkStart + 1] != 'L'
+                    || bytes[chunkStart + 2] != 'R'
+                    || bytes[chunkStart + 3] != 0) {
+                throw new IOException("Bad JFR magic at offset " + chunkStart);
+            }
+            int off = chunkStart + CHUNK_HEADER_DURATION_OFFSET;
+            long d = durationNanos;
+            for (int i = 7; i >= 0; i--) {
+                bytes[off + i] = (byte) (d & 0xFF);
+                d >>>= 8;
+            }
+            long chunkSize = 0;
+            for (int i = 0; i < 8; i++) {
+                chunkSize =
+                        (chunkSize << 8)
+                                | (bytes[chunkStart + CHUNK_HEADER_SIZE_OFFSET + i] & 0xFF);
+            }
+            if (chunkSize <= 0) {
+                break;
+            }
+            chunkStart += (int) chunkSize;
+        }
+    }
+
     public static List<RecordedEvent> toJFREventsList(BasicJFRReader reader) {
         return toJFREventsList(reader, Integer.MAX_VALUE, true);
     }
