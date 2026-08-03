@@ -161,6 +161,7 @@ jobs:
     if: github.repository == 'parttimenerd/condensed-data' && github.event_name == 'push' && github.ref == 'refs/heads/main'
     permissions:
       contents: write
+      workflows: write
 
     steps:
     - uses: actions/checkout@v5
