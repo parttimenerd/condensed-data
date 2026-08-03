@@ -2,6 +2,10 @@ package me.bechberger.jfr.cli.commands;
 
 import java.nio.file.Path;
 import java.time.Instant;
+import java.time.ZoneId;
+import java.time.format.DateTimeFormatter;
+import java.time.format.DateTimeFormatterBuilder;
+import java.time.temporal.ChronoField;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.HashSet;
@@ -668,8 +672,49 @@ public class ViewCommand implements Callable<Integer> {
             for (var item : list) result.add(convertValue(item));
             return result;
         }
+        if (value instanceof Instant instant) return formatJsonInstant(instant);
         if (value instanceof Number || value instanceof Boolean) return value;
         return value.toString();
+    }
+
+    private static final DateTimeFormatter JSON_VIEW_TS_0 =
+            new DateTimeFormatterBuilder()
+                    .appendPattern("yyyy-MM-dd'T'HH:mm")
+                    .appendOffsetId()
+                    .toFormatter();
+    private static final DateTimeFormatter JSON_VIEW_TS_3 =
+            new DateTimeFormatterBuilder()
+                    .appendPattern("yyyy-MM-dd'T'HH:mm:ss")
+                    .appendFraction(ChronoField.NANO_OF_SECOND, 3, 3, true)
+                    .appendOffsetId()
+                    .toFormatter();
+    private static final DateTimeFormatter JSON_VIEW_TS_6 =
+            new DateTimeFormatterBuilder()
+                    .appendPattern("yyyy-MM-dd'T'HH:mm:ss")
+                    .appendFraction(ChronoField.NANO_OF_SECOND, 6, 6, true)
+                    .appendOffsetId()
+                    .toFormatter();
+    private static final DateTimeFormatter JSON_VIEW_TS_9 =
+            new DateTimeFormatterBuilder()
+                    .appendPattern("yyyy-MM-dd'T'HH:mm:ss")
+                    .appendFraction(ChronoField.NANO_OF_SECOND, 9, 9, true)
+                    .appendOffsetId()
+                    .toFormatter();
+
+    private static String formatJsonInstant(Instant instant) {
+        int nano = instant.getNano();
+        DateTimeFormatter fmt;
+        if (nano == 0 && instant.getEpochSecond() == 0) fmt = JSON_VIEW_TS_0;
+        else if (nano % 1_000_000 == 0) fmt = JSON_VIEW_TS_3;
+        else if (nano % 1_000 == 0) fmt = JSON_VIEW_TS_6;
+        else fmt = JSON_VIEW_TS_9;
+        try {
+            return fmt.format(instant.atZone(ZoneId.systemDefault()));
+        } catch (java.time.DateTimeException e) {
+            return instant.compareTo(Instant.EPOCH) < 0
+                    ? "-999999999-01-01T00:00+18:00"
+                    : "+999999999-12-31T23:59:59.999999999-18:00";
+        }
     }
 
     private static java.util.LinkedHashMap<String, Object> eventToMap(ReadStruct event) {

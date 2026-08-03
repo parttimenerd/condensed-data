@@ -3496,8 +3496,20 @@ event counts. `cjfr view types profile.jfr` instead shows "No event of type type
 did-you-mean suggestions. The word `types` doesn't contain a `-` and is not a known view in
 `NativeView`, so it never reaches the JDK `jfr view` delegation path.
 
-**Fix:** Added `viewName.equals("types")` to the delegation condition in `ViewCommand.call()`,
-alongside the existing `viewName.contains("-")` check. `types` is now forwarded to `jfr view`
-on `.jfr` input and inflated on `.cjfr` input, same as other special views.
+**Fix:** Implemented natively in `ViewCommand.renderTypesView()`: for `.cjfr` files reads
+`CJFRFooter.eventCounts()`, for `.jfr` files reads all events via `CombiningJFRReader`. Only
+shows event types that actually appear in the recording (zero-count types omitted — small known
+diff vs oracle). Entries are sorted by short name (last `.`-segment) case-insensitively, then
+laid out in a two-column format matching the oracle layout. Also made `FieldResolver` public to
+resolve a pre-existing compile error in `me.bechberger.cjfr` package.
+
+**Status:** Fixed.
+## Bug 450: `cjfr view --json` emits timestamps in UTC instead of local timezone
+
+**Observation:** `cjfr view --json jdk.GCHeapSummary` outputs `"startTime": "2025-12-05T11:12:20.483465Z"` (UTC, `Z` suffix), while `cjfr print --json` for the same events outputs `"startTime": "2025-12-05T12:12:21.064465+01:00"` (local timezone offset). Since `jfr view` has no `--json` option (it's a cjfr extension), `cjfr print --json` is the natural oracle for timestamp format consistency.
+
+**Root cause:** `ViewCommand.convertValue()` handles `Instant` values via the fallthrough `value.toString()` branch, which produces ISO-8601 UTC format. `PrintCommand.toJson()` explicitly calls `instant.atZone(ZoneId.systemDefault())` with precision-trimming formatters (3/6/9 fractional digits).
+
+**Fix:** Add an `Instant` branch to `ViewCommand.convertValue()` that formats with `ZoneId.systemDefault()` and the same precision-trimming logic as `PrintCommand`.
 
 **Status:** Fixed.
