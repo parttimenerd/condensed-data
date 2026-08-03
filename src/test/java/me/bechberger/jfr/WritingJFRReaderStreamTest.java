@@ -3,8 +3,10 @@ package me.bechberger.jfr;
 import static org.junit.jupiter.api.Assertions.*;
 
 import java.io.ByteArrayOutputStream;
+import java.nio.file.Files;
 import java.nio.file.Path;
 import me.bechberger.condensed.CondensedInputStream;
+import org.junit.jupiter.api.Assumptions;
 import org.junit.jupiter.api.Test;
 
 class WritingJFRReaderStreamTest {
@@ -13,6 +15,7 @@ class WritingJFRReaderStreamTest {
 
     @Test
     void toJFRStreamProducesSameBytesAsToJFRFile() throws Exception {
+        Assumptions.assumeTrue(Files.exists(PROFILE_CJFR), "profile_default.cjfr not present, skipping");
         Path tmp;
         try (var cin = new CondensedInputStream(java.nio.file.Files.newInputStream(PROFILE_CJFR))) {
             tmp = WritingJFRReader.toJFRFile(new BasicJFRReader(cin));
@@ -32,6 +35,7 @@ class WritingJFRReaderStreamTest {
 
     @Test
     void toJFRStreamOutputIsValidJFR() throws Exception {
+        Assumptions.assumeTrue(Files.exists(PROFILE_CJFR), "profile_default.cjfr not present, skipping");
         ByteArrayOutputStream baos = new ByteArrayOutputStream();
         try (var cin = new CondensedInputStream(java.nio.file.Files.newInputStream(PROFILE_CJFR))) {
             WritingJFRReader.toJFRStream(new BasicJFRReader(cin), baos);
