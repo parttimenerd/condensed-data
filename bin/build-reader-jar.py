@@ -171,7 +171,12 @@ def download_fat_jar_from_snapshot(version: str, output: Path) -> bool:
         with urllib.request.urlopen(meta_url, timeout=15) as resp:
             tree = ET.fromstring(resp.read())
         # Find the latest snapshot value, e.g. "0.1.1-20260803.140429-2"
-        snapshot_ver = tree.findtext(".//snapshotVersions/snapshotVersion[extension='jar'][not(classifier)]/value")
+        # Python's ElementTree XPath doesn't support [not(x)], so filter manually
+        snapshot_ver = None
+        for sv in tree.findall(".//snapshotVersions/snapshotVersion"):
+            if sv.findtext("extension") == "jar" and sv.findtext("classifier") is None:
+                snapshot_ver = sv.findtext("value")
+                break
         if not snapshot_ver:
             return False
         jar_url = f"{OSSRH_SNAPSHOT_BASE}/{version}/condensed-data-{snapshot_ver}.jar"
@@ -184,17 +189,6 @@ def download_fat_jar_from_snapshot(version: str, output: Path) -> bool:
     except Exception as e:
         print(f"Download failed ({e}), falling back to local build")
         return False
-
-
-
-    target = project_dir / "target"
-    candidates = list(target.glob(f"condensed-data-{version}.jar"))
-    if candidates:
-        return candidates[0]
-    # Try without version qualifier
-    candidates = list(target.glob("condensed-data-*.jar"))
-    candidates = [c for c in candidates if "reader" not in c.name and "sources" not in c.name]
-    return candidates[0] if candidates else None
 
 
 def is_stale(jar: Path, src_dir: Path) -> bool:
