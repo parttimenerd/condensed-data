@@ -3287,3 +3287,60 @@ a `NumberFormatException("Infinite or NaN")` when a condensed double value was i
   `"Infinity"` / `"-Infinity"` before calling `new BigDecimal(v)`.
 
 **Status:** Fixed.
+
+## Bug 434: `cjfr view` shows line numbers in stack trace column; oracle doesn't
+
+**Observation:** `cjfr view jdk.ThreadStart` and `jdk.JavaErrorThrow` showed line numbers appended
+to stack frames (e.g. `java.lang.Error.<init>(String):72`). Oracle shows only
+`java.lang.Error.<init>(String)` — no line number suffix.
+
+**Root cause:** An earlier Bug 430 fix incorrectly added `:lineNumber` to stack frame display when
+`lineNumber >= 0`. Oracle's table view never shows line numbers in the stack trace column for any
+event type (line numbers are available in `jfr print` but not `jfr view`).
+
+**Fix:** Removed the line number appending from `JFRView.StackTraceColumn.format()`.
+
+**Status:** Fixed.
+
+## Bug 435: `cjfr view jdk.ModuleExport` shows `"bootstrap"` for bootstrap ClassLoader; oracle shows `N/A`
+
+**Observation:** `cjfr view jdk.ModuleExport` and `jdk.ModuleRequire` showed `"bootstrap"` in the
+Exporting ClassLoader column for modules with the bootstrap class loader. Oracle shows `N/A`.
+
+**Root cause:** `JFRView.ClassLoaderColumn.format()` fell back to the `name` field (`"bootstrap"`)
+when the loader's `type` was null. Oracle only renders the loader's `type.name` (the class name of
+the loader object); when `type` is null (bootstrap loader has no Java type), it renders nothing/N/A.
+
+**Fix:** Removed the `name`-field fallback; `ClassLoaderColumn` now returns `N/A` when `type` is
+null.
+
+**Status:** Fixed.
+
+## Bug 436: `cjfr view <EventType>` DataRate shows wrong format (no space, extra precision)
+
+**Observation:** `cjfr view jdk.G1AdaptiveIHOP` showed data rates like `"71.62MB/s"` (no space
+before unit, 2 decimal places). Oracle shows `"71,6 MB/s"` (space before unit, 1 decimal place).
+Zero-rate showed `"0B/s"` vs oracle's `"0 byte/s"` (singular "byte", space).
+
+**Root cause:** `JFRView.DataRateColumn.format()` used `MemoryUtil.formatMemory()` which uses
+minimum decimals for exact round-trip and no space before the unit.
+
+**Fix:** `DataRateColumn.format()` now uses `ValueFormatter.formatMemory()` (same 1-decimal,
+space-separated format as the oracle's `MemoryColumn`) + `"/s"` suffix. Zero bytes/s renders as
+`"0 byte/s"` (singular) to match oracle.
+
+**Status:** Fixed.
+
+## Bug 437: `cjfr view jdk.OSInformation` shows extra blank row for OS version string
+
+**Observation:** `cjfr view jdk.OSInformation` output had an extra blank line after the OS version
+row. Oracle shows it in a single row.
+
+**Root cause:** The `osVersion` field value ends with a trailing newline character (from the `uname`
+command output stored in the JFR recording). When rendered in the table, the trailing `\n` caused
+the table renderer to emit a second empty row.
+
+**Fix:** `JFRView.StringColumn.format()` now calls `stripTrailing()` on the string value to remove
+trailing whitespace/newlines.
+
+**Status:** Fixed.

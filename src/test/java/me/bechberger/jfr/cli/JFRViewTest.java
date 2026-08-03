@@ -338,8 +338,8 @@ public class JFRViewTest {
         var column = new JFRView.ClassLoaderColumn("classLoader");
 
         assertEquals(-1, column.width());
-        // No `type` sub-struct present, so it falls back to the loader `name`.
-        assertEquals(List.of("app-loader"), column.format(eventWithLoader, 1));
+        // No `type` sub-struct present: oracle renders N/A (bootstrap / no-type loaders).
+        assertEquals(List.of("N/A"), column.format(eventWithLoader, 1));
         assertEquals(List.of("N/A"), column.format(eventWithoutLoader, 1));
         assertEquals(JFRView.Alignment.LEFT, column.alignment());
     }
@@ -769,7 +769,7 @@ public class JFRViewTest {
                         "recentAllocationRate", me.bechberger.util.MemoryUtil.MemoryUnit.BYTES);
         var type = createType("outer", "recentAllocationRate");
         var event = new ReadStruct(type, Map.of("recentAllocationRate", 472401987L));
-        assertEquals(List.of("450.52MB/s"), column.format(event, 1));
+        assertEquals(List.of("450.5 MB/s"), column.format(event, 1));
     }
 
     @Test
@@ -780,7 +780,8 @@ public class JFRViewTest {
         var type = createType("outer", "readRate");
         var event = new ReadStruct(type, Map.of("readRate", 8_000_000L));
         var rendered = column.format(event, 1).get(0);
-        assertTrue(rendered.endsWith("/s"), "bit-rate should end with /s: " + rendered);
+        // BITS: uses ValueFormatter.formatBitrate which already encodes the rate (e.g. "7.6 Mbps").
+        assertTrue(rendered.contains("bps"), "bit-rate should contain bps: " + rendered);
     }
 
     /** Bug 255: array object classes render as readable names, not JVM descriptors. */
@@ -844,7 +845,7 @@ public class JFRViewTest {
     }
 
     @Test
-    public void testClassLoaderColumnFallsBackToNameWhenTypeAbsent() {
+    public void testClassLoaderColumnReturnsNAForBootstrapLoader() {
         var clType = createType("classLoader", "type", "name");
         var values = new java.util.HashMap<String, Object>();
         values.put("type", null);
@@ -854,7 +855,8 @@ public class JFRViewTest {
         var event = new ReadStruct(eventType, Map.of("classLoader", cl));
 
         var column = new JFRView.ClassLoaderColumn("classLoader");
-        assertEquals(List.of("bootstrap"), column.format(event, 1));
+        // type=null (bootstrap): oracle shows N/A, not the `name` field.
+        assertEquals(List.of("N/A"), column.format(event, 1));
     }
 
     @Test

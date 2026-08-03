@@ -278,7 +278,9 @@ public class JFRView {
         @Override
         public List<String> format(ReadStruct event, int rows) {
             var val = event.get(property, String.class);
-            return List.of(val != null ? val : "N/A");
+            if (val == null) return List.of("N/A");
+            // Strip trailing newlines (e.g. osVersion ends with \n from uname output).
+            return List.of(val.stripTrailing());
         }
 
         @Override
@@ -365,7 +367,8 @@ public class JFRView {
             if (val == null) {
                 return List.of("N/A");
             }
-            double d = val instanceof Number n ? n.doubleValue() : Double.parseDouble(val.toString());
+            double d =
+                    val instanceof Number n ? n.doubleValue() : Double.parseDouble(val.toString());
             return List.of(me.bechberger.jfr.cli.query.ValueFormatter.formatDoublePublic(d));
         }
 
@@ -477,7 +480,13 @@ public class JFRView {
                 return List.of("N/A");
             }
             long value = prop instanceof Number ? ((Number) prop).longValue() : (long) prop;
-            return List.of(formatMemory(value, 1, 2, unit) + "/s");
+            if (unit == MemoryUtil.MemoryUnit.BITS) {
+                return List.of(ValueFormatter.formatBitrate(value));
+            }
+            // BYTES: oracle renders as ValueFormatter.formatMemory(value) + "/s"; for 0 it shows
+            // "0 byte/s" (singular "byte" instead of "bytes").
+            String mem = value == 0 ? "0 byte" : ValueFormatter.formatMemory(value);
+            return List.of(mem + "/s");
         }
 
         @Override
@@ -609,8 +618,8 @@ public class JFRView {
                     return List.of(ClassColumn.decodeClassName(typeName));
                 }
             }
-            var name = cl.get("name", String.class);
-            return List.of(name != null && !name.isEmpty() ? name : "N/A");
+            // No type (e.g. bootstrap classloader): oracle renders N/A, not the `name` field.
+            return List.of("N/A");
         }
 
         @Override
@@ -694,20 +703,7 @@ public class JFRView {
                 return List.of("N/A");
             }
             var frames = val.<ReadStruct>getList("frames");
-            return frames.stream()
-                    .map(
-                            f -> {
-                                String m = METHOD_COLUMN.format(f, 1).get(0);
-                                if (f.hasField("lineNumber")) {
-                                    Object ln = f.get("lineNumber");
-                                    if (ln instanceof Number n && n.intValue() >= 0) {
-                                        m = m + ":" + n.intValue();
-                                    }
-                                }
-                                return m;
-                            })
-                    .limit(rows)
-                    .toList();
+            return frames.stream().map(f -> METHOD_COLUMN.format(f, 1).get(0)).limit(rows).toList();
         }
 
         @Override
