@@ -161,11 +161,8 @@ jobs:
     if: github.repository == 'parttimenerd/condensed-data' && github.event_name == 'push' && github.ref == 'refs/heads/main'
     permissions:
       contents: write
-      workflows: write
 
     steps:
-    - uses: actions/checkout@v5
-
     - name: Download main JAR
       uses: actions/download-artifact@v4
       with:
@@ -186,38 +183,28 @@ jobs:
 
     # Delete and recreate the rolling release each time so GitHub shows the current
     # "released X ago" timestamp rather than the original creation date.
-    - name: Delete existing latest release and tag
+    - name: Publish rolling latest release
       env:
         GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       run: |
+        cat > /tmp/release-notes.md << 'EOF'
+        Rolling development build from `main`.
+
+        ⚠️ Prerelease — may be unstable.
+
+        ```bash
+        java -jar condensed-data.jar --help
+        ```
+
+        Platform-specific JARs are smaller variants that bundle native libraries for a single OS/architecture.
+        EOF
         gh release delete latest --yes --repo ${{ github.repository }} 2>/dev/null || true
-        git push -f origin :refs/tags/latest 2>/dev/null || true
-
-    - name: Create latest tag at current commit
-      run: |
-        git tag latest ${{ github.sha }}
-        git push origin latest
-
-    - name: Publish rolling latest release
-      uses: softprops/action-gh-release@v2
-      with:
-        tag_name: latest
-        target_commitish: ${{ github.sha }}
-        name: Latest build
-        prerelease: true
-        make_latest: true
-        body: |
-          Rolling development build from `main`, commit [`${{ github.sha }}`](${{ github.server_url }}/${{ github.repository }}/commit/${{ github.sha }}).
-
-          ⚠️ Prerelease — may be unstable.
-
-          ```bash
-          java -jar condensed-data.jar --help
-          ```
-
-          Platform-specific JARs are smaller variants that bundle native libraries for a single OS/architecture.
-        files: |
-          target/condensed-data.jar
-          target/platform-jars/*.jar
+        gh release create latest \
+          --repo ${{ github.repository }} \
+          --title "Latest build" \
+          --notes-file /tmp/release-notes.md \
+          --prerelease \
+          --target ${{ github.sha }} \
+          target/condensed-data.jar \
+          target/platform-jars/*.jar \
           target/platform-jars-minimal/*.jar
-        token: ${{ secrets.GITHUB_TOKEN }}
