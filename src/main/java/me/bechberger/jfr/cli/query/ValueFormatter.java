@@ -134,8 +134,15 @@ public final class ValueFormatter {
         return String.format(Locale.ROOT, "%,d", v);
     }
 
+    /** Public wrapper so JFRView.FloatColumn can reuse the same double formatting logic. */
+    public static String formatDoublePublic(double v) {
+        return formatDouble(v);
+    }
+
     private static String formatDouble(double v) {
-        if (v == Math.rint(v) && !Double.isInfinite(v)) {
+        if (Double.isNaN(v)) return "NaN";
+        if (Double.isInfinite(v)) return v > 0 ? "Infinity" : "-Infinity";
+        if (v == Math.rint(v) && Math.abs(v) <= (double) Long.MAX_VALUE) {
             return groupInteger((long) v);
         }
         // jfr uses 4 significant figures with trailing-zero stripping for raw double fields

@@ -3267,3 +3267,23 @@ null values. Oracle's `jfr view` uses `N/A` as the universal null replacement in
 `List.of("N/A")` instead of `List.of("-")` for null values.
 
 **Status:** Fixed.
+
+## Bug 433: `cjfr view jdk.DoubleFlag` shows wrong precision (e.g. `20.00` instead of `20`, `0.5000` instead of `0.5`)
+
+**Observation:** `cjfr view jdk.DoubleFlag` rendered float/double values with fixed 2 decimal
+places (e.g. `20.00`, `1.00`, `0.5000`, `1.562000`). Oracle shows `20`, `1`, `0,5`, `1,562` (4
+significant figures, trailing zeros stripped, locale thousands separator).
+
+**Root cause:** `JFRView.FloatColumn.format()` used `String.format("%.2f", v)` (fixed 2 decimal
+places) instead of oracle's 4-significant-figure rule. `ValueFormatter.formatDouble()` also lacked
+a guard for `Double.isNaN(v)` / `Double.isInfinite(v)` before constructing `BigDecimal(v)`, causing
+a `NumberFormatException("Infinite or NaN")` when a condensed double value was inflated as `Infinity`
+(e.g. `Double.MAX_VALUE` overflows the condenser's double precision — a separate condenser bug).
+
+**Fix:**
+- `FloatColumn.format()` now delegates to `ValueFormatter.formatDoublePublic(d)` (the same 4-sig-fig
+  HALF_EVEN logic used by the native-view query path).
+- `ValueFormatter.formatDouble()` now short-circuits for NaN → `"NaN"` and Infinity →
+  `"Infinity"` / `"-Infinity"` before calling `new BigDecimal(v)`.
+
+**Status:** Fixed.

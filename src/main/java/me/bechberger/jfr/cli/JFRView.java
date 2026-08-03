@@ -365,7 +365,8 @@ public class JFRView {
             if (val == null) {
                 return List.of("N/A");
             }
-            return List.of(String.format(java.util.Locale.ROOT, "%." + precision + "f", val));
+            double d = val instanceof Number n ? n.doubleValue() : Double.parseDouble(val.toString());
+            return List.of(me.bechberger.jfr.cli.query.ValueFormatter.formatDoublePublic(d));
         }
 
         @Override
