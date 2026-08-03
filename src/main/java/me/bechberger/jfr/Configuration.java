@@ -351,7 +351,7 @@ public record Configuration(
      * docs/configurations.md} in sync with the code.
      */
     public static String toFlagTable() {
-        var presets = List.of(LOSSLESS, DEFAULT, REDUCED, ARCHIVAL_MAX);
+        var presets = List.of(LOSSLESS, DEFAULT, REDUCED);
         var booleanComponents =
                 java.util.Arrays.stream(Configuration.class.getRecordComponents())
                         .filter(c -> c.getType() == boolean.class)
