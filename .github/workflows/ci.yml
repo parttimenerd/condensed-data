@@ -98,7 +98,7 @@ jobs:
         cd /tmp/femtocli && mvn install -Pminimal -DskipTests -q
 
     - name: Build package
-      run: mvn package -DskipTests -P!jmc-test
+      run: mvn package -Dmaven.test.skip=true -DskipTests=true -P!jmc-test
 
     - name: Generate femtojar-reencoded JARs
       run: python3 reduce-jar.py femtojar target/condensed-data.jar target/femtojar-jars/
