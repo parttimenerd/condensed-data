@@ -145,7 +145,48 @@ def strip_forbidden(fat_jar: Path, output: Path) -> tuple[int, int]:
     return total, excluded
 
 
+OSSRH_SNAPSHOT_BASE = (
+    "https://central.sonatype.com/repository/maven-snapshots/"
+    "me/bechberger/condensed-data"
+)
+
+
 def find_fat_jar(project_dir: Path, version: str) -> Path | None:
+    target = project_dir / "target"
+    candidates = list(target.glob(f"condensed-data-{version}.jar"))
+    if candidates:
+        return candidates[0]
+    candidates = list(target.glob("condensed-data-*.jar"))
+    candidates = [c for c in candidates if "reader" not in c.name and "sources" not in c.name]
+    return candidates[0] if candidates else None
+
+
+def download_fat_jar_from_snapshot(version: str, output: Path) -> bool:
+    """Try to download the latest fat JAR from OSSRH snapshots. Returns True on success."""
+    import urllib.request
+    import xml.etree.ElementTree as ET
+
+    meta_url = f"{OSSRH_SNAPSHOT_BASE}/{version}/maven-metadata.xml"
+    try:
+        with urllib.request.urlopen(meta_url, timeout=15) as resp:
+            tree = ET.fromstring(resp.read())
+        # Find the latest snapshot value, e.g. "0.1.1-20260803.140429-2"
+        snapshot_ver = tree.findtext(".//snapshotVersions/snapshotVersion[extension='jar'][not(classifier)]/value")
+        if not snapshot_ver:
+            return False
+        jar_url = f"{OSSRH_SNAPSHOT_BASE}/{version}/condensed-data-{snapshot_ver}.jar"
+        print(f"Downloading fat JAR from {jar_url} …")
+        output.parent.mkdir(parents=True, exist_ok=True)
+        with urllib.request.urlopen(jar_url, timeout=60) as resp:
+            output.write_bytes(resp.read())
+        print(f"Downloaded {output.stat().st_size // 1024} KB")
+        return True
+    except Exception as e:
+        print(f"Download failed ({e}), falling back to local build")
+        return False
+
+
+
     target = project_dir / "target"
     candidates = list(target.glob(f"condensed-data-{version}.jar"))
     if candidates:
@@ -193,12 +234,17 @@ def main() -> None:
 
     src_dir = project_dir / "src" / "main" / "java"
     if fat_jar is None or is_stale(fat_jar, src_dir):
-        print("Building fat JAR…")
-        mvn(["package", "-Dmaven.test.skip=true", "-P!jmc-test", "-q"], project_dir)
-        fat_jar = find_fat_jar(project_dir, version)
-        if fat_jar is None:
-            print("ERROR: could not find fat JAR after build", file=sys.stderr)
-            sys.exit(1)
+        # Try downloading from OSSRH snapshots first (avoids needing JMC locally)
+        download_target = project_dir / "target" / f"condensed-data-{version}.jar"
+        if not args.fat_jar and download_fat_jar_from_snapshot(version, download_target):
+            fat_jar = download_target
+        else:
+            print("Building fat JAR…")
+            mvn(["package", "-Dmaven.test.skip=true", "-P!jmc-test", "-q"], project_dir)
+            fat_jar = find_fat_jar(project_dir, version)
+            if fat_jar is None:
+                print("ERROR: could not find fat JAR after build", file=sys.stderr)
+                sys.exit(1)
 
     print(f"Fat JAR: {fat_jar}")
 
