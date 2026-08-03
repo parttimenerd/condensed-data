@@ -99,6 +99,11 @@ public class PrintCommand implements Callable<Integer> {
     private boolean json;
 
     @Option(
+            names = {"--xml"},
+            description = "Print recording in XML format")
+    private boolean xml;
+
+    @Option(
             names = {"--categories"},
             description =
                     "Select events matching a category name. Comma-separated list of names and/or"
@@ -127,6 +132,8 @@ public class PrintCommand implements Callable<Integer> {
         try {
             if (json) {
                 printJson(reader, filterPatterns, categoryPatterns);
+            } else if (xml) {
+                printXml(reader, filterPatterns, categoryPatterns);
             } else {
                 printText(reader, filterPatterns, categoryPatterns);
             }
@@ -347,6 +354,159 @@ public class PrintCommand implements Callable<Integer> {
                 System.err.println("Warning: No events found matching filter: " + f);
             }
         }
+    }
+
+    // ── XML output ───────────────────────────────────────────────────────────
+
+    private static final String XML_NS =
+            "xmlns:xsi=\"http://www.w3.org/2001/XMLSchema-instance\"";
+
+    private void printXml(
+            CombiningJFRReader reader,
+            List<Pattern> filterPatterns,
+            List<Pattern> categoryPatterns) {
+        System.out.println("<?xml version=\"1.0\" encoding=\"UTF-8\"?>");
+        System.out.println("<recording " + XML_NS + ">");
+        System.out.println("  <events>");
+        ReadStruct event;
+        while ((event = reader.readNextEvent()) != null) {
+            if (!matchesFilter(filterPatterns, event.getType().getName())) continue;
+            if (!matchesCategories(categoryPatterns, event.getType())) continue;
+            printXmlEvent(event, "    ");
+        }
+        System.out.println("  </events>");
+        System.out.println("</recording>");
+    }
+
+    private void printXmlEvent(ReadStruct event, String indent) {
+        System.out.println(indent + "<event type=\"" + event.getType().getName() + "\">");
+        @SuppressWarnings("unchecked")
+        List<StructType.Field<Object, ?, ?>> fields =
+                (List<StructType.Field<Object, ?, ?>>) (List<?>) event.getType().getFields();
+        // Same field ordering as text output: startTime/duration first, domain fields, then
+        // eventThread/stackTrace last.
+        List<StructType.Field<Object, ?, ?>> meta = new ArrayList<>();
+        List<StructType.Field<Object, ?, ?>> domain = new ArrayList<>();
+        List<StructType.Field<Object, ?, ?>> tail = new ArrayList<>();
+        for (StructType.Field<Object, ?, ?> f : fields) {
+            String n = f.name();
+            if (n.equals("startTime") || n.equals("duration")) meta.add(f);
+            else if (n.equals("eventThread") || n.equals("stackTrace")) tail.add(f);
+            else domain.add(f);
+        }
+        String childIndent = indent + "  ";
+        for (StructType.Field<Object, ?, ?> f : meta) {
+            printXmlField(event.get(f.name()), f.name(), f.type(), childIndent);
+        }
+        for (StructType.Field<Object, ?, ?> f : domain) {
+            printXmlField(event.get(f.name()), f.name(), f.type(), childIndent);
+        }
+        for (StructType.Field<Object, ?, ?> f : tail) {
+            printXmlField(event.get(f.name()), f.name(), f.type(), childIndent);
+        }
+        // ExecutionSample/NativeMethodSample: state field dropped at condense (always
+        // STATE_RUNNABLE); inject it after stackTrace to match oracle XML output.
+        String typeName = event.getType().getName();
+        if ((typeName.equals("jdk.ExecutionSample") || typeName.equals("jdk.NativeMethodSample"))
+                && !event.hasField("state")) {
+            System.out.println(childIndent + "<value name=\"state\">STATE_RUNNABLE</value>");
+        }
+        System.out.println(indent + "</event>");
+        System.out.println();
+    }
+
+    private void printXmlField(
+            Object value, String name, CondensedType<?, ?> fieldType, String indent) {
+        if (value == null && fieldType instanceof StructType<?, ?>) {
+            System.out.println(indent + "<struct name=\"" + name + "\" xsi:nil=\"true\"/>");
+            return;
+        }
+        if (value instanceof ReadStruct struct) {
+            if (struct.getType() == null) {
+                System.out.println(indent + "<struct name=\"" + name + "\" xsi:nil=\"true\"/>");
+            } else {
+                System.out.println(indent + "<struct name=\"" + name + "\">");
+                printXmlStructFields(struct, indent + "  ");
+                System.out.println(indent + "</struct>");
+            }
+        } else if (value instanceof ReadList<?> list) {
+            printXmlArray(list, name, indent);
+        } else if (value instanceof List<?> list) {
+            printXmlArray(list, name, indent);
+        } else {
+            System.out.println(
+                    indent + "<value name=\"" + name + "\">" + xmlValue(value, fieldType)
+                            + "</value>");
+        }
+    }
+
+    private void printXmlStructFields(ReadStruct struct, String indent) {
+        @SuppressWarnings("unchecked")
+        List<StructType.Field<Object, ?, ?>> fields =
+                (List<StructType.Field<Object, ?, ?>>) (List<?>) struct.getType().getFields();
+        for (StructType.Field<Object, ?, ?> f : fields) {
+            printXmlField(struct.get(f.name()), f.name(), f.type(), indent);
+        }
+    }
+
+    private void printXmlArray(List<?> list, String name, String indent) {
+        int size = list.size();
+        System.out.println(indent + "<array name=\"" + name + "\" size=\"" + size + "\">");
+        for (int i = 0; i < size; i++) {
+            Object item = list.get(i);
+            if (item instanceof ReadStruct struct) {
+                System.out.println(indent + "  <struct index=\"" + i + "\">");
+                printXmlStructFields(struct, indent + "    ");
+                System.out.println(indent + "  </struct>");
+            } else {
+                System.out.println(indent + "  <value index=\"" + i + "\">" + xmlValue(item, null)
+                        + "</value>");
+            }
+        }
+        System.out.println(indent + "</array>");
+    }
+
+    private String xmlValue(Object value, @Nullable CondensedType<?, ?> fieldType) {
+        if (value == null) return "";
+        if (value instanceof Instant instant) {
+            try {
+                return jsonTimestampFmt(instant)
+                        .format(instant.atZone(ZoneId.systemDefault()))
+                        .toString();
+            } catch (DateTimeException e) {
+                if (instant.compareTo(Instant.EPOCH) < 0) return "-999999999-01-01T00:00+18:00";
+                return "+999999999-12-31T23:59:59.999999999-18:00";
+            }
+        }
+        if (value instanceof Duration d) {
+            return d.toString();
+        }
+        if (value instanceof Boolean b) {
+            return b ? "true" : "false";
+        }
+        if (value instanceof Float f) {
+            return Float.isFinite(f) ? String.valueOf(f) : "";
+        }
+        if (value instanceof Double d) {
+            return Double.isFinite(d) ? String.valueOf(d) : "";
+        }
+        if (fieldType instanceof VarIntType vit && !vit.isSigned() && value instanceof Long l) {
+            return Long.toUnsignedString(l);
+        }
+        if (value instanceof Number n) {
+            return String.valueOf(n.longValue());
+        }
+        if (value instanceof String s) {
+            return xmlEscape(s);
+        }
+        return xmlEscape(value.toString());
+    }
+
+    private static String xmlEscape(String s) {
+        return s.replace("&", "&amp;")
+                .replace("<", "&lt;")
+                .replace(">", "&gt;")
+                .replace("\"", "&quot;");
     }
 
     // ── JSON output ──────────────────────────────────────────────────────────

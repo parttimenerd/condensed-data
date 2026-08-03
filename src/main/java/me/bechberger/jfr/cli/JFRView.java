@@ -788,6 +788,10 @@ public class JFRView {
             if (val == null) return List.of("N/A");
             String raw = val.toString();
             String label = typeLabels.getOrDefault(raw, raw);
+            // Strip the "(Experimental)" suffix: oracle does not show it in data columns.
+            if (label.endsWith(" (Experimental)")) {
+                label = label.substring(0, label.length() - " (Experimental)".length());
+            }
             return List.of(label);
         }
 

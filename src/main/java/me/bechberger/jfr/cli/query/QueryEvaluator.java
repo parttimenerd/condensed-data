@@ -325,7 +325,12 @@ final class QueryEvaluator {
         if (!"jdk.ActiveSetting".equals(srcType) && !"jdk.RecordingSetting".equals(srcType)) {
             return value;
         }
-        return typeLabels.getOrDefault(name, name);
+        String label = typeLabels.getOrDefault(name, name);
+        // Strip the "(Experimental)" suffix: oracle does not show it in data columns.
+        if (label.endsWith(" (Experimental)")) {
+            label = label.substring(0, label.length() - " (Experimental)".length());
+        }
+        return label;
     }
 
     // ── expression evaluation (flat) ─────────────────────────────────────────

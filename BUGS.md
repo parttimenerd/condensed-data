@@ -3403,3 +3403,35 @@ instead of the raw description. This causes `reportNoEventType()` to detect that
 and emit the "No event of type X found" error (exit 1), matching oracle behavior.
 
 **Status:** Fixed.
+
+## Bug 442: `cjfr view jdk.ActiveSetting` shows "(Experimental)" in Event Id data column
+
+**Observation:** `cjfr view jdk.ActiveSetting` shows event type labels with "(Experimental)" suffix
+in the `Event Id` column (e.g. "Value Based Class Synchronization (Experimental)"), while oracle
+`jfr view jdk.ActiveSetting` shows the clean label without the suffix (e.g. "Value Based Class
+Synchronization").
+
+**Root cause:** Bug 439 stored the "(Experimental)" suffix in the footer `eventTypeLabels` map via
+`BasicJFRWriter.recordEventTypeLabel()`. The `EventIdColumn` in `JFRView` and `relabelSettingId()`
+in `QueryEvaluator` both look up event type labels from this map to translate stored type names (e.g.
+`jdk.ValueBasedObjectSynchronization`) into human labels — and thus included the "(Experimental)"
+suffix in data column values. Oracle only shows the suffix in view titles/header lines (e.g.
+"No events found for 'Flush (Experimental)'"), not in data cells.
+
+**Fix:** Strip the `" (Experimental)"` suffix in `EventIdColumn.format()` (`JFRView`) and
+`relabelSettingId()` (`QueryEvaluator`) before returning the label for column rendering.
+
+**Status:** Fixed.
+
+## Bug 443: `cjfr print` does not support `--xml` option
+
+**Observation:** `jfr print --xml profile.jfr` outputs XML format. Running `cjfr print --xml
+profile.cjfr` fails with "Error: Unknown option: --xml".
+
+**Root cause:** The `PrintCommand` only implements text (`--print`) and JSON (`--json`) output
+formats; XML output was never implemented.
+
+**Status:** Fixed. Added `--xml` option to `PrintCommand` with recursive XML rendering matching
+oracle's structure: null structs use `xsi:nil="true"`, arrays use `<array name="N" size="M">` with
+`<struct index="I">` elements, timestamps use ISO-8601 with nanosecond precision. Injected
+`STATE_RUNNABLE` for ExecutionSample/NativeMethodSample events after stackTrace, matching oracle.
