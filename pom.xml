@@ -284,7 +284,7 @@
         </profile>
         <profile>
             <!-- Publish the reader classifier JAR to Maven Central as a standalone library.
-                 Usage: mvn -Preader-publication deploy -DskipTests -->
+                 Usage: mvn -Preader-publication deploy -Dmaven.test.skip=true -P!jmc-test -->
             <id>reader-publication</id>
             <build>
                 <defaultGoal>deploy</defaultGoal>
@@ -297,7 +297,7 @@
                         <configuration>
                             <publishingServerId>ossrh</publishingServerId>
                             <autoPublish>true</autoPublish>
-                            <waitUntil>uploaded</waitUntil>
+                            <waitUntil>published</waitUntil>
                         </configuration>
                     </plugin>
                     <plugin>
@@ -310,7 +310,7 @@
                                     <goal>jar</goal>
                                 </goals>
                                 <configuration>
-                                    <classifier>reader-sources</classifier>
+                                    <classifier>sources</classifier>
                                     <includes>
                                         <include>me/bechberger/condensed/**</include>
                                         <include>me/bechberger/JFRReader.java</include>
@@ -321,6 +321,63 @@
                                         <include>me/bechberger/cjfr/**</include>
                                     </includes>
                                 </configuration>
+                            </execution>
+                        </executions>
+                    </plugin>
+                    <plugin>
+                        <groupId>org.apache.maven.plugins</groupId>
+                        <artifactId>maven-javadoc-plugin</artifactId>
+                        <version>3.6.3</version>
+                        <executions>
+                            <execution>
+                                <id>attach-javadoc</id>
+                                <goals><goal>jar</goal></goals>
+                                <configuration>
+                                    <classifier>javadoc</classifier>
+                                    <sourcepath>src/main/java</sourcepath>
+                                    <subpackages>me.bechberger.condensed:me.bechberger.jfr:me.bechberger.cjfr</subpackages>
+                                    <doclint>none</doclint>
+                                    <quiet>true</quiet>
+                                </configuration>
+                            </execution>
+                        </executions>
+                    </plugin>
+                    <plugin>
+                        <groupId>org.apache.maven.plugins</groupId>
+                        <artifactId>maven-gpg-plugin</artifactId>
+                        <version>3.2.4</version>
+                        <executions>
+                            <execution>
+                                <id>sign-artifacts</id>
+                                <phase>verify</phase>
+                                <goals><goal>sign</goal></goals>
+                                <configuration>
+                                    <gpgArguments>
+                                        <arg>--pinentry-mode</arg>
+                                        <arg>loopback</arg>
+                                    </gpgArguments>
+                                </configuration>
+                            </execution>
+                        </executions>
+                    </plugin>
+                    <plugin>
+                        <groupId>org.codehaus.mojo</groupId>
+                        <artifactId>flatten-maven-plugin</artifactId>
+                        <version>1.6.0</version>
+                        <configuration>
+                            <!-- Strip profiles (and their SNAPSHOT deps) from the published POM -->
+                            <flattenMode>ossrh</flattenMode>
+                        </configuration>
+                        <executions>
+                            <execution>
+                                <id>flatten</id>
+                                <phase>process-resources</phase>
+                                <goals><goal>flatten</goal></goals>
+                            </execution>
+                            <execution>
+                                <id>flatten-clean</id>
+                                <phase>clean</phase>
+                                <goals><goal>clean</goal></goals>
                             </execution>
                         </executions>
                     </plugin>
