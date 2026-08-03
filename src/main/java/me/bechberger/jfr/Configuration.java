@@ -21,7 +21,7 @@ import java.util.Map;
  *     stackTrace), storing an array of weights per unique stack — lossless except per-event
  *     timestamps (enabled in default preset)
  * @param collapseInternalFramesPrefixes newline-delimited class-name prefixes to collapse in
- *     profiling stack traces (reduced/archival-max only); empty = disabled
+ *     profiling stack traces (reduced only); empty = disabled
  * @param collapseAppFramesPrefixes newline-delimited class-name prefixes to force-keep even if they
  *     match collapseInternalFramesPrefixes; empty = none
  * @param aggregateGCPhaseParallelStats collapse jdk.GCPhaseParallel events per (gcId, phaseName)
@@ -167,14 +167,11 @@ public record Configuration(
         if (collapseAppFramesPrefixes == null) collapseAppFramesPrefixes = "";
     }
 
-    public static final Configuration ARCHIVAL_MAX = REDUCED.withName("archival-max");
-
     public static final Map<String, Configuration> configurations =
             Map.of(
                     "lossless", LOSSLESS,
                     "default", DEFAULT,
-                    "reduced", REDUCED,
-                    "archival-max", ARCHIVAL_MAX);
+                    "reduced", REDUCED);
 
     public Configuration withTimeStampTicksPerSecond(long ttps) {
         return withFieldValue("timeStampTicksPerSecond", ttps);

@@ -186,11 +186,8 @@ agent footprint. The `.cjfr` files are still readable by any full-size JAR offli
     smallest files:
 
     ```shell
-    cjfr condense --condenser-config archival-max app.cjfr archive.cjfr
+    cjfr condense --condenser-config reduced --compression-level MAX_COMPRESSION app.cjfr archive.cjfr
     ```
-
-    `archival-max` = `reduced` reductions + `MAX_COMPRESSION`. You can also
-    set the level directly with `--compression-level=MAX_COMPRESSION`.
 
 ---
 

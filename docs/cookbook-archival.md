@@ -9,29 +9,19 @@ with LZ4FRAMED compression) and want to archive them long-term at maximum compre
 
 ---
 
-### Shortcut: `archival-max`
-
-For the common "smallest possible file, read time irrelevant" case, use the
-`archival-max` shortcut instead of spelling out the config and level:
+### Recommended command
 
 ```shell
-cjfr condense --condenser-config archival-max recording.jfr archive.cjfr
+cjfr condense --condenser-config reduced --compression-level MAX_COMPRESSION recording.jfr archive.cjfr
 ```
 
-`archival-max` expands to `reduced` data reductions plus `MAX_COMPRESSION` (LZ4FRAMED
-level 17). It is equivalent to:
-
-```shell
-cjfr condense --condenser-config reduced \
-  --compression-level MAX_COMPRESSION recording.jfr archive.cjfr
-```
-
-This is the recommended choice for long-term archival. GZIP (`--compression=GZIP`)
+`reduced` applies the most aggressive lossy reductions (drops stack frame line numbers,
+aggregates allocation samples, removes redundant address fields). `MAX_COMPRESSION`
+applies LZ4FRAMED at level 17 for the smallest possible file. GZIP (`--compression=GZIP`)
 produces only ~1% smaller files at the cost of slower reads — there is no practical
-reason to use it over `archival-max`.
+reason to use it for archival.
 
-The rest of this page shows the individual knobs (`--condenser-config`,
-`--compression`, `--compression-level`) for when you want finer control.
+The rest of this page shows the individual knobs for when you want finer control.
 
 ---
 
@@ -57,7 +47,7 @@ YEAR_DIR=/data/jfr/2024
 
 find "$YEAR_DIR" -name "*.jfr" | while read -r jfr; do
   cjfr_out="${jfr%.jfr}.cjfr"
-  if cjfr condense --condenser-config=archival-max "$jfr" "$cjfr_out"; then
+  if cjfr condense --condenser-config=reduced --compression-level=MAX_COMPRESSION "$jfr" "$cjfr_out"; then
     # Verify the output is readable before deleting the original
     if cjfr summary --short "$cjfr_out" > /dev/null 2>&1; then
       rm "$jfr"
@@ -86,10 +76,10 @@ cjfr condense recordings.zip archive.cjfr
 !!! note "ZIP and folder inputs use `default` config"
     When condensing a ZIP or directory, `cjfr condense` defaults to the `default`
     condenser config (conservative lossy). For archival, pass
-    `--condenser-config=archival-max` explicitly:
+    `--condenser-config=reduced` explicitly:
 
     ```shell
-    cjfr condense --condenser-config=archival-max recordings.zip archive.cjfr
+    cjfr condense --condenser-config=reduced --compression-level=MAX_COMPRESSION recordings.zip archive.cjfr
     ```
 
 ---
@@ -114,9 +104,9 @@ cjfr inflate --start="2024-05-24 12:00:00" --duration=1h \
 
 | Input | Config | Typical result |
 |---|---|---|
-| gc_details-heavy JFR | `archival-max` (`reduced` + MAX) | ~1–5% of original |
+| gc_details-heavy JFR | `reduced` + MAX_COMPRESSION | ~1–5% of original |
 | gc_details-heavy JFR | `default` + HIGH | ~3–15% of original |
-| Sparse gc-only JFR | `archival-max` (`reduced` + MAX) | ~5–10% of original |
+| Sparse gc-only JFR | `reduced` + MAX_COMPRESSION | ~5–10% of original |
 
 *Ranges from renaissance benchmark measurements. Actual results depend on GC
 frequency, thread count, and allocation rate.*
@@ -127,7 +117,7 @@ frequency, thread count, and allocation rate.*
 
 | Goal | Config | What it does |
 |---|---|---|
-| Smallest archive, some data loss acceptable | `archival-max` | Full `reduced` data reductions + max LZ4 compression |
+| Smallest archive, some data loss acceptable | `reduced --compression-level MAX_COMPRESSION` | Full `reduced` data reductions + max LZ4 compression |
 | Smallest archive, keep all data | `lossless --compression-level MAX_COMPRESSION` | No data removal, max LZ4 compression |
 | Quick condense with moderate compression | `default` | Conservative lossy reductions, default LZ4 |
 

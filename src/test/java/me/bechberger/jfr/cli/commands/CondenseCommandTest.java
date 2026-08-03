@@ -199,23 +199,21 @@ public class CondenseCommandTest {
     }
 
     @Test
-    public void testArchivalMaxUsesReducedDefaultAndMaxCompression() throws Exception {
+    public void testReducedWithMaxCompressionLevel() throws Exception {
         new CommandExecuter(
                         "condense",
                         "T/" + CommandTestUtil.getSampleJFRFileName(),
                         "T/test.cjfr",
                         "--condenser-config",
-                        "archival-max")
+                        "reduced",
+                        "--compression-level",
+                        "MAX_COMPRESSION")
                 .withFiles(CommandTestUtil.getSampleJFRFile())
                 .check(
                         (result, files) -> {
                             result.assertNoErrorOrOutput();
                             var testFile = files.get("test.cjfr");
-                            // archival-max is its own named config (same data reductions as
-                            // reduced)
-                            assertThat(readConfiguration(testFile).name())
-                                    .isEqualTo("archival-max");
-                            // ... plus the strongest compression level, carried in the header.
+                            assertThat(readConfiguration(testFile).name()).isEqualTo("reduced");
                             assertThat(readStartMessage(testFile).compressionLevel())
                                     .isEqualTo(Compression.CompressionLevel.MAX_COMPRESSION);
                         })

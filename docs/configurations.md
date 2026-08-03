@@ -198,16 +198,13 @@ allows streaming reads without buffering the entire file.
 trade write CPU for a smaller file; they do not change the data or the read path.
 The chosen level is recorded in the file's start header, so tools can report it.
 
-### `archival-max` shortcut
+### Archiving: `reduced` + `MAX_COMPRESSION`
 
-`--condenser-config archival-max` is a CLI-only convenience that expands to the
-`reduced` data reductions **plus** `MAX_COMPRESSION`. It is not a distinct
-on-disk configuration — the file records `reduced` as its config name and
-`MAX_COMPRESSION` as its compression level. Use it for cold, long-term archives
-where write time is irrelevant and every byte counts:
+For cold, long-term archives where write time is irrelevant and every byte counts,
+combine the `reduced` config with `MAX_COMPRESSION`:
 
 ```
-cjfr condense --condenser-config archival-max recording.jfr archive.cjfr
+cjfr condense --condenser-config reduced --compression-level MAX_COMPRESSION recording.jfr archive.cjfr
 ```
 
 ### Combining config and compression

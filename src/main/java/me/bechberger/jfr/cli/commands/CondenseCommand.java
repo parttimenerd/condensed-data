@@ -65,8 +65,8 @@ public class CondenseCommand implements Callable<Integer> {
             names = {"-c", "--condenser-config"},
             description =
                     "The configuration to use, possible values: default, lossless,"
-                            + " reduced, archival-max. 'archival-max' uses reduced data"
-                            + " reductions plus MAX_COMPRESSION.",
+                            + " reduced. Use 'reduced' for archiving (combine with"
+                            + " --compression-level MAX_COMPRESSION for maximum compression).",
             defaultValue = "default")
     private String configName;
 
@@ -96,14 +96,11 @@ public class CondenseCommand implements Callable<Integer> {
 
     /**
      * The compression level to write into the header: an explicit --compression-level wins,
-     * otherwise archival-max implies MAX_COMPRESSION, otherwise the default HIGH_COMPRESSION.
+     * otherwise the default HIGH_COMPRESSION.
      */
     private Compression.CompressionLevel resolveCompressionLevel() {
         if (compressionLevel != null) {
             return compressionLevel;
-        }
-        if ("archival-max".equals(configName)) {
-            return Compression.CompressionLevel.MAX_COMPRESSION;
         }
         return Compression.CompressionLevel.HIGH_COMPRESSION;
     }
@@ -118,7 +115,7 @@ public class CondenseCommand implements Callable<Integer> {
             names = {"--reduced-skipped-frames"},
             description =
                     "Class-name prefixes for internal frames to collapse in profiling stack traces"
-                            + " (reduced/archival-max only). Comma- or newline-separated."
+                            + " (reduced only). Comma- or newline-separated."
                             + " Use 'default' to include the built-in list"
                             + " (java., jdk., scala., etc.). Prefix with '!' to force-keep."
                             + " Example: 'default,!com.myapp.' keeps defaults but never collapses"

@@ -168,7 +168,7 @@ cjfr condense recordings/
 cjfr condense --condenser-config=default recordings/
 
 # Smallest files for cold storage (reduced + MAX_COMPRESSION):
-cjfr condense --condenser-config=archival-max recordings/
+cjfr condense --condenser-config=reduced --compression-level=MAX_COMPRESSION recordings/
 ```
 
 ---
