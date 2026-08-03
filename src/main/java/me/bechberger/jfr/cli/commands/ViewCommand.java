@@ -237,7 +237,9 @@ public class ViewCommand implements Callable<Integer> {
             // Use the view.ini registry as the primary check; fall back to the '-' heuristic for
             // any name that the registry doesn't know (pre-21 JDK or unknown custom view).
             if (!isDottedEventType(viewName)
-                    && (NativeView.isKnownView(viewName) || viewName.contains("-"))) {
+                    && (NativeView.isKnownView(viewName)
+                            || viewName.contains("-")
+                            || viewName.equals("types"))) {
                 if (json) {
                     System.err.println(
                             "Error: --json is only supported for event types (e.g."

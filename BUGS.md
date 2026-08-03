@@ -3488,3 +3488,16 @@ as `&apos;` (e.g. in `jvmArguments`). Our `xmlEscape()` only escaped `&`, `<`, `
 and iterates only up to `limit`, consistent with how JSON handles it in `listToJson()`.
 
 **Status:** Fixed.
+
+## Bug 449: `cjfr view types` does not work — shows "No event of type types found"
+
+**Observation:** `jfr view types profile.jfr` lists all event types in the recording with their
+event counts. `cjfr view types profile.jfr` instead shows "No event of type types found." with
+did-you-mean suggestions. The word `types` doesn't contain a `-` and is not a known view in
+`NativeView`, so it never reaches the JDK `jfr view` delegation path.
+
+**Fix:** Added `viewName.equals("types")` to the delegation condition in `ViewCommand.call()`,
+alongside the existing `viewName.contains("-")` check. `types` is now forwarded to `jfr view`
+on `.jfr` input and inflated on `.cjfr` input, same as other special views.
+
+**Status:** Fixed.
