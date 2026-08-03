@@ -129,9 +129,10 @@ cjfr print recording.cjfr
 cjfr print --events GCPhaseParallel recording.cjfr
 cjfr print --categories GC recording.cjfr
 
-# JSON output or full-precision numbers
+# JSON output, full-precision numbers, or limited stack depth
 cjfr print --json recording.cjfr
-cjfr print --exact recording.cjfr
+cjfr print --exact recording.cjfr      # nanosecond timestamps, unrounded values
+cjfr print --stack-depth 5 recording.cjfr
 ```
 
 Inflate to `.jfr` for JDK Mission Control or other JFR viewers:

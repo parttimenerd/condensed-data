@@ -191,6 +191,21 @@ public class CondenseCommand implements Callable<Integer> {
         return List.of(path);
     }
 
+    /** Opens a {@link RecordingFile}, wrapping any {@link IOException} with the filename. */
+    private static RecordingFile openRecordingFile(Path input) throws IOException {
+        try {
+            return new RecordingFile(input);
+        } catch (IOException e) {
+            throw new IOException(
+                    "'"
+                            + input.getFileName()
+                            + "' is not a valid JFR file ("
+                            + e.getMessage()
+                            + ")",
+                    e);
+        }
+    }
+
     public Integer call() {
         if (noCompression && compression != null) {
             System.err.println("Error: Cannot use both --no-compression and --compression");
@@ -266,7 +281,7 @@ public class CondenseCommand implements Callable<Integer> {
                         basicJFRWriter.resetDeduplication();
                     }
                     firstFile = false;
-                    try (RecordingFile r = new RecordingFile(input)) {
+                    try (RecordingFile r = openRecordingFile(input)) {
                         // Pre-register all event types so ActiveSetting id remapping works for
                         // types whose first event hasn't appeared yet when ActiveSetting events
                         // are processed (Bug 2 fix, see JMC_FIX.md).

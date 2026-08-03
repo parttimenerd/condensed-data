@@ -48,8 +48,7 @@ cjfr inflate --gc-percentile=95 \
   after_0.cjfr after_1.cjfr after_2.cjfr \
   regression-pauses.jfr
 
-# Open in JMC
-# Open in a JFR viewer; JDK Mission Control, Firefox Profiler, or jfr-query
+# Open in JDK Mission Control, Firefox Profiler, or jfr-query
 jmc regression-pauses.jfr
 ```
 

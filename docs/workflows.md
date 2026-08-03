@@ -189,7 +189,7 @@ cjfr condense recordings.zip output.cjfr
 # Full event count breakdown
 cjfr summary recording.cjfr
 
-# What takes up the most bytes?
+# What takes up the most bytes? (opens as an interactive flamegraph in a browser)
 cjfr summary --flamegraph storage.html recording.cjfr
 open storage.html   # or xdg-open on Linux
 

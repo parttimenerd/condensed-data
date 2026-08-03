@@ -219,7 +219,7 @@ Actual sizes depend heavily on workload type; sparse gc-only profiles produce mu
 
 | Condenser config | `.cjfr` output MB/hour (gc_details-heavy) | `.cjfr` output MB/hour (gc-only sparse) |
 |---|---|---|
-| `default` | ~300 MB/hour | ~25 MB/hour |
+| `lossless` | ~300 MB/hour | ~25 MB/hour |
 | `default` (agent default) | ~130 MB/hour | ~10 MB/hour |
 | `reduced` | ~70 MB/hour | ~6 MB/hour |
 
@@ -232,15 +232,15 @@ Actual results depend on GC frequency, thread count, and allocation rate.*
 ## Tuning JFR Event Coverage
 
 The condenser config controls event *reduction*. The JFR configuration controls
-which events are *captured*. These are independent: the condenser reduces whatever
-JFR captured; it cannot add events that JFR didn't record.
+which events are *captured* and at what overhead. These are independent: the
+condenser reduces whatever JFR captured; it cannot add events that JFR didn't record.
 
 | Flag | Controls |
 |---|---|
 | `--condenser-config` | How aggressively events are reduced/combined |
-| `--config` (or `-c`) | Which JFR event set to capture (`default`, `profile`, or a custom .jfc path) |
+| `--config` (or `-c`) | Which JFR event set to capture (`default`, `profile`, or a custom .jfc path); also controls runtime overhead |
 
-To use JFR's `profile` config (more events, higher overhead) with cjfr's `default` reduction:
+To use JFR's `profile` config (more events, higher overhead — CPU samples, allocation events) with cjfr's `default` reduction:
 
 ```shell
 java -javaagent:cjfr.jar='start,/var/rec/app.cjfr,--config=profile,--condenser-config=default' \

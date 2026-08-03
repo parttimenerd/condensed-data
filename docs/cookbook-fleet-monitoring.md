@@ -50,9 +50,9 @@ is only produced for single-file queries; use the most recent file as a represen
 ```shell
 for host in fleet/*/; do
   echo "=== $host ==="
-  # Use most recently modified file for the GC summary
-  latest=$(find "$host" -maxdepth 1 -name 'app_*.cjfr' -printf '%T@ %p\n' | sort -rn | head -1 | cut -d' ' -f2-)
-  cjfr summary --short "$latest" 2>&1
+  # Most recently modified file (ls -t sorts by modification time)
+  latest=$(ls -t "$host"app_*.cjfr 2>/dev/null | head -1)
+  [ -n "$latest" ] && cjfr summary --short "$latest" 2>&1
 done
 ```
 
@@ -66,7 +66,8 @@ The `--json` output includes a `gc` section with `p95Micros` and `maxMicros` pau
 ```shell
 for host in fleet/*/; do
   server=$(basename "$host")
-  latest=$(find "$host" -maxdepth 1 -name 'app_*.cjfr' -printf '%T@ %p\n' | sort -rn | head -1 | cut -d' ' -f2-)
+  latest=$(ls -t "$host"app_*.cjfr 2>/dev/null | head -1)
+  [ -z "$latest" ] && continue
   echo -n "$server p95_pause_ms="
   cjfr summary --json "$latest" \
     | jq '(.gc.p95Micros // 0) / 1000'

@@ -138,7 +138,8 @@ no BCI). Inflation does not restore lost data; it only converts the format.
 ### Raw flag table
 
 The boolean reduction flags behind each preset, generated from the code
-(`Configuration.toFlagTable()`) and verified in `ConfigurationDocTest`:
+(`Configuration.toFlagTable()`) and verified in `ConfigurationDocTest`. **Do not
+edit this table manually** — it is regenerated automatically by the test suite:
 
 <!-- BEGIN GENERATED FLAG TABLE -->
 | flag | lossless | default | reduced |

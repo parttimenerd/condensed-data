@@ -193,9 +193,6 @@ cjfr view jdk.GarbageCollection recording.cjfr
 # Limit to first 20
 cjfr view --limit=20 jdk.GarbageCollection recording.cjfr
 
-# Narrow terminal: truncate long values at the start of cells (keeps the end)
-cjfr view --width=120 --truncate=beginning jdk.GarbageCollection recording.cjfr
-
 # JSON output (suitable for piping to jq)
 cjfr view --json jdk.GarbageCollection recording.cjfr | jq '.[] | .gcId'
 
@@ -206,6 +203,34 @@ cjfr view --start="2024-05-24 12:07:00" --duration=30s --limit=50 \
 # Render a JDK named view directly (natively when possible, else via `jfr view`)
 cjfr view gc-pauses recording.cjfr
 ```
+
+### Controlling column width and truncation
+
+`--width=<n>` overrides the terminal width used for table layout. When cells are
+too wide to fit, `--truncate` controls which end is kept:
+
+```shell
+# Keep the end of long cell values (useful for fully-qualified class names)
+cjfr view --width=120 --truncate=beginning jdk.GarbageCollection recording.cjfr
+
+# Keep the start of long cell values (default)
+cjfr view --width=120 --truncate=end jdk.GarbageCollection recording.cjfr
+```
+
+`--truncate=beginning` (alias `begin`) keeps the tail of long strings — most useful
+for fully-qualified class names in stack traces, where the class leaf is at the end.
+`--truncate=end` (the default) keeps the head.
+
+### Did-you-mean suggestions
+
+If you mistype a view or event name, `cjfr view` suggests the closest match:
+
+```shell
+cjfr view gc-pause recording.cjfr
+# Error: unknown view 'gc-pause'. Did you mean: gc-pauses?
+```
+
+Named views are also included in suggestions, so `hot-method` will suggest `hot-methods`.
 
 ### Named views
 
@@ -229,10 +254,6 @@ Rendering a named view straight from a `.cjfr` is also faster than opening the
 original `.jfr` (measured ~2–3× on a 253 MB `gc_details` recording), since only
 the event types the view needs are read.
 
-`--truncate` accepts `beginning` (or `begin`) to keep the end of long cell values,
-or `end` (default) to keep the beginning. For fully-qualified class names in stack
-traces, `beginning` is usually more useful.
-
 ---
 
 ## `print` output and formatting
@@ -253,7 +274,8 @@ cjfr print --events "CPULoad,GCHeapSummary" recording.cjfr
 cjfr print --categories GC recording.cjfr
 cjfr print --categories "GC,Profiling" recording.cjfr
 
-# Full-precision output: nanosecond timestamps, raw bytes, exact floats
+# Full-precision output: nanosecond timestamps, exact byte values, unrounded floats
+# Use when the default human-readable rounding obscures the data you care about
 cjfr print --exact recording.cjfr
 
 # Limit stack trace depth

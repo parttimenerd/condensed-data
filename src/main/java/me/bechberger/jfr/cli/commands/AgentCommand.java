@@ -5,8 +5,10 @@ import com.sun.tools.attach.AgentLoadException;
 import com.sun.tools.attach.AttachNotSupportedException;
 import com.sun.tools.attach.VirtualMachine;
 import com.sun.tools.attach.VirtualMachineDescriptor;
+import java.io.ByteArrayOutputStream;
 import java.io.File;
 import java.io.IOException;
+import java.io.PrintStream;
 import java.net.URISyntaxException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -264,12 +266,38 @@ public class AgentCommand implements Callable<Integer> {
             System.out.println("No running JVMs found.");
             return 1;
         }
+        boolean isStart = !agentArgs.isEmpty() && agentArgs.get(0).equals("start");
         int exitCode = 0;
         for (JVMProcess jvm : jvms) {
             System.out.printf("--- %d (%s) ---%n", jvm.pid(), jvm.displayName());
-            int result = handleSubCommand((int) jvm.pid(), agentArgs);
-            if (result != 0) {
-                exitCode = result;
+            if (isStart) {
+                // Capture output so we can detect "already running" and treat it as a note
+                ByteArrayOutputStream capture = new ByteArrayOutputStream();
+                PrintStream captureStream = new PrintStream(capture);
+                PrintStream originalOut = System.out;
+                System.setOut(captureStream);
+                int result;
+                try {
+                    result = handleSubCommand((int) jvm.pid(), agentArgs);
+                } finally {
+                    System.out.flush();
+                    System.setOut(originalOut);
+                }
+                String captured = capture.toString();
+                System.out.print(captured);
+                if (result != 0 && captured.contains("Recording already running")) {
+                    System.out.printf(
+                            "Note: recording already running on %d (%s), skipping.%n",
+                            jvm.pid(), jvm.displayName());
+                    // Don't propagate this as a failure
+                } else if (result != 0) {
+                    exitCode = result;
+                }
+            } else {
+                int result = handleSubCommand((int) jvm.pid(), agentArgs);
+                if (result != 0) {
+                    exitCode = result;
+                }
             }
         }
         return exitCode;

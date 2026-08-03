@@ -116,6 +116,10 @@ cjfr summary --gc-percentile=95 app_0.cjfr app_1.cjfr   # worst pause context
 
     Pick the right JAR variant (universal / platform / minimal).
 
+-   :material-api: **[Reader Library](reader-library.md)**
+
+    Embed `.cjfr` reading in your own Java app — no JMC, no CLI, ~500 KB.
+
 </div>
 
 ## Cookbooks

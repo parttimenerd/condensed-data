@@ -99,6 +99,7 @@ nav:
   - Reference:
       - Configuration Reference: configurations.md
       - JAR Release Selection: jar-releases.md
+      - Reader Library: reader-library.md
   - Cookbooks:
       - GC Regression Hunt: cookbook-gc-regression.md
       - Fleet-Wide Monitoring: cookbook-fleet-monitoring.md

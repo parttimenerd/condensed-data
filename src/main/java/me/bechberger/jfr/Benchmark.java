@@ -175,20 +175,7 @@ public class Benchmark {
                                 r -> r.jfrFile().compressedSize(),
                                 1,
                                 tconf.humanReadableMemory));
-            }
-            // add per-hour column
-            header.add(
-                    TableColumnDescription.ofMemory(
-                            tconf.onlyPerHour ? "original per-hour" : "per-hour",
-                            r -> {
-                                var runtime = r.jfrFile().runtime();
-                                var size = r.jfrFile().size();
-                                return (long) (size / runtime * 3600f);
-                            },
-                            1,
-                            tconf.humanReadableMemory));
-            if (!tconf.onlyPerHour) {
-                // add % column
+                // add % column for compressed
                 header.add(
                         new TableColumnDescription<>(
                                 "%",
@@ -199,30 +186,37 @@ public class Benchmark {
                                     return (float) compressedSize / originalSize * 100;
                                 }));
             }
-            // add per-hour column
-            header.add(
-                    TableColumnDescription.ofMemory(
-                            tconf.onlyPerHour ? "compressed per-hour" : "per-hour",
-                            r -> {
-                                var runtime = r.jfrFile().runtime();
-                                var size = r.jfrFile().compressedSize;
-                                return (long) (size / runtime * 3600f);
-                            },
-                            1,
-                            tconf.humanReadableMemory));
-            // add the following for each generatorConfiguration: runtime, size
+            if (tconf.onlyPerHour) {
+                header.add(
+                        TableColumnDescription.ofMemory(
+                                "original per-hour",
+                                r -> {
+                                    var runtime = r.jfrFile().runtime();
+                                    var size = r.jfrFile().size();
+                                    return (long) (size / runtime * 3600f);
+                                },
+                                1,
+                                tconf.humanReadableMemory));
+                header.add(
+                        TableColumnDescription.ofMemory(
+                                "compressed per-hour",
+                                r -> {
+                                    var runtime = r.jfrFile().runtime();
+                                    var size = r.jfrFile().compressedSize;
+                                    return (long) (size / runtime * 3600f);
+                                },
+                                1,
+                                tconf.humanReadableMemory));
+            }
+            // add the following for each generatorConfiguration: size, %  (and per-hour if
+            // requested)
             configurations()
                     .forEach(
                             config -> {
                                 if (!tconf.onlyPerHour) {
                                     header.add(
-                                            new TableColumnDescription<>(
-                                                    config.name(),
-                                                    "%.1f s",
-                                                    r -> r.forConfiguration(config).runtime()));
-                                    header.add(
                                             TableColumnDescription.ofMemory(
-                                                    "size",
+                                                    config.name(),
                                                     r -> r.forConfiguration(config).size(),
                                                     1,
                                                     tconf.humanReadableMemory));
@@ -238,19 +232,19 @@ public class Benchmark {
                                                                 / originalSize
                                                                 * 100;
                                                     }));
+                                } else {
+                                    header.add(
+                                            TableColumnDescription.ofMemory(
+                                                    config.name() + " per-hour",
+                                                    r -> {
+                                                        var runtime = r.jfrFile().runtime();
+                                                        var size =
+                                                                r.forConfiguration(config).size();
+                                                        return (long) (size / runtime * 3600f);
+                                                    },
+                                                    1,
+                                                    tconf.humanReadableMemory));
                                 }
-                                header.add(
-                                        TableColumnDescription.ofMemory(
-                                                tconf.onlyPerHour
-                                                        ? config.name() + " per-hour"
-                                                        : "per-hour",
-                                                r -> {
-                                                    var runtime = r.jfrFile().runtime();
-                                                    var size = r.forConfiguration(config).size();
-                                                    return (long) (size / runtime * 3600f);
-                                                },
-                                                1,
-                                                tconf.humanReadableMemory));
                             });
             return new Table<>(header, results);
         }
