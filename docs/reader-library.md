@@ -7,7 +7,7 @@ title: Reader Library
 The `condensed-data-reader` artifact lets any Java application read `.cjfr` files
 without taking the full CLI, agent, or JMC classes as dependencies.
 
-**Coordinates:** `me.bechberger:condensed-data:VERSION:reader`
+**Coordinates:** `me.bechberger:condensed-data-reader:VERSION`
 
 **Size:** ~500 KB + `lz4-java` (~700 KB). No JMC, no femtocli, no agent code.
 
@@ -20,15 +20,8 @@ without taking the full CLI, agent, or JMC classes as dependencies.
 ```xml
 <dependency>
     <groupId>me.bechberger</groupId>
-    <artifactId>condensed-data</artifactId>
+    <artifactId>condensed-data-reader</artifactId>
     <version>0.1.1</version>
-    <classifier>reader</classifier>
-</dependency>
-<!-- Runtime dependency -->
-<dependency>
-    <groupId>at.yawk.lz4</groupId>
-    <artifactId>lz4-java</artifactId>
-    <version>1.11.0</version>
 </dependency>
 ```
 

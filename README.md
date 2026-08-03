@@ -222,47 +222,47 @@ java -jar target/condensed-data.jar benchmark
 
 ### Current Results
 
-**Benchmark run on 2026-07-29 18:51**
+**Benchmark run on 2026-08-03**
 
 JFR file | runtime (s) | original | compressed | lossless | default | reduced
 -------- | ----------- | -------- | ---------- | -------- | ------- | -------
-renaissance-all_gc_details_ZGC.jfr | 1917.0 | 249.8MB | 23.6% | 21.8% | 11.4% | 2.5%
-renaissance-all_gc_details_ParallelGC.jfr | 1443.1 | 244.9MB | 21.4% | 16.2% | 8.3% | 1.6%
-renaissance-all_gc_details_SerialGC.jfr | 1587.2 | 242.6MB | 20.8% | 20.2% | 10.7% | 2.1%
-renaissance-all_gc_details_G1.jfr | 1827.1 | 241.5MB | 22.8% | 20.7% | 7.9% | 3.2%
-renaissance-all_gc_ZGC.jfr | 1808.5 | 89.9MB | 42.5% | 39.4% | 21.5% | 19.6%
-renaissance-movie-lens_default_G1.jfr | 559.0 | 79.1MB | 29.6% | 26.5% | 11.5% | 7.3%
-renaissance-all_gc_ParallelGC.jfr | 1395.1 | 57.9MB | 29.5% | 7.0% | 5.5% | 3.2%
-renaissance-naive-bayes_default_G1.jfr | 60.2 | 46.1MB | 20.8% | 22.1% | 3.0% | 2.5%
-renaissance-fj-kmeans_default_G1.jfr | 62.0 | 40.4MB | 21.2% | 22.1% | 3.1% | 2.6%
-renaissance-page-rank_default_G1.jfr | 93.9 | 38.7MB | 26.0% | 26.0% | 7.0% | 6.2%
-renaissance-dotty_gc_details_ZGC.jfr | 71.4 | 29.4MB | 19.8% | 9.3% | 5.6% | 0.7%
-renaissance-all_gc_G1.jfr | 1537.4 | 29.3MB | 40.6% | 27.7% | 21.6% | 16.6%
-renaissance-als_default_G1.jfr | 128.2 | 21.7MB | 25.5% | 23.8% | 8.2% | 4.9%
-renaissance-chi-square_default_G1.jfr | 34.4 | 18.4MB | 22.7% | 23.8% | 4.1% | 3.2%
-renaissance-mnemonics_default_G1.jfr | 36.8 | 14.3MB | 22.5% | 24.1% | 3.5% | 3.1%
-renaissance-all_gc_SerialGC.jfr | 1569.4 | 14.2MB | 37.0% | 34.8% | 23.7% | 17.1%
-renaissance-par-mnemonics_default_G1.jfr | 30.4 | 14.0MB | 21.6% | 23.7% | 2.8% | 2.4%
-renaissance-dotty_gc_details_G1.jfr | 70.3 | 12.8MB | 23.2% | 16.4% | 8.2% | 2.7%
-renaissance-neo4j-analytics_default_G1.jfr | 42.4 | 11.1MB | 22.8% | 22.7% | 6.4% | 4.7%
-renaissance-future-genetic_default_G1.jfr | 62.6 | 11.0MB | 24.0% | 24.7% | 5.2% | 4.0%
-renaissance-dec-tree_default_G1.jfr | 31.4 | 10.7MB | 26.3% | 25.6% | 9.1% | 6.0%
-renaissance-scrabble_default_G1.jfr | 8.8 | 10.1MB | 21.5% | 24.3% | 2.8% | 2.5%
-renaissance-scala-stm-bench7_default_G1.jfr | 52.7 | 9.7MB | 25.3% | 25.4% | 6.6% | 5.7%
-renaissance-log-regression_default_G1.jfr | 34.4 | 9.5MB | 25.6% | 25.6% | 9.1% | 4.8%
-renaissance-dotty_gc_details_SerialGC.jfr | 74.3 | 9.0MB | 22.1% | 14.9% | 7.9% | 2.1%
-renaissance-reactors_default_G1.jfr | 63.6 | 7.7MB | 25.0% | 25.7% | 7.2% | 6.0%
-renaissance-gauss-mix_default_G1.jfr | 23.4 | 7.4MB | 29.9% | 30.4% | 14.0% | 10.1%
-renaissance-philosophers_default_G1.jfr | 28.2 | 7.1MB | 25.6% | 26.4% | 5.8% | 4.8%
-renaissance-dotty_default_G1.jfr | 67.8 | 6.0MB | 25.2% | 16.9% | 8.7% | 4.5%
-renaissance-dotty_gc_details_ParallelGC.jfr | 71.2 | 5.4MB | 23.3% | 17.8% | 8.1% | 2.3%
-renaissance-rx-scrabble_default_G1.jfr | 8.1 | 2.0MB | 24.8% | 25.3% | 8.3% | 6.6%
-renaissance-scala-doku_default_G1.jfr | 33.6 | 1.4MB | 28.0% | 25.3% | 12.8% | 10.3%
-renaissance-scala-kmeans_default_G1.jfr | 10.2 | 1.1MB | 28.1% | 27.0% | 12.0% | 10.4%
-renaissance-dotty_gc_ParallelGC.jfr | 71.8 | 1020.3KB | 36.1% | 14.4% | 12.7% | 11.0%
-renaissance-dotty_gc_ZGC.jfr | 74.0 | 702.2KB | 43.0% | 38.5% | 26.1% | 20.7%
-renaissance-dotty_gc_G1.jfr | 70.6 | 603.4KB | 42.4% | 35.8% | 29.0% | 24.4%
-renaissance-dotty_gc_SerialGC.jfr | 74.4 | 501.3KB | 38.8% | 35.7% | 26.8% | 22.5%
+renaissance-all_gc_details_ZGC.jfr | 1917.0 | 249.8MB | 23.6% | 22.3% | 11.8% | 2.7%
+renaissance-all_gc_details_ParallelGC.jfr | 1443.1 | 244.9MB | 21.4% | 17.0% | 8.8% | 1.9%
+renaissance-all_gc_details_SerialGC.jfr | 1587.2 | 242.6MB | 20.8% | 20.5% | 11.2% | 2.3%
+renaissance-all_gc_details_G1.jfr | 1827.1 | 241.5MB | 22.8% | 20.9% | 8.3% | 3.4%
+renaissance-all_gc_ZGC.jfr | 1808.5 | 89.9MB | 42.5% | 39.6% | 21.0% | 19.9%
+renaissance-movie-lens_default_G1.jfr | 559.0 | 79.1MB | 29.6% | 26.7% | 12.6% | 8.9%
+renaissance-all_gc_ParallelGC.jfr | 1395.1 | 57.9MB | 29.5% | 7.2% | 5.0% | 3.4%
+renaissance-naive-bayes_default_G1.jfr | 60.2 | 46.1MB | 20.8% | 22.2% | 3.2% | 2.8%
+renaissance-fj-kmeans_default_G1.jfr | 62.0 | 40.4MB | 21.2% | 22.3% | 3.2% | 2.9%
+renaissance-page-rank_default_G1.jfr | 93.9 | 38.7MB | 26.0% | 26.1% | 7.1% | 6.4%
+renaissance-dotty_gc_details_ZGC.jfr | 71.4 | 29.4MB | 19.8% | 9.5% | 6.3% | 0.8%
+renaissance-all_gc_G1.jfr | 1537.4 | 29.3MB | 40.6% | 28.4% | 21.1% | 16.6%
+renaissance-als_default_G1.jfr | 128.2 | 21.7MB | 25.5% | 24.0% | 9.0% | 5.9%
+renaissance-chi-square_default_G1.jfr | 34.4 | 18.4MB | 22.7% | 24.0% | 4.4% | 3.6%
+renaissance-mnemonics_default_G1.jfr | 36.8 | 14.3MB | 22.5% | 24.3% | 3.7% | 3.4%
+renaissance-all_gc_SerialGC.jfr | 1569.4 | 14.2MB | 37.0% | 36.0% | 23.2% | 18.9%
+renaissance-par-mnemonics_default_G1.jfr | 30.4 | 14.0MB | 21.6% | 24.0% | 3.0% | 2.7%
+renaissance-dotty_gc_details_G1.jfr | 70.3 | 12.8MB | 23.2% | 16.7% | 10.5% | 2.9%
+renaissance-neo4j-analytics_default_G1.jfr | 42.4 | 11.1MB | 22.8% | 23.0% | 6.9% | 5.2%
+renaissance-future-genetic_default_G1.jfr | 62.6 | 11.0MB | 24.0% | 25.0% | 5.5% | 4.6%
+renaissance-dec-tree_default_G1.jfr | 31.4 | 10.7MB | 26.3% | 26.0% | 9.9% | 6.9%
+renaissance-scrabble_default_G1.jfr | 8.8 | 10.1MB | 21.5% | 24.6% | 3.1% | 2.9%
+renaissance-scala-stm-bench7_default_G1.jfr | 52.7 | 9.7MB | 25.3% | 25.8% | 7.0% | 6.2%
+renaissance-log-regression_default_G1.jfr | 34.4 | 9.5MB | 25.6% | 26.0% | 10.1% | 6.1%
+renaissance-dotty_gc_details_SerialGC.jfr | 74.3 | 9.0MB | 22.1% | 15.3% | 10.8% | 2.4%
+renaissance-reactors_default_G1.jfr | 63.6 | 7.7MB | 25.0% | 26.1% | 7.7% | 6.8%
+renaissance-gauss-mix_default_G1.jfr | 23.4 | 7.4MB | 29.9% | 30.9% | 15.3% | 11.9%
+renaissance-philosophers_default_G1.jfr | 28.2 | 7.1MB | 25.6% | 26.9% | 6.2% | 5.6%
+renaissance-dotty_default_G1.jfr | 67.8 | 6.0MB | 25.2% | 17.4% | 10.1% | 5.1%
+renaissance-dotty_gc_details_ParallelGC.jfr | 71.2 | 5.4MB | 23.3% | 18.4% | 9.7% | 2.8%
+renaissance-rx-scrabble_default_G1.jfr | 8.1 | 2.0MB | 24.8% | 26.7% | 9.9% | 8.3%
+renaissance-scala-doku_default_G1.jfr | 33.6 | 1.4MB | 28.0% | 27.3% | 14.6% | 12.4%
+renaissance-scala-kmeans_default_G1.jfr | 10.2 | 1.1MB | 28.1% | 29.6% | 14.4% | 13.1%
+renaissance-dotty_gc_ParallelGC.jfr | 71.8 | 1020.3KB | 36.1% | 17.3% | 15.4% | 13.7%
+renaissance-dotty_gc_ZGC.jfr | 74.0 | 702.2KB | 43.0% | 42.7% | 27.1% | 24.7%
+renaissance-dotty_gc_G1.jfr | 70.6 | 603.4KB | 42.4% | 40.8% | 31.6% | 28.1%
+renaissance-dotty_gc_SerialGC.jfr | 74.4 | 501.3KB | 38.8% | 41.8% | 31.3% | 28.9%
 
 The generated JFR files are probably larger than real-world files, but smaller than dedicated GC benchmarks.
 
