@@ -662,6 +662,17 @@ public class JFRView {
         }
 
         @Override
+        public String compact(String value) {
+            // Oracle replaces the full param list with "(...)" when the method doesn't fit.
+            int open = value.lastIndexOf('(');
+            if (open >= 0) {
+                String compact = value.substring(0, open) + "(...)";
+                if (compact.length() < value.length()) return compact;
+            }
+            return value;
+        }
+
+        @Override
         public Alignment alignment() {
             return Alignment.LEFT;
         }
@@ -704,6 +715,11 @@ public class JFRView {
             }
             var frames = val.<ReadStruct>getList("frames");
             return frames.stream().map(f -> METHOD_COLUMN.format(f, 1).get(0)).limit(rows).toList();
+        }
+
+        @Override
+        public String compact(String value) {
+            return METHOD_COLUMN.compact(value);
         }
 
         @Override
@@ -1186,8 +1202,13 @@ public class JFRView {
             String desc = type.getDescription();
             if (desc != null && !desc.isEmpty()) {
                 try {
-                    String label = BasicJFRWriter.parseEventDescription(desc).label();
-                    if (label != null && !label.isEmpty()) return label;
+                    var parsed = BasicJFRWriter.parseEventDescription(desc);
+                    String label = parsed.label();
+                    if (label != null && !label.isEmpty()) {
+                        boolean experimental = parsed.annotations().stream()
+                                .anyMatch(a -> "jdk.jfr.Experimental".equals(a.type()));
+                        return experimental ? label + " (Experimental)" : label;
+                    }
                 } catch (RuntimeException ignored) {
                 }
             }

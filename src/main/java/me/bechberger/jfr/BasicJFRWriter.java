@@ -428,7 +428,7 @@ public class BasicJFRWriter {
         return PrettyPrinter.compactPrint(arr);
     }
 
-    record ParsedAnnotationElement(String type, List<Object> values) {}
+    public record ParsedAnnotationElement(String type, List<Object> values) {}
 
     public record ParsedFieldDescription(
             String type,
@@ -964,7 +964,10 @@ public class BasicJFRWriter {
     private void recordEventTypeLabel(jdk.jfr.EventType t) {
         String label = t.getLabel();
         if (label != null && !label.isEmpty()) {
-            eventTypeLabels.putIfAbsent(t.getName(), label);
+            boolean experimental = t.getAnnotationElements().stream()
+                    .anyMatch(a -> "jdk.jfr.Experimental".equals(a.getTypeName()));
+            String fullLabel = experimental ? label + " (Experimental)" : label;
+            eventTypeLabels.putIfAbsent(t.getName(), fullLabel);
         }
     }
 

@@ -3340,7 +3340,48 @@ row. Oracle shows it in a single row.
 command output stored in the JFR recording). When rendered in the table, the trailing `\n` caused
 the table renderer to emit a second empty row.
 
-**Fix:** `JFRView.StringColumn.format()` now calls `stripTrailing()` on the string value to remove
-trailing whitespace/newlines.
+**Status:** Fixed.
+
+## Bug 438: `cjfr view` truncates method parameter list mid-string (e.g. `Error.<init>(St...`); oracle shows `Error.<init>(...)`
+
+**Observation:** When a method name with parameters doesn't fit the column width, we truncate the
+string at the character boundary: `java.lang.Error.<init>(St...`. Oracle truncates by replacing the
+entire parameter list with `(...)`: `java.lang.Error.<init>(...)`.
+
+Affects `StackTraceColumn` (stack trace event-type views) and `MethodColumn`.
+
+**Root cause:** `MethodColumn` had no `compact()` override. The default `compact()` passes through
+unchanged, so the generic `truncate()` (which does end-truncation with `...`) was used.
+`StackTraceColumn` delegates format to `MethodColumn` but the `compact()` was called on the
+`StackTraceColumn` itself, also without an override.
+
+**Fix:** Added `compact(String value)` to `MethodColumn` that replaces everything from the last `(`
+to the end with `(...)`. Added a `compact()` override to `StackTraceColumn` that delegates to
+`METHOD_COLUMN.compact()`.
+
+**Status:** Fixed.
+
+## Bug 439: `cjfr view jdk.Flush` shows title "Flush"; oracle shows "Flush (Experimental)"
+
+**Observation:** Event types with `@Experimental` annotation should show "(Experimental)" in their
+display name. `jdk.Flush` shows "Flush", but oracle shows "No events found for 'Flush (Experimental)'."
+Same for `jdk.SyncOnValueBasedClass` → "Value Based Class Synchronization (Experimental)".
+
+**Root cause:** Two places construct the display name from the event type's description JSON:
+1. `JFRView.typeDisplayName()` — used when events exist to build the view header
+2. `FieldResolver.typeLabel()` — used for the "No events found" message
+3. `BasicJFRWriter.recordEventTypeLabel()` — used to populate the footer's eventTypeLabels map
+
+None of them checked for `@Experimental` in the annotation list.
+
+**Fix:**
+- `JFRView.typeDisplayName()` now checks `parsed.annotations()` for `jdk.jfr.Experimental` and
+  appends " (Experimental)".
+- `FieldResolver.typeLabel()` checks if `description.contains("jdk.jfr.Experimental")` and appends
+  " (Experimental)".
+- `BasicJFRWriter.recordEventTypeLabel()` checks annotation elements for `jdk.jfr.Experimental`
+  so newly-condensed `.cjfr` footers carry the correct label.
+- `BasicJFRWriter.ParsedAnnotationElement` made `public` so `JFRView` can access it.
+- `profile_lossless.cjfr` regenerated to pick up the corrected footer labels.
 
 **Status:** Fixed.

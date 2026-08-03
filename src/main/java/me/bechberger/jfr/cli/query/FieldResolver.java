@@ -215,6 +215,12 @@ final class FieldResolver {
                 sb.append(c);
             }
         }
-        return sb.length() == 0 ? fallbackName : sb.toString();
+        if (sb.length() == 0) return fallbackName;
+        String label = sb.toString();
+        // Append "(Experimental)" if the @Experimental annotation is present in the description.
+        if (description.contains("jdk.jfr.Experimental")) {
+            label += " (Experimental)";
+        }
+        return label;
     }
 }
