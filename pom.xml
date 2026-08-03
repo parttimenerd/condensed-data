@@ -327,6 +327,24 @@
                 </plugins>
             </build>
         </profile>
+        <profile>
+            <id>jmc-test</id>
+            <activation><activeByDefault>true</activeByDefault></activation>
+            <dependencies>
+                <dependency>
+                    <groupId>org.openjdk.jmc</groupId>
+                    <artifactId>flightrecorder</artifactId>
+                    <version>10.0.0-SNAPSHOT</version>
+                    <scope>test</scope>
+                </dependency>
+                <dependency>
+                    <groupId>org.openjdk.jmc</groupId>
+                    <artifactId>common</artifactId>
+                    <version>10.0.0-SNAPSHOT</version>
+                    <scope>test</scope>
+                </dependency>
+            </dependencies>
+        </profile>
     </profiles>
 
     <dependencies>
@@ -368,19 +386,9 @@
             <artifactId>flightrecorder.writer</artifactId>
             <version>9.1.2</version>
         </dependency>
-        <!-- JMC parser (reader) — vendored 10.0.0-SNAPSHOT built from jmc/core -->
-        <dependency>
-            <groupId>org.openjdk.jmc</groupId>
-            <artifactId>flightrecorder</artifactId>
-            <version>10.0.0-SNAPSHOT</version>
-            <scope>test</scope>
-        </dependency>
-        <dependency>
-            <groupId>org.openjdk.jmc</groupId>
-            <artifactId>common</artifactId>
-            <version>10.0.0-SNAPSHOT</version>
-            <scope>test</scope>
-        </dependency>
+        <!-- JMC parser (reader) — vendored 10.0.0-SNAPSHOT built from jmc/core.
+             Declared in the jmc-test profile (active by default) so CI builds that
+             lack the local JMC SNAPSHOTs can deactivate it with -P!jmc-test. -->
         <dependency>
             <groupId>me.bechberger.util</groupId>
             <artifactId>femtojson</artifactId>
