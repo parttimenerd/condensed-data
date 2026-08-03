@@ -3468,3 +3468,23 @@ Our XML implementation reused the text-output field ordering (meta first, then d
 `printTextEvent()` retains its reordering independently.
 
 **Status:** Fixed.
+
+## Bug 447: `cjfr print --xml` does not escape single quotes as `&apos;`
+
+**Observation:** Oracle `jfr print --xml` escapes single quote characters (`'`) in element content
+as `&apos;` (e.g. in `jvmArguments`). Our `xmlEscape()` only escaped `&`, `<`, `>`, `"`.
+
+**Fix:** Added `'` → `&apos;` to `xmlEscape()`.
+
+**Status:** Fixed.
+
+## Bug 448: `cjfr print --xml --stack-depth N` does not limit stack frames in XML output
+
+**Observation:** `--stack-depth` limits stack frames in text and JSON output formats, but XML
+`printXmlArray()` did not apply the limit, so all frames were always rendered regardless of the
+`--stack-depth` option.
+
+**Fix:** `printXmlArray()` now computes `limit = stackDepth >= 0 ? min(stackDepth, size) : size`
+and iterates only up to `limit`, consistent with how JSON handles it in `listToJson()`.
+
+**Status:** Fixed.

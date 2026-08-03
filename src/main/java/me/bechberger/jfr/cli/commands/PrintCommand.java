@@ -442,8 +442,9 @@ public class PrintCommand implements Callable<Integer> {
 
     private void printXmlArray(List<?> list, String name, String indent) {
         int size = list.size();
+        int limit = stackDepth >= 0 ? Math.min(stackDepth, size) : size;
         System.out.println(indent + "<array name=\"" + name + "\" size=\"" + size + "\">");
-        for (int i = 0; i < size; i++) {
+        for (int i = 0; i < limit; i++) {
             Object item = list.get(i);
             if (item instanceof ReadStruct struct) {
                 System.out.println(indent + "  <struct index=\"" + i + "\">");
@@ -502,7 +503,8 @@ public class PrintCommand implements Callable<Integer> {
         return s.replace("&", "&amp;")
                 .replace("<", "&lt;")
                 .replace(">", "&gt;")
-                .replace("\"", "&quot;");
+                .replace("\"", "&quot;")
+                .replace("'", "&apos;");
     }
 
     // ── JSON output ──────────────────────────────────────────────────────────
