@@ -358,8 +358,7 @@ public class PrintCommand implements Callable<Integer> {
 
     // ── XML output ───────────────────────────────────────────────────────────
 
-    private static final String XML_NS =
-            "xmlns:xsi=\"http://www.w3.org/2001/XMLSchema-instance\"";
+    private static final String XML_NS = "xmlns:xsi=\"http://www.w3.org/2001/XMLSchema-instance\"";
 
     private void printXml(
             CombiningJFRReader reader,
@@ -383,25 +382,9 @@ public class PrintCommand implements Callable<Integer> {
         @SuppressWarnings("unchecked")
         List<StructType.Field<Object, ?, ?>> fields =
                 (List<StructType.Field<Object, ?, ?>>) (List<?>) event.getType().getFields();
-        // Same field ordering as text output: startTime/duration first, domain fields, then
-        // eventThread/stackTrace last.
-        List<StructType.Field<Object, ?, ?>> meta = new ArrayList<>();
-        List<StructType.Field<Object, ?, ?>> domain = new ArrayList<>();
-        List<StructType.Field<Object, ?, ?>> tail = new ArrayList<>();
-        for (StructType.Field<Object, ?, ?> f : fields) {
-            String n = f.name();
-            if (n.equals("startTime") || n.equals("duration")) meta.add(f);
-            else if (n.equals("eventThread") || n.equals("stackTrace")) tail.add(f);
-            else domain.add(f);
-        }
+        // XML uses natural declaration order (unlike text which puts eventThread/stackTrace last).
         String childIndent = indent + "  ";
-        for (StructType.Field<Object, ?, ?> f : meta) {
-            printXmlField(event.get(f.name()), f.name(), f.type(), childIndent);
-        }
-        for (StructType.Field<Object, ?, ?> f : domain) {
-            printXmlField(event.get(f.name()), f.name(), f.type(), childIndent);
-        }
-        for (StructType.Field<Object, ?, ?> f : tail) {
+        for (StructType.Field<Object, ?, ?> f : fields) {
             printXmlField(event.get(f.name()), f.name(), f.type(), childIndent);
         }
         // ExecutionSample/NativeMethodSample: state field dropped at condense (always
@@ -421,6 +404,10 @@ public class PrintCommand implements Callable<Integer> {
             System.out.println(indent + "<struct name=\"" + name + "\" xsi:nil=\"true\"/>");
             return;
         }
+        if (value == null) {
+            System.out.println(indent + "<value name=\"" + name + "\" xsi:nil=\"true\"/>");
+            return;
+        }
         if (value instanceof ReadStruct struct) {
             if (struct.getType() == null) {
                 System.out.println(indent + "<struct name=\"" + name + "\" xsi:nil=\"true\"/>");
@@ -435,7 +422,11 @@ public class PrintCommand implements Callable<Integer> {
             printXmlArray(list, name, indent);
         } else {
             System.out.println(
-                    indent + "<value name=\"" + name + "\">" + xmlValue(value, fieldType)
+                    indent
+                            + "<value name=\""
+                            + name
+                            + "\">"
+                            + xmlValue(value, fieldType)
                             + "</value>");
         }
     }
@@ -459,8 +450,13 @@ public class PrintCommand implements Callable<Integer> {
                 printXmlStructFields(struct, indent + "    ");
                 System.out.println(indent + "  </struct>");
             } else {
-                System.out.println(indent + "  <value index=\"" + i + "\">" + xmlValue(item, null)
-                        + "</value>");
+                System.out.println(
+                        indent
+                                + "  <value index=\""
+                                + i
+                                + "\">"
+                                + xmlValue(item, null)
+                                + "</value>");
             }
         }
         System.out.println(indent + "</array>");

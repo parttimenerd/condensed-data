@@ -3435,3 +3435,36 @@ formats; XML output was never implemented.
 oracle's structure: null structs use `xsi:nil="true"`, arrays use `<array name="N" size="M">` with
 `<struct index="I">` elements, timestamps use ISO-8601 with nanosecond precision. Injected
 `STATE_RUNNABLE` for ExecutionSample/NativeMethodSample events after stackTrace, matching oracle.
+
+## Bug 444: `cjfr metadata` command not implemented
+
+**Observation:** `jfr metadata profile.jfr` prints all event type schemas. `jfr metadata --events
+jdk.ThreadStart profile.jfr` shows the schema for a specific event type. `cjfr` has no `metadata`
+subcommand.
+
+**Status:** Not fixed.
+
+## Bug 445: `cjfr print --xml` renders null scalar fields as `<value name="..."></value>` instead of `<value name="..." xsi:nil="true"/>`
+
+**Observation:** In oracle `jfr print --xml`, null scalar fields (e.g. `javaName` when the thread
+has no Java name) render as `<value name="javaName" xsi:nil="true"/>`. Our implementation rendered
+them as `<value name="javaName"></value>` because `printXmlField` fell through to the scalar path
+which called `xmlValue(null, ...)` returning `""`.
+
+**Fix:** Added an explicit null check for non-struct fields at the top of `printXmlField()`: if
+`value == null` and the field type is not a `StructType`, emit `<value name="..." xsi:nil="true"/>`.
+
+**Status:** Fixed.
+
+## Bug 446: `cjfr print --xml` uses wrong field order (puts `eventThread`/`stackTrace` last instead of natural declaration order)
+
+**Observation:** In oracle `jfr print --xml`, fields appear in their JFR declaration order (e.g.
+`SafepointBegin`: `startTime`, `duration`, `eventThread`, then domain fields like `safepointId`).
+Our XML implementation reused the text-output field ordering (meta first, then domain, then
+`eventThread`/`stackTrace` last), causing `eventThread` to appear after `safepointId` etc.
+
+**Fix:** `printXmlEvent()` now iterates fields in natural declaration order (single loop over
+`event.getType().getFields()`) without the meta/domain/tail reordering. The text output's
+`printTextEvent()` retains its reordering independently.
+
+**Status:** Fixed.
