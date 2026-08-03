@@ -194,7 +194,7 @@ def main() -> None:
     src_dir = project_dir / "src" / "main" / "java"
     if fat_jar is None or is_stale(fat_jar, src_dir):
         print("Building fat JAR…")
-        mvn(["package", "-DskipTests", "-q"], project_dir)
+        mvn(["package", "-Dmaven.test.skip=true", "-q"], project_dir)
         fat_jar = find_fat_jar(project_dir, version)
         if fat_jar is None:
             print("ERROR: could not find fat JAR after build", file=sys.stderr)
