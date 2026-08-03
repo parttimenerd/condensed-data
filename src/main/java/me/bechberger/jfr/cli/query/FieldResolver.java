@@ -202,7 +202,7 @@ final class FieldResolver {
         // first quoted string without a full JSON parse (the shape is fixed and internal).
         int firstQuote = description.indexOf('"');
         if (firstQuote < 0) {
-            return description;
+            return fallbackName;
         }
         StringBuilder sb = new StringBuilder();
         for (int i = firstQuote + 1; i < description.length(); i++) {

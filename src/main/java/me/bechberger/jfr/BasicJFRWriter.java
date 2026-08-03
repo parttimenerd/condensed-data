@@ -964,8 +964,9 @@ public class BasicJFRWriter {
     private void recordEventTypeLabel(jdk.jfr.EventType t) {
         String label = t.getLabel();
         if (label != null && !label.isEmpty()) {
-            boolean experimental = t.getAnnotationElements().stream()
-                    .anyMatch(a -> "jdk.jfr.Experimental".equals(a.getTypeName()));
+            boolean experimental =
+                    t.getAnnotationElements().stream()
+                            .anyMatch(a -> "jdk.jfr.Experimental".equals(a.getTypeName()));
             String fullLabel = experimental ? label + " (Experimental)" : label;
             eventTypeLabels.putIfAbsent(t.getName(), fullLabel);
         }

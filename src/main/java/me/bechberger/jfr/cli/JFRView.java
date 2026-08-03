@@ -1205,8 +1205,9 @@ public class JFRView {
                     var parsed = BasicJFRWriter.parseEventDescription(desc);
                     String label = parsed.label();
                     if (label != null && !label.isEmpty()) {
-                        boolean experimental = parsed.annotations().stream()
-                                .anyMatch(a -> "jdk.jfr.Experimental".equals(a.type()));
+                        boolean experimental =
+                                parsed.annotations().stream()
+                                        .anyMatch(a -> "jdk.jfr.Experimental".equals(a.type()));
                         return experimental ? label + " (Experimental)" : label;
                     }
                 } catch (RuntimeException ignored) {

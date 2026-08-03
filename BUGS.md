@@ -3385,3 +3385,21 @@ None of them checked for `@Experimental` in the annotation list.
 - `profile_lossless.cjfr` regenerated to pick up the corrected footer labels.
 
 **Status:** Fixed.
+
+## Bug 441: `cjfr view jdk.types.Method` shows "No events found for '[null,null,[]]'"
+
+**Observation:** Querying a struct/metadata type like `jdk.types.Method` shows "No events found for
+'[null,null,[]]'" instead of the oracle behavior "Could not find a view or an event type named
+jdk.types.Method". The label displayed was the raw JSON description `[null,null,[]]`.
+
+**Root cause:** Struct types (referenced types, not event types) are stored with `null` label and
+description, producing the description JSON `[null,null,[]]`. `FieldResolver.typeLabel()` tried to
+extract the label as the first quoted string in the JSON; when the description starts with `null`
+(no quote), `indexOf('"')` returns -1 and the code fell through to `return description` — returning
+the raw JSON string as the label.
+
+**Fix:** When `indexOf('"')` is -1 (no quoted first element), return `fallbackName` (the type name)
+instead of the raw description. This causes `reportNoEventType()` to detect that `label == eventName`
+and emit the "No event of type X found" error (exit 1), matching oracle behavior.
+
+**Status:** Fixed.
