@@ -197,6 +197,15 @@ public class ViewCommand implements Callable<Integer> {
                 return 2;
             }
 
+            // Built-in "types" view: list all event types with their event counts, alphabetically,
+            // in two columns. This is a special jfr built-in that does not appear in view.ini.
+            if (viewName.equals("types")) {
+                for (String line : renderTypesView()) {
+                    System.out.println(line);
+                }
+                return 0;
+            }
+
             // Fast path for named views: a dot-free name is never a JFR event type (those are
             // always
             // dotted, e.g. jdk.ObjectCount), so it can only be a named view. Render it natively
@@ -237,9 +246,7 @@ public class ViewCommand implements Callable<Integer> {
             // Use the view.ini registry as the primary check; fall back to the '-' heuristic for
             // any name that the registry doesn't know (pre-21 JDK or unknown custom view).
             if (!isDottedEventType(viewName)
-                    && (NativeView.isKnownView(viewName)
-                            || viewName.contains("-")
-                            || viewName.equals("types"))) {
+                    && (NativeView.isKnownView(viewName) || viewName.contains("-"))) {
                 if (json) {
                     System.err.println(
                             "Error: --json is only supported for event types (e.g."
@@ -319,6 +326,84 @@ public class ViewCommand implements Callable<Integer> {
             eventName = matchingEvents.get(0).getType().getName();
         }
         return new MatchResult(eventName, matchingEvents, seenTypes, typeLabels(jfrReader));
+    }
+
+    /**
+     * Render the built-in "types" view: all event types with their counts, alphabetically, in two
+     * columns. Column widths are determined by the longest entry in each column, mirroring the
+     * output of {@code jfr view types}.
+     */
+    private List<String> renderTypesView() throws Exception {
+        // Collect event-type name → count. Only types with actual events are shown;
+        // zero-count types are omitted (small known diff vs jfr view types).
+        Map<String, Long> counts = new java.util.LinkedHashMap<>();
+        for (Path input : inputs()) {
+            Optional<CJFRFooter> footerOpt = CJFRFooterReader.tryRead(input);
+            if (footerOpt.isPresent()) {
+                footerOpt.get().eventCounts().forEach((k, v) -> counts.merge(k, v, Long::sum));
+            } else {
+                // No footer: scan events.
+                var jfrReader =
+                        CombiningJFRReader.fromPaths(
+                                List.of(input),
+                                eventFilterOptionMixin.createFilter(),
+                                !eventFilterOptionMixin.noReconstitution(),
+                                false,
+                                new me.bechberger.condensed.stats.NoopStatistic(),
+                                null);
+                ReadStruct struct;
+                while ((struct = jfrReader.readNextEvent()) != null) {
+                    counts.merge(struct.getType().getName(), 1L, Long::sum);
+                }
+            }
+        }
+
+        // Sort by short name (strip leading qualifier, e.g. "jdk."), case-insensitive.
+        List<Map.Entry<String, Long>> entries = new java.util.ArrayList<>(counts.entrySet());
+        entries.sort(
+                Comparator.comparing(
+                        e -> shortName(e.getKey()).toLowerCase(java.util.Locale.ROOT)));
+
+        // Format each entry as "ShortName (count)" or "ShortName" when count is 0.
+        List<String> formatted = new java.util.ArrayList<>(entries.size());
+        for (var e : entries) {
+            String name = shortName(e.getKey());
+            long cnt = e.getValue();
+            formatted.add(cnt > 0 ? name + " (" + cnt + ")" : name);
+        }
+
+        if (formatted.isEmpty()) {
+            return List.of("Event Types (number of events):", "", "No events found.");
+        }
+
+        // Split into two columns: left = ceil(n/2), right = floor(n/2).
+        int n = formatted.size();
+        int leftCount = (n + 1) / 2;
+        List<String> left = formatted.subList(0, leftCount);
+        List<String> right = formatted.subList(leftCount, n);
+
+        int col1Width = left.stream().mapToInt(String::length).max().orElse(0) + 1;
+        int col2Width = right.stream().mapToInt(String::length).max().orElse(0);
+
+        List<String> out = new java.util.ArrayList<>();
+        out.add("Event Types (number of events):");
+        out.add("");
+        for (int i = 0; i < leftCount; i++) {
+            String l = left.get(i);
+            String r = i < right.size() ? right.get(i) : "";
+            String row = " " + String.format("%-" + col1Width + "s", l);
+            if (!r.isEmpty()) {
+                row += String.format("%-" + col2Width + "s", r);
+            }
+            out.add(row);
+        }
+        return out;
+    }
+
+    /** Strip a dotted qualifier prefix (e.g. {@code jdk.}) from an event type name. */
+    private static String shortName(String name) {
+        int dot = name.lastIndexOf('.');
+        return dot < 0 ? name : name.substring(dot + 1);
     }
 
     /**

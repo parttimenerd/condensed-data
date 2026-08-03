@@ -17,7 +17,7 @@ import me.bechberger.condensed.ReadStruct;
  * name, e.g. "jdk.YoungGarbageCollection"). These are not stored fields; they come from the event's
  * own type metadata, mirroring {@code jfr view}'s {@code EventType} accessor.
  */
-final class FieldResolver {
+public final class FieldResolver {
 
     private FieldResolver() {}
 

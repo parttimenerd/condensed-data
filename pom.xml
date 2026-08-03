@@ -97,6 +97,43 @@
                         </manifest>
                     </archive>
                 </configuration>
+                <executions>
+                    <execution>
+                        <!-- Produces condensed-data-<version>-reader.jar: a standalone reader
+                             library with no JMC, CLI, or agent classes. -->
+                        <id>reader-jar</id>
+                        <goals><goal>jar</goal></goals>
+                        <configuration>
+                            <classifier>reader</classifier>
+                            <archive>
+                                <manifest>
+                                    <addDefaultImplementationEntries>true</addDefaultImplementationEntries>
+                                </manifest>
+                            </archive>
+                            <includes>
+                                <include>me/bechberger/condensed/**</include>
+                                <include>me/bechberger/JFRReader.class</include>
+                                <include>me/bechberger/jfr/**</include>
+                                <include>me/bechberger/cjfr/**</include>
+                            </includes>
+                            <!-- Exclude JMC-dependent classes (require org.openjdk.jmc.*)
+                                 and CLI commands/agent (require femtocli + JDK jfr.consumer). -->
+                            <excludes>
+                                <exclude>me/bechberger/jfr/WritingJFRReader*.class</exclude>
+                                <exclude>me/bechberger/jfr/TypeUtil*.class</exclude>
+                                <exclude>me/bechberger/jfr/TypedValueUtil*.class</exclude>
+                                <exclude>me/bechberger/jfr/JFREventTypedValueCombiner*.class</exclude>
+                                <exclude>me/bechberger/jfr/JFREventDeduplication*.class</exclude>
+                                <exclude>me/bechberger/jfr/BasicJFRWriter*.class</exclude>
+                                <exclude>me/bechberger/jfr/cli/commands/**</exclude>
+                                <exclude>me/bechberger/jfr/cli/agent/**</exclude>
+                                <exclude>me/bechberger/jfr/cli/query/**</exclude>
+                                <exclude>me/bechberger/jfr/cli/JFRCLI*.class</exclude>
+                                <exclude>me/bechberger/jfr/Benchmark*.class</exclude>
+                            </excludes>
+                        </configuration>
+                    </execution>
+                </executions>
             </plugin>
             <plugin>
                 <artifactId>maven-surefire-plugin</artifactId>
@@ -245,6 +282,51 @@
                 </plugins>
             </build>
         </profile>
+        <profile>
+            <!-- Publish the reader classifier JAR to Maven Central as a standalone library.
+                 Usage: mvn -Preader-publication deploy -DskipTests -->
+            <id>reader-publication</id>
+            <build>
+                <defaultGoal>deploy</defaultGoal>
+                <plugins>
+                    <plugin>
+                        <groupId>org.sonatype.central</groupId>
+                        <artifactId>central-publishing-maven-plugin</artifactId>
+                        <version>0.7.0</version>
+                        <extensions>true</extensions>
+                        <configuration>
+                            <publishingServerId>ossrh</publishingServerId>
+                            <autoPublish>true</autoPublish>
+                            <waitUntil>uploaded</waitUntil>
+                        </configuration>
+                    </plugin>
+                    <plugin>
+                        <groupId>org.apache.maven.plugins</groupId>
+                        <artifactId>maven-source-plugin</artifactId>
+                        <executions>
+                            <execution>
+                                <id>attach-sources</id>
+                                <goals>
+                                    <goal>jar</goal>
+                                </goals>
+                                <configuration>
+                                    <classifier>reader-sources</classifier>
+                                    <includes>
+                                        <include>me/bechberger/condensed/**</include>
+                                        <include>me/bechberger/JFRReader.java</include>
+                                        <include>me/bechberger/jfr/BasicJFRReader.java</include>
+                                        <include>me/bechberger/jfr/CombiningJFRReader.java</include>
+                                        <include>me/bechberger/jfr/Configuration.java</include>
+                                        <include>me/bechberger/jfr/Universe.java</include>
+                                        <include>me/bechberger/cjfr/**</include>
+                                    </includes>
+                                </configuration>
+                            </execution>
+                        </executions>
+                    </plugin>
+                </plugins>
+            </build>
+        </profile>
     </profiles>
 
     <dependencies>
@@ -257,7 +339,7 @@
         <dependency>
             <groupId>me.bechberger.util</groupId>
             <artifactId>femtocli</artifactId>
-            <version>0.4.3</version>
+            <version>0.4.4</version>
         </dependency>
         <dependency>
             <groupId>net.jqwik</groupId>
