@@ -3529,7 +3529,10 @@ name string for JMC label display.
 `StringType` holding the event type name (e.g. `"jdk.ThreadStart"`). `PrintCommand.printTextField()`
 then renders it as a quoted string. The original raw integer from the JFR file is not preserved.
 
-**Status:** Not fixed.
+**Status:** Fixed. `PrintCommand` now calls `resolveActiveSettingTypeId()` which looks up the event
+type name in the CJFR `TypeCollection` and returns its integer ID. Applied to text, XML, and JSON
+output. The rendered integer differs from oracle's (CJFR type IDs vs JFR class IDs) but is now in
+the correct integer format.
 
 ## Bug 453: Inflated `.jfr` missing JFR content-type and annotation type class definitions
 
@@ -3541,5 +3544,56 @@ then renders it as a quoted string. The original raw integer from the JFR file i
 **Root cause:** When cjfr inflates a `.cjfr` file, it writes string fields directly without the JFR content-type metadata. The original JFR format stores string-wrapper types (like `GCCause` with valid values) in the chunk metadata. The inflate process doesn't reconstruct these type descriptors, so they are absent from the inflated `.jfr` file.
 
 **Impact:** Tools that read type metadata from the inflated `.jfr` (such as JMC's type browser or `jfr metadata`) see an incomplete type registry. String fields that should be typed as `GCCause`, `FrameType`, etc. appear as plain strings.
+
+**Status:** Not fixed.
+
+## Bug 455: `cjfr view` default width of 80 truncates long class names to simple name
+
+**Observation:** `cjfr view allocation-by-class profile.jfr` shows `257459516` for the lambda class
+`org.openjdk.jmc.flightrecorder.writer.ConstantPool$$Lambda$167+0x000000c8011112e0.257459516`.
+The oracle `jfr view allocation-by-class profile.jfr` shows the full name. The difference occurs
+because `cjfr view` defaulted to 80 column width, which squeezed the flexible "Object Type" column
+to ~59 chars. The `compactClass()` method then replaced the too-wide name with just its last
+dot-separated segment (`257459516`).
+
+**Root cause:** `ViewCommand.effectiveWidth()` returned `DEFAULT_WIDTH = 80` when `--width` was not
+specified. Oracle's default is content-fit: `jfr` sizes the flexible column to the widest row,
+capped at 120, minimum 80 (from `TableRenderer.determineTableWidth()` constants). At 80-char
+terminal, oracle still shows 111-wide output (content-fit, no terminal truncation).
+
+**Fix:** When `--width` is not specified, `effectiveWidth()` now returns `Integer.MAX_VALUE` as a
+sentinel. `ViewRenderer.distributeFlexibleWidth()` immediately returns without any column expansion
+or shrinking when it sees this sentinel, leaving all columns at their natural content widths. The
+`COLUMNS` env var is checked first so users in narrow terminals still get bounded output.
+
+**Status:** Fixed.
+
+
+**Observation:** `jfr print --events jdk.ClassLoaderStatistics profile.jfr` shows 45 distinct
+`DelegatingClassLoader` instances with different pool IDs (id = 4, 6, 10, 11, ...):
+```
+classLoader = jdk.internal.reflect.DelegatingClassLoader (id = 6)
+classLoader = jdk.internal.reflect.DelegatingClassLoader (id = 13)
+...
+```
+`cjfr print --events jdk.ClassLoaderStatistics profile.cjfr` shows all 45 as the same pool entry:
+```
+classLoader = jdk.internal.reflect.DelegatingClassLoader (id = 2)
+classLoader = jdk.internal.reflect.DelegatingClassLoader (id = 2)
+...
+```
+
+**Root cause:** The DEFAULT preset removes `classLoaderData` (a raw JVM pointer address) from
+`jdk.ClassLoaderStatistics` via `ReducedJFRTypes`. However, `jdk.types.ClassLoader` structs in the
+constant pool distinguish instances via identity (JFR pool ID), not content. After removing
+`classLoaderData`, all anonymous `DelegatingClassLoader` instances become structurally identical
+(`type = DelegatingClassLoader`, `name = null`, no parent), so the pool deduplicator collapses them
+to a single entry. This means `classLoader` fields in multiple events now all reference the same
+pool entry.
+
+**Impact:** You can no longer tell which specific `DelegatingClassLoader` instance loaded which
+classes. The statistics themselves (`classCount`, `blockSize`, etc.) are correct because they live
+in the event body, not the pool entry. This is a data-fidelity issue: different entities that happen
+to look structurally identical are merged.
 
 **Status:** Not fixed.

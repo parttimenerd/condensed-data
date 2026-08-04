@@ -978,7 +978,7 @@ public class BasicJFRWriter {
      *
      * <p>See {@link WritingJFRReader} for the inflate-side counterpart.
      */
-    static final Set<String> EVENTS_WITH_TYPE_ID_FIELD =
+    public static final Set<String> EVENTS_WITH_TYPE_ID_FIELD =
             Set.of("jdk.ActiveSetting", "jdk.RecordingSetting");
 
     private StringType activeSettingIdStringType;

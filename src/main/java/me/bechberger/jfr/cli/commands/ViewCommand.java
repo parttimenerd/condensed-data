@@ -66,17 +66,34 @@ public class ViewCommand implements Callable<Integer> {
                             + " is rendered as that event type instead.")
     private List<String> args = new ArrayList<>();
 
-    // -1 means "not set by the user". The native renderer resolves it to DEFAULT_WIDTH; the
-    // delegation path omits --width so `jfr view` uses its own per-view default.
+    // -1 means "not set by the user". The native renderer resolves it to the auto-detected
+    // terminal width (or a large content-fit default); the delegation path omits --width so
+    // `jfr view` uses its own per-view default.
     @Option(
             names = "--width",
-            description = "Total table width in characters (10-1000). Default: 80.")
+            description =
+                    "Total table width in characters (10-10000). Default: terminal width or"
+                            + " content-fit.")
     private int width = -1;
 
-    private static final int DEFAULT_WIDTH = 80;
-
     private int effectiveWidth() {
-        return width == -1 ? DEFAULT_WIDTH : width;
+        if (width != -1) return width;
+        return detectTerminalWidth();
+    }
+
+    private static int detectTerminalWidth() {
+        // Try COLUMNS env var (set by most shells when stdin is a tty).
+        String cols = System.getenv("COLUMNS");
+        if (cols != null && !cols.isBlank()) {
+            try {
+                int w = Integer.parseInt(cols.trim());
+                if (w > 0) return w;
+            } catch (NumberFormatException ignored) {
+            }
+        }
+        // Fall back to Integer.MAX_VALUE: signals distributeFlexibleWidth to keep natural
+        // content widths (oracle's default: table grows to fit widest row, no terminal bound).
+        return Integer.MAX_VALUE;
     }
 
     @Option(
@@ -178,8 +195,8 @@ public class ViewCommand implements Callable<Integer> {
                         "Error: --limit must be >= 0 (or -1 for no limit), got: " + limit);
                 return 2;
             }
-            if (width != -1 && (width < 10 || width > 1000)) {
-                System.err.println("Error: --width must be between 10 and 1000, got: " + width);
+            if (width != -1 && (width < 10 || width > 10_000)) {
+                System.err.println("Error: --width must be between 10 and 10000, got: " + width);
                 return 2;
             }
             if (cellHeight != -1 && cellHeight < 1) {

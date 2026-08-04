@@ -19,10 +19,12 @@ import me.bechberger.condensed.ReadList;
 import me.bechberger.condensed.ReadStruct;
 import me.bechberger.condensed.types.CondensedType;
 import me.bechberger.condensed.types.StructType;
+import me.bechberger.condensed.types.TypeCollection;
 import me.bechberger.condensed.types.VarIntType;
 import me.bechberger.femtocli.annotations.Command;
 import me.bechberger.femtocli.annotations.Option;
 import me.bechberger.femtocli.annotations.Parameters;
+import me.bechberger.jfr.BasicJFRWriter;
 import me.bechberger.jfr.CombiningJFRReader;
 import me.bechberger.jfr.cli.CLIUtils;
 import me.bechberger.jfr.cli.FileOptionConverters.ExistingCJFROrJFRFileOrZipOrFolderConverter;
@@ -118,6 +120,12 @@ public class PrintCommand implements Callable<Integer> {
                     "Print numbers and timestamps with full precision (nanosecond timestamps,"
                             + " raw byte counts, full-precision floats)")
     private boolean exact;
+
+    /**
+     * Populated from the reader's type collection before rendering; used to map
+     * ActiveSetting/RecordingSetting {@code id} strings back to integer type IDs.
+     */
+    private TypeCollection typeCollection;
 
     private static final DateTimeFormatter TIMESTAMP_FMT =
             DateTimeFormatter.ofPattern("HH:mm:ss.SSS (yyyy-MM-dd)", Locale.ROOT);
@@ -266,7 +274,9 @@ public class PrintCommand implements Callable<Integer> {
             List<Pattern> filterPatterns,
             List<Pattern> categoryPatterns) {
         Set<String> seen = filterPatterns != null ? new HashSet<>() : null;
-        for (ReadStruct event : readSorted(reader, filterPatterns, categoryPatterns)) {
+        List<ReadStruct> events = readSorted(reader, filterPatterns, categoryPatterns);
+        typeCollection = reader.getInputStream().getTypeCollection();
+        for (ReadStruct event : events) {
             if (seen != null) seen.add(event.getType().getName());
             printTextEvent(event);
         }
@@ -300,7 +310,12 @@ public class PrintCommand implements Callable<Integer> {
         for (StructType.Field<Object, ?, ?> field : domain) {
             Object value = event.get(field.name());
             if (shouldSuppressField(value, field)) continue;
-            if (field.name().equals("object")
+            if (field.name().equals("id")
+                    && value instanceof String typeName
+                    && BasicJFRWriter.EVENTS_WITH_TYPE_ID_FIELD.contains(
+                            event.getType().getName())) {
+                System.out.println("  id = " + resolveActiveSettingTypeId(typeName));
+            } else if (field.name().equals("object")
                     && value instanceof ReadStruct rs
                     && rs.hasField("type")
                     && rs.hasField("description")) {
@@ -386,7 +401,9 @@ public class PrintCommand implements Callable<Integer> {
         System.out.println("<?xml version=\"1.0\" encoding=\"UTF-8\"?>");
         System.out.println("<recording " + XML_NS + ">");
         System.out.println("  <events>");
-        for (ReadStruct event : readSorted(reader, filterPatterns, categoryPatterns)) {
+        List<ReadStruct> events = readSorted(reader, filterPatterns, categoryPatterns);
+        typeCollection = reader.getInputStream().getTypeCollection();
+        for (ReadStruct event : events) {
             printXmlEvent(event, "    ");
         }
         System.out.println("  </events>");
@@ -400,8 +417,20 @@ public class PrintCommand implements Callable<Integer> {
                 (List<StructType.Field<Object, ?, ?>>) (List<?>) event.getType().getFields();
         // XML uses natural declaration order (unlike text which puts eventThread/stackTrace last).
         String childIndent = indent + "  ";
+        String eventTypeName = event.getType().getName();
         for (StructType.Field<Object, ?, ?> f : fields) {
-            printXmlField(event.get(f.name()), f.name(), f.type(), childIndent);
+            Object val = event.get(f.name());
+            if (f.name().equals("id")
+                    && val instanceof String tn
+                    && BasicJFRWriter.EVENTS_WITH_TYPE_ID_FIELD.contains(eventTypeName)) {
+                System.out.println(
+                        childIndent
+                                + "<value name=\"id\">"
+                                + resolveActiveSettingTypeId(tn)
+                                + "</value>");
+            } else {
+                printXmlField(val, f.name(), f.type(), childIndent);
+            }
         }
         // ExecutionSample/NativeMethodSample: state field dropped at condense (always
         // STATE_RUNNABLE); inject it after stackTrace to match oracle XML output.
@@ -532,8 +561,10 @@ public class PrintCommand implements Callable<Integer> {
         System.out.println("{");
         System.out.println("  \"recording\": {");
         System.out.print("    \"events\": [");
+        List<ReadStruct> events = readSorted(reader, filterPatterns, categoryPatterns);
+        typeCollection = reader.getInputStream().getTypeCollection();
         boolean first = true;
-        for (ReadStruct event : readSorted(reader, filterPatterns, categoryPatterns)) {
+        for (ReadStruct event : events) {
             if (first) {
                 // First event: attach { directly to [ on same line
                 System.out.print("{");
@@ -564,16 +595,19 @@ public class PrintCommand implements Callable<Integer> {
                         && !event.hasField("state");
         int totalFields = fields.size() + (needsStateInject ? 1 : 0);
         int written = 0;
+        String eventTypeName = event.getType().getName();
         for (int i = 0; i < fields.size(); i++) {
             StructType.Field<?, ?, ?> field = fields.get(i);
             Object value = event.get(field.name());
-            System.out.print(
-                    "\n"
-                            + indent
-                            + "    \""
-                            + field.name()
-                            + "\": "
-                            + toJson(value, indent + "    ", field.type()));
+            String rendered;
+            if (field.name().equals("id")
+                    && value instanceof String tn
+                    && BasicJFRWriter.EVENTS_WITH_TYPE_ID_FIELD.contains(eventTypeName)) {
+                rendered = String.valueOf(resolveActiveSettingTypeId(tn));
+            } else {
+                rendered = toJson(value, indent + "    ", field.type());
+            }
+            System.out.print("\n" + indent + "    \"" + field.name() + "\": " + rendered);
             written++;
             if (written < totalFields) System.out.print(", ");
             if (needsStateInject && field.name().equals("stackTrace")) {
@@ -1169,5 +1203,23 @@ public class PrintCommand implements Callable<Integer> {
             out.append(base).append("[]".repeat(dims));
         }
         return out.toString();
+    }
+
+    /**
+     * Resolves an {@code ActiveSetting}/{@code RecordingSetting} {@code id} string (event type name
+     * stored at condense time) back to the CJFR StructType integer ID, matching the integer format
+     * that oracle {@code jfr print} uses for the raw JFR class ID.
+     */
+    private long resolveActiveSettingTypeId(String eventTypeName) {
+        if (typeCollection != null) {
+            CondensedType<?, ?> t = typeCollection.getTypeOrNull(eventTypeName);
+            if (t != null) return t.getId();
+        }
+        // Fallback: bare numeric string stored by legacy files before name-remapping was added
+        try {
+            return Long.parseLong(eventTypeName);
+        } catch (NumberFormatException ignored) {
+        }
+        return 0;
     }
 }

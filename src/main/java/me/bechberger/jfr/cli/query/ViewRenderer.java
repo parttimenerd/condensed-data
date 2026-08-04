@@ -602,6 +602,11 @@ final class ViewRenderer {
      * </ul>
      */
     private void distributeFlexibleWidth(int[] widths) {
+        // Content-fit sentinel: no terminal constraint — keep natural content widths unchanged.
+        // This mirrors oracle's default behaviour (no --width specified): the table grows to fit
+        // the widest row rather than being bounded to a fixed terminal width.
+        if (termWidth == Integer.MAX_VALUE) return;
+
         int nCols = widths.length;
         List<Integer> flexIdx = new ArrayList<>();
         List<Integer> shrinkIdx = new ArrayList<>();
