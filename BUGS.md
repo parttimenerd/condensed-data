@@ -3530,3 +3530,16 @@ name string for JMC label display.
 then renders it as a quoted string. The original raw integer from the JFR file is not preserved.
 
 **Status:** Not fixed.
+
+## Bug 453: Inflated `.jfr` missing JFR content-type and annotation type class definitions
+
+**Observation:** `jfr metadata profile.jfr` outputs 266 class definitions, while `cjfr metadata profile.cjfr` (which inflates to a temp `.jfr` then delegates to `jfr metadata`) outputs only 221 class definitions. The 45 missing classes include:
+- JFR string content-wrapper types: `Bytecode`, `GCCause`, `GCName`, `FrameType`, `CompilerType`, `DeoptimizationReason`, `DeoptimizationAction`, `ThreadState`, `VMOperationType`, `G1YCType`, etc.
+- JFR annotation types: `BooleanFlag`, `Enabled`, `Threshold`, `Cutoff`, `Period`, `Throttle`, `StackTrace`, `TransitionTo`, `Relational`, etc.
+- JFR setting control types: `Enabled extends jdk.jfr.SettingControl`, `Threshold extends jdk.jfr.SettingControl`, `Cutoff extends jdk.jfr.SettingControl`, etc.
+
+**Root cause:** When cjfr inflates a `.cjfr` file, it writes string fields directly without the JFR content-type metadata. The original JFR format stores string-wrapper types (like `GCCause` with valid values) in the chunk metadata. The inflate process doesn't reconstruct these type descriptors, so they are absent from the inflated `.jfr` file.
+
+**Impact:** Tools that read type metadata from the inflated `.jfr` (such as JMC's type browser or `jfr metadata`) see an incomplete type registry. String fields that should be typed as `GCCause`, `FrameType`, etc. appear as plain strings.
+
+**Status:** Not fixed.
