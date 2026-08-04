@@ -3517,3 +3517,16 @@ resolve a pre-existing compile error in `me.bechberger.cjfr` package.
 **Fix:** Add an `Instant` branch to `ViewCommand.convertValue()` that formats with `ZoneId.systemDefault()` and the same precision-trimming logic as `PrintCommand`.
 
 **Status:** Fixed.
+
+## Bug 452: `cjfr print` shows `id = "jdk.ThreadStart"` for `jdk.ActiveSetting` instead of integer
+
+**Observation:** `jfr print profile.jfr` shows `id = 2` (a raw integer) for `jdk.ActiveSetting`
+events, while `cjfr print profile.cjfr` shows `id = "jdk.ThreadStart"` (a quoted string event-type
+name). The oracle stores `id` as a class-type integer reference; cjfr remaps it to the event type
+name string for JMC label display.
+
+**Root cause:** `BasicJFRWriter.createActiveSettingIdField()` stores `jdk.ActiveSetting.id` as a
+`StringType` holding the event type name (e.g. `"jdk.ThreadStart"`). `PrintCommand.printTextField()`
+then renders it as a quoted string. The original raw integer from the JFR file is not preserved.
+
+**Status:** Not fixed.
