@@ -144,7 +144,9 @@ public class CondensedOutputStreamTest {
         var baos = new ByteArrayOutputStream();
         var out = new CondensedOutputStream(baos, StartMessage.DEFAULT);
         var footer =
-                new CJFRFooter(1, 0L, 0L, 0L, Map.of(), null, null, null, Map.of(), Map.of(), 0L);
+                new CJFRFooter(
+                        1, 0L, 0L, 0L, Map.of(), null, null, null, Map.of(), Map.of(), Map.of(),
+                        0L);
         out.writeFooter(footer);
         byte[] bytes = baos.toByteArray();
         // Find sentinel byte 7 — it should appear right before the zlib blob

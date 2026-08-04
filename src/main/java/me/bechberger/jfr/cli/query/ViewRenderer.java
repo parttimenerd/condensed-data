@@ -602,11 +602,30 @@ final class ViewRenderer {
      * </ul>
      */
     private void distributeFlexibleWidth(int[] widths) {
-        // Content-fit sentinel: no terminal constraint — keep natural content widths unchanged.
-        // This mirrors oracle's default behaviour (no --width specified): the table grows to fit
-        // the widest row rather than being bounded to a fixed terminal width.
-        if (termWidth == Integer.MAX_VALUE) return;
+        // Content-fit sentinel: apply oracle's determineTableWidth() logic:
+        //   - natural total (widths + separators) > 120 → cap at 120
+        //   - natural total < 80 → floor at 80 (unless very small table: < 40 with < 3 cols)
+        //   - else → keep natural total
+        if (termWidth == Integer.MAX_VALUE) {
+            int naturalUsed = widths.length - 1;
+            for (int w : widths) naturalUsed += w;
+            int target;
+            if (naturalUsed > 120) {
+                target = 120;
+            } else if (naturalUsed < 40 && widths.length < 3) {
+                target = 40;
+            } else if (naturalUsed < 80) {
+                target = 80;
+            } else {
+                return; // fits naturally in [80,120]: keep as-is
+            }
+            distributeWithEffectiveWidth(widths, target);
+            return;
+        }
+        distributeWithEffectiveWidth(widths, termWidth);
+    }
 
+    private void distributeWithEffectiveWidth(int[] widths, int effectiveWidth) {
         int nCols = widths.length;
         List<Integer> flexIdx = new ArrayList<>();
         List<Integer> shrinkIdx = new ArrayList<>();
@@ -619,23 +638,23 @@ final class ViewRenderer {
 
         if (flexIdx.isEmpty() && shrinkIdx.isEmpty()) {
             // All-non-flex tables: oracle pads each column by ceil(surplus/nCols) so that the
-            // table fills slightly past termWidth (observed in gc-references, safepoints, etc.).
-            // If the table already exceeds termWidth, leave it unchanged.
-            int surplus = termWidth - used;
+            // table fills slightly past effectiveWidth (observed in gc-references, safepoints, etc.).
+            // If the table already exceeds effectiveWidth, leave it unchanged.
+            int surplus = effectiveWidth - used;
             if (surplus <= 0) return;
             int pad = (surplus + nCols - 1) / nCols; // ceil division
             for (int c = 0; c < nCols; c++) widths[c] += pad;
             return;
         }
 
-        int target = shrinkIdx.isEmpty() ? termWidth + flexIdx.size() - 2 : termWidth - 1;
+        int target = shrinkIdx.isEmpty() ? effectiveWidth + flexIdx.size() - 2 : effectiveWidth - 1;
         int delta = target - used;
 
         // When content naturally fits within the terminal, keep the natural content sizes —
         // oracle does not shrink flex columns that already fit (observed: vm-operations
-        // natural=80 at termWidth=80 stays 80, not 79). Only skip when used <= termWidth;
-        // when used > termWidth, oracle does shrink (e.g. jvm-flags natural=153 → 79).
-        if (delta <= 0 && used <= termWidth && shrinkIdx.isEmpty()) {
+        // natural=80 at effectiveWidth=80 stays 80, not 79). Only skip when used <= effectiveWidth;
+        // when used > effectiveWidth, oracle does shrink (e.g. jvm-flags natural=153 → 79).
+        if (delta <= 0 && used <= effectiveWidth && shrinkIdx.isEmpty()) {
             return;
         }
 
@@ -644,7 +663,7 @@ final class ViewRenderer {
             // flex or not (observed: active-settings all-7-flex gets +3 each; gc-references
             // all-non-flex also gets +ceil each via the block above). This path handles the
             // has-flex case.
-            int surplus = termWidth - used;
+            int surplus = effectiveWidth - used;
             if (surplus <= 0) return;
             int pad = (surplus + nCols - 1) / nCols;
             for (int c = 0; c < nCols; c++) widths[c] += pad;

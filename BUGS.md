@@ -3530,9 +3530,10 @@ name string for JMC label display.
 then renders it as a quoted string. The original raw integer from the JFR file is not preserved.
 
 **Status:** Fixed. `PrintCommand` now calls `resolveActiveSettingTypeId()` which looks up the event
-type name in the CJFR `TypeCollection` and returns its integer ID. Applied to text, XML, and JSON
-output. The rendered integer differs from oracle's (CJFR type IDs vs JFR class IDs) but is now in
-the correct integer format.
+type name in the CJFR footer's `eventTypeJfrIds` map (name → original JFR class ID persisted at
+condense time) and returns the correct JFR class integer. Applied to text, XML, and JSON output.
+The footer carries a new flag bit 32 (`Map<String, Long> eventTypeJfrIds`); old files without this
+field fall back to parsing a bare numeric string (legacy pre-name-remapping format).
 
 ## Bug 453: Inflated `.jfr` missing JFR content-type and annotation type class definitions
 
@@ -3562,9 +3563,11 @@ capped at 120, minimum 80 (from `TableRenderer.determineTableWidth()` constants)
 terminal, oracle still shows 111-wide output (content-fit, no terminal truncation).
 
 **Fix:** When `--width` is not specified, `effectiveWidth()` now returns `Integer.MAX_VALUE` as a
-sentinel. `ViewRenderer.distributeFlexibleWidth()` immediately returns without any column expansion
-or shrinking when it sees this sentinel, leaving all columns at their natural content widths. The
-`COLUMNS` env var is checked first so users in narrow terminals still get bounded output.
+sentinel. `ViewRenderer.distributeFlexibleWidth()` applies oracle's `determineTableWidth()` algorithm
+when it sees this sentinel: clamp naturalUsed to [80, 120], or [40, 120] for tiny tables (< 3 cols,
+< 40 chars). If the natural total is already in [80, 120], columns stay as-is. Otherwise the
+distribution runs with the clamped target. The `COLUMNS` env var is checked first so users in
+narrow terminals still get bounded output.
 
 **Status:** Fixed.
 

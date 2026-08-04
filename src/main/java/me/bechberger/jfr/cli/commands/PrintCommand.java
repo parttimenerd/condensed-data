@@ -9,9 +9,11 @@ import java.time.format.DateTimeFormatter;
 import java.time.format.DateTimeFormatterBuilder;
 import java.time.temporal.ChronoField;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.Callable;
 import java.util.regex.Pattern;
@@ -19,7 +21,6 @@ import me.bechberger.condensed.ReadList;
 import me.bechberger.condensed.ReadStruct;
 import me.bechberger.condensed.types.CondensedType;
 import me.bechberger.condensed.types.StructType;
-import me.bechberger.condensed.types.TypeCollection;
 import me.bechberger.condensed.types.VarIntType;
 import me.bechberger.femtocli.annotations.Command;
 import me.bechberger.femtocli.annotations.Option;
@@ -122,10 +123,10 @@ public class PrintCommand implements Callable<Integer> {
     private boolean exact;
 
     /**
-     * Populated from the reader's type collection before rendering; used to map
-     * ActiveSetting/RecordingSetting {@code id} strings back to integer type IDs.
+     * Populated after reading all events; maps event-type name → original JFR class ID so that
+     * ActiveSetting/RecordingSetting {@code id} strings can be rendered as integers matching oracle.
      */
-    private TypeCollection typeCollection;
+    private Map<String, Long> eventTypeJfrIds = Map.of();
 
     private static final DateTimeFormatter TIMESTAMP_FMT =
             DateTimeFormatter.ofPattern("HH:mm:ss.SSS (yyyy-MM-dd)", Locale.ROOT);
@@ -275,7 +276,7 @@ public class PrintCommand implements Callable<Integer> {
             List<Pattern> categoryPatterns) {
         Set<String> seen = filterPatterns != null ? new HashSet<>() : null;
         List<ReadStruct> events = readSorted(reader, filterPatterns, categoryPatterns);
-        typeCollection = reader.getInputStream().getTypeCollection();
+        collectEventTypeJfrIds(reader);
         for (ReadStruct event : events) {
             if (seen != null) seen.add(event.getType().getName());
             printTextEvent(event);
@@ -402,7 +403,7 @@ public class PrintCommand implements Callable<Integer> {
         System.out.println("<recording " + XML_NS + ">");
         System.out.println("  <events>");
         List<ReadStruct> events = readSorted(reader, filterPatterns, categoryPatterns);
-        typeCollection = reader.getInputStream().getTypeCollection();
+        collectEventTypeJfrIds(reader);
         for (ReadStruct event : events) {
             printXmlEvent(event, "    ");
         }
@@ -562,7 +563,7 @@ public class PrintCommand implements Callable<Integer> {
         System.out.println("  \"recording\": {");
         System.out.print("    \"events\": [");
         List<ReadStruct> events = readSorted(reader, filterPatterns, categoryPatterns);
-        typeCollection = reader.getInputStream().getTypeCollection();
+        collectEventTypeJfrIds(reader);
         boolean first = true;
         for (ReadStruct event : events) {
             if (first) {
@@ -1207,19 +1208,28 @@ public class PrintCommand implements Callable<Integer> {
 
     /**
      * Resolves an {@code ActiveSetting}/{@code RecordingSetting} {@code id} string (event type name
-     * stored at condense time) back to the CJFR StructType integer ID, matching the integer format
-     * that oracle {@code jfr print} uses for the raw JFR class ID.
+     * stored at condense time) back to the original JFR class ID from the recording metadata.
      */
     private long resolveActiveSettingTypeId(String eventTypeName) {
-        if (typeCollection != null) {
-            CondensedType<?, ?> t = typeCollection.getTypeOrNull(eventTypeName);
-            if (t != null) return t.getId();
-        }
+        Long id = eventTypeJfrIds.get(eventTypeName);
+        if (id != null) return id;
         // Fallback: bare numeric string stored by legacy files before name-remapping was added
         try {
             return Long.parseLong(eventTypeName);
         } catch (NumberFormatException ignored) {
         }
         return 0;
+    }
+
+    private void collectEventTypeJfrIds(CombiningJFRReader reader) {
+        Map<String, Long> ids = new HashMap<>();
+        for (var footer : reader.inMemoryFooters()) {
+            ids.putAll(footer.eventTypeJfrIds());
+        }
+        for (Path p : inputFiles) {
+            me.bechberger.condensed.CJFRFooterReader.tryRead(p)
+                    .ifPresent(f -> ids.putAll(f.eventTypeJfrIds()));
+        }
+        eventTypeJfrIds = ids;
     }
 }

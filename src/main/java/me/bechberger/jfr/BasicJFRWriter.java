@@ -180,6 +180,14 @@ public class BasicJFRWriter {
     private final Map<Long, String> eventTypeIdToName = new HashMap<>();
 
     /**
+     * Maps event type name → the recording's JFR class ID. Populated only from {@link
+     * #registerEventTypes} (the source-of-truth recording metadata), NOT from the current JVM's
+     * FlightRecorder (whose IDs differ). Persisted in the footer so {@code cjfr print} can render
+     * {@code jdk.ActiveSetting.id} as the correct integer.
+     */
+    private final Map<String, Long> recordingEventTypeNameToId = new HashMap<>();
+
+    /**
      * Maps event type name → human {@code @Label}, populated from the same sources as {@link
      * #eventTypeIdToName}. Persisted in the footer so {@code cjfr view active-settings} can render
      * the {@code id} column (a target event-type name) as that type's label — even for types with
@@ -947,6 +955,7 @@ public class BasicJFRWriter {
     public void registerEventTypes(List<? extends jdk.jfr.EventType> types) {
         for (jdk.jfr.EventType t : types) {
             eventTypeIdToName.put(t.getId(), t.getName());
+            recordingEventTypeNameToId.put(t.getName(), t.getId());
             recordEventTypeLabel(t);
             // Write the full StructType to the CJFR stream so that event types with zero
             // occurrences still have their complete field schema at inflate time. Without this,
@@ -1377,7 +1386,8 @@ public class BasicJFRWriter {
                         .build(
                                 universe.getStartTimeNanos() / 1000,
                                 universe.getDuration().toNanos() / 1000)
-                        .withEventTypeLabels(Map.copyOf(eventTypeLabels));
+                        .withEventTypeLabels(Map.copyOf(eventTypeLabels))
+                        .withEventTypeJfrIds(Map.copyOf(recordingEventTypeNameToId));
         out.writeFooter(footer); // closes the compression wrapper, then writes the footer
     }
 

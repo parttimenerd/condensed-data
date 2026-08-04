@@ -323,6 +323,7 @@ public final class FooterCollector {
                 buildAllocStatsOrNull(),
                 viewAccumulator.build(),
                 Map.of(),
+                Map.of(),
                 0L);
     }
 

@@ -43,6 +43,13 @@ public record CJFRFooter(
          */
         Map<String, String> eventTypeLabels,
         /**
+         * Event-type name → original JFR class ID for every event type seen during condensation.
+         * Needed by {@code cjfr print} to render {@code jdk.ActiveSetting.id} and {@code
+         * jdk.RecordingSetting.id} as integers matching oracle's output. Empty in files that
+         * predate this field (flag bit 32 unset); readers treat absent as empty.
+         */
+        Map<String, Long> eventTypeJfrIds,
+        /**
          * CRC32 over the on-disk bytes {@code [0, footerStart)} (start header + compressed main
          * stream). Filled in by {@link CondensedOutputStream#writeFooter} just before
          * serialization; 0 when constructed by the collector before the stream is finalized.
@@ -82,6 +89,7 @@ public record CJFRFooter(
                 allocStats,
                 precomputedViews,
                 eventTypeLabels,
+                eventTypeJfrIds,
                 crc);
     }
 
@@ -98,6 +106,24 @@ public record CJFRFooter(
                 allocStats,
                 precomputedViews,
                 labels,
+                eventTypeJfrIds,
+                mainStreamCrc32);
+    }
+
+    /** Return a copy carrying {@code ids} as the event-type name → JFR class ID map. */
+    public CJFRFooter withEventTypeJfrIds(Map<String, Long> ids) {
+        return new CJFRFooter(
+                version,
+                totalEvents,
+                startTimeMicros,
+                durationMicros,
+                eventCounts,
+                gcStats,
+                cpuStats,
+                allocStats,
+                precomputedViews,
+                eventTypeLabels,
+                ids,
                 mainStreamCrc32);
     }
 
@@ -161,6 +187,7 @@ public record CJFRFooter(
         if (allocStats != null) flags |= 4;
         if (precomputedViews != null && !precomputedViews.isEmpty()) flags |= 8;
         if (eventTypeLabels != null && !eventTypeLabels.isEmpty()) flags |= 16;
+        if (eventTypeJfrIds != null && !eventTypeJfrIds.isEmpty()) flags |= 32;
         out.writeByte(flags);
 
         writeUnsignedVarInt(out, totalEvents);
@@ -179,6 +206,16 @@ public record CJFRFooter(
         if (allocStats != null) writeAllocStats(out, allocStats);
         if ((flags & 8) != 0) writePrecomputedViews(out, precomputedViews);
         if ((flags & 16) != 0) writeEventTypeLabels(out, eventTypeLabels);
+        if ((flags & 32) != 0) writeEventTypeJfrIds(out, eventTypeJfrIds);
+    }
+
+    private static void writeEventTypeJfrIds(DataOutputStream out, Map<String, Long> ids)
+            throws IOException {
+        writeUnsignedVarInt(out, ids.size());
+        for (var e : ids.entrySet()) {
+            writeString(out, e.getKey());
+            writeUnsignedVarInt(out, e.getValue());
+        }
     }
 
     private static void writeEventTypeLabels(DataOutputStream out, Map<String, String> labels)
@@ -274,6 +311,7 @@ public record CJFRFooter(
         boolean hasAlloc = (flags & 4) != 0;
         boolean hasPrecomputed = (flags & 8) != 0;
         boolean hasEventTypeLabels = (flags & 16) != 0;
+        boolean hasEventTypeJfrIds = (flags & 32) != 0;
 
         long totalEvents = readUnsignedVarint(in);
         long startTimeMicros = readSignedLong8(in);
@@ -293,6 +331,8 @@ public record CJFRFooter(
                 hasPrecomputed ? readPrecomputedViews(in) : Map.of();
         Map<String, String> eventTypeLabels =
                 hasEventTypeLabels ? readEventTypeLabels(in) : Map.of();
+        Map<String, Long> eventTypeJfrIds =
+                hasEventTypeJfrIds ? readEventTypeJfrIds(in) : Map.of();
 
         return new CJFRFooter(
                 version,
@@ -305,6 +345,7 @@ public record CJFRFooter(
                 allocStats,
                 precomputedViews,
                 eventTypeLabels,
+                eventTypeJfrIds,
                 mainStreamCrc32);
     }
 
@@ -316,6 +357,16 @@ public record CJFRFooter(
             labels.put(name, readString(in));
         }
         return Collections.unmodifiableMap(labels);
+    }
+
+    private static Map<String, Long> readEventTypeJfrIds(DataInputStream in) throws IOException {
+        int count = (int) readUnsignedVarint(in);
+        Map<String, Long> ids = new LinkedHashMap<>(count * 2);
+        for (int i = 0; i < count; i++) {
+            String name = readString(in);
+            ids.put(name, readUnsignedVarint(in));
+        }
+        return Collections.unmodifiableMap(ids);
     }
 
     private static Map<String, List<PrecomputedCell>> readPrecomputedViews(DataInputStream in)
