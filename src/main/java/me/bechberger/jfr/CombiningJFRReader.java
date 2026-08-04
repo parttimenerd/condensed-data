@@ -369,6 +369,14 @@ public class CombiningJFRReader implements JFRReader {
                                     ON_THE_FLY_CONFIG.name(),
                                     Compression.DEFAULT))) {
                 var writer = new BasicJFRWriter(out, ON_THE_FLY_CONFIG);
+                try {
+                    writer.setGmtOffsetMillis(
+                            me.bechberger.jfr.BasicJFRWriter.readChunkGmtOffsetMillis(jfrPath));
+                    writer.writeConfigurationAndUniverseIfNeeded(
+                            me.bechberger.jfr.BasicJFRWriter.readChunkStartTimeNanos(jfrPath));
+                } catch (Exception ignored) {
+                    // fall back to first-event start time
+                }
                 try (var recording = new jdk.jfr.consumer.RecordingFile(jfrPath)) {
                     writer.registerEventTypes(recording.readEventTypes());
                     while (recording.hasMoreEvents()) {

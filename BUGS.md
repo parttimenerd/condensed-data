@@ -3574,6 +3574,8 @@ narrow terminals still get bounded output.
 **Status:** Fixed.
 
 
+## Bug 454: `cjfr print` collapses all anonymous `DelegatingClassLoader` instances to one pool entry
+
 **Observation:** `jfr print --events jdk.ClassLoaderStatistics profile.jfr` shows 45 distinct
 `DelegatingClassLoader` instances with different pool IDs (id = 4, 6, 10, 11, ...):
 ```
@@ -3601,4 +3603,31 @@ classes. The statistics themselves (`classCount`, `blockSize`, etc.) are correct
 in the event body, not the pool entry. This is a data-fidelity issue: different entities that happen
 to look structurally identical are merged.
 
-**Status:** Not fixed.
+**Fix:** Changed `ClassLoaderWrapper.hashCode()/equals()` to use `value.getId()` (JFR instance ID)
+instead of name+typeId — each DelegatingClassLoader instance now gets its own CJFR pool entry.
+Added `IdentityKey` branch in `QueryEvaluator.canonicalKey()` so `cjfr view class-loaders` also
+keeps distinct instances separate. After fix, 21 DelegatingClassLoader rows match oracle.
+
+**Status:** Fixed (Bugs 345, 373 share root cause).
+
+## Bug 456: `cjfr summary` reports wrong start time when run directly on a `.jfr` file
+
+**Observation:** `cjfr summary profile.jfr` shows `Start: 2025-12-05 12:12:21+01:00` — one second
+later than the oracle's `Start: 2025-12-05 11:12:20 (UTC)` (= `12:12:20+01:00`). The `Duration`
+was also reported as `1.916s` instead of the correct `2.907s` (which `jfr summary` rounds to `3 s`).
+
+**Root cause:** `CombiningJFRReader.readerForJFRFile()` on-the-fly condenses a `.jfr` file by
+opening a `BasicJFRWriter` and calling `writer.processEvent(event)` for each event. The writer's
+`writeConfigurationAndUniverseIfNeeded()` fires on the **first event's startTime**, not the chunk's
+actual recording-start timestamp from the JFR binary header. The first event happened ~1s after the
+chunk started, so the stored startTimeNanos was 1 second too late.
+
+The `processJFRFile(Path)` method already reads the chunk header correctly via
+`readChunkStartTimeNanos()`, but `readerForJFRFile()` bypassed it.
+
+**Fix:** Call `writer.setGmtOffsetMillis(readChunkGmtOffsetMillis(jfrPath))` and
+`writer.writeConfigurationAndUniverseIfNeeded(readChunkStartTimeNanos(jfrPath))` before the event
+loop in `readerForJFRFile()`, matching the `processJFRFile(Path)` pattern. Falls back to first-event
+time on IOException (same as before).
+
+**Status:** Fixed.
