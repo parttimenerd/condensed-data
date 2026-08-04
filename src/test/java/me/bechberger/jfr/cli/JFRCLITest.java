@@ -10,7 +10,15 @@ public class JFRCLITest {
     @Test
     public void testSubCommandNames() {
         assertEquals(
-                List.of("condense", "inflate", "benchmark", "agent", "summary", "view", "print"),
+                List.of(
+                        "condense",
+                        "inflate",
+                        "benchmark",
+                        "agent",
+                        "summary",
+                        "view",
+                        "print",
+                        "metadata"),
                 JFRCLI.subCommandNames());
     }
 

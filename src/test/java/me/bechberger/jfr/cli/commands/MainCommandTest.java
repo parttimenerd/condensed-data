@@ -15,7 +15,7 @@ import org.junit.jupiter.params.provider.MethodSource;
 public class MainCommandTest {
 
     /** Reminder to look at the tests whenever a version is changed */
-    public static final String VERSION = "0.1.2";
+    public static final String VERSION = "0.1.3";
 
     /** Tests main command with no arguments */
     @Test

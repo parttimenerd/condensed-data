@@ -238,17 +238,36 @@ public class PrintCommand implements Callable<Integer> {
 
     // ── text output ──────────────────────────────────────────────────────────
 
+    /** Reads all events matching the filters, sorted chronologically by startTime. */
+    private List<ReadStruct> readSorted(
+            CombiningJFRReader reader,
+            List<Pattern> filterPatterns,
+            List<Pattern> categoryPatterns) {
+        List<ReadStruct> events = new ArrayList<>();
+        ReadStruct event;
+        while ((event = reader.readNextEvent()) != null) {
+            if (!matchesFilter(filterPatterns, event.getType().getName())) continue;
+            if (!matchesCategories(categoryPatterns, event.getType())) continue;
+            events.add(event);
+        }
+        events.sort(
+                (a, b) -> {
+                    Object ta = a.get("startTime");
+                    Object tb = b.get("startTime");
+                    if (ta instanceof Instant ia && tb instanceof Instant ib)
+                        return ia.compareTo(ib);
+                    return 0;
+                });
+        return events;
+    }
+
     private void printText(
             CombiningJFRReader reader,
             List<Pattern> filterPatterns,
             List<Pattern> categoryPatterns) {
         Set<String> seen = filterPatterns != null ? new HashSet<>() : null;
-        ReadStruct event;
-        while ((event = reader.readNextEvent()) != null) {
-            String typeName = event.getType().getName();
-            if (!matchesFilter(filterPatterns, typeName)) continue;
-            if (!matchesCategories(categoryPatterns, event.getType())) continue;
-            if (seen != null) seen.add(typeName);
+        for (ReadStruct event : readSorted(reader, filterPatterns, categoryPatterns)) {
+            if (seen != null) seen.add(event.getType().getName());
             printTextEvent(event);
         }
         // Seed seen with all known type names (including 0-count types) so that we don't
@@ -367,10 +386,7 @@ public class PrintCommand implements Callable<Integer> {
         System.out.println("<?xml version=\"1.0\" encoding=\"UTF-8\"?>");
         System.out.println("<recording " + XML_NS + ">");
         System.out.println("  <events>");
-        ReadStruct event;
-        while ((event = reader.readNextEvent()) != null) {
-            if (!matchesFilter(filterPatterns, event.getType().getName())) continue;
-            if (!matchesCategories(categoryPatterns, event.getType())) continue;
+        for (ReadStruct event : readSorted(reader, filterPatterns, categoryPatterns)) {
             printXmlEvent(event, "    ");
         }
         System.out.println("  </events>");
@@ -517,10 +533,7 @@ public class PrintCommand implements Callable<Integer> {
         System.out.println("  \"recording\": {");
         System.out.print("    \"events\": [");
         boolean first = true;
-        ReadStruct event;
-        while ((event = reader.readNextEvent()) != null) {
-            if (!matchesFilter(filterPatterns, event.getType().getName())) continue;
-            if (!matchesCategories(categoryPatterns, event.getType())) continue;
+        for (ReadStruct event : readSorted(reader, filterPatterns, categoryPatterns)) {
             if (first) {
                 // First event: attach { directly to [ on same line
                 System.out.print("{");

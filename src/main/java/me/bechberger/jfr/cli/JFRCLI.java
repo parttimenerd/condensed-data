@@ -24,6 +24,7 @@ import me.bechberger.jfr.cli.commands.*;
             SummaryCommand.class,
             ViewCommand.class,
             PrintCommand.class,
+            MetadataCommand.class,
         },
         mixinStandardHelpOptions = true)
 public class JFRCLI implements Runnable {
@@ -37,7 +38,15 @@ public class JFRCLI implements Runnable {
 
     /** Subcommand names for tests */
     public static List<String> subCommandNames() {
-        return List.of("condense", "inflate", "benchmark", "agent", "summary", "view", "print");
+        return List.of(
+                "condense",
+                "inflate",
+                "benchmark",
+                "agent",
+                "summary",
+                "view",
+                "print",
+                "metadata");
     }
 
     /**
