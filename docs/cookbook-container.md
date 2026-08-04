@@ -29,7 +29,7 @@ VOLUME /var/rec
 ### Start with rotating recording
 
 ```dockerfile
-ENV JAVA_TOOL_OPTIONS="-javaagent:/opt/cjfr/cjfr-agent.jar=start,/var/rec/app_\$index.cjfr,--rotating,--max-files=5,--max-size=100m"
+ENV JAVA_TOOL_OPTIONS="-javaagent:/opt/cjfr/cjfr-agent.jar=start,/var/rec/app_\$index.cjfr,rotating,max-files=5,max-size=100m"
 ```
 
 Or pass it at `docker run` time:
@@ -37,7 +37,7 @@ Or pass it at `docker run` time:
 ```shell
 docker run \
   -v /host/recordings:/var/rec \
-  -e JAVA_TOOL_OPTIONS="-javaagent:/opt/cjfr/cjfr-agent.jar=start,/var/rec/app_\$index.cjfr,--rotating,--max-files=5,--max-size=100m" \
+  -e JAVA_TOOL_OPTIONS="-javaagent:/opt/cjfr/cjfr-agent.jar=start,/var/rec/app_\$index.cjfr,rotating,max-files=5,max-size=100m" \
   myapp:latest
 ```
 
@@ -106,7 +106,7 @@ containers:
     env:
       - name: JAVA_TOOL_OPTIONS
         # Kubernetes env values are not shell-expanded; $index reaches the JVM literally
-        value: "-javaagent:/agent/cjfr-agent.jar=start,/var/rec/app_$index.cjfr,--rotating,--max-files=10,--max-size=100m"
+        value: "-javaagent:/agent/cjfr-agent.jar=start,/var/rec/app_$index.cjfr,rotating,max-files=10,max-size=100m"
     volumeMounts:
       - name: gc-recordings
         mountPath: /var/rec

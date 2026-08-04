@@ -72,7 +72,7 @@ Requires JDK 17+. The JAR is self-contained; no installation, no classpath setup
 Start a continuous rotating GC recording (the primary use case):
 
 ```shell
-java -javaagent:cjfr.jar='start,/var/rec/app_$index.cjfr,--rotating,--max-files=10,--max-size=100m' \
+java -javaagent:cjfr.jar='start,/var/rec/app_$index.cjfr,rotating,max-files=10,max-size=100m' \
      -jar myapp.jar
 ```
 

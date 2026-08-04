@@ -62,7 +62,7 @@ production deployments run:
 
 ```shell
 # Keep last 10 × 100 MB ≈ 1 GB of GC history
-java -javaagent:cjfr.jar='start,/var/rec/app_$index.cjfr,--rotating,--max-files=10,--max-size=100m' \
+java -javaagent:cjfr.jar='start,/var/rec/app_$index.cjfr,rotating,max-files=10,max-size=100m' \
      -jar myapp.jar
 ```
 

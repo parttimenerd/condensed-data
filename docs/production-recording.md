@@ -13,7 +13,7 @@ for continuous GC profiling.
 ### At JVM startup
 
 ```shell
-java -javaagent:/opt/cjfr/cjfr.jar='start,/var/recordings/app_$index.cjfr,--rotating,--max-files=10,--max-size=100m' \
+java -javaagent:/opt/cjfr/cjfr.jar='start,/var/recordings/app_$index.cjfr,rotating,max-files=10,max-size=100m' \
      -jar myapp.jar
 ```
 
@@ -21,7 +21,7 @@ java -javaagent:/opt/cjfr/cjfr.jar='start,/var/recordings/app_$index.cjfr,--rota
     In Docker containers or anywhere you can't modify the JVM command line directly,
     set `JAVA_TOOL_OPTIONS` instead:
     ```
-    JAVA_TOOL_OPTIONS=-javaagent:/opt/cjfr/cjfr.jar=start,/var/rec/app_$index.cjfr,--rotating,--max-files=10,--max-size=100m
+    JAVA_TOOL_OPTIONS=-javaagent:/opt/cjfr/cjfr.jar=start,/var/rec/app_$index.cjfr,rotating,max-files=10,max-size=100m
     ```
     The JVM parses `JAVA_TOOL_OPTIONS` itself; no shell quoting needed for `$index`.
     See [Container & Sidecar Deployment](cookbook-container.md) for a full Docker example.
@@ -48,24 +48,28 @@ cjfr agent all start '/var/recordings/$index.cjfr' --rotating --max-files=5 --ma
 
 ## Rotation Knobs
 
+These flags control file rotation. When used in a `-javaagent:` string the dashes are optional
+(`rotating`, `max-size=100m`); when passed to the `cjfr agent` CLI they take the standard `--` form
+(`--rotating`, `--max-size=100m`).
+
 | Flag | Default | Description |
 |---|---|---|
-| `--rotating` | off | Enable file rotation. Requires `--max-size` or `--max-duration` (or both). |
-| `--max-size=<size>` | 0 (unlimited) | Max size per individual file. Rotate when reached. Minimum 1024 bytes. Examples: `50m`, `200m`, `1g`. |
-| `--max-duration=<time>` | 0 (unlimited) | Max wall-clock duration per individual file. Rotate when reached. Minimum 1 ms. Examples: `5m`, `1h`. |
-| `--max-files=<n>` | 10 | Max number of files kept. Oldest is evicted once limit is reached. Must be ≥ 1 when rotating. |
-| `--new-names` | off | If off (default): oldest file is **overwritten**; on-disk names are stable. If on: each rotation creates a new name; oldest file is **deleted** when limit reached. |
-| `--duration=<time>` | 0 (unlimited) | Total cap on the whole recording (not per-file). Recording stops after this. Does not require `--rotating`. |
+| `rotating` | off | Enable file rotation. Requires `max-size` or `max-duration` (or both). |
+| `max-size=<size>` | 0 (unlimited) | Max size per individual file. Rotate when reached. Minimum 1024 bytes. Examples: `50m`, `200m`, `1g`. |
+| `max-duration=<time>` | 0 (unlimited) | Max wall-clock duration per individual file. Rotate when reached. Minimum 1 ms. Examples: `5m`, `1h`. |
+| `max-files=<n>` | 10 | Max number of files kept. Oldest is evicted once limit is reached. Must be ≥ 1 when rotating. |
+| `new-names` | off | If off (default): oldest file is **overwritten**; on-disk names are stable. If on: each rotation creates a new name; oldest file is **deleted** when limit reached. |
+| `duration=<time>` | 0 (unlimited) | Total cap on the whole recording (not per-file). Recording stops after this. Does not require `rotating`. |
 
-### `--rotating` validation rules
-- At least one of `--max-size` or `--max-duration` must be non-zero.
-- `--max-duration` without `--rotating` is rejected.
-- `--max-size` without `--rotating` is rejected.
-- Setting both `--max-size=0` and `--max-duration=0` while rotating is rejected.
+### `rotating` validation rules
+- At least one of `max-size` or `max-duration` must be non-zero.
+- `max-duration` without `rotating` is rejected.
+- `max-size` without `rotating` is rejected.
+- Setting both `max-size=0` and `max-duration=0` while rotating is rejected.
 
 ### Path placeholders
 
-When `--rotating` is set, the output path should contain a placeholder:
+When `rotating` is set, the output path should contain a placeholder:
 
 | Placeholder | Replaced with |
 |---|---|
@@ -75,14 +79,14 @@ When `--rotating` is set, the output path should contain a placeholder:
 If neither placeholder appears in the path, `.cjfr` is automatically replaced
 with `_$index.cjfr` (e.g. `recording.cjfr` → `recording_0.cjfr`, `recording_1.cjfr`, …).
 
-### `--new-names` vs. default (name reuse)
+### `new-names` vs. default (name reuse)
 
 **Default (name reuse):** Files are named `app_0.cjfr`, `app_1.cjfr`, …, `app_9.cjfr`
-(for `--max-files=10`). Once all 10 slots are used, file `app_0.cjfr` is **overwritten**
+(for `max-files=10`). Once all 10 slots are used, file `app_0.cjfr` is **overwritten**
 on the next rotation. Disk usage is bounded to exactly `max-files × max-size`.
 Log-shippers that watch by filename will see the file change in-place.
 
-**`--new-names`:** Every rotation generates a new name (`app_0.cjfr`, `app_1.cjfr`,
+**`new-names`:** Every rotation generates a new name (`app_0.cjfr`, `app_1.cjfr`,
 `app_2.cjfr`, …). When `max-files` is reached, the *oldest* file is deleted.
 Names are never reused. Log-shippers watching by inode handle this correctly,
 but the file-name set grows until `max-files` cap is hit.
@@ -130,7 +134,7 @@ error immediately in the CLI output.
 Keep the last 500 MB of activity at all times. Names are stable (good for fixed-path shippers):
 
 ```shell
-java -javaagent:cjfr.jar='start,/var/rec/app_$index.cjfr,--rotating,--max-files=5,--max-size=100m' \
+java -javaagent:cjfr.jar='start,/var/rec/app_$index.cjfr,rotating,max-files=5,max-size=100m' \
      -jar myapp.jar
 ```
 
@@ -138,10 +142,10 @@ Disk usage: ≤ 500 MB at all times. Oldest file is overwritten in-place on each
 
 ### 2. Time-sliced archive; one file per hour, 24 h retention
 
-Use `--new-names` so each file gets a unique timestamp and can be shipped independently:
+Use `new-names` so each file gets a unique timestamp and can be shipped independently:
 
 ```shell
-java -javaagent:cjfr.jar='start,/var/rec/app_$date.cjfr,--rotating,--max-duration=1h,--max-files=24,--new-names' \
+java -javaagent:cjfr.jar='start,/var/rec/app_$date.cjfr,rotating,max-duration=1h,max-files=24,new-names' \
      -jar myapp.jar
 ```
 
@@ -156,7 +160,7 @@ cjfr agent myapp start /tmp/snapshot.cjfr --duration=30m
 Or at startup:
 
 ```shell
-java -javaagent:cjfr.jar='start,/tmp/snapshot.cjfr,--duration=30m' -jar myapp.jar
+java -javaagent:cjfr.jar='start,/tmp/snapshot.cjfr,duration=30m' -jar myapp.jar
 ```
 
 ### 4. Combined: total cap with time-sliced rotation
@@ -164,7 +168,7 @@ java -javaagent:cjfr.jar='start,/tmp/snapshot.cjfr,--duration=30m' -jar myapp.ja
 Record for 1 hour total, 10-minute slices, keep at most 6 files:
 
 ```shell
-java -javaagent:cjfr.jar='start,/var/rec/app_$index.cjfr,--rotating,--max-duration=10m,--max-files=6,--duration=1h' \
+java -javaagent:cjfr.jar='start,/var/rec/app_$index.cjfr,rotating,max-duration=10m,max-files=6,duration=1h' \
      -jar myapp.jar
 ```
 
@@ -173,7 +177,7 @@ java -javaagent:cjfr.jar='start,/var/rec/app_$index.cjfr,--rotating,--max-durati
 Smallest possible files for a fleet of busy services:
 
 ```shell
-java -javaagent:cjfr.jar='start,/var/rec/app_$index.cjfr,--rotating,--max-files=10,--max-size=50m,--condenser-config=reduced' \
+java -javaagent:cjfr.jar='start,/var/rec/app_$index.cjfr,rotating,max-files=10,max-size=50m,condenser-config=reduced' \
      -jar myapp.jar
 ```
 
@@ -234,25 +238,25 @@ condenser reduces whatever JFR captured; it cannot add events that JFR didn't re
 
 | Flag | Controls |
 |---|---|
-| `--condenser-config` | How aggressively events are reduced/combined |
-| `--config` (or `-c`) | Which JFR event set to capture (`default`, `profile`, or a custom .jfc path); also controls runtime overhead |
+| `condenser-config` | How aggressively events are reduced/combined |
+| `config` | Which JFR event set to capture (`default`, `profile`, or a custom .jfc path); also controls runtime overhead |
 
 To use JFR's `profile` config (more events, higher overhead — CPU samples, allocation events) with cjfr's `default` reduction:
 
 ```shell
-java -javaagent:cjfr.jar='start,/var/rec/app.cjfr,--config=profile,--condenser-config=default' \
+java -javaagent:cjfr.jar='start,/var/rec/app.cjfr,config=profile,condenser-config=default' \
      -jar myapp.jar
 ```
 
 To override specific JFR event intervals (e.g. reduce CPU sample frequency):
 
 ```shell
-java -javaagent:cjfr.jar='start,/var/rec/app.cjfr,--misc-jfr-config=jfr.ExecutionSample#interval=100ms' \
+java -javaagent:cjfr.jar='start,/var/rec/app.cjfr,misc-jfr-config=jfr.ExecutionSample#interval=100ms' \
      -jar myapp.jar
 ```
 
-`--misc-jfr-config` takes `|`-separated `EventName#setting=value` pairs:
+`misc-jfr-config` takes `|`-separated `EventName#setting=value` pairs:
 
 ```shell
---misc-jfr-config='jfr.ExecutionSample#interval=100ms|jfr.ObjectAllocationSample#throttle=100/s'
+misc-jfr-config='jfr.ExecutionSample#interval=100ms|jfr.ObjectAllocationSample#throttle=100/s'
 ```

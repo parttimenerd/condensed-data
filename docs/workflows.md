@@ -16,7 +16,7 @@ disk usage.
 
 ```shell
 # Keep last 5 × 100 MB ≈ 500 MB on disk at all times
-java -javaagent:cjfr.jar='start,/var/rec/app_$index.cjfr,--rotating,--max-files=5,--max-size=100m' \
+java -javaagent:cjfr.jar='start,/var/rec/app_$index.cjfr,rotating,max-files=5,max-size=100m' \
      -jar myapp.jar
 ```
 

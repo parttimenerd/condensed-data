@@ -21,7 +21,7 @@ curl -L -o /opt/cjfr/cjfr-agent.jar \
 
 # Start at JVM launch; keep 24 hours at 100 MB/file
 java -javaagent:/opt/cjfr/cjfr-agent.jar=\
-'start,/var/rec/app_$index.cjfr,--rotating,--max-files=24,--max-size=100m,--max-duration=1h' \
+'start,/var/rec/app_$index.cjfr,rotating,max-files=24,max-size=100m,max-duration=1h' \
   -jar myapp.jar
 ```
 

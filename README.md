@@ -107,7 +107,7 @@ java -javaagent:target/condensed-data.jar=start,rotating,max-size=100k,max-files
 The same agent can be attached to an already-running JVM via the `agent` CLI command
 (TARGET is a PID, a main-class name filter, or `all`):
 ```shell
-java -jar target/condensed-data.jar agent <PID> start rotating max-size=100k max-files=3 new-names recording.cjfr
+java -jar target/condensed-data.jar agent <PID> start --rotating --max-size=100k --max-files=3 --new-names recording.cjfr
 java -jar target/condensed-data.jar agent <PID> status
 java -jar target/condensed-data.jar agent <PID> stop
 ```
