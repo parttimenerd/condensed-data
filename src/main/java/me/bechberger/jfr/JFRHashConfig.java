@@ -33,21 +33,15 @@ public class JFRHashConfig extends HashAndEqualsConfig {
     record ClassLoaderWrapper(RecordedClassLoader value)
             implements HashAndEqualsWrapper<RecordedClassLoader> {
 
-        private static long typeId(RecordedClassLoader cl) {
-            return cl.getType() == null ? -1L : cl.getType().getId();
-        }
-
         @Override
         public int hashCode() {
-            return Objects.hash(value.getName(), typeId(value));
+            return Long.hashCode(value.getId());
         }
 
         @Override
         public boolean equals(Object obj) {
             return obj instanceof ClassLoaderWrapper other
-                    && (other.value == value
-                            || (Objects.equals(other.value.getName(), value.getName())
-                                    && typeId(other.value) == typeId(value)));
+                    && (other.value == value || other.value.getId() == value.getId());
         }
     }
 

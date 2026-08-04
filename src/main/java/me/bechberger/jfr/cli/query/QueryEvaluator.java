@@ -512,11 +512,29 @@ final class QueryEvaluator {
             if (s.hasField("javaName") || s.hasField("osName")) {
                 return s;
             }
+            // ClassLoader structs: use pool-entry identity so distinct ClassLoader instances
+            // (e.g. multiple DelegatingClassLoader with same type+name) stay in separate groups.
+            if (s.getType().getName().endsWith("ClassLoader")) {
+                return new IdentityKey(s);
+            }
             // All other structs (frames, methods, classes, …): group by display-format string
             // so that frames at the same method but different bci/lineNumber share a group.
             return ValueFormatter.format(s, null);
         }
         return value;
+    }
+
+    /** Wrapper that delegates equals/hashCode to object identity rather than content. */
+    private record IdentityKey(Object obj) {
+        @Override
+        public boolean equals(Object o) {
+            return o instanceof IdentityKey other && other.obj == obj;
+        }
+
+        @Override
+        public int hashCode() {
+            return System.identityHashCode(obj);
+        }
     }
 
     /**

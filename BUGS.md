@@ -2252,15 +2252,15 @@ correct for ns precision and merely over-inclusive under ms quantization.
 
 **Symptom:** `cjfr print` renders `classLoader = jdk.internal.reflect.DelegatingClassLoader` while oracle renders `classLoader = jdk.internal.reflect.DelegatingClassLoader (id = 6)`. Affects any event with a standalone `classLoader` field (e.g. `jdk.ClassLoaderStatistics`, `jdk.ModuleExport`, `jdk.ModuleRequire`).
 
-**Root cause:** The oracle adds `(id = N)` from `RecordedClassLoader.getId()`, which returns the constant pool slot number of the classloader instance in the JFR recording. cjfr's `formatClassLoaderStandalone()` has no access to this ID because:
-1. The classloader's constant pool ID is not stored as a regular field in the `jdk.types.ClassLoader` struct (only `type` and `name` are stored).
-2. During condense, all `DelegatingClassLoader` instances (same type, null name) are deduplicated into a single pool entry — so all inflated entries share the same ID.
+**Root cause:** Two issues:
+1. `JFRHashConfig.ClassLoaderWrapper` used `(name, typeId)` for equality, causing all anonymous `DelegatingClassLoader` instances (same type, null name) to collapse to a single pool entry, so `getPoolId()` always returned the same CJFR pool ID.
+2. The CJFR pool ID differs from the JFR constant pool slot number — the displayed IDs won't match oracle's exact numbers, but each instance will be unique.
 
-**Impact:** Minor: display-only difference in classloader identity. Semantic data (type name, loader name) is preserved. Different `DelegatingClassLoader` instances can't be distinguished in print output (they differ by ID in the original).
+**Impact:** Minor: display difference in classloader identity numbers. Semantic data (type name, loader name) is preserved. After fix, each DelegatingClassLoader instance has a distinct CJFR pool ID, so they can be distinguished.
 
-**Fix:** Would require storing the original classloader pool ID as a synthetic field in the condensed format, or preserving per-instance identity for classloaders during deduplication. Non-trivial format change.
+**Fix:** Changed `ClassLoaderWrapper.hashCode()` and `equals()` to use `value.getId()` (JFR instance ID) instead of name+typeId — matching the pattern used by `ClassWrapper`. The CJFR pool IDs shown (`id = 2`, `id = 3`, ...) differ from oracle's JFR pool IDs but are now unique per instance.
 
-**Status:** Known limitation.
+**Status:** Fixed (Bug 456 was this same root cause — collapsed into this entry).
 
 ## Bug 346: `cjfr print --json` timestamps have fewer than 9 fractional-second digits (trailing zeros stripped)
 
@@ -2533,9 +2533,11 @@ correct for ns precision and merely over-inclusive under ms quantization.
 
 **Impact:** `class-loaders` view understates the number of distinct classloader instances when multiple instances of the same ClassLoader type (with null name) exist in the recording.
 
-**Fix:** Would require preserving per-instance classloader identity through the condense pipeline (e.g., storing original JFR pool IDs for ClassLoader structs rather than deduplicating by value). Non-trivial format change; same root cause as Bug 345 (classLoader ID renumbering in `print`).
+**Fix:** Two changes:
+1. `JFRHashConfig.ClassLoaderWrapper.hashCode()/equals()` now uses `value.getId()` (the JFR instance ID) instead of `(name, typeId)` — matching the pattern used by `ClassWrapper`. This prevents different DelegatingClassLoader instances from being collapsed into a single pool entry.
+2. `QueryEvaluator.canonicalKey()` now uses identity-based grouping (`IdentityKey` wrapper) for ClassLoader structs. Previously all DelegatingClassLoader instances formatted to the same string and collapsed into one group row.
 
-**Status:** Known limitation (structural: classloader pool deduplication collapses instances with identical type+name).
+**Status:** Fixed.
 
 ## Bug 374: `cjfr view` renders lambda method parameters as `(...)` instead of decoded types
 
