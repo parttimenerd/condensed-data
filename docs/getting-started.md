@@ -154,6 +154,11 @@ Inflated `.jfr` files can be opened in:
 - [Firefox Profiler](https://parttimenerd.github.io/firefox-profiler/): web-based, no install, good for flame graphs
 - [jfr-query](https://parttimenerd.github.io/jfr-query/): web-based JFR query tool
 
+Or open `.cjfr` files **directly** — no inflation needed — using the
+[JMC fork](https://github.com/parttimenerd/jmc) that has native `.cjfr` support built in.
+Download a snapshot build from its
+[releases page](https://github.com/parttimenerd/jmc/releases/tag/snapshot).
+
 See [Analyzing Recordings](analysis.md) for time filters, event filters,
 and multi-file queries.
 

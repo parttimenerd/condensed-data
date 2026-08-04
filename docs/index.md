@@ -18,6 +18,9 @@ inflated to standard `.jfr` for [JDK Mission Control](https://adoptium.net/jmc),
 [jfr-query](https://parttimenerd.github.io/jfr-query/), or other JFR-capable tools,
 or sliced to just the window around a GC event or incident.
 
+A [JMC fork](https://github.com/parttimenerd/jmc) with native `.cjfr` support lets you
+open `.cjfr` files directly in Mission Control — no inflation step required.
+
 *An experimental tool by the [SapMachine](https://sap.github.io/SapMachine/) team.*
 
 ## Why use cjfr instead of raw JFR?

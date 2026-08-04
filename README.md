@@ -14,6 +14,10 @@ Primary use case: long-term storage of GC-related JFR recordings.
 
 Full docs are published at **<https://parttimenerd.github.io/condensed-data/>**.
 
+A [JMC fork](https://github.com/parttimenerd/jmc) with native `.cjfr` support lets you open `.cjfr` files
+directly in JDK Mission Control — no inflation step required.
+Download a snapshot build from its [releases page](https://github.com/parttimenerd/jmc/releases/tag/snapshot).
+
 Source Markdown lives in [`docs/`](docs/):
 - **[Getting Started](docs/getting-started.md)** — installation, quickstart, agent usage, configuration guide, and troubleshooting
 - **[JAR Release Selection](docs/jar-releases.md)** — which JAR variant to download for your environment
