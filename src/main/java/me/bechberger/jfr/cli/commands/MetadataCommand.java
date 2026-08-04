@@ -1,5 +1,6 @@
 package me.bechberger.jfr.cli.commands;
 
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
@@ -17,17 +18,18 @@ import me.bechberger.femtocli.annotations.Command;
 import me.bechberger.femtocli.annotations.Option;
 import me.bechberger.femtocli.annotations.Parameters;
 import me.bechberger.jfr.CombiningJFRReader;
+import me.bechberger.jfr.WritingJFRReader;
 import me.bechberger.jfr.cli.CLIUtils;
 import me.bechberger.jfr.cli.FileOptionConverters.ExistingCJFROrJFRFileOrZipOrFolderConverter;
 
 @Command(
         name = "metadata",
-        description = "Print event type metadata (schemas) in oracle jfr-print format",
+        description = "Print event type metadata (schemas) in oracle jfr-metadata format",
         mixinStandardHelpOptions = true)
 public class MetadataCommand implements Callable<Integer> {
 
     @Parameters(
-            description = "The input .cjfr or .jfr files, can be folders or zips",
+            description = "The input .cjfr or .jfr files",
             arity = "1..*",
             converter = ExistingCJFROrJFRFileOrZipOrFolderConverter.class)
     private List<Path> inputFiles = new ArrayList<>();
@@ -35,59 +37,125 @@ public class MetadataCommand implements Callable<Integer> {
     @Option(
             names = {"--events"},
             description =
-                    "Comma-separated list of event type name patterns (glob: * = any substring,"
-                            + " case-insensitive) to include. Omit for all types.")
+                    "Comma-separated list of event name patterns to include. Omit for all types.")
     private String eventsFilter;
+
+    @Option(
+            names = {"--categories"},
+            description = "Comma-separated list of category name patterns to include.")
+    private String categoriesFilter;
 
     @Override
     public Integer call() {
         try {
+            Path jfrBin = jfrBinary();
+
+            // Resolve every input to a .jfr path; inflate .cjfr to a temp file.
+            List<Path> jfrInputs = new ArrayList<>();
+            for (Path p : inputFiles) {
+                if (p.toString().endsWith(".jfr")) {
+                    jfrInputs.add(p);
+                } else {
+                    var reader =
+                            CombiningJFRReader.fromPaths(
+                                    List.of(p),
+                                    (me.bechberger.jfr.cli.EventFilter.EventFilterInstance) null,
+                                    true);
+                    Path tmp = WritingJFRReader.toJFRFile(reader);
+                    tmp.toFile().deleteOnExit();
+                    jfrInputs.add(tmp);
+                }
+            }
+
+            if (jfrBin != null) {
+                return delegateToJfrMetadata(jfrBin, jfrInputs);
+            }
+
+            // Fallback: homegrown renderer (no annotation/content-type fidelity)
+            return renderFallback(jfrInputs);
+        } catch (Exception e) {
+            return CLIUtils.printError(e);
+        }
+    }
+
+    private int delegateToJfrMetadata(Path jfrBin, List<Path> files) throws Exception {
+        List<String> command = new ArrayList<>();
+        command.add(jfrBin.toString());
+        command.add("metadata");
+        if (eventsFilter != null) {
+            command.add("--events");
+            command.add(eventsFilter);
+        }
+        if (categoriesFilter != null) {
+            command.add("--categories");
+            command.add(categoriesFilter);
+        }
+        for (Path f : files) {
+            command.add(f.toString());
+        }
+        Process process = new ProcessBuilder(command).redirectErrorStream(false).start();
+        String out = new String(process.getInputStream().readAllBytes());
+        String err = new String(process.getErrorStream().readAllBytes());
+        int exit = process.waitFor();
+        System.out.print(out);
+        System.err.print(err);
+        return exit;
+    }
+
+    private static Path jfrBinary() {
+        String javaHome = System.getProperty("java.home");
+        if (javaHome != null) {
+            String exe =
+                    System.getProperty("os.name", "").toLowerCase().contains("win")
+                            ? "jfr.exe"
+                            : "jfr";
+            Path candidate = Path.of(javaHome, "bin", exe);
+            if (Files.isExecutable(candidate)) {
+                return candidate;
+            }
+        }
+        return null;
+    }
+
+    // ── Fallback renderer (used when jfr binary is absent) ───────────────────
+
+    private int renderFallback(List<Path> jfrInputs) throws Exception {
+        for (Path jfr : jfrInputs) {
             var reader =
                     CombiningJFRReader.fromPaths(
-                            inputFiles,
+                            List.of(jfr),
                             (me.bechberger.jfr.cli.EventFilter.EventFilterInstance) null,
                             false,
                             false,
                             new me.bechberger.condensed.stats.NoopStatistic());
-            // drain to populate type collection
             while (reader.readNextEvent() != null) {}
 
             var types = reader.getInputStream().getTypeCollection().getTypes();
-            List<String> patterns = parsePatterns(eventsFilter);
+            List<String> eventPatterns = parsePatterns(eventsFilter);
 
             boolean first = true;
             for (var type : types) {
                 if (!isJfrType(type)) continue;
-                if (!shouldInclude(type, patterns)) continue;
+                if (!shouldInclude(type, eventPatterns)) continue;
                 if (!first) System.out.println();
                 first = false;
                 printType(type);
             }
-        } catch (Exception e) {
-            return CLIUtils.printError(e);
         }
         return 0;
     }
 
-    /**
-     * Returns true for JFR-level types that should be printed. Excludes cjfr-internal primitive
-     * types (ids 0-6), internal me.bechberger.jfr.* types, and cjfr-internal helper types.
-     */
     private boolean isJfrType(CondensedType<?, ?> type) {
         int id = type.getId();
-        if (id <= TypeCollection.STRUCT_ID) return false; // cjfr built-in primitive slot
+        if (id <= TypeCollection.STRUCT_ID) return false;
         String name = type.getName();
         if (name == null) return false;
         if (name.startsWith("me.bechberger.jfr.")) return false;
-        // ArrayType with no meaningful description — skip (internal helper)
         if (type instanceof ArrayType<?, ?>
                 && (type.getDescription() == null || type.getDescription().isBlank())) {
             return false;
         }
-        // Internal cjfr helper types that are not JFR primitives
         if (!(type instanceof StructType<?, ?>)) {
-            // Allow only well-known JFR primitive names: boolean, byte, char, double, float, int,
-            // long, short, String
             return switch (name) {
                 case "boolean",
                         "byte",
@@ -153,8 +221,7 @@ public class MetadataCommand implements Callable<Integer> {
         if (name == null) return;
 
         if (!(type instanceof StructType<?, ?> st)) {
-            // Non-struct JFR type: primitive-like (e.g. java.lang.String, long)
-            String displayName = jfrPrimitiveName(name);
+            String displayName = shortName(name);
             System.out.println("class " + displayName + " {");
             System.out.println("}");
             return;
@@ -170,7 +237,6 @@ public class MetadataCommand implements Callable<Integer> {
             String typeDesc = stringAt(elems, 1);
             List<List<Object>> annots = annotationsAt(elems, 2);
 
-            // @Category always first
             for (var ann : annots) {
                 if (ann.isEmpty()) continue;
                 String annName = (String) ann.get(0);
@@ -178,15 +244,12 @@ public class MetadataCommand implements Callable<Integer> {
                     typeAnnotations.add(formatAnn("Category", ann));
                 }
             }
-            // @Label (only if different from simple class name)
             if (typeLabel != null && !typeLabel.equals(shortName)) {
                 typeAnnotations.add("@Label(\"" + escape(typeLabel) + "\")");
             }
-            // @Description
             if (typeDesc != null) {
                 typeAnnotations.add("@Description(\"" + escape(typeDesc) + "\")");
             }
-            // Remaining annotations
             for (var ann : annots) {
                 if (ann.isEmpty()) continue;
                 String annName = (String) ann.get(0);
@@ -197,12 +260,10 @@ public class MetadataCommand implements Callable<Integer> {
             }
         }
 
-        // @Name if full name differs from simple class name
         if (!name.equals(shortName)) {
             typeAnnotations.add(0, "@Name(\"" + name + "\")");
         }
 
-        // Is this an event type?
         boolean isEvent = st.getFields().stream().anyMatch(f -> "startTime".equals(f.name()));
 
         for (String ann : typeAnnotations) {
@@ -298,24 +359,11 @@ public class MetadataCommand implements Callable<Integer> {
         };
     }
 
-    private String jfrPrimitiveName(String name) {
-        // Map JFR primitive type names to their display names
-        int dot = name.lastIndexOf('.');
-        return dot >= 0 ? name.substring(dot + 1) : name;
-    }
-
-    /** Short annotation name with @ prefix (strips jdk.jfr./ jdk.types. prefix). */
     private String jfrAnnShortName(String fullName) {
         int dot = fullName.lastIndexOf('.');
         return "@" + (dot >= 0 ? fullName.substring(dot + 1) : fullName);
     }
 
-    /**
-     * Format a type-level annotation. {@code shortAnn} is the short name WITHOUT {@code @}; the
-     * method prepends it. The annotation argument list from the parsed data may contain: - A plain
-     * string → {@code @Ann("value")} - A JSON array string → {@code @Ann({"a", "b", "c"})}
-     * (Category-style) - Multiple plain strings → {@code @Ann({"a", "b"})}
-     */
     private String formatAnn(String shortAnn, List<Object> ann) {
         String at = shortAnn.startsWith("@") ? shortAnn : "@" + shortAnn;
         if (ann.size() <= 1) return at;
@@ -323,11 +371,9 @@ public class MetadataCommand implements Callable<Integer> {
         List<Object> rawArgs = (List<Object>) ann.get(1);
         if (rawArgs == null || rawArgs.isEmpty()) return at;
 
-        // Check if the single arg is a JSON array (Category-style: [["a","b"]])
         if (rawArgs.size() == 1) {
             Object v = rawArgs.get(0);
             if (v instanceof String s && s.trim().startsWith("[")) {
-                // It's a JSON array of strings — parse and emit as array annotation
                 List<String> items = parseStringArray(s.trim());
                 if (items.size() == 1) {
                     return at + "(\"" + escape(items.get(0)) + "\")";
@@ -343,7 +389,6 @@ public class MetadataCommand implements Callable<Integer> {
             return at + "(" + v + ")";
         }
 
-        // Multiple simple args
         StringBuilder sb = new StringBuilder(at).append("({");
         for (int i = 0; i < rawArgs.size(); i++) {
             if (i > 0) sb.append(", ");
@@ -354,7 +399,6 @@ public class MetadataCommand implements Callable<Integer> {
         return sb.append("})").toString();
     }
 
-    /** Parse a JSON string array like {@code ["a","b","c"]} into a list of strings. */
     private static List<String> parseStringArray(String s) {
         List<String> result = new ArrayList<>();
         List<String> elems = topLevelElements(s);
@@ -368,8 +412,6 @@ public class MetadataCommand implements Callable<Integer> {
     private String escape(String s) {
         return s.replace("\\", "\\\\").replace("\"", "\\\"");
     }
-
-    // ── JSON parsing helpers ─────────────────────────────────────────────────
 
     private static List<String> topLevelElements(String s) {
         List<String> out = new ArrayList<>();
@@ -473,7 +515,7 @@ public class MetadataCommand implements Callable<Integer> {
                 for (String arg : argElems) {
                     String v = arg.trim();
                     if (v.startsWith("\"")) args.add(jsonUnquote(v));
-                    else if (!v.isEmpty()) args.add(v); // may be a JSON array string
+                    else if (!v.isEmpty()) args.add(v);
                 }
                 argsList.add(args);
             } else {

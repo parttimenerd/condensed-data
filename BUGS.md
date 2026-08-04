@@ -3442,7 +3442,11 @@ oracle's structure: null structs use `xsi:nil="true"`, arrays use `<array name="
 jdk.ThreadStart profile.jfr` shows the schema for a specific event type. `cjfr` has no `metadata`
 subcommand.
 
-**Status:** Not fixed.
+**Fix:** Implemented as a delegation to `jfr metadata` (inflating `.cjfr` to a temp `.jfr` first).
+Also added `--categories` option (matching oracle). Falls back to a homegrown renderer when the
+`jfr` binary is absent.
+
+**Status:** Fixed.
 
 ## Bug 445: `cjfr print --xml` renders null scalar fields as `<value name="..."></value>` instead of `<value name="..." xsi:nil="true"/>`
 
