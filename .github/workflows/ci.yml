@@ -50,7 +50,7 @@ jobs:
     - name: Get JMC HEAD SHA
       id: jmc-sha
       run: |
-        echo "sha=$(git ls-remote https://github.com/parttimenerd/jmc.git HEAD | cut -f1 | head -c12)" >> "$GITHUB_OUTPUT"
+        echo "sha=$(git ls-remote https://github.com/parttimenerd/jmc.git refs/heads/sap | cut -f1 | head -c12)" >> "$GITHUB_OUTPUT"
 
     - name: Cache JMC core
       id: cache-jmc
@@ -62,7 +62,7 @@ jobs:
     - name: Install JMC core (SNAPSHOT)
       if: steps.cache-jmc.outputs.cache-hit != 'true'
       run: |
-        git clone --depth=1 https://github.com/parttimenerd/jmc.git /tmp/jmc
+        git clone --depth=1 --branch sap https://github.com/parttimenerd/jmc.git /tmp/jmc
         cd /tmp/jmc/core && mvn install -DskipTests -Dmaven.javadoc.skip=true -q
 
     - name: Run tests
