@@ -79,8 +79,19 @@ public abstract class RecordingThread implements Runnable {
         if (Files.exists(path)) {
             return jdk.jfr.Configuration.create(path);
         }
-        // Strip .jfc suffix for predefined lookup (JDK expects "gc_details" not "gc_details.jfc")
+        // Strip .jfc suffix for predefined lookup
         String lookupName = name.endsWith(".jfc") ? name.substring(0, name.length() - 4) : name;
+        // Check bundled classpath resources in META-INF/jfr/ before the JDK lookup
+        // (jdk.jfr.Configuration.getConfiguration only searches the JDK's own jfc directory)
+        var bundledResource =
+                RecordingThread.class.getResourceAsStream("/META-INF/jfr/" + lookupName + ".jfc");
+        if (bundledResource != null) {
+            try (bundledResource) {
+                return jdk.jfr.Configuration.create(
+                        new java.io.InputStreamReader(
+                                bundledResource, java.nio.charset.StandardCharsets.UTF_8));
+            }
+        }
         return jdk.jfr.Configuration.getConfiguration(lookupName);
     }
 

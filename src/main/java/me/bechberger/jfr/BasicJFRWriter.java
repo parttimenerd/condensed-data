@@ -956,7 +956,8 @@ public class BasicJFRWriter {
         for (jdk.jfr.EventType t : types) {
             eventTypeIdToName.put(t.getId(), t.getName());
             recordingEventTypeNameToId.put(t.getName(), t.getId());
-            recordEventTypeLabel(t, true); // recording metadata is authoritative over JVM static seed
+            recordEventTypeLabel(
+                    t, true); // recording metadata is authoritative over JVM static seed
             // Write the full StructType to the CJFR stream so that event types with zero
             // occurrences still have their complete field schema at inflate time. Without this,
             // inflate falls back to a minimal stub (stackTrace/eventThread/startTime only), which
@@ -970,8 +971,8 @@ public class BasicJFRWriter {
      * Record an event type's {@code @Label} in {@link #eventTypeLabels}, keyed by type name. Skips
      * a null/blank label (leaving the entry absent so the view falls back to the raw name).
      *
-     * @param authoritative if true, overwrites any existing entry (recording metadata wins over
-     *     the JVM's built-in static seed, which may be from a different JDK version)
+     * @param authoritative if true, overwrites any existing entry (recording metadata wins over the
+     *     JVM's built-in static seed, which may be from a different JDK version)
      */
     private void recordEventTypeLabel(jdk.jfr.EventType t, boolean authoritative) {
         String label = t.getLabel();

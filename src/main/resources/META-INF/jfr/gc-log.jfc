@@ -146,7 +146,9 @@
     <setting name="threshold">0 ms</setting>
   </event>
 
-  <!-- gc+phases → concurrent phase hierarchy (G1, ZGC, Shenandoah) -->
+  <!-- gc+phases → concurrent phase hierarchy (G1, ZGC, Shenandoah)
+       Note: benchmark/gc.jfc classifies these as "high" overhead, but they
+       are essential for concurrent-collector phase timing and kept on here. -->
   <event name="jdk.GCPhaseConcurrent">
     <setting name="enabled">true</setting>
     <setting name="threshold">0 ms</setting>
@@ -301,6 +303,211 @@
   <event name="jdk.ShenandoahHeapRegionInformation">
     <setting name="enabled">true</setting>
     <setting name="period">everyChunk</setting>
+  </event>
+
+  <!-- ================================================================
+       System / OS context — ambient JVM health metrics.
+       Matches the context events included in benchmark/gc.jfc.
+       ================================================================ -->
+
+  <!-- Overall JVM CPU load (JVM + system), sampled every second -->
+  <event name="jdk.CPULoad">
+    <setting name="enabled">true</setting>
+    <setting name="period">1000 ms</setting>
+  </event>
+
+  <!-- Physical + virtual memory -->
+  <event name="jdk.PhysicalMemory">
+    <setting name="enabled">true</setting>
+    <setting name="period">everyChunk</setting>
+  </event>
+
+  <!-- OS swap — important for GC: swap pressure causes GC pauses to blow out -->
+  <event name="jdk.SwapSpace">
+    <setting name="enabled">true</setting>
+    <setting name="period">everyChunk</setting>
+  </event>
+
+  <!-- Process resident set size (how much physical RAM the JVM is actually using) -->
+  <event name="jdk.ResidentSetSize">
+    <setting name="enabled">true</setting>
+    <setting name="period">everyChunk</setting>
+  </event>
+
+  <!-- Security properties snapshot (beginChunk) -->
+  <event name="jdk.InitialSecurityProperty">
+    <setting name="enabled">true</setting>
+    <setting name="period">beginChunk</setting>
+  </event>
+
+  <!-- OS/hardware identity (once per recording) -->
+  <event name="jdk.OSInformation">
+    <setting name="enabled">true</setting>
+    <setting name="period">beginChunk</setting>
+  </event>
+
+  <event name="jdk.CPUInformation">
+    <setting name="enabled">true</setting>
+    <setting name="period">beginChunk</setting>
+  </event>
+
+  <event name="jdk.CPUTimeStampCounter">
+    <setting name="enabled">true</setting>
+    <setting name="period">beginChunk</setting>
+  </event>
+
+  <event name="jdk.VirtualizationInformation">
+    <setting name="enabled">true</setting>
+    <setting name="period">beginChunk</setting>
+  </event>
+
+  <!-- Container resource limits and usage (no-ops on bare-metal) -->
+  <event name="jdk.ContainerConfiguration">
+    <setting name="enabled">true</setting>
+    <setting name="period">beginChunk</setting>
+  </event>
+
+  <event name="jdk.ContainerCPUUsage">
+    <setting name="enabled">true</setting>
+    <setting name="period">30 s</setting>
+  </event>
+
+  <event name="jdk.ContainerCPUThrottling">
+    <setting name="enabled">true</setting>
+    <setting name="period">30 s</setting>
+  </event>
+
+  <event name="jdk.ContainerMemoryUsage">
+    <setting name="enabled">true</setting>
+    <setting name="period">30 s</setting>
+  </event>
+
+  <event name="jdk.ContainerIOUsage">
+    <setting name="enabled">true</setting>
+    <setting name="period">30 s</setting>
+  </event>
+
+  <!-- Process list snapshot (once per chunk end) -->
+  <event name="jdk.SystemProcess">
+    <setting name="enabled">true</setting>
+    <setting name="period">endChunk</setting>
+  </event>
+
+  <!-- New process launched from within the JVM -->
+  <event name="jdk.ProcessStart">
+    <setting name="enabled">true</setting>
+    <setting name="stackTrace">false</setting>
+  </event>
+
+  <!-- VM operations that may trigger GC or affect GC timing -->
+  <event name="jdk.ExecuteVMOperation">
+    <setting name="enabled">true</setting>
+    <setting name="threshold">10 ms</setting>
+  </event>
+
+  <!-- ================================================================
+       JVM flag snapshot — lets you reconstruct the GC flag set at
+       recording start and catch any runtime flag changes.
+       All flag types captured once per beginChunk; change events
+       on every runtime modification.
+       ================================================================ -->
+
+  <event name="jdk.IntFlag">
+    <setting name="enabled">true</setting>
+    <setting name="period">beginChunk</setting>
+  </event>
+
+  <event name="jdk.LongFlag">
+    <setting name="enabled">true</setting>
+    <setting name="period">beginChunk</setting>
+  </event>
+
+  <event name="jdk.UnsignedLongFlag">
+    <setting name="enabled">true</setting>
+    <setting name="period">beginChunk</setting>
+  </event>
+
+  <event name="jdk.UnsignedIntFlag">
+    <setting name="enabled">true</setting>
+    <setting name="period">beginChunk</setting>
+  </event>
+
+  <event name="jdk.DoubleFlag">
+    <setting name="enabled">true</setting>
+    <setting name="period">beginChunk</setting>
+  </event>
+
+  <event name="jdk.BooleanFlag">
+    <setting name="enabled">true</setting>
+    <setting name="period">beginChunk</setting>
+  </event>
+
+  <event name="jdk.StringFlag">
+    <setting name="enabled">true</setting>
+    <setting name="period">beginChunk</setting>
+  </event>
+
+  <event name="jdk.IntFlagChanged">
+    <setting name="enabled">true</setting>
+  </event>
+
+  <event name="jdk.LongFlagChanged">
+    <setting name="enabled">true</setting>
+  </event>
+
+  <event name="jdk.UnsignedLongFlagChanged">
+    <setting name="enabled">true</setting>
+  </event>
+
+  <event name="jdk.UnsignedIntFlagChanged">
+    <setting name="enabled">true</setting>
+  </event>
+
+  <event name="jdk.DoubleFlagChanged">
+    <setting name="enabled">true</setting>
+  </event>
+
+  <event name="jdk.BooleanFlagChanged">
+    <setting name="enabled">true</setting>
+  </event>
+
+  <event name="jdk.StringFlagChanged">
+    <setting name="enabled">true</setting>
+  </event>
+
+  <!-- Initial environment variables (beginChunk) -->
+  <event name="jdk.InitialEnvironmentVariable">
+    <setting name="enabled">true</setting>
+    <setting name="period">beginChunk</setting>
+  </event>
+
+  <!-- ================================================================
+       Native memory tracking — off-heap GC-related allocations
+       (NMT must be enabled with -XX:NativeMemoryTracking=summary|detail)
+       ================================================================ -->
+
+  <event name="jdk.NativeMemoryUsage">
+    <setting name="enabled">true</setting>
+    <setting name="period">1000 ms</setting>
+  </event>
+
+  <event name="jdk.NativeMemoryUsageTotal">
+    <setting name="enabled">true</setting>
+    <setting name="period">1000 ms</setting>
+  </event>
+
+  <!-- ================================================================
+       Java object lifecycle / finalization — useful alongside GC data
+       ================================================================ -->
+
+  <event name="jdk.DirectBufferStatistics">
+    <setting name="enabled">true</setting>
+    <setting name="period">5 s</setting>
+  </event>
+
+  <event name="jdk.FinalizerStatistics">
+    <setting name="enabled">true</setting>
+    <setting name="period">endChunk</setting>
   </event>
 
   <!-- ================================================================
@@ -532,12 +739,6 @@
   <event name="jdk.SafepointEnd">
     <setting name="enabled">false</setting>
     <setting name="threshold">10 ms</setting>
-  </event>
-
-  <!-- System CPU load: not gc-log output (GCCPUTime covers GC CPU time) -->
-  <event name="jdk.CPULoad">
-    <setting name="enabled">false</setting>
-    <setting name="period">1000 ms</setting>
   </event>
 
   <!-- Compilation: not gc-log output -->

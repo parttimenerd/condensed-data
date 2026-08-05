@@ -13,6 +13,18 @@ import org.junit.jupiter.api.io.TempDir;
 public class LoadJfrConfigurationTest {
 
     @Test
+    public void loadBundledGcLogByName() throws IOException, ParseException {
+        var config = RecordingThread.loadJfrConfiguration("gc-log");
+        assertEquals("gc-log", config.getLabel());
+    }
+
+    @Test
+    public void loadBundledGcLogByNameWithJfcSuffix() throws IOException, ParseException {
+        var config = RecordingThread.loadJfrConfiguration("gc-log.jfc");
+        assertEquals("gc-log", config.getLabel());
+    }
+
+    @Test
     public void loadPredefinedByName() throws IOException, ParseException {
         var config = RecordingThread.loadJfrConfiguration("default");
         assertEquals("default", config.getName());

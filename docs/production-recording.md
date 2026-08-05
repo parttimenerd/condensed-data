@@ -260,3 +260,60 @@ java -javaagent:cjfr.jar='start,/var/rec/app.cjfr,misc-jfr-config=jfr.ExecutionS
 ```shell
 misc-jfr-config='jfr.ExecutionSample#interval=100ms|jfr.ObjectAllocationSample#throttle=100/s'
 ```
+
+---
+
+## GC-Log Replacement Mode
+
+Replace `-Xlog:gc*` unified GC logging with a CJFR recording at near-zero overhead. The `gc-log` preset captures the equivalent of `gc+heap+cpu+metaspace+ref+phases+promotion+ergo+age` at a fraction of the storage cost.
+
+### Quick start
+
+```shell
+java -javaagent:cjfr.jar='start,/var/rec/gc_$index.cjfr,rotating,max-files=24,max-duration=1h,config=gc-log,condenser-config=gc-log' \
+     -jar myapp.jar
+```
+
+### What it captures
+
+**GC events (all collectors):** GarbageCollection, GCPhasePause, GCPhaseConcurrent and sub-phases, GCHeapSummary, GCCPUTime, MetaspaceSummary, GCReferenceStatistics, PromotionFailed, ConcurrentModeFailure.
+
+**Collector-specific:**
+- G1GC: G1GarbageCollection, G1HeapSummary, TenuringDistribution, G1MMU, G1BasicIHOP, G1AdaptiveIHOP, EvacuationInformation, EvacuationFailed
+- ZGC: ZYoungGarbageCollection, ZOldGarbageCollection, ZAllocationStall, ZPageAllocation, ZRelocationSet, ZRelocationSetGroup, ZThreadPhase, ZUncommit
+- Shenandoah: ShenandoahHeapRegionInformation (sampled, low cadence)
+- Parallel GC: PSHeapSummary
+
+**Ambient context** (matches `benchmark/gc.jfc`): CPULoad (1 s), PhysicalMemory, OSInformation, CPUInformation, ContainerConfiguration/CPUUsage/MemoryUsage (30 s), JVM flags (IntFlag, BooleanFlag, etc.), NativeMemoryUsage, DirectBufferStatistics, FinalizerStatistics, GCLocker.
+
+**Not captured** (no JFR events exist): `gc+refine`, `gc+remset`, `gc+stringdedup`, `gc+humongous`, ZGC `gc+mmu`. These remain gaps versus `-Xlog:gc*`.
+
+### Storage estimates
+
+Measured on a renaissance gc_details benchmark (G1GC):
+
+| Condenser config | Output size |
+|---|---|
+| `gc-log` (recommended) | ~5–15 MB/hour |
+| `lossless` | ~25 MB/hour |
+
+The `gc-log` condenser preset applies lossless event combining and GCPhaseParallel aggregation. Because `gc-log` captures far fewer events than `default`, the condenser reduction is also smaller in absolute terms.
+
+### Comparison with `-Xlog:gc*`
+
+| What you need to know | `-Xlog:gc*` | cjfr `gc-log` preset |
+|---|---|---|
+| GC pause times | yes | yes |
+| Heap before/after | yes | yes |
+| GC type and cause | yes | yes |
+| Concurrent phase times | yes | yes |
+| Tenuring distribution | yes | yes |
+| G1 IHOP / MMU | yes | yes |
+| CPU time per GC | yes | yes |
+| Metaspace summary | yes | yes |
+| G1 region refinement | `-Xlog:gc+refine` | no JFR equivalent |
+| String dedup stats | `-Xlog:gc+stringdedup` | no JFR equivalent |
+| Container CPU/memory | no | yes |
+| JVM flag set at startup | no | yes |
+| Overall JVM CPU load | no | yes |
+
