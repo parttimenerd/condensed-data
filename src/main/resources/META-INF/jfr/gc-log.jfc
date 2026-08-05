@@ -116,10 +116,6 @@
     <setting name="stackTrace">false</setting>
   </event>
 
-  <event name="jdk.MetaspaceChunkFreeListSummary">
-    <setting name="enabled">true</setting>
-  </event>
-
   <!-- gc+cpu → GC user/sys/wall time per collection -->
   <event name="jdk.GCCPUTime">
     <setting name="enabled">true</setting>
@@ -575,6 +571,15 @@
   <event name="jdk.ZThreadPhase">
     <setting name="enabled">false</setting>
     <setting name="threshold">0 ms</setting>
+  </event>
+
+  <!-- MetaspaceChunkFreeListSummary: metaspace allocator chunk free-list internals.
+       Maps to gc+metaspace=DEBUG (not info-level) — no -Xlog:gc* counterpart.
+       In a 60s ZGC recording: 3376 events = 65 KB = 6.3% of raw JFR size.
+       MetaspaceSummary (already enabled) covers the info-level gc+metaspace output.
+       SAP gc.jfc also disables this event. -->
+  <event name="jdk.MetaspaceChunkFreeListSummary">
+    <setting name="enabled">false</setting>
   </event>
 
   <!-- Very fine-grained pause sub-phases not needed for gc-log parity -->
