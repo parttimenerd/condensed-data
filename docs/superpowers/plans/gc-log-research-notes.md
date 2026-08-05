@@ -556,3 +556,197 @@ One correction to Task 2 mapping table:
 - GitHub cross-check: `https://github.com/openjdk/jdk` master branch (verified 2026-08-05)
 - CMS GC was removed in JDK 15 — several older tag combinations (sweep, compaction in gc
   context) are vestigial or absent in modern source
+
+---
+
+## Section A: Confirmed Gaps (no JFR equivalent)
+
+These GC log tag combinations have **no current JFR event** and cannot be covered by gc-log.jfc:
+
+| `-Xlog` tag | Collector | What it logs | Gap reason |
+|---|---|---|---|
+| `gc+refine` | G1 | Card refinement thread activity (cards processed, time spent) | No `jdk.G1RefinementStats` event exists; text-only |
+| `gc+refine+stats` | G1 | Per-thread refinement statistics | Same as above |
+| `gc+ergo+refine` | G1 | Adaptive refinement goal adjustments (threshold changes) | No JFR event for refinement ergonomics |
+| `gc+remset` | G1 | Remembered set coarsening statistics (cells, coarsened entries) | No JFR event for remset stats |
+| `gc+remset+tracking` | G1 | Per-region remembered set tracking updates | Same gap |
+| `gc+stringdedup` | All (if enabled) | String deduplication statistics (tables, time, savings) | Note: the log tag is `stringdedup` (not `gc,stringdedup`); no `jdk.StringDeduplication` event in jdk25u metadata |
+| `gc+humongous` | G1 | Humongous object allocation decisions (size, region, reclaim) | No `jdk.G1HumongousAllocation` event exists |
+| `gc+mmu` (ZGC path) | ZGC | ZGC Maximum Mutator Utilization (via `log_info(gc,mmu)` in zStat.cpp) | `jdk.G1MMU` exists only for G1; ZGC MMU has no JFR equivalent |
+| `gc+liveness` | G1 | Region liveness probes during concurrent marking (debug level only) | No JFR event; debug-level detail not needed in gc-log preset |
+| `gc+director` | ZGC | ZGC director heuristic decisions (which generation to collect, why) | No JFR event for ZGC director |
+| `gc+ergo` (text-only) | G1, Shenandoah | Ergonomic sizing decisions (young gen target, pause target) | Partial coverage via `jdk.G1BasicIHOP`/`G1AdaptiveIHOP`; free-text ergonomics have no JFR event |
+
+**Impact on gc-log.jfc v1:** These gaps are accepted. The preset provides strong coverage of the
+measurable GC events (pauses, phases, heap, metaspace, IHOP, MMU for G1, reloc for ZGC) while
+acknowledging that refinement/remset/stringdedup/director internals are not JFR-instrumented.
+
+---
+
+## Section B: JFR-Only Events
+
+Events available in JFR that have **no direct `-Xlog:gc*` counterpart** — present in the JFR
+metadata but not emitted via the GC log subsystem:
+
+| JFR Event | Count/60s | Recommendation | Rationale |
+|---|---|---|---|
+| `jdk.PromoteObjectInNewPLAB` | 15,730 | **EXCLUDE** | Per-promoted-object-batch event; extremely high volume under G1; not in GC log output |
+| `jdk.PromoteObjectOutsidePLAB` | 83 | **EXCLUDE** | Same category as above; low count but no GC log equivalent |
+| `jdk.ObjectAllocationInNewTLAB` | high (disabled in profile) | **EXCLUDE** | Application-level allocation sampling; not a GC event |
+| `jdk.ObjectAllocationOutsideTLAB` | high (disabled in profile) | **EXCLUDE** | Same |
+| `jdk.AllocationRequiringGC` | low (disabled in profile) | **OPTIONAL** (disabled by default) | Fires when allocation fails and GC is triggered; useful for diagnosing allocation pressure but not in standard GC log |
+| `jdk.ZStatisticsCounter` | 0 in profile settings | **OPTIONAL** (disabled by default) | ZGC internal named counters; useful for ZGC deep diagnostics but not GC-log-equivalent output |
+| `jdk.ZStatisticsSampler` | 0 in profile settings | **OPTIONAL** (disabled by default) | Same category |
+| `jdk.G1HeapRegionInformation` | 0 in profile settings | **OPTIONAL** (disabled by default) | Periodic snapshot of all G1 regions; too verbose for gc-log preset |
+| `jdk.G1HeapRegionTypeChange` | 0 in profile settings | **EXCLUDE** | Per-region type transition; high volume when enabled; no GC log equivalent |
+| `jdk.ShenandoahHeapRegionStateChange` | 0 in profile settings | **EXCLUDE** | Per-region state transition; high volume; no GC log equivalent |
+| `jdk.ShenandoahHeapRegionInformation` | 0 in profile settings | **INCLUDE** (period: everyChunk) | Periodic snapshot (low cadence); analogous to heap summary; reasonable for gc-log preset |
+| `jdk.GCHeapMemoryUsage` | 2 (everyChunk) | **INCLUDE** | Standard periodic memory summary; already in `default.jfc` |
+| `jdk.GCHeapMemoryPoolUsage` | 6 (everyChunk) | **INCLUDE** | Same |
+
+---
+
+## Section C: New JFR Event Proposals
+
+Two gaps from Section A are strong candidates for upstream JFR instrumentation proposals.
+Neither blocks gc-log.jfc v1 — they are forward-looking notes for JDK enhancement proposals.
+
+### `jdk.G1RefinementStats` (for `gc+refine` / `gc+ergo+refine`)
+
+**Rationale:** G1 card refinement is a significant source of concurrent CPU cost and a common
+tuning target (`-XX:G1ConcRefinementThreads`, `-XX:G1RSetUpdatingPauseTimePercent`). The GC log
+lines from `gc+refine` show processed cards, refinement time, and threshold adjustments — all
+operationally useful. No JFR event currently captures this.
+
+**Proposed fields:** `gcId`, `cardTableCardsProcessed` (long), `refinementTimeMs` (double),
+`threadCount` (int), `goalCards` (long, for `gc+ergo+refine` threshold).
+
+**Priority:** Low — upstream candidate; not needed for v1 preset coverage.
+
+### `jdk.G1HumongousAllocation` (for `gc+humongous`)
+
+**Rationale:** Humongous allocations are a common G1 performance problem (they trigger full GC,
+bypass young gen, fragment old gen). The GC log `gc+humongous` output logs each allocation
+decision. A JFR event would enable tooling to flag humongous allocations with stack traces.
+
+**Proposed fields:** `gcId`, `objectSizeBytes` (long), `allocationSucceeded` (boolean),
+`regionsRequired` (int). Optional: `stackTrace` for allocation site tracking.
+
+**Priority:** Low — upstream candidate; not needed for v1 preset coverage.
+
+---
+
+## Section D: Final Event List for gc-log.jfc
+
+This is the **authoritative specification** for the gc-log.jfc preset.
+Version: v1 (2026-08-05). Covers JDK 17+ (all modern collectors: G1, ZGC, Shenandoah, Parallel, Serial).
+
+### ENABLED events
+
+| JFR Event | Setting | Notes |
+|---|---|---|
+| `jdk.JVMInformation` | `period: beginChunk` | JVM version, command-line args |
+| `jdk.InitialSystemProperty` | `period: beginChunk` | System properties snapshot |
+| `jdk.GCConfiguration` | `period: everyChunk` | GC algorithm, cause flags |
+| `jdk.GCHeapConfiguration` | `period: beginChunk` | Min/max heap, flags |
+| `jdk.YoungGenerationConfiguration` | `period: beginChunk` | Young gen min/max ratio |
+| `jdk.GCTLABConfiguration` | `period: beginChunk` | TLAB settings |
+| `jdk.GCSurvivorConfiguration` | `period: beginChunk` | Survivor space settings |
+| `jdk.GarbageCollection` | `threshold: 0ms` | Root GC event; all collectors |
+| `jdk.SystemGC` | `threshold: 0ms, stackTrace: false` | `System.gc()` calls |
+| `jdk.ParallelOldGarbageCollection` | `threshold: 0ms` | Parallel GC old-gen event |
+| `jdk.YoungGarbageCollection` | `threshold: 0ms` | Young GC sub-event (all collectors) |
+| `jdk.OldGarbageCollection` | `threshold: 0ms` | Old GC sub-event |
+| `jdk.G1GarbageCollection` | `threshold: 0ms` | G1-specific young event (GCPauseType) |
+| `jdk.GCHeapSummary` | _(default)_ | Heap before+after each collection |
+| `jdk.G1HeapSummary` | _(default)_ | G1 heap region breakdown |
+| `jdk.PSHeapSummary` | _(default)_ | Parallel GC heap breakdown |
+| `jdk.MetaspaceSummary` | _(default)_ | Metaspace before+after each collection |
+| `jdk.MetaspaceGCThreshold` | _(default)_ | Fires when metaspace threshold changes |
+| `jdk.MetaspaceAllocationFailure` | `stackTrace: false` | Metaspace OOM precursor |
+| `jdk.MetaspaceOOM` | `stackTrace: false` | Metaspace out-of-memory |
+| `jdk.MetaspaceChunkFreeListSummary` | _(default)_ | Chunk free list detail (debug) |
+| `jdk.GCCPUTime` | _(default)_ | GC user/sys/wall time per collection |
+| `jdk.GCReferenceStatistics` | _(default)_ | Ref type counts (soft/weak/final/phantom) |
+| `jdk.GCPhasePause` | `threshold: 0ms` | Level-0 pause phase (all collectors) |
+| `jdk.GCPhasePauseLevel1` | `threshold: 0ms` | Level-1 pause sub-phase |
+| `jdk.GCPhasePauseLevel2` | `threshold: 0ms` | Level-2 pause sub-phase |
+| `jdk.GCPhaseConcurrent` | `threshold: 0ms` | Level-0 concurrent phase |
+| `jdk.GCPhaseConcurrentLevel1` | `threshold: 0ms` | Level-1 concurrent sub-phase |
+| `jdk.ConcurrentModeFailure` | _(default)_ | CMS/G1 concurrent mode failure |
+| `jdk.PromotionFailed` | _(default)_ | Promotion failure (G1, Parallel) |
+| `jdk.EvacuationFailed` | _(default)_ | G1 evacuation failure |
+| `jdk.EvacuationInformation` | _(default)_ | G1 cSet regions, bytes copied |
+| `jdk.TenuringDistribution` | _(default)_ | Per-age tenuring bucket distribution (G1/Parallel) |
+| `jdk.G1MMU` | _(default)_ | G1 maximum mutator utilization |
+| `jdk.G1BasicIHOP` | _(default)_ | IHOP threshold (static mode) |
+| `jdk.G1AdaptiveIHOP` | _(default)_ | IHOP threshold (adaptive mode) |
+| `jdk.G1EvacuationYoungStatistics` | _(default)_ | Per-young-collection evacuation stats |
+| `jdk.G1EvacuationOldStatistics` | _(default)_ | Per-old-collection evacuation stats |
+| `jdk.ZYoungGarbageCollection` | `threshold: 0ms` | Generational ZGC young; fires JDK 23+ |
+| `jdk.ZOldGarbageCollection` | `threshold: 0ms` | Generational ZGC old; fires JDK 23+ |
+| `jdk.ZAllocationStall` | `threshold: 0ms, stackTrace: false` | ZGC thread stall waiting for memory |
+| `jdk.ZPageAllocation` | `threshold: 1ms, stackTrace: false` | ZGC page allocation (only slow ones) |
+| `jdk.ZRelocationSet` | `threshold: 0ms` | ZGC relocation set total |
+| `jdk.ZRelocationSetGroup` | `threshold: 0ms` | ZGC relocation set per-group detail |
+| `jdk.ZThreadPhase` | `threshold: 0ms` | ZGC per-thread phase |
+| `jdk.ZUncommit` | `threshold: 0ms` | ZGC memory returned to OS |
+| `jdk.ShenandoahHeapRegionInformation` | `period: everyChunk` | Shenandoah region snapshot |
+| `jdk.GCLocker` | `threshold: 1s, stackTrace: false` | GC locker delay (present in JDK 21 JFR metadata) |
+| `jdk.GCHeapMemoryUsage` | `period: everyChunk` | Periodic heap memory usage |
+| `jdk.GCHeapMemoryPoolUsage` | `period: everyChunk` | Periodic pool-level memory usage |
+| `jdk.ActiveRecording` | _(default)_ | JFR recording metadata |
+| `jdk.ActiveSetting` | _(default)_ | JFR setting values |
+| `jdk.DataLoss` | _(default)_ | JFR buffer overflow notification |
+| `jdk.DumpReason` | _(default)_ | Why JFR dump was triggered |
+| `jdk.Shutdown` | `stackTrace: false` | JVM shutdown event |
+
+### DISABLED events (explicitly suppressed to reduce noise)
+
+These events are listed in the JFC with `enabled=false` to prevent accidental activation by
+wildcard settings in calling profiles:
+
+```
+jdk.GCPhaseParallel           — 32K+/min under G1; not in GC log output
+jdk.GCPhasePauseLevel3        — very fine granularity; not needed for gc-log parity
+jdk.GCPhasePauseLevel4        — same
+jdk.GCPhaseConcurrentLevel2   — concurrent sub-sub-phases; not needed
+jdk.G1HeapRegionInformation   — periodic region dump; too verbose
+jdk.G1HeapRegionTypeChange    — per-transition event; high volume
+jdk.PromoteObjectInNewPLAB    — 15K+/min; not in GC log output
+jdk.PromoteObjectOutsidePLAB  — same category
+jdk.ObjectAllocationInNewTLAB — application allocation; not a GC event
+jdk.ObjectAllocationOutsideTLAB
+jdk.ObjectAllocationSample
+jdk.AllocationRequiringGC     — optional; disabled by default
+jdk.ObjectCount
+jdk.ObjectCountAfterGC
+jdk.ZStatisticsCounter        — ZGC internals; optional
+jdk.ZStatisticsSampler
+jdk.ShenandoahHeapRegionStateChange — per-transition; high volume
+jdk.OldObjectSample
+jdk.ExecutionSample
+jdk.NativeMethodSample
+jdk.ThreadStart
+jdk.ThreadEnd
+jdk.JavaExceptionThrow
+jdk.JavaErrorThrow
+jdk.FileRead
+jdk.FileWrite
+jdk.SocketRead
+jdk.SocketWrite
+jdk.JavaMonitorEnter
+jdk.JavaMonitorWait
+jdk.ThreadPark
+jdk.SafepointBegin
+jdk.SafepointEnd
+jdk.CPULoad
+jdk.Compilation
+jdk.ClassLoad
+```
+
+### NOT INCLUDED
+
+| Event | Reason |
+|---|---|
+| `jdk.ZUnmap` | Removed from jdk25u metadata; fires 0 times on JDK 21; exclude entirely |
