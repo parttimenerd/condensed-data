@@ -295,14 +295,14 @@ Measured on macOS (GraalVM JDK 25, 256 MB heap, high-allocation-rate workload, 6
 
 | Config | G1GC MB/hour | ZGC MB/hour | Notes |
 |---|---|---|---|
-| `gc-log.jfc` + `gc-log` condenser | **~32 MB/hr** | **~15 MB/hr** | Recommended combination |
-| `gc-log.jfc` + `lossless` condenser | ~35 MB/hr | ~17 MB/hr | All GC data preserved verbatim |
-| `-Xlog:gc*` text | ~115 MB/hr | ~282 MB/hr | No structured access, no compression |
+| `gc-log.jfc` + `gc-log` condenser | **~36 MB/hr** | **~15 MB/hr** | Recommended combination (avg of 3 runs) |
+| `gc-log.jfc` + `lossless` condenser | ~40 MB/hr | ~17 MB/hr | All GC data preserved verbatim |
+| `-Xlog:gc*` text | ~133 MB/hr | ~277 MB/hr | No structured access, no compression |
 | `default.jfc` + `default` condenser | ~180 MB/hr | ~90 MB/hr | Full profiling events included |
 
 *Workload: constant 32KB allocation at high rate (production GC rates are typically 10–100× lower). For GC-sparse profiles the gc-log preset reaches < 2 MB/hr. ZGC text logs are especially large because each GC emits many structured relocation-set and heap-summary lines that are verbose as text but compress as structured events.*
 
-The `gc-log` CJFR output is **72% smaller than `-Xlog:gc*` text for G1GC** and **95% smaller for ZGC** at the same workload — and supports random-access structured queries; text logs do not.
+The `gc-log` CJFR output is **73% smaller than `-Xlog:gc*` text for G1GC** and **95% smaller for ZGC** at the same workload — and supports random-access structured queries; text logs do not.
 
 ### Why JFR over `-Xlog:gc*`
 

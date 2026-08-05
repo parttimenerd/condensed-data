@@ -608,7 +608,11 @@
     <setting name="threshold">0 ms</setting>
   </event>
 
-  <!-- G1 region snapshots: too verbose for gc-log preset -->
+  <!-- G1 region snapshots: O(heap_region_count) events per chunk.
+       A 2GB heap with 1MB regions = 2048 events per everyChunk period.
+       Shenandoah's ShenandoahHeapRegionInformation (enabled, everyChunk) is reasonable because
+       Shenandoah heap regions are fewer. G1 with many small regions makes this prohibitive.
+       Enable manually if you need per-region heap topology at each chunk boundary. -->
   <event name="jdk.G1HeapRegionInformation">
     <setting name="enabled">false</setting>
     <setting name="period">everyChunk</setting>
