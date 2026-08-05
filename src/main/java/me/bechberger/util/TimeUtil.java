@@ -22,17 +22,40 @@ public class TimeUtil {
         if (duration.isNegative()) {
             return "-" + formatDuration(duration.negated());
         }
-        long totalNanos = duration.toNanos();
-        if (totalNanos == 0) {
+        if (duration.isZero()) {
             return "0s";
         }
         long seconds = duration.getSeconds();
+        int nanoAdj = duration.getNano(); // always non-negative (0..999_999_999)
         if (seconds >= 60) {
-            // Use h/m/s for >= 1 minute
-            return duration.toString()
-                    .substring(2)
-                    .replaceAll("(\\d[HMS])(?!$)", "$1 ")
-                    .toLowerCase();
+            long hours = seconds / 3600;
+            long minutes = (seconds % 3600) / 60;
+            long secs = seconds % 60;
+            long millis = nanoAdj / 1_000_000L;
+            long subMilliNanos = nanoAdj % 1_000_000L;
+            StringBuilder sb = new StringBuilder();
+            if (hours > 0) sb.append(hours).append("h");
+            if (minutes > 0) {
+                if (sb.length() > 0) sb.append(' ');
+                sb.append(minutes).append("m");
+            }
+            boolean hasSubSeconds = millis > 0 || subMilliNanos > 0;
+            if (secs > 0 || hasSubSeconds) {
+                if (sb.length() > 0) sb.append(' ');
+                if (hasSubSeconds) {
+                    // Use ms precision for display (sub-ms is not human-readable in h/m/s context)
+                    sb.append(String.format(Locale.ROOT, "%d.%03d", secs, millis));
+                    String s = sb.toString();
+                    // strip trailing zeros after the decimal point
+                    s = s.replaceAll("(\\.[0-9]*?)0+$", "$1").replaceAll("\\.$", "");
+                    sb.setLength(0);
+                    sb.append(s);
+                } else {
+                    sb.append(secs);
+                }
+                sb.append('s');
+            }
+            return sb.length() == 0 ? "0s" : sb.toString();
         }
         if (seconds >= 1) {
             // Use seconds with ms precision
@@ -44,7 +67,7 @@ public class TimeUtil {
             formatted = formatted.replaceAll("\\.$", ".0");
             return formatted + "s";
         }
-        long nanos = duration.toNanos();
+        long nanos = nanoAdj;
         if (nanos >= 1_000_000) {
             // Use milliseconds
             double ms = nanos / 1_000_000.0;
@@ -126,6 +149,33 @@ public class TimeUtil {
         }
     }
 
+    private static long parseUnitNanos(String value, long nanosPerUnit) {
+        if (!value.contains(".")) {
+            long whole = Long.parseLong(value);
+            if (nanosPerUnit > 1 && Math.abs(whole) > Long.MAX_VALUE / nanosPerUnit) {
+                return whole >= 0 ? Long.MAX_VALUE : Long.MIN_VALUE;
+            }
+            return whole * nanosPerUnit;
+        }
+        return Math.round(Double.parseDouble(value) * nanosPerUnit);
+    }
+
+    private static long mulClamped(long a, long b) {
+        try {
+            return Math.multiplyExact(a, b);
+        } catch (ArithmeticException e) {
+            return a >= 0 ? Long.MAX_VALUE : Long.MIN_VALUE;
+        }
+    }
+
+    private static long addClamped(long a, long b) {
+        try {
+            return Math.addExact(a, b);
+        } catch (ArithmeticException e) {
+            return (a > 0) ? Long.MAX_VALUE : Long.MIN_VALUE;
+        }
+    }
+
     public static Duration parseDuration(String duration) {
         boolean negative = false;
         String trimmed = duration.strip();
@@ -143,22 +193,39 @@ public class TimeUtil {
                                 + "(?:(\\d+(?:\\.\\d+)?)ns)?\\s*");
         Matcher matcher = pattern.matcher(trimmed);
         if (matcher.matches() && (IntStream.range(1, 7).anyMatch(i -> matcher.group(i) != null))) {
-            double hours = matcher.group(1) != null ? Double.parseDouble(matcher.group(1)) : 0;
-            double minutes = matcher.group(2) != null ? Double.parseDouble(matcher.group(2)) : 0;
-            double seconds = matcher.group(3) != null ? Double.parseDouble(matcher.group(3)) : 0;
-            double millis = matcher.group(4) != null ? Double.parseDouble(matcher.group(4)) : 0;
-            double micros = matcher.group(5) != null ? Double.parseDouble(matcher.group(5)) : 0;
-            double nanos = matcher.group(6) != null ? Double.parseDouble(matcher.group(6)) : 0;
+            // Build total as (wholeSecs, subNanos) to avoid nanosecond overflow for large second
+            // values
+            long wholeSecs = 0;
+            long subNanos = 0;
+            if (matcher.group(1) != null) {
+                String v = matcher.group(1);
+                if (!v.contains(".")) {
+                    long h = Long.parseLong(v);
+                    wholeSecs = addClamped(wholeSecs, mulClamped(h, 3600L));
+                } else wholeSecs = addClamped(wholeSecs, (long) (Double.parseDouble(v) * 3600));
+            }
+            if (matcher.group(2) != null) {
+                String v = matcher.group(2);
+                if (!v.contains(".")) {
+                    long m = Long.parseLong(v);
+                    wholeSecs = addClamped(wholeSecs, mulClamped(m, 60L));
+                } else wholeSecs = addClamped(wholeSecs, (long) (Double.parseDouble(v) * 60));
+            }
+            if (matcher.group(3) != null) {
+                String v = matcher.group(3);
+                if (!v.contains(".")) {
+                    wholeSecs = addClamped(wholeSecs, Long.parseLong(v));
+                } else {
+                    double d = Double.parseDouble(v);
+                    wholeSecs = addClamped(wholeSecs, (long) d);
+                    subNanos += Math.round((d - (long) d) * 1_000_000_000L);
+                }
+            }
+            if (matcher.group(4) != null) subNanos += parseUnitNanos(matcher.group(4), 1_000_000L);
+            if (matcher.group(5) != null) subNanos += parseUnitNanos(matcher.group(5), 1_000L);
+            if (matcher.group(6) != null) subNanos += parseUnitNanos(matcher.group(6), 1L);
 
-            long totalNanos = 0;
-            totalNanos += Math.round(hours * 3_600_000_000_000L);
-            totalNanos += Math.round(minutes * 60_000_000_000L);
-            totalNanos += Math.round(seconds * 1_000_000_000L);
-            totalNanos += Math.round(millis * 1_000_000L);
-            totalNanos += Math.round(micros * 1_000L);
-            totalNanos += Math.round(nanos);
-
-            Duration result = Duration.ofNanos(totalNanos);
+            Duration result = Duration.ofSeconds(wholeSecs, subNanos);
             return negative ? result.negated() : result;
         } else {
             throw new IllegalArgumentException("Invalid duration format: " + duration);
