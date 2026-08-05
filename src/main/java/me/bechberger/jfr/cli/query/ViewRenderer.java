@@ -638,7 +638,8 @@ final class ViewRenderer {
 
         if (flexIdx.isEmpty() && shrinkIdx.isEmpty()) {
             // All-non-flex tables: oracle pads each column by ceil(surplus/nCols) so that the
-            // table fills slightly past effectiveWidth (observed in gc-references, safepoints, etc.).
+            // table fills slightly past effectiveWidth (observed in gc-references, safepoints,
+            // etc.).
             // If the table already exceeds effectiveWidth, leave it unchanged.
             int surplus = effectiveWidth - used;
             if (surplus <= 0) return;

@@ -124,7 +124,8 @@ public class PrintCommand implements Callable<Integer> {
 
     /**
      * Populated after reading all events; maps event-type name → original JFR class ID so that
-     * ActiveSetting/RecordingSetting {@code id} strings can be rendered as integers matching oracle.
+     * ActiveSetting/RecordingSetting {@code id} strings can be rendered as integers matching
+     * oracle.
      */
     private Map<String, Long> eventTypeJfrIds = Map.of();
 

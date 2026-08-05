@@ -331,8 +331,7 @@ public record CJFRFooter(
                 hasPrecomputed ? readPrecomputedViews(in) : Map.of();
         Map<String, String> eventTypeLabels =
                 hasEventTypeLabels ? readEventTypeLabels(in) : Map.of();
-        Map<String, Long> eventTypeJfrIds =
-                hasEventTypeJfrIds ? readEventTypeJfrIds(in) : Map.of();
+        Map<String, Long> eventTypeJfrIds = hasEventTypeJfrIds ? readEventTypeJfrIds(in) : Map.of();
 
         return new CJFRFooter(
                 version,
