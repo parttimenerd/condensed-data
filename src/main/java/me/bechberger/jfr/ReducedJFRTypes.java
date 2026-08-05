@@ -168,12 +168,9 @@ public class ReducedJFRTypes {
                                     "jdk.CodeCacheConfiguration",
                                     addressField("startAddress"),
                                     addressField("reservedTopAddress"))),
-                    // NativeLibrary: topAddress is always 0 on all observed platforms; baseAddress
-                    // is the library's ASLR load address and is the primary datum for the
-                    // native-libraries view — keep it so the view renders correctly.
-                    Map.entry(
-                            "jdk.NativeLibrary",
-                            entry("jdk.NativeLibrary", addressField("topAddress"))),
+                    // NativeLibrary: both baseAddress and topAddress are referenced by the
+                    // native-libraries view; removing either causes the oracle to fail with
+                    // "Can't find field" on inflated JFR files.  Both are kept.
                     // ParallelOldGarbageCollection: densePrefix is a raw compaction address
                     Map.entry(
                             "jdk.ParallelOldGarbageCollection",

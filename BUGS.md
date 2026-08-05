@@ -3740,3 +3740,13 @@ classLoader = jdk.internal.reflect.DelegatingClassLoader (id = 3)
 **Impact:** Informational view shows too much data; not a data corruption bug.
 
 **Status:** Known issue. Fix requires INNER JOIN semantics in evaluateJoin().
+
+## Bug 463: `native-libraries` view fails on inflated DEFAULT JFR (missing `topAddress` field)
+
+**Observation:** `jfr view native-libraries <inflated.jfr>` errors with "Can't find field named 'topAddress' in jdk.NativeLibrary" when the JFR was inflated from a DEFAULT-preset `.cjfr`. The oracle requires both `baseAddress` and `topAddress` columns to render the view.
+
+**Root cause:** `ReducedJFRTypes` removed `topAddress` via `addressField()` in DEFAULT preset. While `topAddress` is always `0x00000000` on all observed platforms, the oracle's `native-libraries` view definition still references it; the missing field causes the oracle to reject the inflated file entirely.
+
+**Fix:** Remove `jdk.NativeLibrary` from `REDUCED_JFR_TYPES` entirely — neither `topAddress` nor `baseAddress` is dropped in any preset.
+
+**Status:** Fixed.
