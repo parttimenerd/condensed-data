@@ -3750,3 +3750,13 @@ classLoader = jdk.internal.reflect.DelegatingClassLoader (id = 3)
 **Fix:** Remove `jdk.NativeLibrary` from `REDUCED_JFR_TYPES` entirely — neither `topAddress` nor `baseAddress` is dropped in any preset.
 
 **Status:** Fixed.
+
+## Bug 464: `active-settings` view shows wrong event type labels on inflated JFR
+
+**Observation:** `cjfr view active-settings <inflated.jfr>` shows `"Java Execution Sample"` and `"Native Sample"` instead of the correct `"Method Profiling Sample"` and `"Method Profiling Sample Native"` for `jdk.ExecutionSample` and `jdk.NativeMethodSample`.
+
+**Root cause:** `BasicJFRWriter` seeds `eventTypeLabels` at construction from `FlightRecorder.getFlightRecorder().getEventTypes()` (current JVM) using `putIfAbsent`. When `registerEventTypes()` is later called with the recording's own event types, it also called `recordEventTypeLabel()` — but that used the same `putIfAbsent`, so the JVM's static seed (which may carry old JDK 11-17 labels like `"Java Execution Sample"`) won and the recording's authoritative labels (e.g. `"Method Profiling Sample"` from JDK 21+) were silently discarded.
+
+**Fix:** `registerEventTypes()` now calls `recordEventTypeLabel(t, authoritative=true)` which uses `put()` instead of `putIfAbsent()`. The static seeding at construction remains `putIfAbsent` (fallback for the agent path that never calls `registerEventTypes()`). Recording metadata always wins over the JVM's built-in label registry.
+
+**Status:** Fixed.
