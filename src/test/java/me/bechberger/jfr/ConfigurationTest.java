@@ -109,10 +109,11 @@ public class ConfigurationTest {
 
     @Test
     public void testPredefinedConfigurations() {
-        assertEquals(3, Configuration.configurations.size());
+        assertEquals(4, Configuration.configurations.size());
         assertNotNull(Configuration.configurations.get("lossless"));
         assertNotNull(Configuration.configurations.get("default"));
         assertNotNull(Configuration.configurations.get("reduced"));
+        assertNotNull(Configuration.configurations.get("gc-log"));
     }
 
     @Test
@@ -120,5 +121,34 @@ public class ConfigurationTest {
         // "lossless" is an alias for the lossless base config, differing only in name.
         assertEquals(Configuration.LOSSLESS.withName("lossless"), Configuration.LOSSLESS);
         assertEquals(Configuration.LOSSLESS, Configuration.configurations.get("lossless"));
+    }
+
+    @Test
+    public void testGcLogPresetInConfigurations() {
+        assertNotNull(
+                Configuration.configurations.get("gc-log"),
+                "gc-log preset must exist in Configuration.configurations");
+    }
+
+    @Test
+    public void testGcLogPresetName() {
+        assertEquals("gc-log", Configuration.GC_LOG.name());
+    }
+
+    @Test
+    public void testGcLogPresetHasCombinersEnabled() {
+        assertTrue(
+                Configuration.GC_LOG.combineEventsWithoutDataLoss(),
+                "gc-log should use lossless event combining");
+    }
+
+    @Test
+    public void testGcLogPresetDisablesAllocCombiner() {
+        assertFalse(
+                Configuration.GC_LOG.combineObjectAllocationSampleEvents(),
+                "gc-log should not combine allocation samples (not captured)");
+        assertFalse(
+                Configuration.GC_LOG.combineObjectAllocationSampleLossless(),
+                "gc-log should not combine allocation samples (not captured)");
     }
 }

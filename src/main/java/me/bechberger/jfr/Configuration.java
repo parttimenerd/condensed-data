@@ -147,6 +147,26 @@ public record Configuration(
                     .withCombineBlockingEvents(true)
                     .withCollapseInternalFramesPrefixes(DEFAULT_COLLAPSE_PREFIXES);
 
+    /**
+     * GC-log equivalent — enable only GC events (matches the bundled gc-log.jfc recording config).
+     * No allocation profiling, no execution samples. Use with {@code --config gc-log}.
+     */
+    public static final Configuration GC_LOG =
+            LOSSLESS.withName("gc-log")
+                    .withMemoryAsBFloat16(true)
+                    .withTimeStampTicksPerSecond(1_000_000)
+                    .withDurationTicksPerSecond(1_000_000)
+                    .withCombineObjectAllocationSampleEvents(false)
+                    .withCombineObjectAllocationSampleLossless(false)
+                    .withCombineExceptionEvents(false)
+                    .withCombineExceptionEventsLossless(false)
+                    .withCombineBlockingEvents(false)
+                    .withCombineExecutionSampleEvents(false)
+                    .withCombinePLABPromotionEvents(false)
+                    .withAggregateGCPhaseParallelStats(true)
+                    .withRemoveUnnecessaryAddresses(true)
+                    .withIgnoreZeroSizedTenuredAges(true);
+
     public Configuration {
         if (timeStampTicksPerSecond <= 0) {
             throw new IllegalArgumentException("timeStampTicksPerSecond must be positive");
@@ -171,7 +191,8 @@ public record Configuration(
             Map.of(
                     "lossless", LOSSLESS,
                     "default", DEFAULT,
-                    "reduced", REDUCED);
+                    "reduced", REDUCED,
+                    "gc-log", GC_LOG);
 
     public Configuration withTimeStampTicksPerSecond(long ttps) {
         return withFieldValue("timeStampTicksPerSecond", ttps);
