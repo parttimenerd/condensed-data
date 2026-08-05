@@ -1,0 +1,556 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  gc-log.jfc — GC-log equivalent recording configuration for cjfr.
+  Captures the same information as -Xlog:gc* at minimal overhead.
+  No stack traces, no profiling events.
+
+  Covers all modern collectors: G1GC, ZGC, Shenandoah, Parallel GC, Serial GC.
+  Tested against JDK 17–25 (jdk25u source + JDK 21.0.11 live capture).
+
+  jdk.ZUnmap is intentionally absent: it was removed from jdk25u metadata and
+  fires zero times on JDK 21.
+-->
+
+<configuration version="2.0"
+               label="gc-log"
+               description="GC-log equivalent: captures the same information as -Xlog:gc* at minimal overhead. No stack traces, no profiling events."
+               provider="cjfr">
+
+  <!-- ================================================================
+       Core metadata / JVM configuration
+       Mirrors -Xlog:gc+init and general JVM identification.
+       ================================================================ -->
+
+  <event name="jdk.JVMInformation">
+    <setting name="enabled">true</setting>
+    <setting name="period">beginChunk</setting>
+  </event>
+
+  <event name="jdk.InitialSystemProperty">
+    <setting name="enabled">true</setting>
+    <setting name="period">beginChunk</setting>
+  </event>
+
+  <event name="jdk.GCConfiguration">
+    <setting name="enabled">true</setting>
+    <setting name="period">everyChunk</setting>
+  </event>
+
+  <event name="jdk.GCHeapConfiguration">
+    <setting name="enabled">true</setting>
+    <setting name="period">beginChunk</setting>
+  </event>
+
+  <event name="jdk.YoungGenerationConfiguration">
+    <setting name="enabled">true</setting>
+    <setting name="period">beginChunk</setting>
+  </event>
+
+  <event name="jdk.GCTLABConfiguration">
+    <setting name="enabled">true</setting>
+    <setting name="period">beginChunk</setting>
+  </event>
+
+  <event name="jdk.GCSurvivorConfiguration">
+    <setting name="enabled">true</setting>
+    <setting name="period">beginChunk</setting>
+  </event>
+
+  <!-- ================================================================
+       Universal GC events — all collectors
+       Maps to: gc, gc+heap, gc+cpu, gc+metaspace, gc+ref, gc+age,
+                gc+phases, gc+promotion.
+       ================================================================ -->
+
+  <!-- gc → jdk.GarbageCollection (all collectors) -->
+  <event name="jdk.GarbageCollection">
+    <setting name="enabled">true</setting>
+    <setting name="threshold">0 ms</setting>
+  </event>
+
+  <!-- gc → jdk.SystemGC; stackTrace=false to keep overhead low -->
+  <event name="jdk.SystemGC">
+    <setting name="enabled">true</setting>
+    <setting name="threshold">0 ms</setting>
+    <setting name="stackTrace">false</setting>
+  </event>
+
+  <!-- gc → Parallel GC old-gen event -->
+  <event name="jdk.ParallelOldGarbageCollection">
+    <setting name="enabled">true</setting>
+    <setting name="threshold">0 ms</setting>
+  </event>
+
+  <!-- gc → young/old sub-events (all collectors) -->
+  <event name="jdk.YoungGarbageCollection">
+    <setting name="enabled">true</setting>
+    <setting name="threshold">0 ms</setting>
+  </event>
+
+  <event name="jdk.OldGarbageCollection">
+    <setting name="enabled">true</setting>
+    <setting name="threshold">0 ms</setting>
+  </event>
+
+  <!-- gc+heap → heap summary before+after each collection -->
+  <event name="jdk.GCHeapSummary">
+    <setting name="enabled">true</setting>
+  </event>
+
+  <!-- gc+metaspace → metaspace summary before+after each collection -->
+  <event name="jdk.MetaspaceSummary">
+    <setting name="enabled">true</setting>
+  </event>
+
+  <event name="jdk.MetaspaceGCThreshold">
+    <setting name="enabled">true</setting>
+  </event>
+
+  <event name="jdk.MetaspaceAllocationFailure">
+    <setting name="enabled">true</setting>
+    <setting name="stackTrace">false</setting>
+  </event>
+
+  <event name="jdk.MetaspaceOOM">
+    <setting name="enabled">true</setting>
+    <setting name="stackTrace">false</setting>
+  </event>
+
+  <event name="jdk.MetaspaceChunkFreeListSummary">
+    <setting name="enabled">true</setting>
+  </event>
+
+  <!-- gc+cpu → GC user/sys/wall time per collection -->
+  <event name="jdk.GCCPUTime">
+    <setting name="enabled">true</setting>
+  </event>
+
+  <!-- gc+ref / gc+phases+ref → reference type counts per collection -->
+  <event name="jdk.GCReferenceStatistics">
+    <setting name="enabled">true</setting>
+  </event>
+
+  <!-- gc+phases → pause phase hierarchy (all collectors) -->
+  <event name="jdk.GCPhasePause">
+    <setting name="enabled">true</setting>
+    <setting name="threshold">0 ms</setting>
+  </event>
+
+  <event name="jdk.GCPhasePauseLevel1">
+    <setting name="enabled">true</setting>
+    <setting name="threshold">0 ms</setting>
+  </event>
+
+  <event name="jdk.GCPhasePauseLevel2">
+    <setting name="enabled">true</setting>
+    <setting name="threshold">0 ms</setting>
+  </event>
+
+  <!-- gc+phases → concurrent phase hierarchy (G1, ZGC, Shenandoah) -->
+  <event name="jdk.GCPhaseConcurrent">
+    <setting name="enabled">true</setting>
+    <setting name="threshold">0 ms</setting>
+  </event>
+
+  <event name="jdk.GCPhaseConcurrentLevel1">
+    <setting name="enabled">true</setting>
+    <setting name="threshold">0 ms</setting>
+  </event>
+
+  <!-- gc → concurrent mode failure (G1/CMS) -->
+  <event name="jdk.ConcurrentModeFailure">
+    <setting name="enabled">true</setting>
+  </event>
+
+  <!-- gc+promotion → promotion/evacuation failures -->
+  <event name="jdk.PromotionFailed">
+    <setting name="enabled">true</setting>
+  </event>
+
+  <!-- gc+heap → periodic heap memory usage summary -->
+  <event name="jdk.GCHeapMemoryUsage">
+    <setting name="enabled">true</setting>
+    <setting name="period">everyChunk</setting>
+  </event>
+
+  <event name="jdk.GCHeapMemoryPoolUsage">
+    <setting name="enabled">true</setting>
+    <setting name="period">everyChunk</setting>
+  </event>
+
+  <!-- ================================================================
+       G1GC-specific events
+       Maps to: gc (G1 young), gc+heap (G1 breakdown), gc+age,
+                gc+ergo+cset, gc+ergo+ihop, gc+ihop, gc+mmu.
+       ================================================================ -->
+
+  <!-- gc → G1-specific young event (GCPauseType field) -->
+  <event name="jdk.G1GarbageCollection">
+    <setting name="enabled">true</setting>
+    <setting name="threshold">0 ms</setting>
+  </event>
+
+  <!-- gc+heap → G1 heap region breakdown -->
+  <event name="jdk.G1HeapSummary">
+    <setting name="enabled">true</setting>
+  </event>
+
+  <!-- gc+heap → Parallel GC heap breakdown -->
+  <event name="jdk.PSHeapSummary">
+    <setting name="enabled">true</setting>
+  </event>
+
+  <!-- gc+age → per-age tenuring bucket distribution (G1, Parallel) -->
+  <event name="jdk.TenuringDistribution">
+    <setting name="enabled">true</setting>
+  </event>
+
+  <!-- gc+mmu → G1 maximum mutator utilization -->
+  <event name="jdk.G1MMU">
+    <setting name="enabled">true</setting>
+  </event>
+
+  <!-- gc+ergo+ihop / gc+ihop → IHOP threshold events -->
+  <event name="jdk.G1BasicIHOP">
+    <setting name="enabled">true</setting>
+  </event>
+
+  <event name="jdk.G1AdaptiveIHOP">
+    <setting name="enabled">true</setting>
+  </event>
+
+  <!-- gc+ergo+cset → G1 evacuation events -->
+  <event name="jdk.EvacuationFailed">
+    <setting name="enabled">true</setting>
+  </event>
+
+  <event name="jdk.EvacuationInformation">
+    <setting name="enabled">true</setting>
+  </event>
+
+  <event name="jdk.G1EvacuationYoungStatistics">
+    <setting name="enabled">true</setting>
+  </event>
+
+  <event name="jdk.G1EvacuationOldStatistics">
+    <setting name="enabled">true</setting>
+  </event>
+
+  <!-- ================================================================
+       ZGC-specific events
+       Maps to: gc (ZGC generations), gc+alloc, gc+page, gc+reloc,
+                gc+thread, gc+heap (ZGC uncommit).
+       Note: jdk.ZUnmap intentionally excluded (removed from jdk25u).
+       ================================================================ -->
+
+  <!-- gc → Generational ZGC collections (fire on JDK 23+, zero on JDK 21 legacy mode) -->
+  <event name="jdk.ZYoungGarbageCollection">
+    <setting name="enabled">true</setting>
+    <setting name="threshold">0 ms</setting>
+  </event>
+
+  <event name="jdk.ZOldGarbageCollection">
+    <setting name="enabled">true</setting>
+    <setting name="threshold">0 ms</setting>
+  </event>
+
+  <!-- gc+alloc → ZGC thread stalls when memory is exhausted -->
+  <event name="jdk.ZAllocationStall">
+    <setting name="enabled">true</setting>
+    <setting name="threshold">0 ms</setting>
+    <setting name="stackTrace">false</setting>
+  </event>
+
+  <!-- gc+page → ZGC page allocation (threshold 1ms to capture only slow allocations) -->
+  <event name="jdk.ZPageAllocation">
+    <setting name="enabled">true</setting>
+    <setting name="threshold">1 ms</setting>
+    <setting name="stackTrace">false</setting>
+  </event>
+
+  <!-- gc+reloc → ZGC relocation set summary -->
+  <event name="jdk.ZRelocationSet">
+    <setting name="enabled">true</setting>
+    <setting name="threshold">0 ms</setting>
+  </event>
+
+  <event name="jdk.ZRelocationSetGroup">
+    <setting name="enabled">true</setting>
+    <setting name="threshold">0 ms</setting>
+  </event>
+
+  <!-- gc+thread → ZGC per-thread phase events -->
+  <event name="jdk.ZThreadPhase">
+    <setting name="enabled">true</setting>
+    <setting name="threshold">0 ms</setting>
+  </event>
+
+  <!-- gc+heap → ZGC memory returned to OS -->
+  <event name="jdk.ZUncommit">
+    <setting name="enabled">true</setting>
+    <setting name="threshold">0 ms</setting>
+  </event>
+
+  <!-- ================================================================
+       Shenandoah-specific events
+       Maps to: gc+region (Shenandoah periodic region snapshot).
+       ShenandoahHeapRegionStateChange is disabled (high volume, no GC log equivalent).
+       ================================================================ -->
+
+  <!-- gc+region → Shenandoah region snapshot (periodic, low cadence) -->
+  <event name="jdk.ShenandoahHeapRegionInformation">
+    <setting name="enabled">true</setting>
+    <setting name="period">everyChunk</setting>
+  </event>
+
+  <!-- ================================================================
+       JVM bookkeeping — always capture for recording integrity
+       ================================================================ -->
+
+  <event name="jdk.ActiveRecording">
+    <setting name="enabled">true</setting>
+  </event>
+
+  <event name="jdk.ActiveSetting">
+    <setting name="enabled">true</setting>
+  </event>
+
+  <event name="jdk.DataLoss">
+    <setting name="enabled">true</setting>
+  </event>
+
+  <event name="jdk.DumpReason">
+    <setting name="enabled">true</setting>
+  </event>
+
+  <event name="jdk.Shutdown">
+    <setting name="enabled">true</setting>
+    <setting name="stackTrace">false</setting>
+  </event>
+
+  <!-- ================================================================
+       GC locker
+       Delays when a GC is held off due to JNI critical regions.
+       Threshold 1s keeps this to genuinely problematic delays only.
+       ================================================================ -->
+
+  <event name="jdk.GCLocker">
+    <setting name="enabled">true</setting>
+    <setting name="threshold">1 s</setting>
+    <setting name="stackTrace">false</setting>
+  </event>
+
+  <!-- ================================================================
+       DISABLED — explicitly suppressed to prevent accidental activation.
+
+       These events are either too high-volume for a gc-log-equivalent
+       preset, have no -Xlog:gc* counterpart, or are non-GC profiling
+       events that must stay off.
+       ================================================================ -->
+
+  <!-- GCPhaseParallel: 32K+/min under G1 — far too verbose -->
+  <event name="jdk.GCPhaseParallel">
+    <setting name="enabled">false</setting>
+    <setting name="threshold">0 ms</setting>
+  </event>
+
+  <!-- Very fine-grained pause sub-phases not needed for gc-log parity -->
+  <event name="jdk.GCPhasePauseLevel3">
+    <setting name="enabled">false</setting>
+    <setting name="threshold">0 ms</setting>
+  </event>
+
+  <event name="jdk.GCPhasePauseLevel4">
+    <setting name="enabled">false</setting>
+    <setting name="threshold">0 ms</setting>
+  </event>
+
+  <!-- Concurrent sub-sub-phases not needed for gc-log parity -->
+  <event name="jdk.GCPhaseConcurrentLevel2">
+    <setting name="enabled">false</setting>
+    <setting name="threshold">0 ms</setting>
+  </event>
+
+  <!-- G1 region snapshots: too verbose for gc-log preset -->
+  <event name="jdk.G1HeapRegionInformation">
+    <setting name="enabled">false</setting>
+    <setting name="period">everyChunk</setting>
+  </event>
+
+  <!-- G1 per-transition region events: high volume, no GC log equivalent -->
+  <event name="jdk.G1HeapRegionTypeChange">
+    <setting name="enabled">false</setting>
+  </event>
+
+  <!-- Promotion per-object events: 15K+/min, no GC log equivalent -->
+  <event name="jdk.PromoteObjectInNewPLAB">
+    <setting name="enabled">false</setting>
+  </event>
+
+  <event name="jdk.PromoteObjectOutsidePLAB">
+    <setting name="enabled">false</setting>
+  </event>
+
+  <!-- Application allocation events: not GC events -->
+  <event name="jdk.ObjectAllocationInNewTLAB">
+    <setting name="enabled">false</setting>
+    <setting name="stackTrace">false</setting>
+  </event>
+
+  <event name="jdk.ObjectAllocationOutsideTLAB">
+    <setting name="enabled">false</setting>
+    <setting name="stackTrace">false</setting>
+  </event>
+
+  <event name="jdk.ObjectAllocationSample">
+    <setting name="enabled">false</setting>
+    <setting name="throttle">150/s</setting>
+    <setting name="stackTrace">false</setting>
+  </event>
+
+  <!-- Heap inspection: triggers stop-the-world, not a gc-log event -->
+  <event name="jdk.ObjectCount">
+    <setting name="enabled">false</setting>
+    <setting name="period">everyChunk</setting>
+  </event>
+
+  <event name="jdk.ObjectCountAfterGC">
+    <setting name="enabled">false</setting>
+  </event>
+
+  <!-- Allocation failure event: optional, disabled by default -->
+  <event name="jdk.AllocationRequiringGC">
+    <setting name="enabled">false</setting>
+    <setting name="stackTrace">false</setting>
+  </event>
+
+  <!-- ZGC internal named counters: optional deep diagnostics, disabled by default -->
+  <event name="jdk.ZStatisticsCounter">
+    <setting name="enabled">false</setting>
+    <setting name="threshold">0 ms</setting>
+  </event>
+
+  <event name="jdk.ZStatisticsSampler">
+    <setting name="enabled">false</setting>
+    <setting name="threshold">0 ms</setting>
+  </event>
+
+  <!-- Shenandoah per-transition events: high volume, no GC log equivalent -->
+  <event name="jdk.ShenandoahHeapRegionStateChange">
+    <setting name="enabled">false</setting>
+  </event>
+
+  <!-- Memory leak detection: not a gc-log event -->
+  <event name="jdk.OldObjectSample">
+    <setting name="enabled">false</setting>
+    <setting name="stackTrace">false</setting>
+    <setting name="cutoff">0 ns</setting>
+  </event>
+
+  <!-- CPU profiling: not a gc-log event -->
+  <event name="jdk.ExecutionSample">
+    <setting name="enabled">false</setting>
+    <setting name="period">20 ms</setting>
+  </event>
+
+  <event name="jdk.NativeMethodSample">
+    <setting name="enabled">false</setting>
+    <setting name="period">20 ms</setting>
+  </event>
+
+  <!-- Thread lifecycle: not gc-log output -->
+  <event name="jdk.ThreadStart">
+    <setting name="enabled">false</setting>
+    <setting name="stackTrace">false</setting>
+  </event>
+
+  <event name="jdk.ThreadEnd">
+    <setting name="enabled">false</setting>
+  </event>
+
+  <!-- Exception events: not gc-log output -->
+  <event name="jdk.JavaExceptionThrow">
+    <setting name="enabled">false</setting>
+    <setting name="stackTrace">false</setting>
+  </event>
+
+  <event name="jdk.JavaErrorThrow">
+    <setting name="enabled">false</setting>
+    <setting name="stackTrace">false</setting>
+  </event>
+
+  <!-- I/O events: not gc-log output -->
+  <event name="jdk.FileRead">
+    <setting name="enabled">false</setting>
+    <setting name="stackTrace">false</setting>
+    <setting name="threshold">20 ms</setting>
+  </event>
+
+  <event name="jdk.FileWrite">
+    <setting name="enabled">false</setting>
+    <setting name="stackTrace">false</setting>
+    <setting name="threshold">20 ms</setting>
+  </event>
+
+  <event name="jdk.SocketRead">
+    <setting name="enabled">false</setting>
+    <setting name="stackTrace">false</setting>
+    <setting name="threshold">20 ms</setting>
+  </event>
+
+  <event name="jdk.SocketWrite">
+    <setting name="enabled">false</setting>
+    <setting name="stackTrace">false</setting>
+    <setting name="threshold">20 ms</setting>
+  </event>
+
+  <!-- Locking events: not gc-log output -->
+  <event name="jdk.JavaMonitorEnter">
+    <setting name="enabled">false</setting>
+    <setting name="stackTrace">false</setting>
+    <setting name="threshold">20 ms</setting>
+  </event>
+
+  <event name="jdk.JavaMonitorWait">
+    <setting name="enabled">false</setting>
+    <setting name="stackTrace">false</setting>
+    <setting name="threshold">20 ms</setting>
+  </event>
+
+  <event name="jdk.ThreadPark">
+    <setting name="enabled">false</setting>
+    <setting name="stackTrace">false</setting>
+    <setting name="threshold">20 ms</setting>
+  </event>
+
+  <!-- Safepoint events: not gc-log output (GC pauses already covered by GCPhasePause) -->
+  <event name="jdk.SafepointBegin">
+    <setting name="enabled">false</setting>
+    <setting name="threshold">10 ms</setting>
+  </event>
+
+  <event name="jdk.SafepointEnd">
+    <setting name="enabled">false</setting>
+    <setting name="threshold">10 ms</setting>
+  </event>
+
+  <!-- System CPU load: not gc-log output (GCCPUTime covers GC CPU time) -->
+  <event name="jdk.CPULoad">
+    <setting name="enabled">false</setting>
+    <setting name="period">1000 ms</setting>
+  </event>
+
+  <!-- Compilation: not gc-log output -->
+  <event name="jdk.Compilation">
+    <setting name="enabled">false</setting>
+    <setting name="threshold">1000 ms</setting>
+  </event>
+
+  <!-- Class loading: not gc-log output -->
+  <event name="jdk.ClassLoad">
+    <setting name="enabled">false</setting>
+    <setting name="stackTrace">false</setting>
+    <setting name="threshold">0 ms</setting>
+  </event>
+
+</configuration>
