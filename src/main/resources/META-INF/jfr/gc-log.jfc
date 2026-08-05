@@ -405,6 +405,19 @@
     <setting name="threshold">10 ms</setting>
   </event>
 
+  <!-- JIT code cache overflow — causes a safepoint that deoptimizes and sweeps
+       the code cache; noticeably lengthens GC pauses when it fires -->
+  <event name="jdk.CodeCacheFull">
+    <setting name="enabled">true</setting>
+  </event>
+
+  <!-- OS thread context switch rate — useful to correlate unexpected GC pause
+       duration spikes with OS scheduling pressure (sampled every 10 s) -->
+  <event name="jdk.ThreadContextSwitchRate">
+    <setting name="enabled">true</setting>
+    <setting name="period">10 s</setting>
+  </event>
+
   <!-- ================================================================
        JVM flag snapshot — lets you reconstruct the GC flag set at
        recording start and catch any runtime flag changes.
