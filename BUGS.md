@@ -3631,3 +3631,84 @@ loop in `readerForJFRFile()`, matching the `processJFRFile(Path)` pattern. Falls
 time on IOException (same as before).
 
 **Status:** Fixed.
+
+## Bug 457: `formatDuration` showed full nanosecond precision for durations >= 60s; `parseDuration` overflowed for large values
+
+**Observation:** Duration formatting for values >= 1 minute produced ugly full-precision output like
+`1m 13.292866791s` instead of human-readable `1m 13.292s`. Also, `parseDuration("9223372036s")` and
+similar large inputs threw `ArithmeticException: long overflow`.
+
+**Root cause:** The `>=60s` branch in `formatDuration` called `duration.toString()` which preserves
+full nanosecond precision in ISO-8601 format. Also called `toNanos()` which overflows for durations
+> ~292 years. In `parseDuration`, all units were multiplied by their nanosecond factor as `double`
+— `(double) seconds * 1_000_000_000L` loses precision for seconds > ~9.2 billion, and the subsequent
+`Duration.ofNanos(totalNanos)` overflows for large whole-second values.
+
+**Fix:** Replaced the `>=60s` formatter with explicit `h/m/s` construction using `getNano()`
+(avoids `toNanos()` overflow) and millisecond precision. In `parseDuration`, whole-number units
+use integer arithmetic with overflow clamping; seconds use `Duration.ofSeconds()` to support the
+full `long` range.
+
+**Status:** Fixed.
+
+## Bug 458: `cjfr view` FORM views don't wrap long values to 80-char terminal width
+
+**Observation:** `cjfr view jvm-information profile.jfr` prints `Version` and `VM Arguments`
+as single long lines:
+```
+Version: OpenJDK 64-Bit Server VM (17.0.15+6-LTS) for bsd-aarch64 JRE (17.0.15+6-LTS), built on ...
+```
+Oracle wraps at 79 chars with continuation indent:
+```
+Version: OpenJDK 64-Bit Server VM (17.0.15+6-LTS) for bsd-aarch64 JRE (17.0.15+
+         6-LTS), built on Apr 14 2025 15:53:28 by "sapmachine" with clang Apple
+          LLVM 13.0.0 (clang-1300.0.29.3)
+```
+
+**Root cause:** `ViewRenderer.wrapForm()` uses `termWidth - 1` as the line width. When `--width`
+is not specified and the `COLUMNS` env var is absent (e.g., inside a pipe/test), `effectiveWidth()`
+returns `Integer.MAX_VALUE` as a sentinel. For TABLE views this is correct (content-fit sizing), but
+for FORM views oracle uses 80-char width as the default, matching the `TableRenderer.DEFAULT_WIDTH`
+constant in the JDK.
+
+**Fix:** In `wrapForm`, when `termWidth == Integer.MAX_VALUE` (no explicit width), cap at 80 — the
+oracle's default FORM wrapping width.
+
+**Status:** Fixed.
+
+## Bug 459: `cjfr inflate` collapses distinct `DelegatingClassLoader` instances to one JFR pool entry
+
+**Observation:** After a lossless condense→inflate round-trip, `jfr print --events jdk.ClassLoaderStatistics inflated.jfr` shows all `DelegatingClassLoader` instances with the same pool ID (id = 3), while the original JFR has 21 distinct IDs (4, 5, 6, ..., 24):
+```
+# oracle
+classLoader = jdk.internal.reflect.DelegatingClassLoader (id = 6)
+classLoader = jdk.internal.reflect.DelegatingClassLoader (id = 13)
+...
+# inflated (before fix)
+classLoader = jdk.internal.reflect.DelegatingClassLoader (id = 3)
+classLoader = jdk.internal.reflect.DelegatingClassLoader (id = 3)
+...
+```
+
+**Root cause:** Bug 454 fixed the condense path to preserve distinct classloader pool entries using `ClassLoaderWrapper.getId()`. However the inflate path in `WritingJFRReader.toTypedValue()` rebuilds each classloader as a `Map<String, TypedFieldValueImpl>` and passes it to `jmcType.asValue(fieldValues)`. The JMC `ConstantPool.addOrGet(value)` uses `Map.equals()` (content equality) as the pool key. Since all `DelegatingClassLoader` instances have identical struct content (`{type=DelegatingClassLoader, name=null}`), the JMC constant pool collapses them all to one entry — destroying the identity that Bug 454 restored in the condense path.
+
+**Fix:** In `WritingJFRReader.toTypedValue()`, for `jdk.types.ClassLoader` type, wrap `fieldValues` in an `IdentityKeyMap` whose `equals()`/`hashCode()` use object identity rather than map content. Each distinct `ReadStruct` (= distinct cjfr pool slot) thus produces a distinct JMC pool entry even though the content is identical.
+
+**Status:** Fixed.
+
+
+## Bug 460: `native-libraries` view shows `N/A` for base addresses in DEFAULT preset
+
+**Observation:** `cjfr view native-libraries recording.cjfr` shows `N/A` for `Base Address` column, while `jfr view native-libraries recording.jfr` shows hex load addresses like `0x1F5E65000`:
+```
+# cjfr (before fix)
+/System/Library/Frameworks/AVFAudio.framework/...    N/A        N/A
+# oracle
+/System/Library/Frameworks/AVFAudio.framework/...    0x1F5E65000  0x00000000
+```
+
+**Root cause:** `ReducedJFRTypes` included `jdk.NativeLibrary.baseAddress` in `addressField()` removals (gated on `removeUnnecessaryAddresses=true` in DEFAULT). While technically a load address, `baseAddress` is the primary datum for the `native-libraries` view — removing it makes the view useless.
+
+**Fix:** Remove `baseAddress` from the NativeLibrary address-removal list. Keep `topAddress` removed (it is always `0x00000000` on observed platforms and contains no information).
+
+**Status:** Fixed.

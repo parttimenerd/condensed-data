@@ -168,13 +168,12 @@ public class ReducedJFRTypes {
                                     "jdk.CodeCacheConfiguration",
                                     addressField("startAddress"),
                                     addressField("reservedTopAddress"))),
-                    // NativeLibrary: base/top addresses are raw load addresses
+                    // NativeLibrary: topAddress is always 0 on all observed platforms; baseAddress
+                    // is the library's ASLR load address and is the primary datum for the
+                    // native-libraries view — keep it so the view renders correctly.
                     Map.entry(
                             "jdk.NativeLibrary",
-                            entry(
-                                    "jdk.NativeLibrary",
-                                    addressField("baseAddress"),
-                                    addressField("topAddress"))),
+                            entry("jdk.NativeLibrary", addressField("topAddress"))),
                     // ParallelOldGarbageCollection: densePrefix is a raw compaction address
                     Map.entry(
                             "jdk.ParallelOldGarbageCollection",
