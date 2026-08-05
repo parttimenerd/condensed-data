@@ -281,12 +281,6 @@
     <setting name="threshold">0 ms</setting>
   </event>
 
-  <!-- gc+thread → ZGC per-thread phase events -->
-  <event name="jdk.ZThreadPhase">
-    <setting name="enabled">true</setting>
-    <setting name="threshold">0 ms</setting>
-  </event>
-
   <!-- gc+heap → ZGC memory returned to OS -->
   <event name="jdk.ZUncommit">
     <setting name="enabled">true</setting>
@@ -570,6 +564,15 @@
 
   <!-- GCPhaseParallel: 32K+/min under G1 — far too verbose -->
   <event name="jdk.GCPhaseParallel">
+    <setting name="enabled">false</setting>
+    <setting name="threshold">0 ms</setting>
+  </event>
+
+  <!-- ZThreadPhase: per-ZGC-worker-thread phase spans (gc+thread=DEBUG level only).
+       gc+thread produces ZERO info-level log lines — no -Xlog:gc* counterpart.
+       In a 60s ZGC recording this event contributed 5933 events = 263 KB = 33% of
+       the raw JFR size. Disabled to keep gc-log preset size competitive. -->
+  <event name="jdk.ZThreadPhase">
     <setting name="enabled">false</setting>
     <setting name="threshold">0 ms</setting>
   </event>
