@@ -332,4 +332,5 @@ The `gc-log` CJFR output is **73% smaller than `-Xlog:gc*` text for G1GC** and *
 | G1 refinement thread activity | `-Xlog:gc+refine=debug` (high-volume text) | **gap** — no JFR event |
 | String deduplication stats | `-Xlog:gc+stringdedup=info` (separate subsystem) | **yes** (StringDeduplication event; requires `-XX:+UseStringDeduplication`) |
 | Humongous reclaim counts | `-Xlog:gc+humongous=debug` | **gap** — no JFR event |
+| ZGC director heuristics | `-Xlog:gc+director=debug` | **gap** — ZAllocationStall covers blocked threads but not trigger decisions |
 

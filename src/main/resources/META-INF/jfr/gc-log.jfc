@@ -597,6 +597,7 @@
     <setting name="threshold">0 ms</setting>
   </event>
 
+  <!-- Very fine-grained pause sub-phases (same as Level3) -->
   <event name="jdk.GCPhasePauseLevel4">
     <setting name="enabled">false</setting>
     <setting name="threshold">0 ms</setting>
@@ -628,6 +629,7 @@
     <setting name="enabled">false</setting>
   </event>
 
+  <!-- Same as PromoteObjectInNewPLAB (outside-TLAB promotions) -->
   <event name="jdk.PromoteObjectOutsidePLAB">
     <setting name="enabled">false</setting>
   </event>
@@ -638,11 +640,13 @@
     <setting name="stackTrace">false</setting>
   </event>
 
+  <!-- Same as ObjectAllocationInNewTLAB (outside-TLAB allocations) -->
   <event name="jdk.ObjectAllocationOutsideTLAB">
     <setting name="enabled">false</setting>
     <setting name="stackTrace">false</setting>
   </event>
 
+  <!-- Sampled allocation events (1 per 150/s by default): not a gc-log event -->
   <event name="jdk.ObjectAllocationSample">
     <setting name="enabled">false</setting>
     <setting name="throttle">150/s</setting>
@@ -655,6 +659,8 @@
     <setting name="period">everyChunk</setting>
   </event>
 
+  <!-- Per-class object count after each GC: O(live_classes) events per GC (can be 10K+/GC).
+       Maps to gc+classhisto which is debug-level only. High volume, not a production gc-log event. -->
   <event name="jdk.ObjectCountAfterGC">
     <setting name="enabled">false</setting>
   </event>
@@ -671,6 +677,7 @@
     <setting name="threshold">0 ms</setting>
   </event>
 
+  <!-- ZGC internal sampled metrics: optional deep diagnostics, disabled by default -->
   <event name="jdk.ZStatisticsSampler">
     <setting name="enabled">false</setting>
     <setting name="threshold">0 ms</setting>
@@ -694,6 +701,7 @@
     <setting name="period">20 ms</setting>
   </event>
 
+  <!-- Native method CPU profiling: not a gc-log event -->
   <event name="jdk.NativeMethodSample">
     <setting name="enabled">false</setting>
     <setting name="period">20 ms</setting>

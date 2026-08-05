@@ -2458,6 +2458,102 @@ public class JFREventCombiner extends EventCombiner {
         }
     }
 
+    /**
+     * Combines GCHeapSummary, G1HeapSummary, MetaspaceSummary, and PSHeapSummary per GC id.
+     *
+     * <p>Each of these event types fires exactly twice per GC (Before + After). This combiner groups
+     * the pair by gcId using {@code when} as the map key, reducing 2 events → 1 (lossless).
+     */
+    static class GCHeapSummaryPairCombiner extends GCIdBasedCombiner {
+
+        public GCHeapSummaryPairCombiner(
+                String typeName, Configuration configuration, BasicJFRWriter basicJFRWriter) {
+            super(typeName, configuration, basicJFRWriter, createValueDefinition(basicJFRWriter));
+        }
+
+        @SuppressWarnings({"unchecked", "rawtypes"})
+        private static MapValue<RecordedEvent, ?, ?> createValueDefinition(
+                BasicJFRWriter basicJFRWriter) {
+            // Inner struct: all event fields except gcId, startTime, eventThread, and when
+            // (the map key). The set of fields varies per event type, so we enumerate them
+            // dynamically at type-registration time.
+            var payloadEntry =
+                    new MapPartValue<RecordedEvent, RecordedEvent>(
+                            "payload",
+                            (out, eventType) ->
+                                    (CondensedType)
+                                            basicJFRWriter
+                                                    .getOutputStream()
+                                                    .writeAndStoreType(
+                                                            id -> {
+                                                                List<Field<RecordedEvent, ?, ?>>
+                                                                        fields = new ArrayList<>();
+                                                                var skipFields =
+                                                                        Set.of(
+                                                                                "gcId",
+                                                                                "startTime",
+                                                                                "eventThread",
+                                                                                "when",
+                                                                                "duration",
+                                                                                "stackTrace");
+                                                                for (var f :
+                                                                        eventType.getFields()) {
+                                                                    if (!skipFields.contains(
+                                                                            f.getName())) {
+                                                                        fields.add(
+                                                                                basicJFRWriter
+                                                                                        .eventFieldToField(
+                                                                                                f,
+                                                                                                true));
+                                                                    }
+                                                                }
+                                                                return new StructType<
+                                                                        RecordedEvent, ReadStruct>(
+                                                                        id,
+                                                                        "GCHeapSummaryPayload",
+                                                                        fields);
+                                                            }),
+                            e -> e);
+            return new MapValue<>(
+                    new MapPartValue<>(
+                            "when",
+                            (out, eventType) ->
+                                    (CondensedType<String, String>)
+                                            basicJFRWriter.getTypeCached(
+                                                    eventType.getField("when")),
+                            e -> e.getString("when")),
+                    new SingleValue<>(payloadEntry),
+                    map -> new ArrayList<>(map.entrySet()));
+        }
+    }
+
+    static class GCHeapSummaryPairReconstitutor
+            extends AbstractReconstitutor<GCHeapSummaryPairCombiner> {
+
+        public GCHeapSummaryPairReconstitutor(String eventTypeName) {
+            super(eventTypeName);
+        }
+
+        @Override
+        public <E> List<E> reconstitute(
+                StructType<?, ?> resultEventType,
+                ReadStruct combinedReadEvent,
+                EventBuilder<E, ?> builder) {
+            builder.put("gcId").addStandardFieldsIfNeeded();
+            return combinedReadEvent.asMapEntryList("when").stream()
+                    .map(
+                            e -> {
+                                builder.put("when", e.getKey());
+                                ReadStruct payload = (ReadStruct) e.getValue();
+                                for (String fieldName : payload.getType().getFieldNames()) {
+                                    builder.put(fieldName, payload.get(fieldName));
+                                }
+                                return builder.build();
+                            })
+                    .toList();
+        }
+    }
+
     enum PSHeapSummaryWhen {
         BEFORE,
         AFTER
@@ -2706,6 +2802,32 @@ public class JFREventCombiner extends EventCombiner {
                                 basicJFRWriter));
             }
         }
+        if (configuration.combineGCHeapSummaryPairs()) {
+            if (eventType.getName().equals("jdk.GCHeapSummary")) {
+                put(
+                        eventType,
+                        new JFREventCombiner.GCHeapSummaryPairCombiner(
+                                "jdk.combined.GCHeapSummary", configuration, basicJFRWriter));
+            }
+            if (eventType.getName().equals("jdk.G1HeapSummary")) {
+                put(
+                        eventType,
+                        new JFREventCombiner.GCHeapSummaryPairCombiner(
+                                "jdk.combined.G1HeapSummary", configuration, basicJFRWriter));
+            }
+            if (eventType.getName().equals("jdk.MetaspaceSummary")) {
+                put(
+                        eventType,
+                        new JFREventCombiner.GCHeapSummaryPairCombiner(
+                                "jdk.combined.MetaspaceSummary", configuration, basicJFRWriter));
+            }
+            if (eventType.getName().equals("jdk.PSHeapSummary")) {
+                put(
+                        eventType,
+                        new JFREventCombiner.GCHeapSummaryPairCombiner(
+                                "jdk.combined.PSHeapSummary", configuration, basicJFRWriter));
+            }
+        }
         if (configuration.combineG1HeapRegionTypeChangeEvents()) {
             if (eventType.getName().equals("jdk.G1HeapRegionTypeChange")) {
                 put(
@@ -2866,6 +2988,18 @@ public class JFREventCombiner extends EventCombiner {
         m.put(
                 CombinedEventType.METASPACE_CHUNK_FREE_LIST_SUMMARY,
                 new MetaspaceChunkFreeListSummaryReconstitutor());
+        m.put(
+                CombinedEventType.GC_HEAP_SUMMARY,
+                new GCHeapSummaryPairReconstitutor("jdk.GCHeapSummary"));
+        m.put(
+                CombinedEventType.G1_HEAP_SUMMARY,
+                new GCHeapSummaryPairReconstitutor("jdk.G1HeapSummary"));
+        m.put(
+                CombinedEventType.METASPACE_SUMMARY,
+                new GCHeapSummaryPairReconstitutor("jdk.MetaspaceSummary"));
+        m.put(
+                CombinedEventType.PS_HEAP_SUMMARY,
+                new GCHeapSummaryPairReconstitutor("jdk.PSHeapSummary"));
         m.put(
                 CombinedEventType.G1_HEAP_REGION_TYPE_CHANGE,
                 CombinerSpec.Specs.g1HeapRegionTypeChange().createReconstitutor());

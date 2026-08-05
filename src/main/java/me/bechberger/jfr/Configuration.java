@@ -67,7 +67,8 @@ public record Configuration(
         String collapseInternalFramesPrefixes,
         String collapseAppFramesPrefixes,
         boolean aggregateGCPhaseParallelStats,
-        boolean dropStartTimeFromGCPhaseParallelEntries)
+        boolean dropStartTimeFromGCPhaseParallelEntries,
+        boolean combineGCHeapSummaryPairs)
         implements Comparable<Configuration> {
 
     /**
@@ -111,6 +112,7 @@ public record Configuration(
                 "",
                 "",
                 false,
+                false,
                 false);
     }
 
@@ -121,7 +123,8 @@ public record Configuration(
                     .withCombineEventsWithoutDataLoss(true)
                     .withCombinePLABPromotionEvents(true)
                     .withCombineG1HeapRegionTypeChangeEvents(true)
-                    .withCombineThreadParkLossless(true);
+                    .withCombineThreadParkLossless(true)
+                    .withCombineGCHeapSummaryPairs(true);
 
     /** with conservative lossy compression */
     public static final Configuration DEFAULT =
@@ -313,6 +316,10 @@ public record Configuration(
         return withFieldValue("dropStartTimeFromGCPhaseParallelEntries", drop);
     }
 
+    public Configuration withCombineGCHeapSummaryPairs(boolean combineGCHeapSummaryPairs) {
+        return withFieldValue("combineGCHeapSummaryPairs", combineGCHeapSummaryPairs);
+    }
+
     public Configuration withCollapseInternalFramesPrefixes(String prefixes) {
         return withFieldValue("collapseInternalFramesPrefixes", prefixes == null ? "" : prefixes);
     }
@@ -358,7 +365,8 @@ public record Configuration(
                 || combineG1HeapRegionTypeChangeEvents
                 || combineBlockingEvents
                 || combineThreadParkLossless
-                || combineExecutionSampleEvents;
+                || combineExecutionSampleEvents
+                || combineGCHeapSummaryPairs;
     }
 
     @Override
