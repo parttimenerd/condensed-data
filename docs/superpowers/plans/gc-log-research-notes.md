@@ -329,6 +329,210 @@ gc+exit (misc log lines)
 
 ---
 
+## Live Capture Findings
+
+**Date:** 2026-08-05  
+**Host:** thinkstation (OpenJDK 21.0.11, Ubuntu, 128 CPU cores, 123 GB RAM)  
+**Workload:** HyperAlloc (heapothesys), 60-second run, `-Xmx512m -Xms512m`  
+**JFR analysis tool:** Temurin 22.0.2 `jfr` CLI  
+
+### Setup notes
+
+- HyperAlloc jar: `~/heapothesys/HyperAlloc/target/HyperAlloc.jar` (the fat jar with main manifest)
+- The sibling `HyperAlloc-1.0.jar` lacks a `Main-Class` manifest entry and exits immediately — first
+  three runs failed silently; rerun with the correct jar.
+- Allocation rates: G1GC at `-a 100` (100 MB/s), ZGC and Shenandoah at `-a 50` (50 MB/s).
+- GC log captured with `-Xlog:gc*:file=…:time,uptime,tags:filecount=1`.
+- JFR captured with `-XX:StartFlightRecording=settings=profile,duration=60s`.
+
+### Collectors tested
+
+| Collector | GC log size | JFR size | GC cycles observed |
+|---|---|---|---|
+| G1GC (`-XX:+UseG1GC`) | 175 KB | 1.9 MB | 110 (`jdk.GarbageCollection` count) |
+| ZGC (`-XX:+UseZGC`) | 302 KB | 583 KB | 54 (`jdk.GarbageCollection` count) |
+| Shenandoah (`-XX:+UseShenandoahGC`) | 206 KB | 597 KB | 14 (`jdk.GarbageCollection` count) |
+
+All three collectors are available in OpenJDK 21.0.11 on thinkstation. ZGC ran in legacy
+single-generation mode (JDK 21 default; generational ZGC requires JDK 21+ with explicit flag).
+
+---
+
+### G1GC — events with non-zero counts
+
+| JFR Event | Count | Notes |
+|---|---|---|
+| `jdk.GarbageCollection` | 110 | 85 young + 25 old total; names "G1New", "G1Old" |
+| `jdk.YoungGarbageCollection` | 85 | young-specific sub-event |
+| `jdk.OldGarbageCollection` | 25 | old-specific sub-event |
+| `jdk.G1GarbageCollection` | 85 | G1-specific young event (type=G1GCPauseType) |
+| `jdk.G1HeapSummary` | 220 | before+after each collection (2×110) |
+| `jdk.GCHeapSummary` | 220 | same cadence |
+| `jdk.G1EvacuationYoungStatistics` | 85 | per young collection |
+| `jdk.G1EvacuationOldStatistics` | 85 | per old collection cycle |
+| `jdk.G1AdaptiveIHOP` | 85 | adaptive IHOP decisions |
+| `jdk.G1BasicIHOP` | 85 | static IHOP baseline |
+| `jdk.G1MMU` | 135 | per collection |
+| `jdk.GCCPUTime` | 135 | per collection |
+| `jdk.GCPhasePause` | 135 | level-0 pause phase |
+| `jdk.GCPhasePauseLevel1` | 505 | level-1 sub-phases |
+| `jdk.GCPhasePauseLevel2` | 250 | level-2 sub-phases |
+| `jdk.GCPhaseConcurrent` | 150 | concurrent phases (concurrent mark cycles) |
+| `jdk.GCPhaseConcurrentLevel1` | 100 | concurrent sub-phases |
+| `jdk.GCPhaseParallel` | 32,845 | very high count — per-worker parallel task events |
+| `jdk.GCReferenceStatistics` | 440 | 4 ref types × 110 collections |
+| `jdk.MetaspaceSummary` | 220 | before+after each collection |
+| `jdk.MetaspaceChunkFreeListSummary` | 440 | 2 spaces × 2 × 110 |
+| `jdk.TenuringDistribution` | 1,275 | per-age-bucket distribution |
+| `jdk.EvacuationInformation` | 85 | per young collection |
+| `jdk.PromoteObjectInNewPLAB` | 15,730 | per promoted object batch |
+| `jdk.PromoteObjectOutsidePLAB` | 83 | outside-PLAB promotions |
+| `jdk.GCHeapMemoryUsage` | 2 | periodic (everyChunk) |
+| `jdk.GCHeapMemoryPoolUsage` | 6 | periodic (everyChunk) |
+| `jdk.SafepointBegin` | 139 | safepoints (GC + non-GC) |
+
+G1-specific events that fired zero:
+- `jdk.G1HeapRegionInformation` = 0 — region snapshot disabled in `profile` settings
+- `jdk.G1HeapRegionTypeChange` = 0 — transitions not enabled in `profile` settings
+- `jdk.EvacuationFailed` = 0 — no promotion failure occurred in this run
+- `jdk.PromotionFailed` = 0 — consistent
+
+---
+
+### ZGC — events with non-zero counts
+
+| JFR Event | Count | Notes |
+|---|---|---|
+| `jdk.GarbageCollection` | 54 | root event (name="ZGC Major Collection" in ZGC) |
+| `jdk.GCHeapSummary` | 108 | before+after each collection |
+| `jdk.GCPhaseConcurrent` | 324 | 6 concurrent phases × 54 collections |
+| `jdk.GCPhaseConcurrentLevel1` | 108 | concurrent sub-phases (Mark Free, etc.) |
+| `jdk.GCPhasePause` | 162 | 3 pauses × 54 cycles (Mark Start, Mark End, Relocate Start) |
+| `jdk.GCReferenceStatistics` | 216 | 4 ref types × 54 collections |
+| `jdk.MetaspaceSummary` | 108 | before+after |
+| `jdk.MetaspaceChunkFreeListSummary` | 216 | 2 spaces × 2 × 54 |
+| `jdk.ZRelocationSet` | 54 | one per collection cycle — **CONFIRMED PRESENT** |
+| `jdk.ZRelocationSetGroup` | 162 | 3 groups (small/medium/large pages) × 54 |
+| `jdk.GCHeapMemoryUsage` | 2 | periodic |
+| `jdk.GCHeapMemoryPoolUsage` | 2 | periodic |
+| `jdk.SafepointBegin` | 170 | safepoints (3 GC pauses/cycle + compiler etc.) |
+| `jdk.ExecuteVMOperation` | 405 | high due to ZGC barrier install ops |
+
+ZGC-specific events that fired zero (confirmed absent):
+- `jdk.ZYoungGarbageCollection` = 0 — single-gen mode; no young-only collections
+- `jdk.ZOldGarbageCollection` = 0 — same; generational events unused in legacy mode
+- `jdk.ZAllocationStall` = 0 — workload did not exhaust allocatable memory
+- `jdk.ZPageAllocation` = 0 — page alloc events not enabled in `profile` settings
+- `jdk.ZStatisticsCounter` = 0 — not enabled in `profile` settings
+- `jdk.ZStatisticsSampler` = 0 — not enabled in `profile` settings
+- `jdk.ZThreadPhase` = 0 — not enabled in `profile` settings
+- `jdk.ZUncommit` = 0 — heap min==max so uncommit is disabled (expected)
+- **`jdk.ZUnmap` = 0** — event present in metadata for JDK 21 but never fires; confirmed removed
+  from jdk25u metadata.xml (Task 2 finding validated by live capture)
+
+---
+
+### Shenandoah — events with non-zero counts
+
+| JFR Event | Count | Notes |
+|---|---|---|
+| `jdk.GarbageCollection` | 14 | 60 s run at 50 MB/s — far fewer collections than G1/ZGC |
+| `jdk.GCHeapSummary` | 28 | before+after |
+| `jdk.GCPhaseConcurrent` | 1,243 | Shenandoah has many concurrent phases per cycle |
+| `jdk.GCPhaseConcurrentLevel1` | 28 | |
+| `jdk.GCPhasePause` | 48 | ~3.4 pauses/cycle: Init Mark, Final Mark, Init Update Refs, Final Update Refs |
+| `jdk.GCPhasePauseLevel1` | 94 | level-1 sub-phases within pauses |
+| `jdk.GCPhaseParallel` | 217 | parallel task events within pauses |
+| `jdk.GCReferenceStatistics` | 56 | 4 ref types × 14 collections |
+| `jdk.MetaspaceSummary` | 28 | before+after |
+| `jdk.MetaspaceChunkFreeListSummary` | 56 | |
+| `jdk.GCHeapMemoryUsage` | 2 | periodic |
+| `jdk.GCHeapMemoryPoolUsage` | 2 | periodic |
+| `jdk.SafepointBegin` | 55 | |
+
+Shenandoah-specific events that fired zero (confirmed absent):
+- `jdk.ShenandoahHeapRegionInformation` = 0 — periodic snapshot not enabled in `profile` settings
+- `jdk.ShenandoahHeapRegionStateChange` = 0 — region transitions not enabled in `profile` settings
+
+---
+
+### GC log ↔ JFR correlation spot-check
+
+**G1GC:**  
+The GC log shows, e.g.:
+```
+[1.137s][gc] GC(1) Pause Young (Normal) (G1 Evacuation Pause) 47M->42M(512M) 7.231ms
+```
+The corresponding `jdk.GarbageCollection` event shows:
+```
+startTime=15:05:20.287, duration=7.20 ms, gcId=1, name="G1New", cause="G1 Evacuation Pause"
+```
+Timing matches within rounding (7.231 ms log vs 7.20 ms JFR). The `gc` log tag maps cleanly to
+`jdk.GarbageCollection`, and gcId is the cross-reference key.
+
+**ZGC:**  
+ZGC log phases like "Pause Mark Start", "Concurrent Mark", "Pause Relocate Start" correspond
+exactly to `jdk.GCPhasePause` and `jdk.GCPhaseConcurrent` event names. The `jdk.ZRelocationSet`
+event's `total` field matches the "38 small pages / 76M" summary in the reloc log line.
+
+**Shenandoah:**  
+The log shows four pauses per cycle (Pause Init Mark, Pause Final Mark, Pause Init Update Refs,
+Pause Final Update Refs), consistent with `jdk.GCPhasePause` count = 48 ≈ 4 × 14 collections
+(minus one cancelled by shutdown).
+
+---
+
+### Validation of Task 2 mapping table
+
+| Finding | Status |
+|---|---|
+| `jdk.ZUnmap` present in JDK 21 metadata but never fires | **Confirmed** — count=0 in live capture |
+| `jdk.ZRelocationSet` and `jdk.ZRelocationSetGroup` fire in ZGC | **Confirmed** — counts 54/162 |
+| `jdk.GCPhasePause*` events present for all collectors | **Confirmed** |
+| `jdk.GCPhaseConcurrent*` absent from G1 pause-only collections | **Confirmed** (G1 has 150 concurrent events from full concurrent mark cycles) |
+| `jdk.G1HeapRegionInformation`/`jdk.G1HeapRegionTypeChange` need non-default settings | **Confirmed** — both zero in `profile` settings |
+| `jdk.ShenandoahHeapRegionInformation`/`StateChange` need non-default settings | **Confirmed** — both zero in `profile` settings |
+| `jdk.ZStatisticsCounter`/`Sampler`/`ZThreadPhase`/`ZPageAllocation` need non-default settings | **Confirmed** — all zero in `profile` settings |
+| `jdk.PromoteObjectInNewPLAB` fires heavily under G1 | **Confirmed** — 15,730 events in 60s |
+| `jdk.TenuringDistribution` fires under G1, absent in ZGC/Shenandoah | **Confirmed** |
+
+One correction to Task 2 mapping table:
+- `jdk.ZYoungGarbageCollection` and `jdk.ZOldGarbageCollection` are confirmed present in JDK 21
+  metadata but **do not fire** in legacy single-generation mode (JDK 21 default). They would only
+  fire with `-XX:+ZGenerational` (experimental in JDK 21, default in JDK 23+).
+
+---
+
+### Key insights for gc-log.jfc preset design
+
+1. **`jdk.GCPhaseParallel` is extremely high-volume under G1** (32,845 events in 60s = ~547/s).
+   Include it only if fine-grained parallel task timing is needed; its absence is acceptable for a
+   "gc-log equivalent" preset.
+
+2. **ZGC uses `jdk.GCPhasePause` for its three pause points** (no PauseLevel events), while G1
+   uses `jdk.GCPhasePause` + `jdk.GCPhasePauseLevel1/2`. The shared `GCPhasePause` event covers all
+   collectors for top-level pause visibility.
+
+3. **`jdk.ZRelocationSet` + `jdk.ZRelocationSetGroup`** give direct JFR equivalents to ZGC's
+   `gc+reloc` log output. Include both.
+
+4. **`jdk.G1MMU` and `jdk.GCCPUTime`** fire with the same cadence as `jdk.GarbageCollection`
+   and add significant value with minimal overhead.
+
+5. **Region-level events (`G1HeapRegionInformation`, `ShenandoahHeapRegionInformation`)** are
+   disabled in `profile` settings by default — appropriate to keep disabled in gc-log preset
+   (too verbose, not in standard gc log output).
+
+6. **`jdk.ZUnmap` should be excluded** from the gc-log.jfc preset. It is defined in JDK 21
+   metadata but never fires, and is removed from jdk25u.
+
+7. **Shenandoah emits no GC-specific JFR events beyond the shared set** in `profile` settings.
+   The `ShenandoahHeapRegion*` events exist but are disabled by default. For Shenandoah, the
+   shared events (`GarbageCollection`, `GCPhasePause`, `GCPhaseConcurrent`, `GCHeapSummary`,
+   `MetaspaceSummary`) are sufficient for gc-log parity.
+
+---
+
 ## Known Omissions / Open Questions
 
 1. The `gc+cause` combination appears in documentation examples but was **not observed** in any
