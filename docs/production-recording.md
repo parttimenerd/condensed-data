@@ -283,10 +283,11 @@ java -javaagent:cjfr.jar='start,/var/rec/gc_$index.cjfr,rotating,max-files=24,ma
 - ZGC: ZYoungGarbageCollection, ZOldGarbageCollection, ZAllocationStall, ZPageAllocation, ZRelocationSet, ZRelocationSetGroup, ZUncommit
 - Shenandoah: ShenandoahHeapRegionInformation (sampled, everyChunk)
 - Parallel GC: PSHeapSummary
+- String deduplication (G1/Parallel, when `-XX:+UseStringDeduplication`): StringDeduplication — maps to `gc+stringdedup=info`
 
 **Ambient context:** CPULoad (1 s), PhysicalMemory, ResidentSetSize, SwapSpace, OSInformation, CPUInformation, VirtualizationInformation, ContainerConfiguration/CPUUsage/CPUThrottling/MemoryUsage/IOUsage (30 s), JVM flags (all 7 primitive flag types + change events), NativeMemoryUsage/Total (1 s), DirectBufferStatistics, FinalizerStatistics, GCLocker (≥1 s), CodeCacheFull, ThreadContextSwitchRate (10 s), ExecuteVMOperation (≥10 ms).
 
-**Not captured** (no JFR events exist for these GC log tags): `gc+refine`, `gc+remset`, `gc+stringdedup`, `gc+humongous` summary counts, ZGC `gc+mmu`. These are confirmed gaps — see the gc-log research notes for proposed upstream JFR events that would close them.
+**Not captured** (no JFR events exist for these GC log tags): `gc+refine`, `gc+remset`, `gc+humongous` summary counts, ZGC `gc+mmu`. These are confirmed gaps — see the gc-log research notes for proposed upstream JFR events that would close them.
 
 ### Storage estimates
 
@@ -329,6 +330,6 @@ The `gc-log` CJFR output is **72% smaller than `-Xlog:gc*` text for G1GC** and *
 | Structured query (field access by name) | grep/regex only | **yes** |
 | Crash recovery (chunked writes) | may truncate | **yes** |
 | G1 refinement thread activity | `-Xlog:gc+refine=debug` (high-volume text) | **gap** — no JFR event |
-| String deduplication stats | `-Xlog:gc+stringdedup=info` (separate subsystem) | **gap** — no JFR event |
+| String deduplication stats | `-Xlog:gc+stringdedup=info` (separate subsystem) | **yes** (StringDeduplication event; requires `-XX:+UseStringDeduplication`) |
 | Humongous reclaim counts | `-Xlog:gc+humongous=debug` | **gap** — no JFR event |
 

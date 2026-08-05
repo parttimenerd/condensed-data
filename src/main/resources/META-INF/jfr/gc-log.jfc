@@ -176,6 +176,15 @@
     <setting name="period">everyChunk</setting>
   </event>
 
+  <!-- gc+stringdedup → string deduplication statistics (G1/Parallel, when -XX:+UseStringDeduplication)
+       Maps to gc+stringdedup=info: "String Dedup Statistics" table logged after each GC that
+       performed deduplication. Fires only when string dedup is active; zero cost otherwise.
+       jdk.StringDeduplication is a fully shipped JDK event (stringDedupStat.cpp). -->
+  <event name="jdk.StringDeduplication">
+    <setting name="enabled">true</setting>
+    <setting name="threshold">0 ms</setting>
+  </event>
+
   <!-- ================================================================
        G1GC-specific events
        Maps to: gc (G1 young), gc+heap (G1 breakdown), gc+age,
