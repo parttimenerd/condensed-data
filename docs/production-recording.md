@@ -280,7 +280,7 @@ java -javaagent:cjfr.jar='start,/var/rec/gc_$index.cjfr,rotating,max-files=24,ma
 
 **Collector-specific:**
 - G1GC: G1GarbageCollection, G1HeapSummary, TenuringDistribution, G1MMU, G1BasicIHOP, G1AdaptiveIHOP, EvacuationInformation, EvacuationFailed, G1EvacuationYoung/OldStatistics
-- ZGC: ZYoungGarbageCollection, ZOldGarbageCollection, ZAllocationStall, ZPageAllocation, ZRelocationSet, ZRelocationSetGroup, ZThreadPhase, ZUncommit
+- ZGC: ZYoungGarbageCollection, ZOldGarbageCollection, ZAllocationStall, ZPageAllocation, ZRelocationSet, ZRelocationSetGroup, ZUncommit
 - Shenandoah: ShenandoahHeapRegionInformation (sampled, everyChunk)
 - Parallel GC: PSHeapSummary
 
@@ -290,18 +290,18 @@ java -javaagent:cjfr.jar='start,/var/rec/gc_$index.cjfr,rotating,max-files=24,ma
 
 ### Storage estimates
 
-Measured on macOS (G1GC, 256 MB heap, moderate allocation rate, 30 s run → extrapolated):
+Measured on macOS (GraalVM JDK 25, 256 MB heap, high-allocation-rate workload, 60 s run → extrapolated):
 
-| Config | MB/hour | Notes |
-|---|---|---|
-| `gc-log.jfc` + `gc-log` condenser | **~17 MB/hr** | Recommended combination |
-| `gc-log.jfc` + `lossless` condenser | ~19 MB/hr | All GC data preserved verbatim |
-| `-Xlog:gc*` text | ~25 MB/hr | No structured access, no compression |
-| `default.jfc` + `default` condenser | ~35 MB/hr | Full profiling events included |
+| Config | G1GC MB/hour | ZGC MB/hour | Notes |
+|---|---|---|---|
+| `gc-log.jfc` + `gc-log` condenser | **~32 MB/hr** | **~15 MB/hr** | Recommended combination |
+| `gc-log.jfc` + `lossless` condenser | ~35 MB/hr | ~17 MB/hr | All GC data preserved verbatim |
+| `-Xlog:gc*` text | ~115 MB/hr | ~282 MB/hr | No structured access, no compression |
+| `default.jfc` + `default` condenser | ~180 MB/hr | ~90 MB/hr | Full profiling events included |
 
-The `gc-log` CJFR output is roughly **32% smaller than the equivalent `-Xlog:gc*` text** and supports random-access queries; text logs do not.
+*Workload: constant 32KB allocation at high rate (production GC rates are typically 10–100× lower). For GC-sparse profiles the gc-log preset reaches < 2 MB/hr. ZGC text logs are especially large because each GC emits many structured relocation-set and heap-summary lines that are verbose as text but compress as structured events.*
 
-For high-allocation-rate workloads (e.g., renaissance gc_details benchmark at full speed), storage is proportionally higher for all formats. For GC-sparse profiles the gc-log preset can reach <5 MB/hr.
+The `gc-log` CJFR output is **72% smaller than `-Xlog:gc*` text for G1GC** and **95% smaller for ZGC** at the same workload — and supports random-access structured queries; text logs do not.
 
 ### Why JFR over `-Xlog:gc*`
 
@@ -315,8 +315,10 @@ For high-allocation-rate workloads (e.g., renaissance gc_details benchmark at fu
 | G1 MMU | yes | yes |
 | CPU time per GC (user/sys/real) | yes | yes |
 | Metaspace before/after | yes | yes |
-| Tenuring distribution | yes | yes |
+| Tenuring distribution (age buckets) | requires `-Xlog:gc+age=debug` | yes |
+| G1 pause sub-phases (level 1+2) | `-Xlog:gc+phases=debug` | yes |
 | G1 evacuation statistics | partial (ergo level) | yes (structured fields) |
+| ZGC relocation set breakdown | yes (large text tables) | yes (structured, 95% smaller) |
 | JIT code cache overflow (affects pauses) | no | **yes** (CodeCacheFull) |
 | OS context switch rate (pause spikes) | no | **yes** (ThreadContextSwitchRate) |
 | Container CPU/memory limits | no | **yes** |
