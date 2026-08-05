@@ -1054,11 +1054,37 @@ public class WritingJFRReader {
                 }
             }
         }
-        var result = (TypedValueImpl) jmcType.asValue((Object) fieldValues);
+        // jdk.types.ClassLoader: structurally-identical loader instances (e.g. many
+        // DelegatingClassLoader with {type, name=null}) would collapse to one JMC constant-pool
+        // entry because ConstantPool.addOrGet() uses Map.equals() as the key. Wrap the fieldValues
+        // map in an identity-equality shell so each distinct cjfr pool slot gets its own JMC pool
+        // entry, preserving loader identity in the inflated JFR.
+        Object poolKey =
+                "jdk.types.ClassLoader".equals(structType.getName())
+                        ? new IdentityKeyMap<>(fieldValues)
+                        : fieldValues;
+        var result = (TypedValueImpl) jmcType.asValue(poolKey);
         if (!isEvent) {
             subStructCache.put(struct, result);
         }
         return result;
+    }
+
+    /** Map wrapper whose {@link #equals} and {@link #hashCode} are identity-based. */
+    private static final class IdentityKeyMap<K, V> extends HashMap<K, V> {
+        IdentityKeyMap(Map<K, V> src) {
+            super(src);
+        }
+
+        @Override
+        public boolean equals(Object o) {
+            return this == o;
+        }
+
+        @Override
+        public int hashCode() {
+            return System.identityHashCode(this);
+        }
     }
 
     public void close() {

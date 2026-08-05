@@ -208,7 +208,11 @@ final class ViewRenderer {
      * the label prefix's width. Short values stay on one line.
      */
     private List<String> wrapForm(String prefix, String value) {
-        int lineWidth = termWidth - 1;
+        // Oracle defaults to 80-char terminal width for FORM views when no width is specified.
+        // Integer.MAX_VALUE is the "unset" sentinel from effectiveWidth(); cap at 80 to match
+        // oracle.
+        int effectiveTerm = termWidth == Integer.MAX_VALUE ? 80 : termWidth;
+        int lineWidth = effectiveTerm - 1;
         int avail = lineWidth - prefix.length();
         // Degenerate prefixes (>= line width) or non-positive room: emit unwrapped.
         if (avail <= 0 || prefix.length() + value.length() <= lineWidth) {
