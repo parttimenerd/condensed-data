@@ -162,7 +162,9 @@ public class JFREventDeduplication extends EventDeduplication {
         // Singleton periodic events (one value per chunk, dedup if unchanged)
         putSingleton("jdk.GCConfiguration");
         putSingleton("jdk.ClassLoadingStatistics");
-        putSingleton("jdk.JavaThreadStatistics");
+        // jdk.JavaThreadStatistics feeds the thread-count view — deduping same-value events
+        // drops time-series rows from the view, making it appear the recording had fewer
+        // data points than it did.  Keep all distinct-timestamp observations.
         putSingleton("jdk.CompilerStatistics");
         putSingleton("jdk.SymbolTableStatistics");
         putSingleton("jdk.StringTableStatistics");

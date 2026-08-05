@@ -3712,3 +3712,31 @@ classLoader = jdk.internal.reflect.DelegatingClassLoader (id = 3)
 **Fix:** Remove `baseAddress` from the NativeLibrary address-removal list. Keep `topAddress` removed (it is always `0x00000000` on observed platforms and contains no information).
 
 **Status:** Fixed.
+
+## Bug 461: `thread-count` view drops rows when thread counts are unchanged between events
+
+**Observation:** `cjfr view thread-count recording.cjfr` shows fewer rows than `jfr view thread-count recording.jfr` when `jdk.JavaThreadStatistics` events fire with identical values:
+```
+# cjfr (before fix) — 1 row
+12:12:21   10   8   10   10
+
+# oracle — 2 rows
+12:12:21   10   8   10   10
+12:12:22   10   8   10   10
+```
+
+**Root cause:** `JFREventDeduplication.registerPeriodicTimeSeries()` called `putSingleton("jdk.JavaThreadStatistics")` which merges any two events with identical field values (ignoring startTime). When thread counts are stable across periods, all but one event is dropped, causing the view to show fewer time-series rows than the recording actually contains.
+
+**Fix:** Remove `jdk.JavaThreadStatistics` from `putSingleton`. Each distinct-timestamp event is preserved in DEFAULT.
+
+**Status:** Fixed.
+
+## Bug 462: `active-settings` view shows all event types instead of only threshold-configured events
+
+**Observation:** `cjfr view active-settings recording.cjfr` shows 80+ rows for all enabled event types, while `jfr view active-settings recording.jfr` shows only 1 row (event types with non-trivial threshold settings like "File Force").
+
+**Root cause:** The view query is a self-join `FROM ActiveSetting AS E, AS T, AS S, AS P, AS C, AS U WHERE E.name='enabled' AND T.name='threshold' AND ...`. The oracle implements INNER JOIN semantics — groups are only included when all required aliases have events. cjfr's join implementation is effectively a LEFT JOIN, showing groups where any alias has events and leaving others as blank.
+
+**Impact:** Informational view shows too much data; not a data corruption bug.
+
+**Status:** Known issue. Fix requires INNER JOIN semantics in evaluateJoin().
