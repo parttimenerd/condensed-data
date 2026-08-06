@@ -137,8 +137,12 @@ public class JFREventDeduplication extends EventDeduplication {
                                 && a.getLong("memoryUsed") == b.getLong("memoryUsed"));
         put("jdk.GCHeapMemoryPoolUsage", "name", "used", "committed", "max");
 
-        // G1HeapRegionInformation is periodic (everyChunk), dedup by region index
-        put("jdk.G1HeapRegionInformation", "index", "type", "start", "used");
+        // jdk.G1HeapRegionInformation is a set-valued periodic snapshot: every everyChunk tick
+        // emits the COMPLETE per-region census. A region whose (index,type,start,used) is
+        // unchanged since an earlier tick is still a member of the later snapshot, so row-deduping
+        // across timestamps drops those rows and corrupts the completeness of every snapshot after
+        // the first (there is no inflate-side re-expansion). Same failure mode as
+        // jdk.JavaThreadStatistics below — keep all rows. (Bug 466)
 
         // NativeMemoryUsage is periodic (everyChunk), dedup by memory type
         put("jdk.NativeMemoryUsage", "type", "reserved", "committed");
