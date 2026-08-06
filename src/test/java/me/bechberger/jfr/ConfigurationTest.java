@@ -48,7 +48,8 @@ public class ConfigurationTest {
                         .withCombineG1HeapRegionTypeChangeEvents(false)
                         .withCombineExceptionEvents(false)
                         .withCombineBlockingEvents(false)
-                        .withCombineThreadParkLossless(false);
+                        .withCombineThreadParkLossless(false)
+                        .withCombineGCHeapSummaryPairs(false);
         assertFalse(config.eventCombinersEnabled());
     }
 

@@ -3760,3 +3760,48 @@ classLoader = jdk.internal.reflect.DelegatingClassLoader (id = 3)
 **Fix:** `registerEventTypes()` now calls `recordEventTypeLabel(t, authoritative=true)` which uses `put()` instead of `putIfAbsent()`. The static seeding at construction remains `putIfAbsent` (fallback for the agent path that never calls `registerEventTypes()`). Recording metadata always wins over the JVM's built-in label registry.
 
 **Status:** Fixed.
+
+## Bug 465: JVM crash — `NativeHeapTrimmer::suspend_periodic_trim` mutex-rank violation (any collector, trim + concurrent hashtable resize)
+
+**Observation:** Running `-XX:TrimNativeHeapInterval=500` crashes the JVM with a fatal `Internal Error (mutex.cpp:460)` mutex rank-check assertion when a concurrent hashtable resize runs. Reproduces with NO JFR recording attached (independent of cjfr and any `.jfc`).
+
+**Scope corrected 2026-08-06 — NOT Shenandoah-specific.** Originally recorded as Shenandoah-only, but a gc-log2 benchmark run crashed **G1** with exit 134 and the same `ConcurrentHashTableResize_lock ... nosafepoint` owner. Isolated the trigger by flag bisection on G1:
+
+| flags | result |
+|---|---|
+| `-XX:TrimNativeHeapInterval=500` alone | exit 0 (ok) |
+| `-XX:+UseStringDeduplication` alone | exit 0 (ok) |
+| **both together** | **exit 134 (crash)** |
+
+The real trigger is **`TrimNativeHeapInterval` + a concurrent StringTable/SymbolTable resize** (string-dedup drives StringTable growth → resize under the `nosafepoint` `ConcurrentHashTableResize_lock`). It is **collector-independent**; Shenandoah merely hit it first via its concurrent symbol-table cleaning. Shenandoah can also trip it via symbol-table cleaning even without dedup; G1/Parallel/ZGC need the dedup-driven table resize to expose it in short runs.
+
+```
+V  Mutex::check_rank(Thread*)+0x4df  (mutex.cpp:460)
+V  Mutex::lock_without_safepoint_check(Thread*)+0x50  (mutex.cpp:146)
+V  NativeHeapTrimmer::suspend_periodic_trim(char const*)+0x60  (mutexLocker.hpp:201)
+V  SymbolTable::clean_dead_entries(JavaThread*)+0x724  (trimNativeHeap.hpp:58)
+V  SymbolTable::do_concurrent_work(JavaThread*)+0xdd  (symbolTable.cpp:825)
+V  ServiceThread::service_thread_entry(...)  (serviceThread.cpp:135)
+```
+
+**Root cause:** the concurrent-hashtable cleaning path (`SymbolTable`/`StringTable::clean_dead_entries()` on the service thread) calls `NativeHeapTrimmer::suspend_periodic_trim()`, which acquires the `NativeHeapTrimmer` lock while the `ConcurrentHashTableResize_lock` (a `nosafepoint` lock) is already held. The trim lock ranks above the resize lock, so `check_rank` fails. Lock-ordering defect in the SAP `NativeHeapTrim` backport, exposed by any concurrent hashtable resize.
+
+**Impact:** Hard JVM crash whenever native-heap-trim is combined with concurrent string/symbol-table resize — reachable on ALL collectors, not just Shenandoah. Unrelated to cjfr — recorded here because it surfaced during gc-log `.jfc` verification/benchmarking (gc-log2/gc-log3 enable `jdk.NativeHeapTrim` and the benchmark sets `-XX:TrimNativeHeapInterval` alongside `-XX:+UseStringDeduplication`). **Benchmark mitigation:** never combine `-XX:TrimNativeHeapInterval` with `-XX:+UseStringDeduplication` (nor use trim under Shenandoah) until the backport lock ordering is fixed.
+
+**Status:** Open — upstream/backport JVM bug, not a cjfr bug. Reported for tracking. Scope broadened from Shenandoah-only to all-collectors 2026-08-06.
+
+## Bug 466: `jdk.G1HeapRegionInformation` periodic snapshots lose regions after condense→inflate (non-lossless presets)
+
+**Observation:** A `gc-log3.jfc` recording (`-Xlog:gc*=info,heap*=debug,ergo*=trace` parity, which enables `jdk.G1HeapRegionInformation` at `everyChunk`) captures two complete per-region snapshots — 512 regions each, 1024 events total. After a DEFAULT/gc-log condense→inflate round-trip the count drops to 677: snapshot 1 is intact (512 regions) but snapshot 2 has only 165 regions. The 347 regions whose `(index, type, start, used)` were unchanged since snapshot 1 are permanently missing.
+
+```
+ORIGINAL:  512 @ 18:05:23.364   512 @ 18:05:35.396   (1024)
+INFLATED:  512 @ 18:05:23.364   165 @ 18:05:35.396   ( 677)
+```
+
+**Root cause:** `JFREventDeduplication.registerPeriodicTimeSeries()` registers
+`put("jdk.G1HeapRegionInformation", "index", "type", "start", "used")`. This treats each per-region row as a static-valued observation and drops any later row whose four key fields match an earlier one. But `jdk.G1HeapRegionInformation` is a **set-valued periodic snapshot**: every `everyChunk` tick emits the *complete* region census, and a region whose `used` did not change between ticks is still a legitimate member of the later snapshot. Row-deduping across timestamps corrupts the completeness of every snapshot after the first — there is no inflate-side re-expansion, so the dropped rows are gone. This is exactly the failure mode documented for `jdk.JavaThreadStatistics` (same file), which was deliberately kept out of the dedup list for this reason.
+
+**Fix:** Remove `jdk.G1HeapRegionInformation` from `registerPeriodicTimeSeries()`. A per-region periodic census cannot be safely row-deduped across distinct timestamps; each snapshot must survive whole. (`jdk.ShenandoahHeapRegionInformation` was never in the dedup list, so it is already correct.)
+
+**Status:** Fixed.

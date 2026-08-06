@@ -2461,8 +2461,8 @@ public class JFREventCombiner extends EventCombiner {
     /**
      * Combines GCHeapSummary, G1HeapSummary, MetaspaceSummary, and PSHeapSummary per GC id.
      *
-     * <p>Each of these event types fires exactly twice per GC (Before + After). This combiner groups
-     * the pair by gcId using {@code when} as the map key, reducing 2 events → 1 (lossless).
+     * <p>Each of these event types fires exactly twice per GC (Before + After). This combiner
+     * groups the pair by gcId using {@code when} as the map key, reducing 2 events → 1 (lossless).
      */
     static class GCHeapSummaryPairCombiner extends GCIdBasedCombiner {
 

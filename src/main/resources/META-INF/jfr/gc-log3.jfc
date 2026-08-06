@@ -1,0 +1,412 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  gc-log3.jfc — information-matched customer recording configuration for cjfr.
+
+  Captures the information the customer's verbose -Xlog config emits, and the
+  structured/typed equivalents, so that cjfr-vs-Xlog is a fair same-information
+  comparison at the customer's chosen verbosity.
+
+  Customer -Xlog combination:
+    -Xlog:gc*=info,heap*=debug,ergo*=trace
+
+  What each clause pulls in and how this preset mirrors it:
+
+    gc*=info     -> the full info-level pause/heap/phase/ref/metaspace/cpu narration.
+                    Mapped to the same typed roster as gc-log.jfc: GarbageCollection,
+                    Young/Old/G1/ParallelOld/ZYoung/ZOld collections, GCHeapSummary,
+                    G1/PS heap summaries, GCPhasePause[+Level1/2], GCPhaseConcurrent,
+                    MetaspaceSummary, GCReferenceStatistics, GCCPUTime, TenuringDistribution,
+                    G1MMU, G1BasicIHOP/G1AdaptiveIHOP, Evacuation* etc.
+
+    heap*=debug  -> per-region heap topology at debug: the "Activate/Deactivate/Uncommit
+                    regions", per-region type transitions, and periodic region maps.
+                    gc-log.jfc DISABLES these as too verbose; here they are ENABLED because
+                    the customer explicitly asked for heap debug:
+                      jdk.G1HeapRegionInformation (periodic per-region snapshot)
+                      jdk.G1HeapRegionTypeChange  (per-region type transitions)
+
+    ergo*=trace  -> the full ergonomic-sizing firehose at trace. Most of it is free-text
+                    log_trace(gc, ergo, ...) with no dedicated typed event; captured verbatim by
+                    the level-split catch-alls:
+                      jdk.GCErgonomicInfo  (info-and-above ergo/gc narration; bounded)
+                      jdk.GCErgonomicTrace (debug/trace ergo narration; high volume)
+                    One high-value trace line is promoted to a typed event:
+                      jdk.G1YoungGenSizing (the "Young desired length ..." 7-value summary
+                                            from g1Policy.cpp, once per pause).
+
+  jdk.G1YoungGenSizing, jdk.GCErgonomicInfo, jdk.GCErgonomicTrace, jdk.StringDeduplication
+  and jdk.NativeHeapTrim ship in JDK 26; on the JDK 25 LTS build they are provided by the
+  SAP backport.
+
+  Condense with the gc-log condenser strategy (condenser-config gc-log); it is
+  event-agnostic, so no separate condenser config is needed for this preset.
+-->
+
+<configuration version="2.0"
+               label="gc-log3"
+               description="Information-matched verbose customer GC-log preset: captures what -Xlog:gc*=info,heap*=debug,ergo*=trace emits, including per-region heap debug topology and the full ergonomic trace narration (split by level), plus the typed G1 young-sizing summary."
+               provider="cjfr">
+
+  <!-- ================================================================
+       Core metadata / JVM configuration
+       Mirrors -Xlog:gc+init and general JVM identification.
+       ================================================================ -->
+
+  <event name="jdk.JVMInformation">
+    <setting name="enabled">true</setting>
+    <setting name="period">beginChunk</setting>
+  </event>
+
+  <event name="jdk.InitialSystemProperty">
+    <setting name="enabled">true</setting>
+    <setting name="period">beginChunk</setting>
+  </event>
+
+  <event name="jdk.GCConfiguration">
+    <setting name="enabled">true</setting>
+    <setting name="period">everyChunk</setting>
+  </event>
+
+  <event name="jdk.GCHeapConfiguration">
+    <setting name="enabled">true</setting>
+    <setting name="period">beginChunk</setting>
+  </event>
+
+  <event name="jdk.YoungGenerationConfiguration">
+    <setting name="enabled">true</setting>
+    <setting name="period">beginChunk</setting>
+  </event>
+
+  <event name="jdk.GCTLABConfiguration">
+    <setting name="enabled">true</setting>
+    <setting name="period">beginChunk</setting>
+  </event>
+
+  <event name="jdk.GCSurvivorConfiguration">
+    <setting name="enabled">true</setting>
+    <setting name="period">beginChunk</setting>
+  </event>
+
+  <!-- ================================================================
+       Universal GC events (gc*=info) — all collectors.
+       Maps to: gc, gc+heap, gc+cpu, gc+metaspace, gc+ref, gc+age, gc+phases.
+       ================================================================ -->
+
+  <event name="jdk.GarbageCollection">
+    <setting name="enabled">true</setting>
+    <setting name="threshold">0 ms</setting>
+  </event>
+
+  <event name="jdk.SystemGC">
+    <setting name="enabled">true</setting>
+    <setting name="threshold">0 ms</setting>
+    <setting name="stackTrace">false</setting>
+  </event>
+
+  <event name="jdk.ParallelOldGarbageCollection">
+    <setting name="enabled">true</setting>
+    <setting name="threshold">0 ms</setting>
+  </event>
+
+  <event name="jdk.YoungGarbageCollection">
+    <setting name="enabled">true</setting>
+    <setting name="threshold">0 ms</setting>
+  </event>
+
+  <event name="jdk.OldGarbageCollection">
+    <setting name="enabled">true</setting>
+    <setting name="threshold">0 ms</setting>
+  </event>
+
+  <!-- gc+heap → heap summary before+after each collection -->
+  <event name="jdk.GCHeapSummary">
+    <setting name="enabled">true</setting>
+  </event>
+
+  <!-- gc+metaspace → metaspace summary before+after each collection -->
+  <event name="jdk.MetaspaceSummary">
+    <setting name="enabled">true</setting>
+  </event>
+
+  <event name="jdk.MetaspaceGCThreshold">
+    <setting name="enabled">true</setting>
+  </event>
+
+  <event name="jdk.MetaspaceAllocationFailure">
+    <setting name="enabled">true</setting>
+    <setting name="stackTrace">false</setting>
+  </event>
+
+  <event name="jdk.MetaspaceOOM">
+    <setting name="enabled">true</setting>
+    <setting name="stackTrace">false</setting>
+  </event>
+
+  <!-- gc+cpu → GC user/sys/wall time per collection -->
+  <event name="jdk.GCCPUTime">
+    <setting name="enabled">true</setting>
+  </event>
+
+  <!-- gc+ref → reference type counts per collection -->
+  <event name="jdk.GCReferenceStatistics">
+    <setting name="enabled">true</setting>
+  </event>
+
+  <!-- gc+phases → pause phase hierarchy -->
+  <event name="jdk.GCPhasePause">
+    <setting name="enabled">true</setting>
+    <setting name="threshold">0 ms</setting>
+  </event>
+
+  <event name="jdk.GCPhasePauseLevel1">
+    <setting name="enabled">true</setting>
+    <setting name="threshold">0 ms</setting>
+  </event>
+
+  <event name="jdk.GCPhasePauseLevel2">
+    <setting name="enabled">true</setting>
+    <setting name="threshold">0 ms</setting>
+  </event>
+
+  <event name="jdk.GCPhaseConcurrent">
+    <setting name="enabled">true</setting>
+    <setting name="threshold">0 ms</setting>
+  </event>
+
+  <event name="jdk.GCPhaseConcurrentLevel1">
+    <setting name="enabled">true</setting>
+    <setting name="threshold">0 ms</setting>
+  </event>
+
+  <event name="jdk.ConcurrentModeFailure">
+    <setting name="enabled">true</setting>
+  </event>
+
+  <event name="jdk.PromotionFailed">
+    <setting name="enabled">true</setting>
+  </event>
+
+  <event name="jdk.GCHeapMemoryUsage">
+    <setting name="enabled">true</setting>
+    <setting name="period">everyChunk</setting>
+  </event>
+
+  <event name="jdk.GCHeapMemoryPoolUsage">
+    <setting name="enabled">true</setting>
+    <setting name="period">everyChunk</setting>
+  </event>
+
+  <!-- stringdedup → concurrent string-deduplication cycle statistics -->
+  <event name="jdk.StringDeduplication">
+    <setting name="enabled">true</setting>
+  </event>
+
+  <!-- trimnative → periodic native-heap trim -->
+  <event name="jdk.NativeHeapTrim">
+    <setting name="enabled">true</setting>
+  </event>
+
+  <!-- ================================================================
+       ergo*=trace catch-alls (level-split).
+       GCErgonomicInfo captures info-and-above gc/ergo narration (bounded);
+       GCErgonomicTrace captures the debug/trace ergo firehose (high volume).
+       Both are needed for full -Xlog:ergo*=trace parity.
+       ================================================================ -->
+
+  <event name="jdk.GCErgonomicInfo">
+    <setting name="enabled">true</setting>
+  </event>
+
+  <event name="jdk.GCErgonomicTrace">
+    <setting name="enabled">true</setting>
+  </event>
+
+  <!-- ergo+heap trace → typed G1 young-generation sizing summary
+       (the "Young desired length ..." line, once per pause). -->
+  <event name="jdk.G1YoungGenSizing">
+    <setting name="enabled">true</setting>
+  </event>
+
+  <!-- ================================================================
+       Section T structured debug-parity events (SAP backport).
+       These are typed replacements for high-value gc*=debug narration lines;
+       they emit at the GC code site guarded only by should_commit(), so they
+       must be ENABLED here to fire. They carry information no stock JFR event
+       exposes (see Section T of gc-log-research-notes.md for per-event
+       justification). Enabling them is what gives cjfr debug-level parity
+       WITHOUT the customer needing to pass -Xlog.
+       ================================================================ -->
+
+  <!-- gc+refine+stats → "Total refinement: <ms>, refined/precleaned/dirtied"
+       (g1Policy.cpp record_concurrent_refinement_stats). -->
+  <event name="jdk.G1ConcurrentRefinement">
+    <setting name="enabled">true</setting>
+  </event>
+
+  <!-- gc+humongous → eager humongous reclaim counts per young GC
+       (g1YoungGCPostEvacuateTasks.cpp). -->
+  <event name="jdk.G1HumongousReclaim">
+    <setting name="enabled">true</setting>
+  </event>
+
+  <!-- gc+tlab → per-GC TLAB refill/waste totals
+       (threadLocalAllocBuffer.cpp publish()). -->
+  <event name="jdk.TLABSummary">
+    <setting name="enabled">true</setting>
+  </event>
+
+  <!-- gc+ergo+heap → heap expand/shrink decision (pause-time-ratio model)
+       (g1HeapSizingPolicy.cpp log_expansion). -->
+  <event name="jdk.G1HeapResize">
+    <setting name="enabled">true</setting>
+  </event>
+
+  <!-- gc+nmethod → ZGC nmethod (un)registration counts per cycle
+       (zStat.cpp ZStatNMethods::print). ZGC-only. -->
+  <event name="jdk.ZNMethodSummary">
+    <setting name="enabled">true</setting>
+  </event>
+
+  <!-- ================================================================
+       G1GC-specific events (gc*=info).
+       ================================================================ -->
+
+  <event name="jdk.G1GarbageCollection">
+    <setting name="enabled">true</setting>
+    <setting name="threshold">0 ms</setting>
+  </event>
+
+  <event name="jdk.G1HeapSummary">
+    <setting name="enabled">true</setting>
+  </event>
+
+  <event name="jdk.PSHeapSummary">
+    <setting name="enabled">true</setting>
+  </event>
+
+  <event name="jdk.TenuringDistribution">
+    <setting name="enabled">true</setting>
+  </event>
+
+  <event name="jdk.G1MMU">
+    <setting name="enabled">true</setting>
+  </event>
+
+  <event name="jdk.G1BasicIHOP">
+    <setting name="enabled">true</setting>
+  </event>
+
+  <event name="jdk.G1AdaptiveIHOP">
+    <setting name="enabled">true</setting>
+  </event>
+
+  <event name="jdk.EvacuationFailed">
+    <setting name="enabled">true</setting>
+  </event>
+
+  <event name="jdk.EvacuationInformation">
+    <setting name="enabled">true</setting>
+  </event>
+
+  <event name="jdk.G1EvacuationYoungStatistics">
+    <setting name="enabled">true</setting>
+  </event>
+
+  <event name="jdk.G1EvacuationOldStatistics">
+    <setting name="enabled">true</setting>
+  </event>
+
+  <!-- ================================================================
+       heap*=debug → per-region G1 heap topology.
+       gc-log.jfc keeps these OFF (too verbose for an info preset); the
+       customer's heap=debug clause explicitly asks for them, so they are ON
+       here to reach information parity.
+       ================================================================ -->
+
+  <!-- gc+heap+region debug → periodic per-region snapshot -->
+  <event name="jdk.G1HeapRegionInformation">
+    <setting name="enabled">true</setting>
+    <setting name="period">everyChunk</setting>
+  </event>
+
+  <!-- gc+heap+region debug → per-region type transitions -->
+  <event name="jdk.G1HeapRegionTypeChange">
+    <setting name="enabled">true</setting>
+  </event>
+
+  <!-- ================================================================
+       ZGC-specific events (gc*=info).
+       ================================================================ -->
+
+  <event name="jdk.ZYoungGarbageCollection">
+    <setting name="enabled">true</setting>
+    <setting name="threshold">0 ms</setting>
+  </event>
+
+  <event name="jdk.ZOldGarbageCollection">
+    <setting name="enabled">true</setting>
+    <setting name="threshold">0 ms</setting>
+  </event>
+
+  <event name="jdk.ZAllocationStall">
+    <setting name="enabled">true</setting>
+    <setting name="threshold">0 ms</setting>
+    <setting name="stackTrace">false</setting>
+  </event>
+
+  <event name="jdk.ZPageAllocation">
+    <setting name="enabled">true</setting>
+    <setting name="threshold">1 ms</setting>
+    <setting name="stackTrace">false</setting>
+  </event>
+
+  <event name="jdk.ZRelocationSet">
+    <setting name="enabled">true</setting>
+    <setting name="threshold">0 ms</setting>
+  </event>
+
+  <event name="jdk.ZRelocationSetGroup">
+    <setting name="enabled">true</setting>
+    <setting name="threshold">0 ms</setting>
+  </event>
+
+  <event name="jdk.ZUncommit">
+    <setting name="enabled">true</setting>
+    <setting name="threshold">0 ms</setting>
+  </event>
+
+  <!-- ================================================================
+       Shenandoah-specific events.
+       ================================================================ -->
+
+  <event name="jdk.ShenandoahHeapRegionInformation">
+    <setting name="enabled">true</setting>
+    <setting name="period">everyChunk</setting>
+  </event>
+
+  <!-- ================================================================
+       JVM bookkeeping — always capture for recording integrity.
+       ================================================================ -->
+
+  <event name="jdk.ActiveRecording">
+    <setting name="enabled">true</setting>
+  </event>
+
+  <event name="jdk.ActiveSetting">
+    <setting name="enabled">true</setting>
+  </event>
+
+  <event name="jdk.DataLoss">
+    <setting name="enabled">true</setting>
+  </event>
+
+  <event name="jdk.DumpReason">
+    <setting name="enabled">true</setting>
+  </event>
+
+  <event name="jdk.Shutdown">
+    <setting name="enabled">true</setting>
+    <setting name="stackTrace">false</setting>
+  </event>
+
+</configuration>

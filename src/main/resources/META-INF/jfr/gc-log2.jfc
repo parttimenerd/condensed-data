@@ -1,0 +1,252 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  gc-log2.jfc — information-matched customer recording configuration for cjfr.
+
+  Captures EXACTLY the information the customer's -Xlog config emits at =info,
+  and nothing more, so that cjfr-vs-Xlog is a fair same-information size comparison.
+
+  Customer -Xlog combination (info level):
+    -Xlog:trimnative*=info,gc*=info,gc+region*=info,gc+ergo*=info,gc+humongous*=info,stringdedup*=info
+
+  NOTE: the customer uses gc*=info (WILDCARD), not gc=info. The gc* glob matches every
+  gc+<subtag> at info level, so the text log carries the full per-pause breakdown —
+  phase timings, heap region deltas, CPU split, metaspace — not just the top-line summary.
+  This preset must therefore enable the events behind ALL those subtags.
+
+  Tag → event mapping at =info:
+    gc=info            → pause summary lines: GarbageCollection + collector sub-events
+    gc+phases=info     → GCPhasePause + GCPhasePauseLevel1/2 ("Phase 1: Mark live objects 43.774ms")
+    gc+marking=info    → GCPhaseConcurrent + GCPhaseConcurrentLevel1 ("Concurrent Mark 12.345ms")
+    gc+heap=info       → GCHeapSummary + G1HeapSummary/PSHeapSummary (Eden/Survivor/Old/Humongous deltas)
+    gc+cpu=info        → GCCPUTime ("User=0.51s Sys=0.25s Real=0.13s")
+    gc+metaspace=info  → MetaspaceSummary (metaspace used/committed before+after)
+    gc+ergo=info       → GCErgonomicInfo (free-text ergo/heuristic narration catch-all)
+    trimnative=info    → NativeHeapTrim
+    stringdedup=info   → StringDeduplication
+    gc+region=info     → (emits nothing at info; needs debug/trace)
+    gc+humongous=info  → G1HumongousReclaim (young-evac eager-reclaim; closest typed
+                          humongous source — see caveat at the event below)
+    gc+task=info       → worker-count narration; no dedicated info-level typed event
+
+  Deliberately EXCLUDED vs gc-log.jfc (NOT emitted by the customer's =info tags —
+  they require gc+age / gc+ref / gc+ihop / gc+mmu etc., or debug/trace level):
+    GCReferenceStatistics (gc+ref), TenuringDistribution (gc+age), G1MMU (gc+mmu),
+    G1BasicIHOP / G1AdaptiveIHOP (gc+ihop), EvacuationInformation (gc+ergo+cset debug),
+    all Z page/relocation/uncommit events, ShenandoahHeapRegionInformation,
+    GCPhasePauseLevel3/4 + GCPhaseConcurrentLevel2 (debug/trace sub-phases), CPULoad /
+    PhysicalMemory / ResidentSetSize periodics, and all other richness.
+
+  Minimal identity/config metadata (JVMInformation, GCConfiguration) is kept: these are
+  beginChunk/everyChunk one-shots at near-zero cost and give the recording a JVM-version
+  and collector label, mirroring the gc+init narration the text log would also carry.
+
+  Condense with the gc-log condenser strategy (condense with condenser-config gc-log);
+  it is event-agnostic, so no separate condenser config is needed for this preset.
+
+  jdk.StringDeduplication, jdk.NativeHeapTrim and jdk.GCErgonomicInfo ship in JDK 26;
+  on the JDK 25 LTS build they are provided by the SAP backport.
+-->
+
+<configuration version="2.0"
+               label="gc-log2"
+               description="Information-matched customer GC-log preset: captures exactly what -Xlog:trimnative,gc,gc+region,gc+ergo,gc+humongous,stringdedup=info emits, and nothing more."
+               provider="cjfr">
+
+  <!-- ================================================================
+       Minimal identity / config metadata (beginChunk/everyChunk one-shots).
+       Mirrors gc+init narration; near-zero cost.
+       ================================================================ -->
+
+  <event name="jdk.JVMInformation">
+    <setting name="enabled">true</setting>
+    <setting name="period">beginChunk</setting>
+  </event>
+
+  <event name="jdk.GCConfiguration">
+    <setting name="enabled">true</setting>
+    <setting name="period">everyChunk</setting>
+  </event>
+
+  <!-- ================================================================
+       gc=info → top-level pause summary lines (e.g. "Pause Young (Normal) ... 60.030ms").
+       These map to jdk.GarbageCollection plus the collector-specific sub-events
+       that carry the same summary.
+       ================================================================ -->
+
+  <event name="jdk.GarbageCollection">
+    <setting name="enabled">true</setting>
+    <setting name="threshold">0 ms</setting>
+  </event>
+
+  <event name="jdk.SystemGC">
+    <setting name="enabled">true</setting>
+    <setting name="threshold">0 ms</setting>
+    <setting name="stackTrace">false</setting>
+  </event>
+
+  <event name="jdk.YoungGarbageCollection">
+    <setting name="enabled">true</setting>
+    <setting name="threshold">0 ms</setting>
+  </event>
+
+  <event name="jdk.OldGarbageCollection">
+    <setting name="enabled">true</setting>
+    <setting name="threshold">0 ms</setting>
+  </event>
+
+  <event name="jdk.ParallelOldGarbageCollection">
+    <setting name="enabled">true</setting>
+    <setting name="threshold">0 ms</setting>
+  </event>
+
+  <!-- gc → G1-specific young/mixed pause summary (GCPauseType field) -->
+  <event name="jdk.G1GarbageCollection">
+    <setting name="enabled">true</setting>
+    <setting name="threshold">0 ms</setting>
+  </event>
+
+  <!-- gc → ZGC young/old cycle summary -->
+  <event name="jdk.ZYoungGarbageCollection">
+    <setting name="enabled">true</setting>
+    <setting name="threshold">0 ms</setting>
+  </event>
+
+  <event name="jdk.ZOldGarbageCollection">
+    <setting name="enabled">true</setting>
+    <setting name="threshold">0 ms</setting>
+  </event>
+
+  <!-- ================================================================
+       gc+phases=info → per-pause phase breakdown.
+       "Phase 1: Mark live objects 43.774ms", "Pre Evacuate Collection Set ...",
+       "Evacuate Collection Set ...", "Post Evacuate ...", "Other ...". The gc*
+       wildcard turns gc+phases on at info, so the pause is broken down phase by phase.
+       Level1/2 carry the sub-phase timings; Level3/4 are debug/trace only (excluded).
+       ================================================================ -->
+
+  <event name="jdk.GCPhasePause">
+    <setting name="enabled">true</setting>
+    <setting name="threshold">0 ms</setting>
+  </event>
+
+  <event name="jdk.GCPhasePauseLevel1">
+    <setting name="enabled">true</setting>
+    <setting name="threshold">0 ms</setting>
+  </event>
+
+  <event name="jdk.GCPhasePauseLevel2">
+    <setting name="enabled">true</setting>
+    <setting name="threshold">0 ms</setting>
+  </event>
+
+  <!-- ================================================================
+       gc+marking=info / gc+phases=info (concurrent) → concurrent phase timings.
+       The gc* wildcard also turns on the concurrent-collector phase narration:
+       "Concurrent Mark 12.345ms", "Concurrent Clear Claimed Marks 0.019ms",
+       "Concurrent Cleanup for Next Mark 2.364ms" (G1), and the equivalent ZGC/Shenandoah
+       concurrent cycle phases. These map to GCPhaseConcurrent + GCPhaseConcurrentLevel1.
+       Level2 stays off (debug/trace sub-phases, no info line).
+       ================================================================ -->
+
+  <event name="jdk.GCPhaseConcurrent">
+    <setting name="enabled">true</setting>
+    <setting name="threshold">0 ms</setting>
+  </event>
+
+  <event name="jdk.GCPhaseConcurrentLevel1">
+    <setting name="enabled">true</setting>
+    <setting name="threshold">0 ms</setting>
+  </event>
+
+  <!-- ================================================================
+       gc+heap=info → heap occupancy before/after each collection.
+       Generic "GC(N) Heap: before->after" plus collector breakdowns:
+       G1 region deltas ("Eden regions: 41->0(47)", "Humongous regions: 130->1")
+       and Parallel young/old space sizes. GCHeapSummary is the generic before/after
+       pair; G1HeapSummary / PSHeapSummary carry the collector-specific region detail.
+       ================================================================ -->
+
+  <event name="jdk.GCHeapSummary">
+    <setting name="enabled">true</setting>
+  </event>
+
+  <event name="jdk.G1HeapSummary">
+    <setting name="enabled">true</setting>
+  </event>
+
+  <event name="jdk.PSHeapSummary">
+    <setting name="enabled">true</setting>
+  </event>
+
+  <!-- ================================================================
+       gc+cpu=info → jdk.GCCPUTime.
+       "GC(N) User=0.51s Sys=0.25s Real=0.13s" — the user/sys/real CPU split
+       for each collection pause. One event per GC.
+       ================================================================ -->
+
+  <event name="jdk.GCCPUTime">
+    <setting name="enabled">true</setting>
+  </event>
+
+  <!-- ================================================================
+       gc+metaspace=info → jdk.MetaspaceSummary.
+       Metaspace used/committed/reserved before and after each collection.
+       ================================================================ -->
+
+  <event name="jdk.MetaspaceSummary">
+    <setting name="enabled">true</setting>
+  </event>
+
+  <!-- ================================================================
+       gc+humongous / gc+heap → jdk.G1HumongousReclaim.
+       The customer's gc+humongous=info and the gc+heap "Humongous regions: N->M"
+       line report the humongous-region census. G1HeapSummary folds humongous BYTES
+       into oldGenUsedSize but carries no standalone humongous count, so this event
+       supplies the humongous detail: humongousTotal / humongousCandidates /
+       objectsReclaimed per pause.
+       CAVEAT: it is emitted only during G1 YOUNG evacuation pauses (eager-reclaim of
+       provably-dead humongous objects); it does NOT reproduce the full-GC before/after
+       humongous census. It is the closest typed source for humongous activity and fires
+       purely on should_commit(). Zero cost when no humongous objects are present.
+       ================================================================ -->
+
+  <event name="jdk.G1HumongousReclaim">
+    <setting name="enabled">true</setting>
+  </event>
+
+  <!-- ================================================================
+       gc+ergo=info → jdk.GCErgonomicInfo.
+       The info-level half of the ergo narration catch-all: Shenandoah
+       pacer/heuristic/generation-sizer lines and G1 "Attempting full compaction"
+       lines are free-text log_ergo(Info, gc, ergo) with no other typed event.
+       (The debug/trace half, jdk.GCErgonomicTrace, is intentionally excluded —
+       the customer config is gc+ergo=info, not =trace.) The event fires purely on
+       should_commit(), so enabling it here captures the narration WITHOUT the
+       customer needing to pass -Xlog:gc+ergo=info.
+       ================================================================ -->
+
+  <event name="jdk.GCErgonomicInfo">
+    <setting name="enabled">true</setting>
+  </event>
+
+  <!-- ================================================================
+       trimnative=info → jdk.NativeHeapTrim.
+       "Periodic Trim (N): before->after (±delta) ms" — process RSS before/after
+       each trim. Only fires when -XX:TrimNativeHeapInterval>0.
+       ================================================================ -->
+
+  <event name="jdk.NativeHeapTrim">
+    <setting name="enabled">true</setting>
+  </event>
+
+  <!-- ================================================================
+       stringdedup=info → jdk.StringDeduplication.
+       String deduplication statistics summary (new/deduped strings + bytes,
+       processing time). Only fires under -XX:+UseStringDeduplication (G1/Shenandoah).
+       ================================================================ -->
+
+  <event name="jdk.StringDeduplication">
+    <setting name="enabled">true</setting>
+  </event>
+
+</configuration>

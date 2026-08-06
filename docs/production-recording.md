@@ -283,26 +283,37 @@ java -javaagent:cjfr.jar='start,/var/rec/gc_$index.cjfr,rotating,max-files=24,ma
 - ZGC: ZYoungGarbageCollection, ZOldGarbageCollection, ZAllocationStall, ZPageAllocation, ZRelocationSet, ZRelocationSetGroup, ZUncommit
 - Shenandoah: ShenandoahHeapRegionInformation (sampled, everyChunk)
 - Parallel GC: PSHeapSummary
-- String deduplication (G1/Parallel, when `-XX:+UseStringDeduplication`): StringDeduplication — maps to `gc+stringdedup=info`
 
 **Ambient context:** CPULoad (1 s), PhysicalMemory, ResidentSetSize, SwapSpace, OSInformation, CPUInformation, VirtualizationInformation, ContainerConfiguration/CPUUsage/CPUThrottling/MemoryUsage/IOUsage (30 s), JVM flags (all 7 primitive flag types + change events), NativeMemoryUsage/Total (1 s), DirectBufferStatistics, FinalizerStatistics, GCLocker (≥1 s), CodeCacheFull, ThreadContextSwitchRate (10 s), ExecuteVMOperation (≥10 ms).
 
-**Not captured** (no JFR events exist for these GC log tags): `gc+refine`, `gc+remset`, `gc+humongous` summary counts, ZGC `gc+mmu`. These are confirmed gaps — see the gc-log research notes for proposed upstream JFR events that would close them.
+**Not captured** (no JFR events exist for these GC log tags): `gc+refine`, `gc+remset`, `gc+humongous` summary counts, `gc+stringdedup` / `stringdedup` (no `jdk.StringDeduplication` event exists in the JDK — the stats are text-log-only), ZGC `gc+mmu`. These are confirmed gaps — see the gc-log research notes for proposed upstream JFR events that would close them.
 
 ### Storage estimates
 
-Measured on macOS (GraalVM JDK 25, 256 MB heap, high-allocation-rate workload, 60 s run → extrapolated):
+Measured on Linux (OpenJDK 21.0.11, 256 MB heap, constant 32 KB allocation workload, 60 s runs, 3 runs
+per collector, run-to-run variance <1%). Sizes are per 60 s run:
 
-| Config | G1GC MB/hour | ZGC MB/hour | Notes |
-|---|---|---|---|
-| `gc-log.jfc` + `gc-log` condenser | **~36 MB/hr** | **~15 MB/hr** | Recommended combination (avg of 3 runs) |
-| `gc-log.jfc` + `lossless` condenser | ~40 MB/hr | ~17 MB/hr | All GC data preserved verbatim |
-| `-Xlog:gc*` text | ~133 MB/hr | ~277 MB/hr | No structured access, no compression |
-| `default.jfc` + `default` condenser | ~180 MB/hr | ~90 MB/hr | Full profiling events included |
+| Collector | `-Xlog:gc*` text | Raw JFR (gc-log.jfc) | `gc-log` CJFR | CJFR vs Xlog |
+|---|---|---|---|---|
+| G1GC | 541 KB | 597 KB | 183 KB | **66% smaller** |
+| ZGC | 311 KB | 300 KB | 93 KB | **70% smaller** |
+| Shenandoah | 811 KB | 428 KB | 121 KB | **85% smaller** |
+| ParallelGC | 119 KB | 336 KB | 104 KB | **13% smaller** |
 
-*Workload: constant 32KB allocation at high rate (production GC rates are typically 10–100× lower). For GC-sparse profiles the gc-log preset reaches < 2 MB/hr. ZGC text logs are especially large because each GC emits many structured relocation-set and heap-summary lines that are verbose as text but compress as structured events.*
+*Workload allocates far harder than typical production (production GC rates are usually 10–100× lower),
+so absolute sizes are worst-case. The CJFR-vs-Xlog margin tracks how verbose the text log is: Shenandoah's
+text log is the chattiest (biggest win); ParallelGC's is very terse (smallest win). The raw JFR is often
+larger than the text log — condensing is what produces the net win.*
 
-The `gc-log` CJFR output is **73% smaller than `-Xlog:gc*` text for G1GC** and **95% smaller for ZGC** at the same workload — and supports random-access structured queries; text logs do not.
+The `gc-log` CJFR output is **66–85% smaller than uncompressed `-Xlog:gc*` text** on G1/ZGC/Shenandoah,
+and 13% smaller on the terse ParallelGC log — while supporting random-access structured queries that text
+logs cannot.
+
+**Honest caveat — CJFR vs *gzipped* text:** CJFR is LZ4-compressed; the ratios above compare against *raw*
+text (what sits on disk between log rotations). A `gzip -9`'d GC log can be *smaller* than CJFR (on a 20 s
+G1 sample: 849 KB gzipped text vs 2.35 MB CJFR). The case for CJFR is **not** smallest-bytes-on-disk — it
+is structured field-addressable access (`cjfr view`, JMC, Firefox Profiler), ns-precision timings, and
+correlated ambient events (CPU, RSS, container limits, flags) that the text log omits entirely.
 
 ### Why JFR over `-Xlog:gc*`
 
@@ -330,7 +341,7 @@ The `gc-log` CJFR output is **73% smaller than `-Xlog:gc*` text for G1GC** and *
 | Structured query (field access by name) | grep/regex only | **yes** |
 | Crash recovery (chunked writes) | may truncate | **yes** |
 | G1 refinement thread activity | `-Xlog:gc+refine=debug` (high-volume text) | **gap** — no JFR event |
-| String deduplication stats | `-Xlog:gc+stringdedup=info` (separate subsystem) | **yes** (StringDeduplication event; requires `-XX:+UseStringDeduplication`) |
+| String deduplication stats | `-Xlog:gc+stringdedup=info` (separate subsystem) | **gap** — no `jdk.StringDeduplication` event exists in the JDK (text-log-only) |
 | Humongous reclaim counts | `-Xlog:gc+humongous=debug` | **gap** — no JFR event |
 | ZGC director heuristics | `-Xlog:gc+director=debug` | **gap** — ZAllocationStall covers blocked threads but not trigger decisions |
 

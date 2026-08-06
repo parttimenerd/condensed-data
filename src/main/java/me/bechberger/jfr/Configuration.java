@@ -165,7 +165,6 @@ public record Configuration(
                     .withCombineExceptionEventsLossless(false)
                     .withCombineBlockingEvents(false)
                     .withCombineExecutionSampleEvents(false)
-                    .withCombinePLABPromotionEvents(false)
                     .withAggregateGCPhaseParallelStats(true)
                     .withRemoveUnnecessaryAddresses(true)
                     .withIgnoreZeroSizedTenuredAges(true);

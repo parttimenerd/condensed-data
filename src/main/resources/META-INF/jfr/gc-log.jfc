@@ -176,13 +176,35 @@
     <setting name="period">everyChunk</setting>
   </event>
 
-  <!-- gc+stringdedup → string deduplication statistics (G1/Parallel, when -XX:+UseStringDeduplication)
-       Maps to gc+stringdedup=info: "String Dedup Statistics" table logged after each GC that
-       performed deduplication. Fires only when string dedup is active; zero cost otherwise.
-       jdk.StringDeduplication is a fully shipped JDK event (stringDedupStat.cpp). -->
+  <!-- stringdedup=info → concurrent string-deduplication cycle statistics
+       (any collector supporting dedup, when -XX:+UseStringDeduplication).
+       Maps to the "Concurrent String Deduplication ..." info line emitted per cycle.
+       Fires only when string dedup is active; zero cost otherwise.
+       jdk.StringDeduplication ships in JDK 26; on the JDK 25 LTS build it is provided by
+       the backport in stringDedupStat.cpp (emit_statistics). -->
   <event name="jdk.StringDeduplication">
     <setting name="enabled">true</setting>
-    <setting name="threshold">0 ms</setting>
+  </event>
+
+  <!-- trimnative=info → periodic native-heap trim (when -XX:TrimNativeHeapInterval>0).
+       Maps to the "Periodic Trim (N): before->after (±delta) ms" info line; records the
+       process RSS before and after each trim. Backported event on the JDK 25 LTS build
+       (trimNativeHeap.cpp); default off unless native trimming is enabled. -->
+  <event name="jdk.NativeHeapTrim">
+    <setting name="enabled">true</setting>
+  </event>
+
+  <!-- gc+ergo*=info (and any other gc-tagged INFO line lacking a dedicated structured event) →
+       jdk.GCErgonomicInfo, the -Xlog:gc parity catch-all at info level. Captures each gc-tagged
+       info log line verbatim (tag + level + message). This is the ONLY event that covers the
+       customer's gc+ergo*=info narration: Shenandoah pacer/heuristic/generation-sizer lines and
+       G1's "Attempting full compaction" lines are free-text log_info(gc, ergo) with no typed event.
+       It also picks up the one-time init narration ("Using G1", "Periodic native trim enabled",
+       "Native heap trimmer start"). Backported/added event on the JDK 25 LTS build
+       (logTagSet.cpp hook, fires for any 'gc' tagset). The debug/trace half, jdk.GCErgonomicTrace,
+       is intentionally excluded here — this INFO-parity preset does not target gc*=debug/trace. -->
+  <event name="jdk.GCErgonomicInfo">
+    <setting name="enabled">true</setting>
   </event>
 
   <!-- ================================================================
@@ -624,7 +646,9 @@
     <setting name="enabled">false</setting>
   </event>
 
-  <!-- Promotion per-object events: 15K+/min, no GC log equivalent -->
+  <!-- Promotion per-object events: high volume (~15K/min) and, crucially, have NO
+       -Xlog:gc* text counterpart at any level. Disabled to keep gc-log an Xlog-parity
+       preset (stock gc.jfc enables them, but gc.jfc is not Xlog-scoped). -->
   <event name="jdk.PromoteObjectInNewPLAB">
     <setting name="enabled">false</setting>
   </event>
