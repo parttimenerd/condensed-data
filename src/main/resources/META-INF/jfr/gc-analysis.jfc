@@ -1,18 +1,18 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!--
-  gc-log3.jfc — information-matched customer recording configuration for cjfr.
+  gc-analysis.jfc — deep GC analysis recording configuration for cjfr.
 
-  Captures the information the customer's verbose -Xlog config emits, and the
-  structured/typed equivalents, so that cjfr-vs-Xlog is a fair same-information
-  comparison at the customer's chosen verbosity.
+  The deep-analysis companion to gc-monitoring.jfc: captures the full GC
+  internals for post-hoc analysis — everything a verbose -Xlog config emits,
+  plus the structured/typed equivalents.
 
-  Customer -Xlog combination:
+  Equivalent -Xlog combination:
     -Xlog:gc*=info,heap*=debug,ergo*=trace
 
   What each clause pulls in and how this preset mirrors it:
 
     gc*=info     -> the full info-level pause/heap/phase/ref/metaspace/cpu narration.
-                    Mapped to the same typed roster as gc-log.jfc: GarbageCollection,
+                    Mapped to the same typed roster as gc-monitoring.jfc: GarbageCollection,
                     Young/Old/G1/ParallelOld/ZYoung/ZOld collections, GCHeapSummary,
                     G1/PS heap summaries, GCPhasePause[+Level1/2], GCPhaseConcurrent,
                     MetaspaceSummary, GCReferenceStatistics, GCCPUTime, TenuringDistribution,
@@ -20,8 +20,8 @@
 
     heap*=debug  -> per-region heap topology at debug: the "Activate/Deactivate/Uncommit
                     regions", per-region type transitions, and periodic region maps.
-                    gc-log.jfc DISABLES these as too verbose; here they are ENABLED because
-                    the customer explicitly asked for heap debug:
+                    gc-monitoring.jfc DISABLES these as too verbose; here they are ENABLED
+                    for deep analysis:
                       jdk.G1HeapRegionInformation (periodic per-region snapshot)
                       jdk.G1HeapRegionTypeChange  (per-region type transitions)
 
@@ -43,8 +43,8 @@
 -->
 
 <configuration version="2.0"
-               label="gc-log3"
-               description="Information-matched verbose customer GC-log preset: captures what -Xlog:gc*=info,heap*=debug,ergo*=trace emits, including per-region heap debug topology and the full ergonomic trace narration (split by level), plus the typed G1 young-sizing summary."
+               label="gc-analysis"
+               description="Deep GC analysis preset: captures the full GC internals for post-hoc analysis (equivalent to -Xlog:gc*=info,heap*=debug,ergo*=trace), including per-region heap debug topology and the full ergonomic trace narration (split by level), plus the typed G1 young-sizing summary."
                provider="cjfr">
 
   <!-- ================================================================
@@ -318,7 +318,7 @@
 
   <!-- ================================================================
        heap*=debug → per-region G1 heap topology.
-       gc-log.jfc keeps these OFF (too verbose for an info preset); the
+       gc-monitoring.jfc keeps these OFF (too verbose for an always-on preset); the
        customer's heap=debug clause explicitly asks for them, so they are ON
        here to reach information parity.
        ================================================================ -->
@@ -407,6 +407,13 @@
   <event name="jdk.Shutdown">
     <setting name="enabled">true</setting>
     <setting name="stackTrace">false</setting>
+  </event>
+
+  <!-- Per-thread CPU load (user+system) — attribute CPU spend to GC worker vs
+       application threads; matches SapMachine gc.jfc (sampled every 10 s) -->
+  <event name="jdk.ThreadCPULoad">
+    <setting name="enabled">true</setting>
+    <setting name="period">10 s</setting>
   </event>
 
 </configuration>

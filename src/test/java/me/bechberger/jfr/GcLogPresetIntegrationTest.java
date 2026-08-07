@@ -23,20 +23,22 @@ public class GcLogPresetIntegrationTest {
     @Test
     public void gcLogJfcLoadsFromClasspath() throws Exception {
         var resource =
-                GcLogPresetIntegrationTest.class.getResourceAsStream("/META-INF/jfr/gc-log.jfc");
-        assertNotNull(resource, "gc-log.jfc must be present in META-INF/jfr/ on classpath");
+                GcLogPresetIntegrationTest.class.getResourceAsStream(
+                        "/META-INF/jfr/gc-monitoring.jfc");
+        assertNotNull(resource, "gc-monitoring.jfc must be present in META-INF/jfr/ on classpath");
         try (resource) {
             var config =
                     jdk.jfr.Configuration.create(
                             new InputStreamReader(resource, StandardCharsets.UTF_8));
-            assertEquals("gc-log", config.getLabel());
+            assertEquals("gc-monitoring", config.getLabel());
         }
     }
 
     @Test
     public void gcLogJfcHasGcEventsEnabled() throws Exception {
         var resource =
-                GcLogPresetIntegrationTest.class.getResourceAsStream("/META-INF/jfr/gc-log.jfc");
+                GcLogPresetIntegrationTest.class.getResourceAsStream(
+                        "/META-INF/jfr/gc-monitoring.jfc");
         assertNotNull(resource);
         try (resource) {
             var config =
@@ -46,22 +48,23 @@ public class GcLogPresetIntegrationTest {
             assertEquals(
                     "true",
                     settings.get("jdk.GarbageCollection#enabled"),
-                    "jdk.GarbageCollection must be enabled in gc-log.jfc");
+                    "jdk.GarbageCollection must be enabled in gc-monitoring.jfc");
             assertEquals(
                     "true",
                     settings.get("jdk.GCPhasePause#enabled"),
-                    "jdk.GCPhasePause must be enabled in gc-log.jfc");
+                    "jdk.GCPhasePause must be enabled in gc-monitoring.jfc");
             assertEquals(
                     "true",
                     settings.get("jdk.CPULoad#enabled"),
-                    "jdk.CPULoad must be enabled in gc-log.jfc");
+                    "jdk.CPULoad must be enabled in gc-monitoring.jfc");
         }
     }
 
     @Test
     public void gcLogJfcRecordingStreamStartsWithGcEvents() throws Exception {
         var resource =
-                GcLogPresetIntegrationTest.class.getResourceAsStream("/META-INF/jfr/gc-log.jfc");
+                GcLogPresetIntegrationTest.class.getResourceAsStream(
+                        "/META-INF/jfr/gc-monitoring.jfc");
         assertNotNull(resource);
         jdk.jfr.Configuration jfrConfig;
         try (resource) {
@@ -78,14 +81,16 @@ public class GcLogPresetIntegrationTest {
             System.gc();
             assertTrue(
                     latch.await(10, TimeUnit.SECONDS),
-                    "Expected at least one jdk.GarbageCollection event from gc-log.jfc recording");
+                    "Expected at least one jdk.GarbageCollection event from gc-monitoring.jfc"
+                            + " recording");
         }
     }
 
     @Test
     public void gcLogCondenserPresetRoundTrip() throws Exception {
         var resource =
-                GcLogPresetIntegrationTest.class.getResourceAsStream("/META-INF/jfr/gc-log.jfc");
+                GcLogPresetIntegrationTest.class.getResourceAsStream(
+                        "/META-INF/jfr/gc-monitoring.jfc");
         assertNotNull(resource);
         jdk.jfr.Configuration jfrConfig;
         try (resource) {

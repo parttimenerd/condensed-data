@@ -1,7 +1,9 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!--
-  gc-log.jfc — GC-log equivalent recording configuration for cjfr.
-  Captures the same information as -Xlog:gc* at minimal overhead.
+  gc-monitoring.jfc — GC monitoring recording configuration for cjfr.
+  Captures the same information as -Xlog:gc* at minimal overhead, plus ambient
+  system context (JVM flags, CPU/OS/memory/container info, VM operations).
+  Intended for always-on production monitoring.
   No stack traces, no profiling events.
 
   Covers all modern collectors: G1GC, ZGC, Shenandoah, Parallel GC, Serial GC.
@@ -12,8 +14,8 @@
 -->
 
 <configuration version="2.0"
-               label="gc-log"
-               description="GC-log equivalent: captures the same information as -Xlog:gc* at minimal overhead. No stack traces, no profiling events."
+               label="gc-monitoring"
+               description="GC monitoring: captures the same information as -Xlog:gc* plus ambient system context, at minimal overhead. No stack traces, no profiling events."
                provider="cjfr">
 
   <!-- ================================================================
@@ -435,6 +437,13 @@
   <!-- OS thread context switch rate — useful to correlate unexpected GC pause
        duration spikes with OS scheduling pressure (sampled every 10 s) -->
   <event name="jdk.ThreadContextSwitchRate">
+    <setting name="enabled">true</setting>
+    <setting name="period">10 s</setting>
+  </event>
+
+  <!-- Per-thread CPU load (user+system) — attribute CPU spend to GC worker vs
+       application threads; matches SapMachine gc.jfc (sampled every 10 s) -->
+  <event name="jdk.ThreadCPULoad">
     <setting name="enabled">true</setting>
     <setting name="period">10 s</setting>
   </event>

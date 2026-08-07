@@ -293,7 +293,7 @@ java -javaagent:cjfr.jar='start,/var/rec/gc_$index.cjfr,rotating,max-files=24,ma
 Measured on Linux (OpenJDK 21.0.11, 256 MB heap, constant 32 KB allocation workload, 60 s runs, 3 runs
 per collector, run-to-run variance <1%). Sizes are per 60 s run:
 
-| Collector | `-Xlog:gc*` text | Raw JFR (gc-log.jfc) | `gc-log` CJFR | CJFR vs Xlog |
+| Collector | `-Xlog:gc*` text | Raw JFR (gc-monitoring.jfc) | `gc-log` CJFR | CJFR vs Xlog |
 |---|---|---|---|---|
 | G1GC | 541 KB | 597 KB | 183 KB | **66% smaller** |
 | ZGC | 311 KB | 300 KB | 93 KB | **70% smaller** |

@@ -151,8 +151,8 @@ public record Configuration(
                     .withCollapseInternalFramesPrefixes(DEFAULT_COLLAPSE_PREFIXES);
 
     /**
-     * GC-log equivalent — enable only GC events (matches the bundled gc-log.jfc recording config).
-     * No allocation profiling, no execution samples. Use with {@code --config gc-log}.
+     * GC-log equivalent — enable only GC events (matches the bundled gc-monitoring.jfc / gc-analysis.jfc
+     * recording configs). No allocation profiling, no execution samples. Use with {@code --config gc-log}.
      */
     public static final Configuration GC_LOG =
             LOSSLESS.withName("gc-log")

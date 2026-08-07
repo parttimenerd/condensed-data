@@ -14,14 +14,14 @@ public class LoadJfrConfigurationTest {
 
     @Test
     public void loadBundledGcLogByName() throws IOException, ParseException {
-        var config = RecordingThread.loadJfrConfiguration("gc-log");
-        assertEquals("gc-log", config.getLabel());
+        var config = RecordingThread.loadJfrConfiguration("gc-monitoring");
+        assertEquals("gc-monitoring", config.getLabel());
     }
 
     @Test
     public void loadBundledGcLogByNameWithJfcSuffix() throws IOException, ParseException {
-        var config = RecordingThread.loadJfrConfiguration("gc-log.jfc");
-        assertEquals("gc-log", config.getLabel());
+        var config = RecordingThread.loadJfrConfiguration("gc-monitoring.jfc");
+        assertEquals("gc-monitoring", config.getLabel());
     }
 
     @Test
