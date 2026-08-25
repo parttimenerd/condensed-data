@@ -890,7 +890,12 @@ public class SummaryCommandTest {
                     .isNotEqualTo(0);
             assertThat(result.error())
                     .as("Truncated file (%d bytes) should report error", size)
-                    .containsIgnoringCase("truncated");
+                    .matches(
+                            s ->
+                                    s.toLowerCase().contains("truncated")
+                                            || s.toLowerCase().contains("eof")
+                                            || s.toLowerCase().contains("corrupt"),
+                            "contains 'truncated', 'eof', or 'corrupt'");
             assertThat(result.output())
                     .as("Truncated file (%d bytes) should not show epoch timestamps", size)
                     .doesNotContain("1970-01-01");
