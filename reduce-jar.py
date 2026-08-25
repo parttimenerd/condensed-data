@@ -1,23 +1,10 @@
 #!/usr/bin/env python3
 """
-Reduce a fat JAR by removing unnecessary platform-specific native libraries
-and (in the future) optional component classes.
-
-A JSON manifest (jar-reduction-info.json) is embedded at the JAR root so the
-Java application can discover at runtime what was stripped.
+Reduce a fat JAR by removing JMC-dependent classes, or reencode with femtojar.
 
 Usage examples:
-    # Single reduced JAR
-    ./reduce-jar.py reduce input.jar output.jar --platform darwin/aarch64
-    ./reduce-jar.py reduce input.jar --list-platforms
-
-    # Reduce with femtojar compression
-    ./reduce-jar.py reduce input.jar output.jar --platform darwin/aarch64 --femtojar
-    ./reduce-jar.py reduce input.jar output.jar --platform darwin/aarch64 --femtojar --femtojar-proguard
-
-    # Generate matrix of all platform variants into a folder
-    ./reduce-jar.py matrix input.jar out-dir/
-    ./reduce-jar.py matrix input.jar out-dir/ --platforms darwin/aarch64,linux/amd64
+    # Remove JMC classes
+    ./reduce-jar.py reduce input.jar output.jar --without-jmc
 
     # Recompress with femtojar (ProGuard + zopfli), output jars into a directory
     # Builds femtojar automatically if the CLI jar is not yet present.
@@ -28,7 +15,6 @@ Usage examples:
 import argparse
 import json
 import os
-import platform as platform_mod
 import re
 import shutil
 import subprocess
@@ -43,8 +29,6 @@ from typing import List, Optional
 # Constants
 # ---------------------------------------------------------------------------
 
-NATIVE_LIB_PREFIX = "net/jpountz/util/"
-ZSTD_NATIVE_LIB_PREFIX = ""  # ZSTD libraries are at the root level
 REDUCTION_INFO_PATH = "jar-reduction-info.json"
 
 # Prefixes removed in inflaterless (without-JMC) builds
@@ -54,20 +38,6 @@ INFLATERLESS_EXTRA_PREFIXES = [
     "META-INF/maven/",
     "org/jetbrains/",
     "org/intellij/",
-]
-
-# Prefixes/entries removed in minimal builds (LZ4 only)
-MINIMAL_CODEC_PREFIXES = [
-    "com/github/luben/",  # zstd-jni Java classes
-    "org/tukaani/",  # xz Java classes
-    "META-INF/maven/",  # POM files (~85 KB win, no runtime use)
-]
-# Codec factory classes plus their synthetic inner classes (e.g. switch-table $1).
-# Matched as a prefix on the entry path, so this catches both
-# 'ZstdCompressionFactory.class' and 'ZstdCompressionFactory$1.class'.
-MINIMAL_CODEC_CLASS_PREFIXES = [
-    "me/bechberger/condensed/codec/ZstdCompressionFactory",
-    "me/bechberger/condensed/codec/XzCompressionFactory",
 ]
 
 # ---------------------------------------------------------------------------
@@ -83,60 +53,6 @@ class ReductionResult:
     removed_entries: List[str] = field(default_factory=list)
     kept: Optional[str] = None
     extra: dict = field(default_factory=dict)
-
-
-# ---------------------------------------------------------------------------
-# Platform reduction
-# ---------------------------------------------------------------------------
-
-def discover_platforms(zf: zipfile.ZipFile) -> List[str]:
-    """Return sorted list of platform paths like 'darwin/aarch64'."""
-    platforms = set()
-    for entry in zf.namelist():
-        # Check LZ4 native libraries
-        if entry.startswith(NATIVE_LIB_PREFIX):
-            rel = entry[len(NATIVE_LIB_PREFIX):]
-            parts = PurePosixPath(rel).parts
-            # Expect os/arch/lib or os/arch/ or os/
-            if len(parts) >= 2:
-                platforms.add(f"{parts[0]}/{parts[1]}")
-        # Check ZSTD native libraries at root level (darwin/aarch64/libzstd-*.so/dylib/dll)
-        elif entry.endswith((".dylib", ".so", ".dll")) and entry.count("/") == 2:
-            parts = PurePosixPath(entry).parts
-            if len(parts) == 3:  # e.g., ['darwin', 'aarch64', 'libzstd-jni-1.5.6-4.dylib']
-                platforms.add(f"{parts[0]}/{parts[1]}")
-    return sorted(platforms)
-
-
-def reduce_platform(
-    zf: zipfile.ZipFile,
-    platform: str,
-    available: List[str],
-) -> ReductionResult:
-    """Remove native libs for all platforms except *platform*."""
-    if platform not in available:
-        print(
-            f"Error: unknown platform '{platform}'. "
-            f"Available: {', '.join(available)}",
-            file=sys.stderr,
-        )
-        sys.exit(1)
-
-    keep_prefix = NATIVE_LIB_PREFIX + platform + "/"
-    removed_prefixes = []
-    for p in available:
-        if p != platform:
-            removed_prefixes.append(NATIVE_LIB_PREFIX + p + "/")
-            # Also remove ZSTD libraries for other platforms (e.g., "darwin/x86_64/")
-            removed_prefixes.append(p + "/")
-
-    return ReductionResult(
-        name="platform",
-        description=f"Kept only native libraries for {platform}",
-        removed_prefixes=removed_prefixes,
-        kept=platform,
-        extra={"available_platforms": available},
-    )
 
 
 # ---------------------------------------------------------------------------
@@ -227,37 +143,6 @@ def reduce_jmc(jar_path: str, zf: zipfile.ZipFile) -> ReductionResult:
 
 
 # ---------------------------------------------------------------------------
-# Minimal codec reduction (LZ4-only, drops ZSTD/XZ + POMs)
-# ---------------------------------------------------------------------------
-
-def reduce_minimal_codecs(zf: zipfile.ZipFile) -> ReductionResult:
-    """Strip ZSTD/XZ classes, codec factory classes, POMs, and zstd native libs.
-
-    Used only on the path into the ``--with-minimal`` femtojar+proguard pipeline.
-    Does not affect the non-minimal reduced jars.
-    """
-    removed_entries: List[str] = []
-    for entry in zf.namelist():
-        # Drop every libzstd-jni* native lib regardless of platform/extension
-        base = entry.rsplit("/", 1)[-1]
-        if base.startswith("libzstd-jni") and base.endswith((".so", ".dylib", ".dll")):
-            removed_entries.append(entry)
-            continue
-        # Drop ZstdCompressionFactory{,$1,...}.class etc.
-        for cp in MINIMAL_CODEC_CLASS_PREFIXES:
-            if entry.startswith(cp) and entry.endswith(".class"):
-                removed_entries.append(entry)
-                break
-
-    return ReductionResult(
-        name="minimal-codecs",
-        description="LZ4-only minimal build: removed ZSTD/XZ codecs, POMs, and zstd native libs",
-        removed_prefixes=list(MINIMAL_CODEC_PREFIXES),
-        removed_entries=removed_entries,
-    )
-
-
-# ---------------------------------------------------------------------------
 # Core logic
 # ---------------------------------------------------------------------------
 
@@ -321,20 +206,6 @@ def reduce_jar(
 
 
 # ---------------------------------------------------------------------------
-# Naming helpers
-# ---------------------------------------------------------------------------
-
-def platform_slug(platform: str) -> str:
-    """Turn 'darwin/aarch64' into 'darwin-aarch64'."""
-    return platform.replace("/", "-")
-
-
-def matrix_jar_name(base_stem: str, platform: str) -> str:
-    """Build an output filename like 'condensed-data-darwin-aarch64.jar'."""
-    return f"{base_stem}-{platform_slug(platform)}.jar"
-
-
-# ---------------------------------------------------------------------------
 # CLI
 # ---------------------------------------------------------------------------
 
@@ -349,31 +220,19 @@ def add_common_options(parser: argparse.ArgumentParser) -> None:
 
 def cmd_reduce(args: argparse.Namespace) -> None:
     """Handler for the 'reduce' subcommand."""
-    # --list-platforms: informational, no output JAR needed
-    if args.list_platforms:
-        with zipfile.ZipFile(args.input, "r") as zf:
-            platforms = discover_platforms(zf)
-        print("Available platforms:")
-        for p in platforms:
-            print(f"  {p}")
-        return
-
     if args.output is None:
-        print("Error: output path is required unless --list-platforms is used", file=sys.stderr)
+        print("Error: output path is required", file=sys.stderr)
         sys.exit(1)
 
     # Collect applicable reductions
     reductions: List[ReductionResult] = []
 
     with zipfile.ZipFile(args.input, "r") as zf:
-        if args.platform:
-            available = discover_platforms(zf)
-            reductions.append(reduce_platform(zf, args.platform, available))
         if args.without_jmc:
             reductions.append(reduce_jmc(args.input, zf))
 
     if not reductions:
-        print("Error: no reduction options specified. Use --platform, --without-jmc, or see --help.", file=sys.stderr)
+        print("Error: no reduction options specified. Use --without-jmc or see --help.", file=sys.stderr)
         sys.exit(1)
 
     reduce_jar(args.input, args.output, reductions)
@@ -397,158 +256,6 @@ def cmd_reduce(args: argparse.Namespace) -> None:
         if not ok:
             print(f"Error: femtojar compression failed", file=sys.stderr)
             sys.exit(1)
-
-
-def cmd_matrix(args: argparse.Namespace) -> None:
-    """Handler for the 'matrix' subcommand."""
-    out_dir = args.output_dir
-    os.makedirs(out_dir, exist_ok=True)
-
-    base_stem = os.path.splitext(os.path.basename(args.input))[0]
-
-    with zipfile.ZipFile(args.input, "r") as zf:
-        available = discover_platforms(zf)
-
-    # Determine which platforms to build
-    if args.platforms:
-        selected = [p.strip() for p in args.platforms.split(",")]
-        for p in selected:
-            if p not in available:
-                print(
-                    f"Error: unknown platform '{p}'. "
-                    f"Available: {', '.join(available)}",
-                    file=sys.stderr,
-                )
-                sys.exit(1)
-    else:
-        selected = available
-
-    total = 0
-    generated_jars: List[str] = []
-    print(f"Generating platform JARs into {out_dir}/")
-
-    with zipfile.ZipFile(args.input, "r") as zf:
-        jmc_reduction = reduce_jmc(args.input, zf)
-        for platform in selected:
-            plat_reduction = reduce_platform(zf, platform, available)
-
-            # Full variant (with JMC)
-            out_path = os.path.join(out_dir, matrix_jar_name(base_stem, platform))
-            reduce_jar(args.input, out_path, [plat_reduction])
-            total += 1
-            generated_jars.append(out_path)
-
-            # Inflaterless variant (without JMC)
-            out_path_no_jmc = os.path.join(
-                out_dir, f"{base_stem}-{platform_slug(platform)}-inflaterless.jar"
-            )
-            reduce_jar(args.input, out_path_no_jmc, [plat_reduction, jmc_reduction])
-            total += 1
-            generated_jars.append(out_path_no_jmc)
-
-    # Universal (unreduced) copy
-    universal_path = os.path.join(out_dir, f"{base_stem}-universal.jar")
-    reduce_jar(args.input, universal_path, [])
-    total += 1
-    generated_jars.append(universal_path)
-
-    # Universal without JMC
-    universal_no_jmc_path = os.path.join(out_dir, f"{base_stem}-universal-inflaterless.jar")
-    with zipfile.ZipFile(args.input, "r") as zf:
-        jmc_reduction = reduce_jmc(args.input, zf)
-    reduce_jar(args.input, universal_no_jmc_path, [jmc_reduction])
-    total += 1
-    generated_jars.append(universal_no_jmc_path)
-
-    if args.with_minimal:
-        minimal_output_dir = args.minimal_output_dir or f"{out_dir.rstrip('/')}-minimal"
-        os.makedirs(minimal_output_dir, exist_ok=True)
-        cli_jar = _ensure_femtojar_cli()
-        femtocli_minimal_jar = _ensure_femtocli_minimal_jar()
-        print(
-            f"\nGenerating minimal variants (zopfli + proguard) into {minimal_output_dir}/"
-        )
-        failed: List[str] = []
-        help_failed: List[str] = []
-        minimal_generated = 0
-
-        for input_jar in generated_jars:
-            base_name = os.path.splitext(os.path.basename(input_jar))[0]
-            output_jar = os.path.join(minimal_output_dir, f"{base_name}-minimal.jar")
-
-            # Pre-process: swap femtocli for its minimal classifier, then strip
-            # ZSTD/XZ codecs and POMs before feeding into femtojar+proguard.
-            with tempfile.TemporaryDirectory(prefix="cd-minimal-") as tmpdir:
-                swapped_jar = os.path.join(tmpdir, "swapped.jar")
-                stripped_jar = os.path.join(tmpdir, "stripped.jar")
-                _swap_femtocli(input_jar, swapped_jar, femtocli_minimal_jar)
-                with zipfile.ZipFile(swapped_jar, "r") as zf:
-                    codec_reduction = reduce_minimal_codecs(zf)
-                reduce_jar(swapped_jar, stripped_jar, [codec_reduction])
-
-                ok = _run_femtojar(
-                    cli_jar,
-                    stripped_jar,
-                    output_jar,
-                    "zopfli",
-                    True,
-                    CONDENSED_DATA_PROGUARD_OPTIONS,
-                    args.minimal_verbose,
-                )
-            if not ok:
-                failed.append(output_jar)
-                continue
-
-            minimal_generated += 1
-            total += 1
-
-            if not args.minimal_no_smoke_test and not _test_jar_help(output_jar):
-                help_failed.append(output_jar)
-
-        if failed:
-            print(f"\n[matrix] {len(failed)} minimal jar(s) failed to build:", file=sys.stderr)
-            for f in failed:
-                print(f"  {f}", file=sys.stderr)
-
-        if help_failed:
-            print(
-                f"\n[matrix] {len(help_failed)} minimal jar(s) failed --help check:",
-                file=sys.stderr,
-            )
-            for f in help_failed:
-                print(f"  {f}", file=sys.stderr)
-
-        if failed or help_failed:
-            sys.exit(1)
-
-        print(f"Generated {minimal_generated} minimal JARs")
-
-    # ------ test against current-platform JARs ------
-    if args.run_tests:
-        current = _detect_current_platform()
-        current_slug = platform_slug(current)
-        print(f"\nRunning tests for current platform ({current}) …")
-
-        test_failed: List[str] = []
-        for jar in generated_jars:
-            jar_base = os.path.basename(jar)
-            # Only test JARs that match the current platform or are universal
-            if current_slug not in jar_base and "universal" not in jar_base:
-                continue
-            inflaterless = "inflaterless" in jar_base
-            if not _run_jar_tests(jar, inflaterless):
-                test_failed.append(jar)
-
-        if test_failed:
-            print(
-                f"\n[matrix] {len(test_failed)} jar(s) failed tests:",
-                file=sys.stderr,
-            )
-            for f in test_failed:
-                print(f"  {f}", file=sys.stderr)
-            sys.exit(1)
-
-    print(f"\nDone. {total} JARs written to {out_dir}/")
 
 
 # ---------------------------------------------------------------------------
@@ -591,8 +298,8 @@ CONDENSED_DATA_PROGUARD_OPTIONS = [
     # still works, but allow ProGuard to shrink unreachable methods/classes.
     "-keep,allowshrinking,allowoptimization class me.bechberger.condensed.** { *; }",
     "-keep,allowshrinking,allowoptimization class me.bechberger.jfr.** { *; }",
-    # lz4-java loads its compressor implementations via Class.forName.
-    "-keep class net.jpountz.** { *; }",
+    # femtolz4 loads its compressor implementations via Class.forName.
+    "-keep class me.bechberger.femtolz4.** { *; }",
 ]
 
 # femtojar source dir relative to this script
@@ -880,84 +587,6 @@ def _test_jar_help(jar_path: str) -> bool:
     return ok
 
 
-def _detect_current_platform() -> str:
-    """Detect the current OS/arch as a platform string like 'darwin/aarch64'."""
-    os_name = platform_mod.system().lower()
-    machine = platform_mod.machine().lower()
-    # Map Python arch names to JVM-style names
-    arch_map = {
-        "x86_64": "amd64",
-        "amd64": "amd64",
-        "aarch64": "aarch64",
-        "arm64": "aarch64",
-    }
-    arch = arch_map.get(machine, machine)
-    return f"{os_name}/{arch}"
-
-
-_JAR_DEPENDENT_TESTS = ",".join([
-    "AgentCommandTest",
-    "AgentTest",
-    "BenchmarkCommandTest",
-    "BugReproducerTest",
-    "ChunkHeaderTest",
-    "CondenseCommandTest",
-    "CustomJFREventBreakingTest",
-    "ExitCodeTest",
-    "InflateCommandTest",
-    "InflateCorruptionTest",
-    "InflateIntegrityTest",
-    "InflateStartTimeDurationTest",
-    "MainCommandTest",
-    "ReconstitutedDurationTest",
-    "SummaryCommandTest",
-    "ViewCommandTest",
-    "WritingJFRReaderTest",
-])
-
-
-def _run_jar_tests(jar_path: str, inflaterless: bool) -> bool:
-    """Run Maven tests against the given JAR.
-
-    Uses system properties ``cjfr.test.jar`` and, when *inflaterless* is True,
-    ``cjfr.test.inflaterless`` to configure the test harness.
-    Only runs tests that actually exercise the JAR via CommandExecuter/cjfr.test.jar;
-    pure unit tests are skipped here since they already ran in the main test step.
-    Returns True on success.
-    """
-    jar_abs = os.path.abspath(jar_path)
-    label = os.path.basename(jar_path)
-    print(f"  Running tests against {label} …")
-
-    project_dir = os.path.dirname(os.path.abspath(__file__))
-    sys_props = [f"-Dcjfr.test.jar={jar_abs}"]
-    if inflaterless:
-        sys_props.append("-Dcjfr.test.inflaterless=true")
-
-    cmd = [
-        "mvn", "test", "-pl", ".",
-        *sys_props,
-        f"-Dtest={_JAR_DEPENDENT_TESTS}",
-        "-q",
-    ]
-    result = subprocess.run(cmd, cwd=project_dir, capture_output=True, text=True)
-    if result.returncode == 0:
-        print(f"  {label}: tests PASSED")
-        return True
-    else:
-        print(f"  {label}: tests FAILED", file=sys.stderr)
-        if result.stdout:
-            # Show last lines of output for diagnostics
-            lines = result.stdout.strip().splitlines()
-            for line in lines[-30:]:
-                print(f"    {line}", file=sys.stderr)
-        if result.stderr:
-            lines = result.stderr.strip().splitlines()
-            for line in lines[-15:]:
-                print(f"    {line}", file=sys.stderr)
-        return False
-
-
 def cmd_femtojar(args: argparse.Namespace) -> None:
     """Handler for the 'femtojar' subcommand.
 
@@ -1039,7 +668,7 @@ def cmd_femtojar(args: argparse.Namespace) -> None:
 
 def main() -> None:
     parser = argparse.ArgumentParser(
-        description="Reduce a fat JAR by stripping unneeded native libs / components.",
+        description="Reduce a fat JAR by stripping JMC classes, or reencode with femtojar.",
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
     subparsers = parser.add_subparsers(dest="command", required=True)
@@ -1052,16 +681,6 @@ def main() -> None:
     )
     p_reduce.add_argument("input", help="Input JAR path")
     p_reduce.add_argument("output", nargs="?", default=None, help="Output JAR path")
-    p_reduce.add_argument(
-        "--platform",
-        metavar="OS/ARCH",
-        help="Keep only native libraries for this platform (e.g. darwin/aarch64)",
-    )
-    p_reduce.add_argument(
-        "--list-platforms",
-        action="store_true",
-        help="List available platforms in the JAR and exit",
-    )
     p_reduce.add_argument(
         "--femtojar",
         action="store_true",
@@ -1097,46 +716,6 @@ def main() -> None:
     )
     add_common_options(p_reduce)
     p_reduce.set_defaults(func=cmd_reduce)
-
-    # --- matrix ---
-    p_matrix = subparsers.add_parser(
-        "matrix",
-        help="Generate a matrix of reduced JARs for every platform",
-        formatter_class=argparse.RawDescriptionHelpFormatter,
-    )
-    p_matrix.add_argument("input", help="Input JAR path")
-    p_matrix.add_argument("output_dir", help="Output directory for generated JARs")
-    p_matrix.add_argument(
-        "--platforms",
-        metavar="P1,P2,...",
-        help="Comma-separated subset of platforms (default: all)",
-    )
-    p_matrix.add_argument(
-        "--with-minimal",
-        action="store_true",
-        help="Also generate -minimal variants via femtojar (zopfli + proguard)",
-    )
-    p_matrix.add_argument(
-        "--minimal-output-dir",
-        help="Output dir for minimal variants (default: <output_dir>-minimal)",
-    )
-    p_matrix.add_argument(
-        "--minimal-no-smoke-test",
-        action="store_true",
-        help="Skip black-box '--help' smoke tests for generated minimal variants",
-    )
-    p_matrix.add_argument(
-        "--minimal-verbose",
-        action="store_true",
-        help="Pass --verbose to femtojar while generating minimal variants",
-    )
-    p_matrix.add_argument(
-        "--run-tests",
-        action="store_true",
-        help="Run Maven tests against JARs matching the current platform (and universal)",
-    )
-    add_common_options(p_matrix)
-    p_matrix.set_defaults(func=cmd_matrix)
 
     # --- femtojar ---
     p_femtojar = subparsers.add_parser(

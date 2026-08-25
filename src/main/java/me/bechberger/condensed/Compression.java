@@ -6,10 +6,9 @@ import java.io.OutputStream;
 import java.util.zip.Deflater;
 import java.util.zip.GZIPInputStream;
 import java.util.zip.GZIPOutputStream;
-import net.jpountz.lz4.LZ4Factory;
-import net.jpountz.lz4.LZ4FrameInputStream;
-import net.jpountz.lz4.LZ4FrameOutputStream;
-import net.jpountz.xxhash.XXHashFactory;
+import me.bechberger.femtolz4.LZ4;
+import me.bechberger.femtolz4.LZ4FrameInputStream;
+import me.bechberger.femtolz4.LZ4FrameOutputStream;
 
 public enum Compression {
     NONE(
@@ -50,24 +49,16 @@ public enum Compression {
                         throws IOException {
                     var compressor =
                             switch (level) {
-                                case FAST -> LZ4Factory.fastestInstance().fastCompressor();
-                                case MEDIUM, HIGH_COMPRESSION ->
-                                        LZ4Factory.fastestInstance().highCompressor();
-                                case MAX_COMPRESSION ->
-                                        LZ4Factory.fastestInstance().highCompressor(17);
+                                case FAST -> LZ4.compressor(LZ4.LEVEL_FAST);
+                                case MEDIUM, HIGH_COMPRESSION -> LZ4.compressor(8);
+                                case MAX_COMPRESSION -> LZ4.compressor(LZ4.LEVEL_DEFAULT);
                             };
-                    return new LZ4FrameOutputStream(
-                            out,
-                            LZ4FrameOutputStream.BLOCKSIZE.SIZE_4MB,
-                            -1,
-                            compressor,
-                            XXHashFactory.fastestInstance().hash32(),
-                            LZ4FrameOutputStream.FLG.Bits.BLOCK_INDEPENDENCE);
+                    return new LZ4FrameOutputStream(out, compressor);
                 }
 
                 @Override
                 public InputStream wrap(InputStream in) throws IOException {
-                    return new LZ4FrameInputStream(in);
+                    return new LZ4FrameInputStream(in, true);
                 }
             }),
     ;
