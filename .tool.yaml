@@ -37,6 +37,27 @@ usage:
     # Condense existing JFR files to .cjfr:
     java -jar condensed-data.jar condense myrecording.jfr output.cjfr
 how_to:
+- title: Record a running JVM and view the results
+  body: |
+    Three commands: attach, wait, stop. No JFR configuration needed — condensed-data
+    uses a built-in JFR profile.
+    ```bash
+    # 1. Start recording (replace 1234 with your JVM's PID, or use the main class name)
+    java -jar condensed-data.jar agent 1234 start recording.cjfr
+
+    # 2. Let it run for as long as you need, then stop
+    java -jar condensed-data.jar agent 1234 stop
+
+    # 3. View a summary of what was captured
+    java -jar condensed-data.jar summary recording.cjfr
+
+    # 4. Open an event view (e.g. GC pauses, hot methods)
+    java -jar condensed-data.jar view recording.cjfr gc-pauses
+    ```
+    To view interactively with SQL queries, open the file in
+    [jfr-query](https://parttimenerd.github.io/jfr-query/) or drag-and-drop onto
+    the hosted web UI.
+
 - title: Attach to a running JVM and record continuously
   body: |
     ```bash
