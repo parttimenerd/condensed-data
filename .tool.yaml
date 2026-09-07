@@ -1,0 +1,110 @@
+tag: experimental
+maven_coordinates: me.bechberger.condensed:condensed-data
+tagline: CLI tool and Java agent for long-term, low-overhead JFR event storage. Records events from
+  a running JVM via live-attach and compresses them into the self-describing .cjfr format — significantly
+  smaller than raw JFR. Supports rotating files, configurable compression, and a reader library for
+  querying stored data. View .cjfr files in jfr-query or the JMC fork with native .cjfr support.
+tagline_short: CLI tool and agent for compact long-term JFR event storage — significantly smaller than raw .jfr.
+github_pages: https://parttimenerd.github.io/condensed-data/
+when_to_use:
+- You need long-term storage of JFR recordings with minimal disk usage
+- You want live-attach to a running JVM for continuous event capture
+- You are storing GC or other continuous JFR data over days or weeks
+- You want a self-describing format readable without the original JDK
+when_not_to_use:
+- You need immediate full JFR replay compatibility without a reader library
+- You need a stable format (early development, .cjfr format may change)
+- You need Windows support (live-attach agent is Linux/macOS only)
+links:
+- label: Docs ↗
+  url: https://parttimenerd.github.io/condensed-data/
+- label: JMC fork with .cjfr support ↗
+  url: https://github.com/parttimenerd/jmc/releases/tag/snapshot
+install:
+- label: Download JAR
+  lang: bash
+  code: |
+    gh release download --repo parttimenerd/condensed-data \
+      --pattern '*.jar' --dir .
+    # See docs/jar-releases.md for which JAR variant to pick
+usage:
+- label: Basic Usage
+  lang: bash
+  code: |
+    # Attach to a running JVM (by PID) and start recording:
+    java -jar condensed-data.jar agent <PID> start recording.cjfr
+
+    # Condense existing JFR files to .cjfr:
+    java -jar condensed-data.jar condense myrecording.jfr output.cjfr
+how_to:
+- title: Attach to a running JVM and record continuously
+  body: |
+    ```bash
+    # Start recording to a single file:
+    java -jar condensed-data.jar agent <PID> start recording.cjfr
+
+    # Check status:
+    java -jar condensed-data.jar agent <PID> status
+
+    # Stop and finalize:
+    java -jar condensed-data.jar agent <PID> stop
+    ```
+    `<PID>` can also be a main-class name filter or `all` to target all matching JVMs.
+
+- title: Record with rotating files (production use)
+  body: |
+    Keep at most 3 files of 100 MB each — old files are overwritten:
+    ```bash
+    java -jar condensed-data.jar agent <PID> start \
+      --rotating --max-size=100m --max-files=3 \
+      recording_$index.cjfr
+    ```
+    Or start via `-javaagent` at JVM launch (comma-separated, no dashes):
+    ```bash
+    java -javaagent:condensed-data.jar=start,rotating,max-size=100m,max-files=3,recording.cjfr \
+      -jar myapp.jar
+    ```
+
+- title: Condense existing JFR files
+  body: |
+    ```bash
+    # Single file:
+    java -jar condensed-data.jar condense myrecording.jfr output.cjfr
+
+    # Whole folder or ZIP:
+    java -jar condensed-data.jar condense recordings/ output.cjfr
+
+    # Inflate back to JFR for tools that don't support .cjfr:
+    java -jar condensed-data.jar inflate output.cjfr restored.jfr
+    ```
+
+- title: View events and summaries
+  body: |
+    ```bash
+    # Print a summary:
+    java -jar condensed-data.jar summary recording.cjfr
+
+    # Use JFR named views (gc-pauses, hot-methods, allocation-by-site, …):
+    java -jar condensed-data.jar view recording.cjfr gc-pauses
+
+    # Open in jfr-query notebook UI:
+    java -jar query.jar serve recording.cjfr
+    # or drag-and-drop onto https://parttimenerd.github.io/jfr-query/
+    ```
+
+- title: Open in JDK Mission Control
+  body: |
+    A [JMC fork](https://github.com/parttimenerd/jmc) supports native `.cjfr` files —
+    no inflation step required:
+    ```bash
+    # Download snapshot build from:
+    # https://github.com/parttimenerd/jmc/releases/tag/snapshot
+    # Then open JMC and File > Open > select your .cjfr file
+    ```
+    Or inflate first if you need the standard JMC release:
+    ```bash
+    java -jar condensed-data.jar inflate recording.cjfr recording.jfr
+    ```
+
+note: No stable release yet — rolling snapshots only. Check docs/jar-releases.md for which JAR
+  variant to download for your environment.
