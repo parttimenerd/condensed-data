@@ -58,17 +58,39 @@ how_to:
     [jfr-query](https://parttimenerd.github.io/jfr-query/) or drag-and-drop onto
     the hosted web UI.
 
-- title: Attach to a running JVM and record continuously
+- title: GC pauses are growing — capture a long recording to see the trend
   body: |
+    GC problems often build up over hours. Start a recording, let it run while the JVM
+    degrades, then stop and look at the pause trend:
     ```bash
-    # Start recording to a single file:
-    java -jar condensed-data.jar agent <PID> start recording.cjfr
+    # Attach and start (runs until you stop it)
+    java -jar condensed-data.jar agent <PID> start gc-investigation.cjfr
 
-    # Check status:
-    java -jar condensed-data.jar agent <PID> status
-
-    # Stop and finalize:
+    # After the issue reproduces (minutes or hours later):
     java -jar condensed-data.jar agent <PID> stop
+
+    # View GC pause trend
+    java -jar condensed-data.jar view gc-investigation.cjfr gc-pauses
+    ```
+    Open in [jfr-query](https://parttimenerd.github.io/jfr-query/) for a timeline chart
+    showing how pause duration evolves over the recording period.
+    Look for: increasing pause frequency, pause cause changing from `G1YoungGeneration`
+    to `G1OldGeneration`, or heap-after-GC growing steadily (heap leak).
+
+- title: Keep a rolling window of diagnostics without filling disk
+  body: |
+    In production you rarely know in advance when a problem will occur.
+    Use rotating files to keep the last N MB of history always available:
+    ```bash
+    java -jar condensed-data.jar agent <PID> start \
+      --rotating --max-size=100m --max-files=5 \
+      recording_$index.cjfr
+    ```
+    When an incident occurs, stop the agent — the most recent files covering the last
+    ~500 MB of events are on disk. Condense them for analysis:
+    ```bash
+    java -jar condensed-data.jar agent <PID> stop
+    java -jar condensed-data.jar view recording_0.cjfr gc-pauses
     ```
     `<PID>` can also be a main-class name filter or `all` to target all matching JVMs.
 
