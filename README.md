@@ -112,6 +112,48 @@ java -jar target/condensed-data.jar agent <PID> status
 java -jar target/condensed-data.jar agent <PID> stop
 ```
 
+## Common Tasks
+
+### GC pauses are growing — capture a long recording to see the trend
+
+GC problems often build up over hours. Start a recording, let it run while the JVM
+degrades, then stop and look at the pause trend:
+
+```bash
+# Attach and start (runs until you stop it)
+java -jar condensed-data.jar agent <PID> start gc-investigation.cjfr
+
+# After the issue reproduces (minutes or hours later):
+java -jar condensed-data.jar agent <PID> stop
+
+# View GC pause trend
+java -jar condensed-data.jar view gc-investigation.cjfr gc-pauses
+```
+
+Open in [jfr-query](https://parttimenerd.github.io/jfr-query/) for a timeline chart
+showing how pause duration evolves over the recording period.
+Look for: increasing pause frequency, pause cause changing from `G1YoungGeneration`
+to `G1OldGeneration`, or heap-after-GC growing steadily (heap leak).
+
+### Keep a rolling window of diagnostics without filling disk
+
+In production you rarely know in advance when a problem will occur.
+Use rotating files to keep the last N MB of history always available:
+
+```bash
+java -jar condensed-data.jar agent <PID> start \
+  --rotating --max-size=100m --max-files=5 \
+  recording_$index.cjfr
+```
+
+When an incident occurs, stop the agent — the most recent files covering the last
+~500 MB of events are on disk. View them for analysis:
+
+```bash
+java -jar condensed-data.jar agent <PID> stop
+java -jar condensed-data.jar view recording_0.cjfr gc-pauses
+```
+
 ### All `jfr` tool views, directly on `.cjfr`
 
 `cjfr view` is a drop-in replacement for the JDK `jfr view` command and supports **all of its
