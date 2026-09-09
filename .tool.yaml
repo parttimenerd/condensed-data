@@ -1,4 +1,5 @@
 tag: experimental
+no_release: true
 maven_coordinates: me.bechberger.condensed:condensed-data
 tagline: CLI tool and Java agent for long-term, low-overhead JFR event storage. Records events from
   a running JVM via live-attach and compresses them into the self-describing .cjfr format — significantly
