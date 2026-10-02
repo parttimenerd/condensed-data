@@ -36,9 +36,9 @@
 
     <dependencies>
         <dependency>
-            <groupId>at.yawk.lz4</groupId>
-            <artifactId>lz4-java</artifactId>
-            <version>1.11.0</version>
+            <groupId>me.bechberger</groupId>
+            <artifactId>femtolz4</artifactId>
+            <version>0.2.1</version>
         </dependency>
     </dependencies>
 </project>
