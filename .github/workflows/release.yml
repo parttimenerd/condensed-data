@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
     inputs:
       version:
-        description: 'Release version'
+        description: 'Release version (e.g. 0.2.0)'
         required: true
 
 env:
@@ -12,56 +12,87 @@ env:
   JAVA_DISTRO: 'sapmachine'
 
 jobs:
-  precheck:
-    name: Precheck
-    runs-on: ubuntu-latest
-    outputs:
-      VERSION: ${{ steps.vars.outputs.VERSION }}
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v5
-
-      - name: Version
-        id: vars
-        shell: bash
-        run: |
-          VERSION=${{ github.event.inputs.version }}
-          mvn -Ppublication -B versions:set versions:commit -DnewVersion=$VERSION
-          git config --global user.name "GitHub Action"
-          git commit -a -m "Releasing version $VERSION"
-          git push origin main
-
   release:
-    needs: [ precheck ]
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
     steps:
-      - name: Checkout
-        uses: actions/checkout@v5
+      - uses: actions/checkout@v5
         with:
-          ref: main
           fetch-depth: 0
 
-      - name: Setup Java
+      - name: Set up JDK 17 (required by JMC toolchain)
+        uses: actions/setup-java@v5
+        with:
+          java-version: 17
+          distribution: 'sapmachine'
+
+      - name: Set up JDK 21 (primary)
         uses: actions/setup-java@v5
         with:
           java-version: ${{ env.JAVA_VERSION }}
           distribution: ${{ env.JAVA_DISTRO }}
+          cache: maven
 
-      - name: Cache Maven
-        uses: actions/cache@v3
+      - name: Cache femtocli
+        id: cache-femtocli
+        uses: actions/cache@v4
         with:
-          path: ~/.m2/repository
-          key: ${{ runner.os }}-m2-${{ hashFiles('**/pom.xml') }}
-          restore-keys: ${{ runner.os }}-m2
+          path: ~/.m2/repository/me/bechberger/util/femtocli
+          key: femtocli-${{ hashFiles('**/femtocli/**') }}-v1
+          restore-keys: femtocli-
 
       - name: Install femtocli
+        if: steps.cache-femtocli.outputs.cache-hit != 'true'
         run: |
-          rm -rf ~/.m2/repository/me/bechberger/util/femtocli
           git clone --depth=1 https://github.com/parttimenerd/femtocli.git /tmp/femtocli
           cd /tmp/femtocli && mvn install -Pminimal -DskipTests -q
 
-      - name: Build
-        run: mvn -ntp -B --file pom.xml verify
+      - name: Get JMC HEAD SHA
+        id: jmc-sha
+        run: |
+          echo "sha=$(git ls-remote https://github.com/parttimenerd/jmc.git refs/heads/sap | cut -f1 | head -c12)" >> "$GITHUB_OUTPUT"
 
-      - name: Build
-        run: mvn -Ppublication -ntp -B --file pom.xml verify
+      - name: Cache JMC core
+        id: cache-jmc
+        uses: actions/cache@v4
+        with:
+          path: ~/.m2/repository/org/openjdk/jmc
+          key: jmc-core-${{ steps.jmc-sha.outputs.sha }}
+
+      - name: Install JMC core (SNAPSHOT)
+        if: steps.cache-jmc.outputs.cache-hit != 'true'
+        run: |
+          git clone --depth=1 --branch sap https://github.com/parttimenerd/jmc.git /tmp/jmc
+          cd /tmp/jmc/core && mvn install -DskipTests -Dmaven.javadoc.skip=true -q
+
+      - name: Bump version and tag
+        run: |
+          VERSION=${{ github.event.inputs.version }}
+          mvn -B versions:set versions:commit -DnewVersion=$VERSION
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git commit -a -m "chore: release $VERSION"
+          git tag "v$VERSION"
+          git push origin main "v$VERSION"
+
+      - name: Build package
+        run: mvn package -Dmaven.test.skip=true -DskipTests=true -P!jmc-test
+
+      - name: Generate femtojar-reencoded JARs
+        run: python3 reduce-jar.py femtojar target/condensed-data.jar target/femtojar-jars/
+
+      - name: Copy minimal JAR
+        run: cp target/femtojar-jars/condensed-data-zopfli-proguard.jar target/condensed-data-minimal.jar
+
+      - name: Publish release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          VERSION=${{ github.event.inputs.version }}
+          gh release create "v$VERSION" \
+            --repo ${{ github.repository }} \
+            --title "v$VERSION" \
+            --generate-notes \
+            target/condensed-data.jar \
+            target/condensed-data-minimal.jar

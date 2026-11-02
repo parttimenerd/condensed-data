@@ -709,6 +709,15 @@
             <artifactId>flightrecorder.writer</artifactId>
             <version>9.1.2</version>
             <optional>true</optional>
+            <exclusions>
+                <!-- jmc:common declares lz4-java without <scope>test</scope>;
+                     Maven resolves it as compile, shade would bundle it.
+                     The codebase uses femtolz4 exclusively — lz4-java is unused. -->
+                <exclusion>
+                    <groupId>at.yawk.lz4</groupId>
+                    <artifactId>lz4-java</artifactId>
+                </exclusion>
+            </exclusions>
         </dependency>
         <!-- JMC parser (reader) — vendored 10.0.0-SNAPSHOT built from jmc/core.
              Declared in the jmc-test profile (active by default) so CI builds that

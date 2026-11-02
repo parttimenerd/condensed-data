@@ -6,7 +6,8 @@ Usage examples:
     # Remove JMC classes
     ./reduce-jar.py reduce input.jar output.jar --without-jmc
 
-    # Recompress with femtojar (ProGuard + zopfli), output jars into a directory
+    # Recompress with femtojar (ProGuard + zopfli), output jars into a directory.
+    # ProGuard variants are pre-processed: JMC classes stripped + femtocli swapped.
     # Builds femtojar automatically if the CLI jar is not yet present.
     ./reduce-jar.py femtojar target/condensed-data.jar out-dir/
     ./reduce-jar.py femtojar target/condensed-data.jar out-dir/ --skip-proguard
@@ -592,7 +593,7 @@ def cmd_femtojar(args: argparse.Namespace) -> None:
 
     Produces, for each compression mode (default + zopfli), two JARs:
       <stem>-<mode>.jar           – plain femtojar reencoding
-      <stem>-<mode>-proguard.jar  – ProGuard + femtojar reencoding  (unless --skip-proguard)
+      <stem>-<mode>-proguard.jar  – JMC-stripped + femtocli-swapped + ProGuard + femtojar
 
     Then verifies each produced JAR by running `java -jar <jar> --help`.
     """
@@ -608,8 +609,26 @@ def cmd_femtojar(args: argparse.Namespace) -> None:
     generated: List[str] = []
     failed: List[str] = []
 
+    # Pre-process for ProGuard variants: strip JMC classes and swap femtocli for
+    # its minimal classifier so ProGuard doesn't keep them via the cli keep-rule.
+    proguard_input = args.input
+    _proguard_tmpdir: Optional[tempfile.TemporaryDirectory] = None
+    if not args.skip_proguard:
+        _proguard_tmpdir = tempfile.TemporaryDirectory(prefix="cd-femtojar-")
+        tmpdir = _proguard_tmpdir.name
+        femtocli_minimal_jar = _ensure_femtocli_minimal_jar()
+        swapped_jar = os.path.join(tmpdir, "swapped.jar")
+        stripped_jar = os.path.join(tmpdir, "stripped.jar")
+        print("[femtojar] Pre-processing: swapping femtocli minimal classifier …")
+        _swap_femtocli(args.input, swapped_jar, femtocli_minimal_jar)
+        print("[femtojar] Pre-processing: stripping JMC classes …")
+        with zipfile.ZipFile(swapped_jar, "r") as zf:
+            jmc_reduction = reduce_jmc(swapped_jar, zf)
+        reduce_jar(swapped_jar, stripped_jar, [jmc_reduction])
+        proguard_input = stripped_jar
+
     for mode in compression_modes:
-        # Plain reencoding
+        # Plain reencoding (from fat JAR, no stripping)
         out_plain = os.path.join(out_dir, f"{base_stem}-{mode}.jar")
         print(f"[femtojar] {mode} (no ProGuard):")
         ok = _run_femtojar(cli_jar, args.input, out_plain, mode, False, [], args.verbose)
@@ -618,15 +637,27 @@ def cmd_femtojar(args: argparse.Namespace) -> None:
         else:
             failed.append(out_plain)
 
-        # ProGuard + reencoding
+        # ProGuard + reencoding (from pre-stripped jar)
         if not args.skip_proguard:
             out_pg = os.path.join(out_dir, f"{base_stem}-{mode}-proguard.jar")
-            print(f"[femtojar] {mode} + ProGuard:")
-            ok = _run_femtojar(cli_jar, args.input, out_pg, mode, True, proguard_options, args.verbose)
+            print(f"[femtojar] {mode} + ProGuard (JMC-stripped):")
+            ok = _run_femtojar(
+                cli_jar,
+                proguard_input,
+                out_pg,
+                mode,
+                True,
+                proguard_options,
+                args.verbose,
+                source_jar=args.input,
+            )
             if ok:
                 generated.append(out_pg)
             else:
                 failed.append(out_pg)
+
+    if _proguard_tmpdir is not None:
+        _proguard_tmpdir.cleanup()
 
     # ------ size table ------
     original_size = os.path.getsize(args.input)
