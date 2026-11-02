@@ -5,6 +5,7 @@ import static org.junit.jupiter.api.Assertions.assertAll;
 
 import java.util.List;
 import java.util.stream.Stream;
+import me.bechberger.condensed.Util;
 import me.bechberger.jfr.cli.JFRCLI;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
@@ -14,8 +15,7 @@ import org.junit.jupiter.params.provider.MethodSource;
 /** Tests that the main {@code cjfr} command works (has help and everything, exits as expected) */
 public class MainCommandTest {
 
-    /** Reminder to look at the tests whenever a version is changed */
-    public static final String VERSION = "0.1.3";
+    public static final String VERSION = Util.getLibraryVersion();
 
     /** Tests main command with no arguments */
     @Test
